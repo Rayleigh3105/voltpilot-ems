@@ -71,6 +71,34 @@
       "arch": "amd64",
       "dateien": {},
       "erwartet": { "modell": null, "arch": "amd64" }
+    },
+    {
+      "name": "WAGO PFC200: der Startweg gibt die Bestellnummer mit, sonst ist nichts lesbar",
+      "arch": "arm",
+      "wago_bestellnummer": "750-8212\n",
+      "dateien": {},
+      "erwartet": { "modell": "WAGO 750-8212", "arch": "arm" }
+    },
+    {
+      "name": "WAGO: die Bestellnummer gewinnt vor dem Device-Tree, die Variante bleibt stehen",
+      "arch": "arm",
+      "wago_bestellnummer": "750-8212/025-000",
+      "dateien": { "proc/device-tree/model": "Baugruppe laut Device-Tree\u0000" },
+      "erwartet": { "modell": "WAGO 750-8212/025-000", "arch": "arm" }
+    },
+    {
+      "name": "was nicht wie eine Bestellnummer aussieht, ist keine Angabe: die naechste Quelle gilt",
+      "arch": "arm",
+      "wago_bestellnummer": "PFC200 <b>",
+      "dateien": { "proc/device-tree/model": "Baugruppe laut Device-Tree\u0000" },
+      "erwartet": { "modell": "Baugruppe laut Device-Tree", "arch": "arm" }
+    },
+    {
+      "name": "eine krumme Bestellnummer ohne weitere Quelle: kein Modell, nie ein erfundenes",
+      "arch": "arm",
+      "wago_bestellnummer": "750-82",
+      "dateien": {},
+      "erwartet": { "modell": null, "arch": "arm" }
     }
   ],
   "herzschlag": [
@@ -93,6 +121,11 @@
       "name": "Docker-Box auf dem Raspberry Pi: ohne Loader",
       "geraet": { "modell": "Raspberry Pi 4 Model B Rev 1.4", "arch": "arm64" },
       "gespeichert": { "modell": "Raspberry Pi 4 Model B Rev 1.4", "arch": "arm64", "loader": null, "loader_stand": null }
+    },
+    {
+      "name": "Edge Light auf dem WAGO PFC200: der Loader kennt Updates, eine Marke gibt es dort nicht",
+      "geraet": { "modell": "WAGO 750-8212", "arch": "arm", "loader": "update" },
+      "gespeichert": { "modell": "WAGO 750-8212", "arch": "arm", "loader": "update", "loader_stand": null }
     },
     {
       "name": "ein unbekanntes Loader-Wort und eine krumme Architektur werden verworfen, nicht geraten",

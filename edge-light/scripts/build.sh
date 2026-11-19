@@ -3,6 +3,7 @@
 #
 #   linux/mipsle (GOMIPS=softfloat)  GL.iNet Mango GL-MT300N-V2 (MT7628, ohne FPU)
 #   linux/arm64                      Raspberry Pi 3/4/5, NanoPi, ...
+#   linux/arm (GOARM=7)              WAGO PFC200 G2 (Cortex-A8, ARMv7, edge-light/pfc)
 #   linux/amd64                      x86-Thin-Clients, Entwicklung
 #
 # Ergebnis in edge-light/dist/ (oder VP_LIGHT_DIST): je Architektur das
@@ -29,9 +30,10 @@ for arch in "${ARCHS[@]}"; do
   envs=(GOOS=linux CGO_ENABLED=0 "GOARCH=$arch")
   case "$arch" in
     mipsle | mips) envs+=(GOMIPS=softfloat) ;;
+    arm) envs+=(GOARM=7) ;;
     arm64 | amd64) ;;
     *)
-      echo "FEHLER: unbekannte Architektur $arch (mipsle|arm64|amd64)" >&2
+      echo "FEHLER: unbekannte Architektur $arch (mipsle|arm64|arm|amd64)" >&2
       exit 2
       ;;
   esac

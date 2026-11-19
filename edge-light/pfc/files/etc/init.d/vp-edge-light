@@ -1,0 +1,272 @@
+#!/bin/sh
+# Edge Light als Dienst auf dem WAGO PFC200 (WAGO-Firmware mit BusyBox-Init).
+#
+#   /etc/init.d/vp-edge-light start|stop|restart|status
+#
+# Was auf der Mango procd tut (edge-light/openwrt/files/etc/init.d/vp-edge-light),
+# tut hier dieses Skript selbst: Es startet den Loader
+# (/home/voltpilot/libexec/boot.sh), und endet das Programm (Absturz,
+# Update-Neustart), startet es den Loader nach 10 s erneut - unbegrenzt oft.
+# Nach einem Update tauscht der Loader beim naechsten Start und wacht ueber
+# die Probe.
+#
+# Dieses Skript ist der EINZIGE Teil von Edge Light, der als root laeuft. Es
+#   - legt das RAM-Verzeichnis an (nach jedem Neustart des Geraets leer),
+#   - fragt die Bestellnummer des Geraets ab (get_coupler_details) und reicht
+#     sie als VP_WAGO_BESTELLNUMMER weiter: daraus wird die Modellangabe
+#     "WAGO 750-8212" in der Geraeteliste,
+#   - wechselt zum Benutzer voltpilot und startet den Loader mit nice.
+# Loader und Programm laufen ohne Root-Rechte. Dieses Skript, der Loader und
+# die Einstellungen gehoeren root; das Programm kann sie nicht aendern, auch
+# nicht durch ein Update. Sie aendern sich nur durch edge-light/pfc/install.sh.
+#
+# Die Ausgabe von Loader und Programm geht an syslog (logger -t vp-edge-light).
+
+KONFIG=/home/voltpilot/konfig
+LOADER=/home/voltpilot/libexec/boot.sh
+COUPLER=/etc/config-tools/get_coupler_details
+MARKE=vp-edge-light
+PIDDATEI=/var/run/vp-edge-light.pid
+KINDDATEI=/var/run/vp-edge-light.kind
+# Pause vor dem naechsten Start und Frist fuer ein geordnetes Ende, wie procd
+# auf der Mango (respawn 3600 10 0, term_timeout 15).
+PAUSE=10
+FRIST=15
+
+PATH="${PATH:+$PATH:}/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
+
+# kwert <schluessel> <vorgabe> - der Wert aus der Einstellungsdatei (Zeilen
+# "schluessel = wert"; die Datei wird gelesen, nie ausgefuehrt). Steht ein
+# Schluessel mehrfach da, gilt die letzte Zeile.
+kwert() {
+  w="$(sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$KONFIG" 2>/dev/null | sed 's/[[:space:]]*$//' | tail -n 1)"
+  echo "${w:-$2}"
+}
+
+melde() { logger -t "$MARKE" "$*" 2>/dev/null; }
+
+# zeile <pid> - die Befehlszeile eines Prozesses in einer Zeile.
+zeile() { tr '\000' ' ' <"/proc/$1/cmdline" 2>/dev/null; }
+
+# dienst_pid - die PID des laufenden Dienstes (dieses Skript mit "lauf"), sonst
+# nichts. Eine PID-Datei allein beweist nichts: nach einem harten Ende kann
+# die Nummer laengst einem anderen Prozess gehoeren.
+dienst_pid() {
+  p="$(cat "$PIDDATEI" 2>/dev/null)"
+  case "$p" in '' | *[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null || return 1
+  case "$(zeile "$p")" in
+    *"vp-edge-light lauf"*) echo "$p" ;;
+    *) return 1 ;;
+  esac
+}
+
+# kind_pid - die PID von Loader oder Programm (derselbe Prozess: su, Loader und
+# Programm loesen einander ab; nur zur Probe bleibt der Loader davor).
+kind_pid() {
+  p="$(cat "$KINDDATEI" 2>/dev/null)"
+  case "$p" in '' | *[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null || return 1
+  case "$(zeile "$p")" in
+    *vp-edge-light* | *voltpilot*) echo "$p" ;;
+    *) return 1 ;;
+  esac
+}
+
+# kinder <pid> - die PIDs der Kinder eines Prozesses.
+kinder() {
+  grep -l "^PPid:[[:space:]]*$1\$" /proc/[0-9]*/status 2>/dev/null | cut -d/ -f3
+}
+
+# hart_beenden <pid> - ein Loader oder Programm, das auf TERM nicht hoert, mit
+# seinen Kindern (zur Probe: Programm und Wache) beenden.
+hart_beenden() {
+  for k in $(kinder "$1"); do
+    kill -KILL "$k" 2>/dev/null
+  done
+  kill -KILL "$1" 2>/dev/null
+}
+
+# warte_ende <pid> <sekunden> - 0, sobald der Prozess weg ist.
+warte_ende() {
+  i=0
+  while kill -0 "$1" 2>/dev/null; do
+    [ "$i" -lt "$2" ] || return 1
+    sleep 1
+    i=$((i + 1))
+  done
+  return 0
+}
+
+# verwaistes_beenden - ein Programm, dessen Dienst hart beendet wurde, laeuft
+# sonst weiter und haelt die Ports; ein zweiter Start scheiterte daran.
+verwaistes_beenden() {
+  k="$(kind_pid)" || return 0
+  kill -TERM "$k" 2>/dev/null
+  warte_ende "$k" "$FRIST" || hart_beenden "$k"
+}
+
+# bestellnummer - die Bestellnummer des Geraets, eine Zeile, hoechstens 5 s.
+# Antwortet das Werkzeug nicht oder fehlt es, bleibt die Angabe leer; das
+# Programm nennt dann, was das Geraet sonst ueber sich sagt.
+bestellnummer() {
+  [ -x "$COUPLER" ] || return 0
+  aus="/var/run/vp-edge-light.bestellnummer"
+  "$COUPLER" order-number >"$aus" 2>/dev/null &
+  bp=$!
+  i=0
+  while kill -0 "$bp" 2>/dev/null; do
+    if [ "$i" -ge 5 ]; then
+      kill -KILL "$bp" 2>/dev/null
+      break
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+  if wait "$bp" 2>/dev/null; then
+    head -n 1 "$aus" | tr -d '\r'
+  fi
+  rm -f "$aus"
+}
+
+# vorbereiten - was nur root kann, vor jedem Start des Loaders.
+vorbereiten() {
+  BENUTZER="$(kwert benutzer voltpilot)"
+  NICE="$(kwert nice 10)"
+  RAM_DIR="$(kwert ram_dir /tmp/vp-edge-light)"
+  case "$NICE" in '' | *[!0-9]*) NICE=10 ;; esac
+  uid="$(id -u "$BENUTZER" 2>/dev/null)"
+  if [ -z "$uid" ] || [ "$uid" = 0 ]; then
+    melde "Benutzer $BENUTZER fehlt oder ist root - edge-light/pfc/install.sh ausfuehren"
+    return 1
+  fi
+  if [ ! -x "$LOADER" ]; then
+    melde "Loader fehlt ($LOADER) - edge-light/pfc/install.sh ausfuehren"
+    return 1
+  fi
+  # Das RAM-Verzeichnis liegt in /tmp, wo jeder Benutzer anlegen darf: nur ein
+  # selbst angelegtes Verzeichnis wird uebergeben, nie ein vorgefundener Link.
+  if [ -L "$RAM_DIR" ] || { [ -e "$RAM_DIR" ] && [ ! -d "$RAM_DIR" ]; }; then
+    melde "$RAM_DIR ist kein Verzeichnis - nicht gestartet"
+    return 1
+  fi
+  if [ ! -d "$RAM_DIR" ]; then
+    mkdir -p "$(dirname "$RAM_DIR")" 2>/dev/null
+    if ! mkdir -m 0700 "$RAM_DIR" 2>/dev/null || ! chown "$BENUTZER" "$RAM_DIR"; then
+      melde "$RAM_DIR laesst sich nicht anlegen - nicht gestartet"
+      return 1
+    fi
+  fi
+  # Die Bestellnummer aendert sich im Betrieb nicht: einmal gelesen genuegt.
+  [ -n "$BESTELLNUMMER" ] || BESTELLNUMMER="$(bestellnummer)"
+  return 0
+}
+
+# kind_term - TERM genau EINMAL an Loader/Programm: ein zweites TERM wuerde
+# das geordnete Ende des Programms abschneiden.
+kind_term() {
+  [ "$GESENDET" = 0 ] || return 0
+  k="$(cat "$KINDDATEI" 2>/dev/null)"
+  case "$k" in '' | *[!0-9]*) return 0 ;; esac
+  kill -TERM "$k" 2>/dev/null
+  GESENDET=1
+}
+
+# lauf - der Dienst selbst (von "start" in den Hintergrund gelegt).
+lauf() {
+  trap '' HUP
+  echo "$$" >"$PIDDATEI"
+  ENDE=0
+  GESENDET=0
+  BESTELLNUMMER=""
+  trap 'ENDE=1; kind_term' TERM INT
+  while [ "$ENDE" = 0 ]; do
+    rm -f "$KINDDATEI"
+    GESENDET=0
+    if vorbereiten && [ "$ENDE" = 0 ]; then
+      # Jeder Start bekommt seinen eigenen logger: endet der einmal, trifft
+      # das nur diesen Lauf. Das linke Ende der Leitung notiert die PID und
+      # wartet; der Dienst wartet auf den logger, also bis Loader, Programm
+      # und Wache die Leitung geschlossen haben.
+      {
+        VP_WAGO_BESTELLNUMMER="$BESTELLNUMMER" nice -n "$NICE" \
+          su -s /bin/sh "$BENUTZER" -c "exec $LOADER" 2>&1 &
+        echo "$!" >"$KINDDATEI"
+        wait "$!"
+        echo "vp-edge-light: Loader/Programm endete mit Code $?"
+      } </dev/null | logger -t "$MARKE" &
+      rohr=$!
+      while kill -0 "$rohr" 2>/dev/null; do
+        wait "$rohr"
+        # TERM kam, bevor die PID notiert war: nachholen.
+        if [ "$ENDE" = 1 ] && [ "$GESENDET" = 0 ] && kill -0 "$rohr" 2>/dev/null; then
+          sleep 1
+          kind_term
+        fi
+      done
+    fi
+    [ "$ENDE" = 0 ] || break
+    sleep "$PAUSE" &
+    schlaf=$!
+    wait "$schlaf"
+    kill "$schlaf" 2>/dev/null
+  done
+  rm -f "$PIDDATEI" "$KINDDATEI"
+}
+
+start() {
+  if [ "$(kwert enabled 0)" != 1 ]; then
+    echo "vp-edge-light: nicht eingeschaltet (enabled in $KONFIG)"
+    return 0
+  fi
+  if p="$(dienst_pid)"; then
+    echo "vp-edge-light: laeuft schon (Dienst $p)"
+    return 0
+  fi
+  verwaistes_beenden
+  # Abgekoppelt von der Sitzung, die startet (rc-Skript beim Hochfahren, ssh).
+  "$0" lauf </dev/null >/dev/null 2>&1 &
+  echo "vp-edge-light: gestartet"
+}
+
+stop() {
+  if p="$(dienst_pid)"; then
+    kill -TERM "$p" 2>/dev/null
+    if ! warte_ende "$p" "$FRIST"; then
+      k="$(kind_pid)" && hart_beenden "$k"
+      kill -KILL "$p" 2>/dev/null
+    fi
+  fi
+  verwaistes_beenden
+  rm -f "$PIDDATEI" "$KINDDATEI"
+  echo "vp-edge-light: beendet"
+}
+
+status() {
+  if p="$(dienst_pid)"; then
+    if k="$(kind_pid)"; then
+      echo "vp-edge-light: laeuft (Dienst $p, Programm $k)"
+    else
+      echo "vp-edge-light: laeuft (Dienst $p, wartet auf den naechsten Start)"
+    fi
+    return 0
+  fi
+  echo "vp-edge-light: laeuft nicht"
+  return 3
+}
+
+case "${1:-}" in
+  start) start ;;
+  stop) stop ;;
+  restart)
+    stop
+    start
+    ;;
+  status) status ;;
+  lauf) lauf ;;
+  *)
+    echo "Aufruf: $0 start|stop|restart|status" >&2
+    exit 2
+    ;;
+esac

@@ -12,10 +12,13 @@ import (
 // (docs/contracts/v2/box-geraet-vectors.json).
 type vektoren struct {
 	Erkennung []struct {
-		Name     string            `json:"name"`
-		Arch     string            `json:"arch"`
-		Dateien  map[string]string `json:"dateien"`
-		Erwartet struct {
+		Name    string            `json:"name"`
+		Arch    string            `json:"arch"`
+		Dateien map[string]string `json:"dateien"`
+		// WagoBestellnummer ist, was der Startweg auf einem WAGO-Controller
+		// mitgibt (VP_WAGO_BESTELLNUMMER); fehlt bei allen anderen Geraeten.
+		WagoBestellnummer string `json:"wago_bestellnummer"`
+		Erwartet          struct {
 			Modell *string `json:"modell"`
 			Arch   string  `json:"arch"`
 		} `json:"erwartet"`
@@ -45,7 +48,7 @@ func TestErkennenNachDenVektoren(t *testing.T) {
 			for pfad, inhalt := range f.Dateien {
 				fsys[pfad] = &fstest.MapFile{Data: []byte(inhalt)}
 			}
-			got := Erkennen(fsys, f.Arch)
+			got := Erkennen(fsys, f.Arch, f.WagoBestellnummer)
 			want := ""
 			if f.Erwartet.Modell != nil {
 				want = *f.Erwartet.Modell
@@ -68,6 +71,20 @@ func TestNormalisierenKuerztHartUndVerwirftPlatzhalter(t *testing.T) {
 	for _, p := range []string{"Default string", "  default STRING ", "None", "\x00"} {
 		if got := Normalisieren(p); got != "" {
 			t.Fatalf("Platzhalter %q ergab %q", p, got)
+		}
+	}
+}
+
+func TestWagoBestellnummerIstEineStrengeForm(t *testing.T) {
+	for _, gut := range []string{"750-8212", "750-8212/025-000", "0750-8212/0000-0100", "752-8303/8000-002"} {
+		if !istWagoBestellnummer(gut) {
+			t.Errorf("%q gilt nicht als Bestellnummer", gut)
+		}
+	}
+	for _, falsch := range []string{"", "750", "750-", "-8212", "750-82", "750-82120", "750-8212/", "750-8212/025",
+		"750-8212/025-000/1", "750 8212", "750-8212 G2", "PFC200", "750-82a2", "７５０-8212", "750-8212\n"} {
+		if istWagoBestellnummer(falsch) {
+			t.Errorf("%q gilt als Bestellnummer", falsch)
 		}
 	}
 }

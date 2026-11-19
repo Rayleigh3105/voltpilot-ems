@@ -64,6 +64,7 @@ Pruefsummen und Groessen beider ins Manifest:
     --release edge-light-2026.11.1 --seq 14 --commit 3bf8c03 \
     --binary vp-edge-light:linux/mipsle=dist/vp-edge-light-linux-mipsle \
     --binary vp-edge-light:linux/arm64=dist/vp-edge-light-linux-arm64 \
+    --binary vp-edge-light:linux/arm=dist/vp-edge-light-linux-arm \
     --skripte dist/edge-light-openwrt.tar.gz \
     --state-schema 3 --key-id rel-2026-a --out release.json
 
