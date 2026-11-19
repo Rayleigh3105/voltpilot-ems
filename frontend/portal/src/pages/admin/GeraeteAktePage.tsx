@@ -397,51 +397,75 @@ function AktenKopf({
         actions={
           // Am Telefon: Zustand und Stand in EINER Zeile, darunter die Knöpfe in einer Reihe
           // (vorher verteilten sich Stand, Zustand und drei Knöpfe auf drei unordentliche Zeilen).
-          <div className={`vp-row-gap vp-akte-aktionen${nurMenu ? ' vp-akte-aktionen--nur-menu' : ''}`} style={{ alignItems: 'center' }}>
-            <span className="vp-akte-status">
-              <span className="vp-muted vp-text-sm" data-testid="akte-stand">{stand}</span>
+          // Ohne Knopf (S3 §4.7, wartende Docker-Box) bekäme das Menü sonst eine eigene, fast leere
+          // Zeile - es teilt sich dann stattdessen die Zeile von "Stand" (nurMenu).
+          (() => {
+            const menu = (
+              <div className="vp-akte-menu" style={{ position: 'relative' }}>
+                <Button variant="ghost" size="sm" aria-label="Weitere Handlungen" onClick={() => setMenuOffen((v) => !v)}>⋯</Button>
+                {menuOffen && (
+                  <div className="vp-akte-menu-liste" role="menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 5 }}>
+                    <button type="button" role="menuitem" onClick={() => { void navigator.clipboard?.writeText(boxRef); setMenuOffen(false); }}>
+                      Kennung kopieren
+                    </button>
+                    {row && onNavigate && (
+                      <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onNavigate(pageRoute('geraete-registry')); }}>
+                        Zur Geräte-Liste
+                      </button>
+                    )}
+                    {/* vp-admin-box-ausbauen: EIN Einstieg für beide Ergebnisse - hat die Box schon Daten
+                        (kein nieGemeldet), bietet der Dialog selbst "Box ausbauen" statt "Lösen" an. */}
+                    {row && ausgebautAm == null && (
+                      <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onLoesenOeffnen(); }}>
+                        Vom Kunden lösen …
+                      </button>
+                    )}
+                    {ausgebautAm != null && (
+                      <button type="button" role="menuitem"
+                        onClick={() => { setMenuOffen(false); onEndgueltigOeffnen(); }}>
+                        Endgültig löschen …
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+            const badge = (
               <Badge variant={zustandBadge.variant} dot pulse={pulsiert} data-testid="akte-zustand">
                 {zustandBadge.text}
               </Badge>
-            </span>
-            {/* N8: eine Box, die sich nie gemeldet hat, hat weder einen Tunnel noch einen Software-
-                Stand zu öffnen - die Knöpfe boten vorher zwei Reiter an, deren Inhalt nie entstehen
-                kann, und am Telefon klebte „Fernwartung öffnen" zusätzlich am Rand. */}
-            {zeigtFernwartung && (
-              <Button variant="outline" size="sm" onClick={() => onReiter('verbindung')}>Fernwartung öffnen</Button>
-            )}
-            {zeigtAktualisieren && (
-              <Button variant="outline" size="sm" onClick={() => onReiter('software')}>Aktualisieren</Button>
-            )}
-            <div className="vp-akte-menu" style={{ position: 'relative' }}>
-              <Button variant="ghost" size="sm" aria-label="Weitere Handlungen" onClick={() => setMenuOffen((v) => !v)}>⋯</Button>
-              {menuOffen && (
-                <div className="vp-akte-menu-liste" role="menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 5 }}>
-                  <button type="button" role="menuitem" onClick={() => { void navigator.clipboard?.writeText(boxRef); setMenuOffen(false); }}>
-                    Kennung kopieren
-                  </button>
-                  {row && onNavigate && (
-                    <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onNavigate(pageRoute('geraete-registry')); }}>
-                      Zur Geräte-Liste
-                    </button>
-                  )}
-                  {/* vp-admin-box-ausbauen: EIN Einstieg für beide Ergebnisse - hat die Box schon Daten
-                      (kein nieGemeldet), bietet der Dialog selbst "Box ausbauen" statt "Lösen" an. */}
-                  {row && ausgebautAm == null && (
-                    <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onLoesenOeffnen(); }}>
-                      Vom Kunden lösen …
-                    </button>
-                  )}
-                  {ausgebautAm != null && (
-                    <button type="button" role="menuitem"
-                      onClick={() => { setMenuOffen(false); onEndgueltigOeffnen(); }}>
-                      Endgültig löschen …
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+            );
+            const standText = <span className="vp-muted vp-text-sm" data-testid="akte-stand">{stand}</span>;
+            return (
+              <div className={`vp-row-gap vp-akte-aktionen${nurMenu ? ' vp-akte-aktionen--nur-menu' : ''}`} style={{ alignItems: 'center' }}>
+                {nurMenu ? (
+                  // Dieselbe Reihenfolge wie in .vp-akte-status (Stand, Zustand): am Rechner liest sich
+                  // die Zeile links nach rechts, am Telefon (order:-1 in GeraeteAkte.css) steht der
+                  // Zustand zuerst, Stand und Menü teilen sich die Zeile darunter.
+                  <>
+                    {standText}
+                    {badge}
+                    {menu}
+                  </>
+                ) : (
+                  <>
+                    <span className="vp-akte-status">{standText}{badge}</span>
+                    {/* N8: eine Box, die sich nie gemeldet hat, hat weder einen Tunnel noch einen
+                        Software-Stand zu öffnen - die Knöpfe boten vorher zwei Reiter an, deren
+                        Inhalt nie entstehen kann, und am Telefon klebte „Fernwartung öffnen"
+                        zusätzlich am Rand. */}
+                    {zeigtFernwartung && (
+                      <Button variant="outline" size="sm" onClick={() => onReiter('verbindung')}>Fernwartung öffnen</Button>
+                    )}
+                    {zeigtAktualisieren && (
+                      <Button variant="outline" size="sm" onClick={() => onReiter('software')}>Aktualisieren</Button>
+                    )}
+                    {menu}
+                  </>
+                )}
+              </div>
+            );
+          })()
         }
       />
       <div ref={reiterRand} className="vp-seg vp-bereich-tabs" role="tablist" aria-label="Geräteakte" data-testid="akte-reiter">

@@ -70,10 +70,13 @@
   .vp-akte-aktionen > .vp-btn { flex: 1 1 0; min-width: 0; }
   .vp-akte-aktionen > .vp-akte-menu { flex: 0 0 auto; }
 
-  /* S3 §4.7: ohne „Fernwartung öffnen" oder „Aktualisieren" (wartende Docker-Box) bleibt das Menü
-     in der Zeile von Stand/Zustand, rechtsbündig - statt allein auf einer eigenen, fast leeren Zeile. */
-  .vp-akte-aktionen--nur-menu .vp-akte-status { flex: 1 1 auto; }
-  .vp-akte-aktionen--nur-menu > .vp-akte-menu { flex: 0 0 auto; margin-left: auto; }
+  /* S3 §4.7: ohne „Fernwartung öffnen" oder „Aktualisieren" (wartende Docker-Box) teilt sich das
+     Menü die Zeile von „Stand" (statt allein auf einer eigenen, fast leeren Zeile zu stehen):
+     Zustand zuerst auf eigener Zeile (wie die Badge-Zeile der Status-Gruppe), „Stand" wächst in
+     die verbleibende Breite der zweiten Zeile und schiebt das Menü an ihr rechtes Ende. */
+  .vp-akte-aktionen--nur-menu [data-testid='akte-zustand'] { order: -1; flex: 1 1 100%; }
+  .vp-akte-aktionen--nur-menu [data-testid='akte-stand'] { flex: 1 1 auto; font-size: 0.8125rem; }
+  .vp-akte-aktionen--nur-menu > .vp-akte-menu { flex: 0 0 auto; }
 }
 
 .vp-akte-menu-liste {
