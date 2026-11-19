@@ -70,11 +70,48 @@ trap aufraeumen EXIT INT TERM
 # ── Bauen ────────────────────────────────────────────────────────────────────
 echo "== Programme bauen"
 mkdir -p "$TMP/bin" "$TMP/geheim" "$TMP/oeffentlich" "$TMP/fassungen" "$TMP/freigabe"
-(cd "$DIENST" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -ldflags "-X main.fassung=probe" -o "$TMP/bin/vp-werkstatt-dienst" ./cmd/vp-werkstatt-dienst)
+
+# Wegwerf-Vertrauenskette dieser Probe (otaverify-Zeremonie, docs/ota-signing.md),
+# nie die echte Produktionswurzel: Seit N3 prueft der Werkstatt-Dienst die
+# Manifest-Signatur selbst kryptographisch gegen seine eingebackene Wurzel
+# (fassungen.PruefeSignatur), bevor er etwas auf die Box spielt. Also baut
+# diese Probe eine EIGENE Wurzel und baeckt sie - wie edge-app/test/ota-soak -
+# in eine Kopie der Quellen statt die echte internal/fassungen/rootkeys.json
+# anzufassen.
+mkdir -p "$TMP/schluessel"
+(cd "$REPO/edge-app/core" && go run ./cmd/vp-ota keygen --id root-probe --role root --out "$TMP/schluessel") >/dev/null
+(cd "$REPO/edge-app/core" && go run ./cmd/vp-ota keygen --id rel-2026-a --role release --out "$TMP/schluessel") >/dev/null
+WURZEL_PUB=$(jq -r .public_key "$TMP/schluessel/root-probe.pub")
+DIENST_SRC="$TMP/dienst-src"
+mkdir -p "$DIENST_SRC"
+cp -R "$DIENST/go.mod" "$DIENST/go.sum" "$DIENST/cmd" "$DIENST/internal" "$DIENST/bruecke" "$DIENST_SRC/"
+cat >"$DIENST_SRC/internal/fassungen/rootkeys.json" <<EOF
+{
+  "schema_version": "1.0",
+  "keys": [
+    { "key_id": "root-probe", "alg": "ed25519", "public_key": "$WURZEL_PUB" }
+  ]
+}
+EOF
+
+(cd "$DIENST_SRC" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -ldflags "-X main.fassung=probe" -o "$TMP/bin/vp-werkstatt-dienst" ./cmd/vp-werkstatt-dienst)
 (cd "$DIENST" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -o "$TMP/bin/portal-attrappe" ./test/portal-attrappe)
 (cd "$REPO/services/tunnel-dienst" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -o "$TMP/bin/vp-tunnel-dienst" ./cmd/vp-tunnel-dienst && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -o "$TMP/bin/attrappe" ./test/attrappe)
-# Edge Light für die x86-64-Box, mit der Fassung der Freigabe (wie ein Release, P4)
-(cd "$REPO/edge-app/core" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+# Edge Light für die x86-64-Box, mit der Fassung der Freigabe (wie ein Release, P4).
+# Dieselbe Wegwerf-Wurzel wie oben, denn die Box prüft die Signaturkette seit
+# jeher selbst (otaverify) - beide Seiten müssen derselben Wurzel trauen.
+CORE_SRC="$TMP/core-src"
+mkdir -p "$CORE_SRC"
+cp -R "$REPO/edge-app/core/go.mod" "$REPO/edge-app/core/go.sum" "$REPO/edge-app/core/cmd" "$REPO/edge-app/core/internal" "$CORE_SRC/"
+cat >"$CORE_SRC/internal/otaverify/rootkeys.json" <<EOF
+{
+  "schema_version": "1.0",
+  "keys": [
+    { "key_id": "root-probe", "alg": "ed25519", "public_key": "$WURZEL_PUB" }
+  ]
+}
+EOF
+(cd "$CORE_SRC" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
   -ldflags "-s -w -X git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/agent.Version=$FASSUNG" \
   -o "$TMP/vp-edge-light-linux-amd64" ./cmd/vp-edge-light)
 # Skriptstand genau wie der Release-Anhang edge-light-openwrt.tar.gz (P4)
@@ -83,15 +120,19 @@ PROG_SHA=$(shasum -a 256 "$TMP/vp-edge-light-linux-amd64" | cut -d' ' -f1)
 SKR_SHA=$(shasum -a 256 "$TMP/edge-light-openwrt.tar.gz" | cut -d' ' -f1)
 # In die Ablage nach Prüfsumme: der Dienst lädt dann nichts aus dem Netz.
 # Das signierte Manifest der Fassung (K5, Update-bereit) wie der Release-Lauf,
-# im Zwischenspeicher des Dienstes; die Signatur prueft die Box erst beim
-# naechsten Update, die Werkstatt nur die Zugehoerigkeit.
+# im Zwischenspeicher des Dienstes - echt signiert mit der Wegwerf-Wurzel
+# oben, denn der Dienst prueft seine Signatur seit N3 selbst.
 gzip -9 -n -c "$TMP/vp-edge-light-linux-amd64" >"$TMP/vp-edge-light-linux-amd64.gz"
 mkdir -p "$TMP/fassungen/manifest"
 (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota manifest --release "$FASSUNG" --seq 77 --commit 3bf8c038a1b2 \
   --binary "vp-edge-light:linux/amd64=$TMP/vp-edge-light-linux-amd64" --state-schema 1 --key-id rel-2026-a \
   --out "$TMP/fassungen/manifest/$FASSUNG.json") >/dev/null
-printf '{"schema_version":"1.0","alg":"ed25519","key_id":"rel-2026-a","domain":"release","signature":"AAAA"}\n' \
-  >"$TMP/fassungen/manifest/$FASSUNG.json.sig"
+(cd "$REPO/edge-app/core" && go run ./cmd/vp-ota trust-set --key "$TMP/schluessel/rel-2026-a.pub" \
+  --out "$TMP/fassungen/trust-set.json") >/dev/null
+(cd "$REPO/edge-app/core" && go run ./cmd/vp-ota sign --key "$TMP/schluessel/root-probe.key" \
+  --domain trust-set --in "$TMP/fassungen/trust-set.json") >/dev/null
+(cd "$REPO/edge-app/core" && go run ./cmd/vp-ota sign --key "$TMP/schluessel/rel-2026-a.key" \
+  --domain release --in "$TMP/fassungen/manifest/$FASSUNG.json") >/dev/null
 rm -f "$TMP/vp-edge-light-linux-amd64.gz"
 mv "$TMP/vp-edge-light-linux-amd64" "$TMP/fassungen/$PROG_SHA"
 mv "$TMP/edge-light-openwrt.tar.gz" "$TMP/fassungen/$SKR_SHA"
@@ -211,11 +252,12 @@ soll() { # soll <box-schlüssel oder leer>
   printf '{"version":1,"erzeugtAm":"%s","boxNetz":"10.10.16.0/20","technikerNetz":"10.10.32.0/24","peers":[%s],"fenster":[]}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$peers" | docker exec -i "$P-server" sh -c 'cat > /srv/soll.neu && mv /srv/soll.neu /srv/soll.json'
 }
-# Das echte, root-signierte Vertrauens-Set (oeffentlich, im Repo) liefert die
-# Portal-Attrappe aus - nie das echte Portal.
+# Das root-signierte Vertrauens-Set liefert die Portal-Attrappe aus - nie das
+# echte Portal, und hier die Wegwerf-Kette von oben (root-probe), nie die
+# echte Produktionswurzel.
 docker exec "$P-server" mkdir -p /srv/trust-set
-docker cp "$REPO/edge-app/ota/trust-set.json" "$P-server:/srv/trust-set/trust-set.json"
-docker cp "$REPO/edge-app/ota/trust-set.json.sig" "$P-server:/srv/trust-set/trust-set.json.sig"
+docker cp "$TMP/fassungen/trust-set.json" "$P-server:/srv/trust-set/trust-set.json"
+docker cp "$TMP/fassungen/trust-set.json.sig" "$P-server:/srv/trust-set/trust-set.json.sig"
 if [ "$API" = 0 ]; then
   docker exec -d "$P-server" sh -c "exec /opt/vptd/portal-attrappe -nur-vertrauen >>/srv/portal-attrappe.log 2>&1"
 fi

@@ -4,9 +4,15 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 )
 
 // Attrappen der Skripte install.sh und service-tunnel.sh: dieselbe Aufrufform
@@ -65,10 +71,13 @@ func SkripteTarGz(t testing.TB) []byte {
 	return buf.Bytes()
 }
 
-// Manifest baut ein signiertes Edge-Light-Manifest (release.json) wie der
-// Release-Lauf und eine dazu passende Signaturdatei - die Signatur selbst ist
-// eine Attrappe: die Werkstatt prueft nur die Zugehoerigkeit, die Box die
-// Unterschrift.
+// Manifest baut ein Edge-Light-Manifest (release.json) wie der Release-Lauf
+// und eine dazu passende Signaturdatei - die Signatur selbst ist eine
+// Attrappe (key_id "rel-2026-a", keine echten Bytes): brauchbar fuer
+// [fassungen.PruefeManifest] direkt (reine Struktur-/Zugehoerigkeitspruefung),
+// NICHT fuer einen Lauf durch den Schritt "fassungen" - der prueft seit N3
+// zusaetzlich echt kryptographisch ([fassungen.Ablage.PruefeSignatur]) und
+// braucht dafuer [NeueSignierteWurzel].
 func Manifest(fassung string, seq int64, programmSha string) (manifest, signatur []byte) {
 	manifest = []byte(`{
   "schema_version": "1.0",
@@ -99,4 +108,81 @@ func Manifest(fassung string, seq int64, programmSha string) (manifest, signatur
 `)
 	signatur = []byte(`{"schema_version":"1.0","alg":"ed25519","key_id":"rel-2026-a","domain":"release","signature":"AAAA"}` + "\n")
 	return manifest, signatur
+}
+
+// SignierteWurzel ist eine Wegwerf-Vertrauenskette fuer Tests: eigene Root-
+// und Release-Schluessel statt der echten (deren privater Schluessel nie im
+// Repo steht). Sie signiert wie vp-ota sign - Kontext + Rohbytes, Ed25519 -
+// damit [fassungen.Ablage.PruefeSignatur] mit der ueber das Feld Wurzel
+// ausgetauschten Wurzel dieselbe echte Pruefung durchlaeuft wie in der
+// Produktion.
+type SignierteWurzel struct {
+	Wurzel       *fassungen.KeySet
+	TrustSet     []byte
+	TrustSetSig  []byte
+	ReleaseKeyID string
+	releaseKey   ed25519.PrivateKey
+}
+
+// NeueSignierteWurzel erzeugt eine frische Wegwerf-Root- und
+// Release-Schluesselkette mit einem root-signierten Vertrauens-Set, das
+// genau den Release-Schluessel "rel-2026-a" zulaesst (derselbe key_id wie in
+// [Manifest]).
+func NeueSignierteWurzel(t testing.TB) SignierteWurzel {
+	t.Helper()
+	rootPub, rootPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relPub, relPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const rootKeyID = "root-test-a"
+	const relKeyID = "rel-2026-a"
+
+	wurzel := &fassungen.KeySet{SchemaVersion: "1.0", Keys: []fassungen.PublicKey{
+		{KeyID: rootKeyID, Alg: "ed25519", PublicKey: base64.StdEncoding.EncodeToString(rootPub)},
+	}}
+	trustSet, err := json.Marshal(fassungen.KeySet{SchemaVersion: "1.0", Keys: []fassungen.PublicKey{
+		{KeyID: relKeyID, Alg: "ed25519", PublicKey: base64.StdEncoding.EncodeToString(relPub)},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return SignierteWurzel{
+		Wurzel:       wurzel,
+		TrustSet:     trustSet,
+		TrustSetSig:  signiere(t, rootPriv, rootKeyID, fassungen.DomainTrustSet, trustSet),
+		ReleaseKeyID: relKeyID,
+		releaseKey:   relPriv,
+	}
+}
+
+// SigniereManifest signiert ein Release-Manifest mit dem Release-Schluessel
+// dieser Wurzel - wie vp-ota sign.
+func (w SignierteWurzel) SigniereManifest(t testing.TB, manifest []byte) []byte {
+	t.Helper()
+	return signiere(t, w.releaseKey, w.ReleaseKeyID, fassungen.DomainRelease, manifest)
+}
+
+func signiere(t testing.TB, priv ed25519.PrivateKey, keyID, domain string, doc []byte) []byte {
+	t.Helper()
+	input, err := fassungen.SigningInput(domain, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig := ed25519.Sign(priv, input)
+	out, err := json.Marshal(struct {
+		SchemaVersion string `json:"schema_version"`
+		Alg           string `json:"alg"`
+		KeyID         string `json:"key_id"`
+		Domain        string `json:"domain"`
+		Signature     string `json:"signature"`
+	}{"1.0", "ed25519", keyID, domain, base64.StdEncoding.EncodeToString(sig)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

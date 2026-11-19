@@ -77,6 +77,11 @@ type Ablage struct {
 	Token     geheim.Geheim // Lese-Token für die Release-Anhänge (privates Repo), nur an TokenHost
 	TokenHost string
 	Client    *http.Client
+	// Wurzel ist die Vertrauenswurzel für PruefeSignatur; nil: die
+	// eingebackene Produktionswurzel (GebackeneWurzel). Nur Tests setzen
+	// eine andere - eine Wegwerf-Wurzel, mit der sich echte Signaturen
+	// erzeugen lassen, ohne den echten privaten Schlüssel zu brauchen.
+	Wurzel *KeySet
 }
 
 // Ergebnis sagt, woher eine Datei kam.

@@ -287,6 +287,13 @@ func (l *Lauf) fassungenHolen(mitAbbild bool) func(context.Context, *lauf.Kontex
 // dieses Programm. Fehlt es, ist die Fassung nicht signiert (Stufe 1) - der Lauf
 // geht weiter, die Box wird aber nicht update-bereit. Widerspricht es der
 // Freigabe, bricht der Schritt ab.
+//
+// Bevor irgendetwas auf die Mango kommt, prueft dieser Schritt die
+// Signaturkette des Manifests GENAUSO wie die Box bei einem spaeteren Update
+// (otaverify im Core, [fassungen.Ablage.PruefeSignatur]): eingebackene
+// Wurzel -> Vertrauens-Set -> Release-Schluessel. Ungueltig oder fehlend
+// (kein erreichbares Vertrauens-Set, keine brauchbare Signatur) haelt den
+// Schritt an - die Mango bleibt unveraendert, Fall fassung_nicht_bereit.
 func (l *Lauf) manifestHolen(ctx context.Context, b protokoll.Beleg) (protokoll.Beleg, error) {
 	m, sig, err := l.k.Fassungen.HoleManifest(ctx, l.freigabe.EdgeLight.Quelle, l.freigabe.EdgeLight.Fassung)
 	if errors.Is(err, fassungen.ErrNichtSigniert) {
@@ -298,6 +305,13 @@ func (l *Lauf) manifestHolen(ctx context.Context, b protokoll.Beleg) (protokoll.
 		// wird aber nicht update-bereit (und bekommt keine Abnahme).
 		l.nichtBereit = "das Manifest der Fassung ist nicht erreichbar (" + err.Error() + ")"
 		return b.Mit("manifest", "keins - "+l.nichtBereit), nil
+	}
+	trustSet, trustSetSig, err := l.k.Fassungen.HoleVertrauensSet(ctx, l.k.PortalURL)
+	if err != nil {
+		return b, fmt.Errorf("Vertrauens-Set fuer die Signaturpruefung nicht erreichbar: %w", err)
+	}
+	if _, err := l.k.Fassungen.PruefeSignatur(trustSet, trustSetSig, m, sig); err != nil {
+		return b, fmt.Errorf("Signatur des Release-Manifests nicht gueltig: %w", err)
 	}
 	st, err := fassungen.PruefeManifest(m, sig, l.freigabe.EdgeLight.Fassung, l.k.Bauart, l.freigabe.EdgeLight.ProgrammSha256)
 	if err != nil {

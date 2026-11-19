@@ -21,8 +21,14 @@ import (
 // release.json.sig an dasselbe Release wie Programm und Skripte, sobald er
 // signiert (docs/ota-signing.md). Die Freigabe pinnt sie nicht - sie entstehen
 // nach ihr. Gebunden wird das Manifest deshalb an das, was die Freigabe pinnt:
-// es muss GENAU diese Fassung und GENAU dieses Programm beschreiben. Die
-// Signatur prueft die Box selbst gegen ihre eingebackene Wurzel.
+// es muss GENAU diese Fassung und GENAU dieses Programm beschreiben.
+//
+// PruefeManifest prueft nur diese Bindung (Struktur und Zugehoerigkeit zur
+// Freigabe), keine Kryptographie. Die Signaturkette selbst - eingebackene
+// Wurzel, Vertrauens-Set, Release-Schluessel - prueft [Ablage.PruefeSignatur]
+// in signatur.go, VOR diesem Aufruf und auf den rohen Bytes: beim Einrichten
+// genauso wie die Box es bei einem spaeteren Update tut, nicht erst sie
+// selbst danach.
 const (
 	ManifestDatei = "release.json"
 	SignaturDatei = "release.json.sig"
