@@ -70,6 +70,27 @@ func TestEntscheideOhneProgrammFuerDiesePlattform(t *testing.T) {
 	}
 }
 
+// Der PFC200 ist linux/arm (ARMv7), der Raspberry Pi linux/arm64: zwei
+// Plattformen. Eine Fassung ohne linux/arm wird auf dem PFC200 zurueckgestellt
+// und nie mit dem arm64-Programm verwechselt; traegt sie eines, ist es das eigene.
+func TestEntscheideHaeltArmUndArm64Auseinander(t *testing.T) {
+	e := Entscheide(Eingang{Manifest: manifest(), Arch: "linux/arm", Zuweisung: "z1", StateSchemaLokal: 1})
+	if e.Anwenden || e.Zustand != ZustandDeferred || !strings.Contains(e.Grund, "linux/arm") {
+		t.Fatalf("%+v", e)
+	}
+	m := manifest()
+	m.Artifacts = append(m.Artifacts, otaverify.Artifact{Type: otaverify.ArtifactBinary, Name: "vp-edge-light",
+		Arch: "linux/arm", SHA256: strings.Repeat("c", 64)})
+	e = Entscheide(Eingang{Manifest: m, Arch: "linux/arm", Zuweisung: "z1", StateSchemaLokal: 1})
+	if !e.Anwenden || e.Programm.Arch != "linux/arm" || e.Programm.SHA256 != strings.Repeat("c", 64) {
+		t.Fatalf("%+v", e)
+	}
+	e = Entscheide(Eingang{Manifest: m, Arch: "linux/arm64", Zuweisung: "z1", StateSchemaLokal: 1})
+	if !e.Anwenden || e.Programm.Arch != "linux/arm64" || e.Programm.SHA256 != strings.Repeat("b", 64) {
+		t.Fatalf("%+v", e)
+	}
+}
+
 func TestEntscheideAnderesDatenformat(t *testing.T) {
 	e := Entscheide(Eingang{Manifest: manifest(), Arch: "linux/mipsle", Zuweisung: "z1", StateSchemaLokal: 2})
 	if e.Anwenden || e.Zustand != ZustandDeferred || !strings.Contains(e.Grund, "Datenformat") {

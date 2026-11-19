@@ -599,6 +599,10 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
     expect(geraetZeile({ geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' }))
       .toBe('Raspberry Pi 4 Model B Rev 1.4 · arm64');
     expect(geraetZeile({ geraetModell: null, geraetArch: 'amd64' })).toBe('amd64');
+    // WAGO PFC200: Bestellnummer vom Gerät, ARMv7; sein Loader trägt keine
+    // LOADER_STAND-Marke der Mango, also steht keine dahinter.
+    expect(geraetZeile({ geraetModell: 'WAGO 750-8212', geraetArch: 'arm', loaderStand: null }))
+      .toBe('WAGO 750-8212 · arm');
     expect(geraetZeile({})).toBe('Gerät nicht gemeldet');
     // Loader-Selbstupdate: die gemeldete LOADER_STAND-Marke steht dahinter;
     // nicht gemeldet (alter Loader, altes Programm) heißt still weglassen.

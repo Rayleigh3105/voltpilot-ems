@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -26,8 +27,38 @@ type huaweiSim struct {
 	refuse  map[uint16]bool
 	silent  bool
 	units   []byte
-	busy    atomic.Int32
 	refused atomic.Int32
+}
+
+// peerClosed reports whether the client of c has already ended its session:
+// the close (or a reset) is waiting on the socket. It peeks without consuming
+// and never blocks, so the accept loop decides by the ORDER of the two events
+// on the wire - the close of the old session before the connect of the new
+// one - and not by which goroutine happened to run first.
+func peerClosed(c net.Conn) bool {
+	sc, ok := c.(syscall.Conn)
+	if !ok {
+		return false
+	}
+	rc, err := sc.SyscallConn()
+	if err != nil {
+		return true
+	}
+	closed := false
+	if err := rc.Control(func(fd uintptr) {
+		n, _, err := syscall.Recvfrom(int(fd), make([]byte, 1), syscall.MSG_PEEK|syscall.MSG_DONTWAIT)
+		switch {
+		case err == syscall.EAGAIN || err == syscall.EWOULDBLOCK || err == syscall.EINTR:
+			// open, nothing waiting
+		case err != nil:
+			closed = true // reset
+		default:
+			closed = n == 0 // end of stream; n > 0 is a request still to be answered
+		}
+	}); err != nil {
+		return true // the serving goroutine has closed it already
+	}
+	return closed
 }
 
 func i32regs(v int32) (uint16, uint16) { return uint16(uint32(v) >> 16), uint16(uint32(v) & 0xffff) }
@@ -53,24 +84,72 @@ func startHuaweiSim(t *testing.T, regs map[uint16]uint16) *huaweiSim {
 	}
 	s := &huaweiSim{ln: ln, regs: regs, refuse: map[uint16]bool{}}
 	go func() {
+		// The one client being served and the end of its serving; both belong
+		// to this loop alone.
+		var cur net.Conn
+		var curDone chan struct{}
 		for {
 			c, err := ln.Accept()
 			if err != nil {
 				return
 			}
-			if !s.busy.CompareAndSwap(0, 1) {
-				s.refused.Add(1)
-				_ = c.Close()
-				continue
+			if cur != nil {
+				// The slot is free once the client has ENDED its session, not
+				// once the goroutine serving it has noticed: a box that reads
+				// session after session closes one and opens the next within
+				// microseconds. A client that is still connected keeps the slot.
+				if !peerClosed(cur) {
+					s.refused.Add(1)
+					_ = c.Close()
+					continue
+				}
+				<-curDone
 			}
+			done := make(chan struct{})
+			cur, curDone = c, done
 			go func() {
-				defer s.busy.Store(0)
+				defer close(done)
 				s.serve(c)
 			}()
 		}
 	}()
 	t.Cleanup(func() { _ = ln.Close() })
 	return s
+}
+
+// The simulator's one slot: a second client beside a connected one is refused
+// and counted; the next session after a closed one is not, however quickly it
+// follows.
+func TestHuaweiSimKeepsOneSlotAndFreesItWithTheClose(t *testing.T) {
+	sim := startHuaweiSim(t, map[uint16]uint16{})
+	addr := sim.ln.Addr().String()
+	for i := 0; i < 200; i++ {
+		c, err := net.Dial("tcp", addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = c.Close()
+	}
+	if n := sim.refused.Load(); n != 0 {
+		t.Fatalf("Sitzung nach Sitzung: %d-mal abgewiesen", n)
+	}
+	first, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	_ = second.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := second.Read(make([]byte, 1)); err == nil || isTimeout(err) {
+		t.Fatalf("der zweite Client neben dem ersten wird beendet, nicht bedient: %v", err)
+	}
+	if n := sim.refused.Load(); n != 1 {
+		t.Fatalf("zweiter Client neben dem ersten: %d-mal abgewiesen, erwartet 1", n)
+	}
 }
 
 func (s *huaweiSim) addr() (string, string) {

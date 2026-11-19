@@ -97,6 +97,30 @@
       }
     },
     {
+      "name": "light-release-mit-armv7-programm-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": true,
+      "warum": "Die Fassung traegt auch das Programm fuer 32-Bit-ARM (linux/arm, gebaut mit GOARM=7: WAGO PFC200). Die Plattform ist GOOS/GOARCH ohne Zusatz, die Box waehlt genau ihren Eintrag; linux/arm und linux/arm64 sind zwei Plattformen, kein doppelter Eintrag. Der Skriptstand bleibt der der Mango - die Skripte des PFC200 (edge-light/pfc) reisen nicht im Manifest.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.11.6",
+        "release_seq": 171,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm", "sha256": "1212121212121212121212121212121212121212121212121212121212121212", "size": 14221312, "gz_sha256": "3434343434343434343434343434343434343434343434343434343434343434", "gz_size": 4583010}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "size": 31744}
+      }
+    },
+    {
       "name": "light-skriptstand-ohne-pruefsumme-auf-light-box",
       "backend": "light",
       "erwartet": "ok",

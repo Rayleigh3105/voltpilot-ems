@@ -1,0 +1,63 @@
+# Edge Light auf dem WAGO PFC200 - Einstellungen.
+#
+# Form: "schluessel = wert", eine Angabe je Zeile, "#" am Zeilenanfang ist ein
+# Kommentar. Die Datei wird gelesen, nie ausgefuehrt. Sie gehoert root; das
+# Programm kann sie nicht aendern. install.sh legt sie nur an, wenn sie fehlt.
+# Eine Aenderung wirkt nach: /etc/init.d/vp-edge-light restart
+
+# 1 = Dienst aktiv. Erst einschalten, wenn die bestaetigte Fassung im Flash
+# liegt (install.sh erledigt das).
+enabled = 0
+
+arch = arm
+
+# Loader und Programm laufen als dieser Benutzer, nie als root.
+benutzer = voltpilot
+# Das Programm tritt hinter die SPS-Laufzeit zurueck (0 = wie alle, 19 = ganz
+# hinten).
+nice = 10
+
+# Die bestaetigte Fassung im Flash: <local_dir>/vp-edge-light-linux-<arch>.gz
+# und .sha256 (Zeile 1: Pruefsumme des ungepackten Programms, Zeile 2: der
+# gepackten Kopie - mit ihr laedt der Loader genau diese Fassung aus dem
+# Portal nach, falls die Kopie beim Update unvollstaendig blieb). Neue
+# Fassungen kommen signiert ueber das Portal (Edge-Updates), nie ueber eine
+# Download-Adresse.
+local_dir = /home/voltpilot/fassung
+
+# Wache einer neuen Fassung in der Probe (wie Mango und Docker-Box): Frist in
+# s fuer einen gruenen Selbsttest mit Cloud, hoechstens so viele Starts, Frist
+# in s fuer den Probestart `version`.
+probe_frist = 600
+probe_starts = 3
+version_frist = 5
+
+# Dauerhafter Zustand (Flash) und fluechtiger Zustand (RAM).
+data_dir = /home/voltpilot/daten
+ram_dir = /tmp/vp-edge-light
+# Wo das entpackte Programm liegt und startet. Ohne Angabe: ram_dir. Nur
+# setzen, wenn /tmp keine Programme startet (noexec); install.sh prueft das
+# und traegt dann /home/voltpilot/programm ein.
+# programm_dir = /home/voltpilot/programm
+
+portal_url = https://portal.voltpilot.de
+# Lokale Web-App. 80/443 und 8080/8081 belegt die WAGO-Firmware.
+web_addr = :8484
+bus_addr = 127.0.0.1:1883
+
+# Weiches Speicherlimit fuer Go (512 MB RAM teilen sich die SPS-Laufzeit, die
+# WAGO-Dienste und Edge Light). Vorschlag, am Geraet noch nicht gemessen.
+gomemlimit = 96MiB
+# Speicherschwelle des Loaders vor Entpacken/Download: Groesse des entpackten
+# Programms plus prozess_reserve_kb (Vorgabe im Loader 12 000 kB, die Zahl der
+# Mango). Nur wenn die Groesse unbekannt ist, gilt min_free_kb pauschal.
+min_free_kb = 40000
+# prozess_reserve_kb = 12000
+# Bei Speichernot trifft der Kernel zuerst das Programm, nie die SPS-Laufzeit.
+oom_score_adj = 800
+
+# Weitere Einstellungen der Box (wie in edge-app/.env.example), eine je Zeile:
+# env = VP_REF=VP-1234
+# env = VP_CONSUMER_CONTROL_ENABLED=true
+# Nicht einstellbar: der Port des Modbus-Datenspiegels (fest 1502, auf 502
+# sitzt der Modbus-Server der SPS) und die Modellangabe (kommt vom Geraet).

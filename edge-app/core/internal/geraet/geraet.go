@@ -8,12 +8,17 @@
 //
 // Quellen, in dieser Reihenfolge (die erste mit Inhalt gewinnt):
 //
-//  1. /tmp/sysinfo/model - OpenWrt (Edge Light auf der Mango, auf dem Pi).
-//  2. /proc/device-tree/model, /sys/firmware/devicetree/base/model - ARM-Boards.
+//  1. die Bestellnummer eines WAGO-Controllers, die der Startweg auf dem
+//     Geraet erfragt und dem Programm mitgibt (VP_WAGO_BESTELLNUMMER,
+//     edge-light/pfc): „WAGO 750-8212". Sie gewinnt vor dem Device-Tree, weil
+//     der nur die Baugruppe nennt, nicht den Artikel. Was nicht wie eine
+//     Bestellnummer aussieht, zaehlt nicht als Angabe.
+//  2. /tmp/sysinfo/model - OpenWrt (Edge Light auf der Mango, auf dem Pi).
+//  3. /proc/device-tree/model, /sys/firmware/devicetree/base/model - ARM-Boards.
 //     Im Docker-Container ist /sys/firmware maskiert.
-//  3. die Zeile „Model" in /proc/cpuinfo - Raspberry-Pi-Kerne, auch im
+//  4. die Zeile „Model" in /proc/cpuinfo - Raspberry-Pi-Kerne, auch im
 //     Container lesbar (die Docker-Box auf dem Pi).
-//  4. DMI: /sys/class/dmi/id/sys_vendor und product_name - der PC; die
+//  5. DMI: /sys/class/dmi/id/sys_vendor und product_name - der PC; die
 //     Platzhalter der Hersteller fallen weg.
 //
 // Die Architektur ist die des laufenden Programms (runtime.GOARCH): die
@@ -56,11 +61,16 @@ var platzhalter = map[string]bool{
 
 // Erkennen liest die Quellen aus fsys (in Betrieb os.DirFS("/"); Pfade ohne
 // fuehrenden Schraegstrich) und nennt Modell und Architektur.
-func Erkennen(fsys fs.FS, arch string) Erkannt {
-	return Erkannt{Modell: modell(fsys), Arch: arch}
+// wagoBestellnummer ist die Angabe des Startwegs auf einem WAGO-Controller,
+// sonst "".
+func Erkennen(fsys fs.FS, arch, wagoBestellnummer string) Erkannt {
+	return Erkannt{Modell: modell(fsys, wagoBestellnummer), Arch: arch}
 }
 
-func modell(fsys fs.FS) string {
+func modell(fsys fs.FS, wagoBestellnummer string) string {
+	if nr := Normalisieren(wagoBestellnummer); istWagoBestellnummer(nr) {
+		return "WAGO " + nr
+	}
 	for _, pfad := range []string{"tmp/sysinfo/model", "proc/device-tree/model",
 		"sys/firmware/devicetree/base/model"} {
 		if m := Normalisieren(lies(fsys, pfad)); m != "" {
@@ -93,6 +103,32 @@ func Normalisieren(roh string) string {
 		s = strings.TrimSpace(string([]rune(s)[:MaxModell]))
 	}
 	return s
+}
+
+// istWagoBestellnummer: zwei Zifferngruppen mit Bindestrich („750-8212"),
+// wahlweise mit der Variante dahinter („750-8212/025-000"); jede Gruppe drei
+// oder vier Ziffern. Die Angabe wird nie ergaenzt oder umgeschrieben - was
+// anders aussieht, ist keine Bestellnummer.
+func istWagoBestellnummer(s string) bool {
+	artikel, variante, hatVariante := strings.Cut(s, "/")
+	return istZiffernpaar(artikel) && (!hatVariante || istZiffernpaar(variante))
+}
+
+func istZiffernpaar(s string) bool {
+	a, b, ok := strings.Cut(s, "-")
+	return ok && istZifferngruppe(a) && istZifferngruppe(b)
+}
+
+func istZifferngruppe(s string) bool {
+	if len(s) < 3 || len(s) > 4 {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // cpuinfoModell ist der Wert der Zeile „Model : …" (Raspberry-Pi-Kerne).
