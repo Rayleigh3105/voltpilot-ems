@@ -13,6 +13,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/erzeugerbild"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/modbusprofil"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/modbustcp"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 )
@@ -28,7 +29,7 @@ import (
 //   - edge/measurements/samples, edge/events, edge/sources/<pin>/telemetry,
 //     edge/data-sources/poll: what a reading yields
 //   - edge/probe/request -> edge/probe/result: the op erzeuger_kopf of the
-//     "Steuerung verbinden" step
+//     "Steuerung verbinden" step (and the plain register read, modbus.go)
 //
 // The controller may be anywhere in the customer LAN or, on a WAGO PFC200
 // that runs Edge Light itself, the device's own Modbus server on 127.0.0.1
@@ -360,31 +361,48 @@ type probeAnfrage struct {
 	Ops       []erzeugerbild.ProbeOp `json:"ops"`
 }
 
-// onProbe answers one edge/probe/request: the op erzeuger_kopf is read here;
-// every other read op is refused by name at once (Edge Light has no generic
-// probe channel yet, edge-light/docs/paritaet.md D) instead of letting the
-// core wait for its timeout.
+// probeAntwort is one answered step on edge/probe/result: the Erzeuger head
+// of an erzeuger_kopf step, or the raw value and register words of a plain
+// register read.
+type probeAntwort struct {
+	erzeugerbild.ProbeErgebnis
+	Raw       *float64 `json:"raw,omitempty"`
+	Registers []uint16 `json:"registers,omitempty"`
+}
+
+// onProbe answers one edge/probe/request, the steps one after another like
+// vp-modbus-probe.js: a plain register read (no `op` on the bus,
+// modbus.go registerProbe) and the op erzeuger_kopf are read here; any other
+// step (wago_kopf) is refused by name at once instead of letting the core wait
+// for its timeout (edge-light/docs/paritaet.md D).
 func (r *Runtime) onProbe(ctx context.Context, payload []byte) {
 	var req probeAnfrage
 	if json.Unmarshal(payload, &req) != nil || req.RequestID == "" || len(req.Ops) == 0 || len(req.Ops) > 8 {
 		return
 	}
-	results := make([]erzeugerbild.ProbeErgebnis, 0, len(req.Ops))
+	results := make([]probeAntwort, 0, len(req.Ops))
 	for i, op := range req.Ops {
 		if op.ID == "" {
 			op.ID = strconv.Itoa(i)
 		}
-		if op.Op != erzeugerbild.OpErzeugerKopf {
-			results = append(results, erzeugerbild.ProbeErgebnis{ID: op.ID, ErrorCode: erzeugerbild.ProbeNichtGestuetzt,
-				Message: "Edge Light liest einzelne Register über diesen Weg noch nicht - nur den Kopf eines " +
-					"Erzeuger-Registerbilds."})
-			continue
+		switch op.Op {
+		case "":
+			e := r.registerProbe(ctx, op.ID, modbusprofil.LeseOp{Host: op.Host, Port: op.Port, UnitID: op.UnitID,
+				FC: op.FC, Address: op.Address, DataType: op.DataType, WordOrder: op.WordOrder})
+			results = append(results, probeAntwort{ProbeErgebnis: erzeugerbild.ProbeErgebnis{ID: e.ID, OK: e.OK,
+				ErrorCode: e.ErrorCode, Message: e.Message}, Raw: e.Raw, Registers: e.Registers})
+		case erzeugerbild.OpErzeugerKopf:
+			results = append(results, probeAntwort{ProbeErgebnis: r.kopfProbe(ctx, op)})
+		default:
+			results = append(results, probeAntwort{ProbeErgebnis: erzeugerbild.ProbeErgebnis{ID: op.ID,
+				ErrorCode: erzeugerbild.ProbeNichtGestuetzt,
+				Message: "Edge Light führt diesen Prüfschritt („" + op.Op + "“) noch nicht aus - " +
+					"nur einzelne Register und den Kopf eines Erzeuger-Registerbilds."}})
 		}
-		results = append(results, r.kopfProbe(ctx, op))
 	}
 	raw, _ := json.Marshal(struct {
-		RequestID string                       `json:"request_id"`
-		Results   []erzeugerbild.ProbeErgebnis `json:"results"`
+		RequestID string         `json:"request_id"`
+		Results   []probeAntwort `json:"results"`
 	}{req.RequestID, results})
 	if err := r.bus.Publish(localbus.TopicProbeResult, raw, false); err != nil {
 		r.log.Warn("Probe-Ergebnis nicht auf den lokalen Bus", "err", err)
