@@ -1,9 +1,12 @@
 /* Karte „Ohne Kundenkonto" (vp-update-vor-zuordnung S2): Zeilen am Rechner in einer Reihe,
    am Telefon gestapelt - nie seitliches Scrollen. */
 
-.vp-gu-ok-kopf { justify-content: space-between; }
-/* Platz für den Schalter „Nachts von selbst" (S4): nimmt heute keine Breite ein. */
+.vp-gu-ok-kopf { justify-content: space-between; align-items: center; }
+/* Schalter „Nachts von selbst" (S4): rechts im Kopf, am Telefon eine eigene Zeile unter dem Titel. */
 .vp-gu-ok-kopf-rechts { flex: none; }
+.vp-gu-ok-nacht { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.vp-gu-ok-nacht-text { overflow-wrap: anywhere; }
+.vp-gu-ok-halt { font-weight: 600; }
 
 .vp-gu-ok-reihe { background: var(--vp-paleblue-start); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; font-size: 0.9rem; }
 .vp-gu-ok-reihe .vp-alert { margin: 0; }
@@ -24,13 +27,24 @@
   border-radius: 12px;
   padding: 10px 14px;
 }
+.vp-gu-ok-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .vp-gu-ok-ref { font-weight: 700; text-align: left; overflow-wrap: anywhere; min-width: 0; }
 .vp-gu-ok-fassung { justify-self: start; }
 /* Der Grund nimmt die Spalte des Knopfs ein und bricht DORT um - die anderen Spalten rücken nicht. */
 .vp-gu-ok-grund { text-align: left; }
 
+/* Am Telefon je Zeile ein Fakt: Box, Fassung, Tunnel, dann der Knopf über die volle Breite UNTER dem Status
+   (neben ihm brach „Tunnel verbunden" in zwei Zeilen). */
 @media (max-width: 720px) {
-  .vp-gu-ok-zeile { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
-  .vp-gu-ok-fassung { grid-column: 1 / -1; }
-  .vp-gu-ok-grund { grid-column: 1 / -1; text-align: left; }
+  /* Satz links (bricht in sich um), „Anhalten" rechts daneben - nie allein auf einer eigenen Zeile. */
+  .vp-gu-ok-kopf-rechts { flex: 1 1 100%; }
+  .vp-gu-ok-nacht { flex-wrap: nowrap; justify-content: space-between; }
+  .vp-gu-ok-nacht-text { flex: 1 1 auto; min-width: 0; }
+  /* Stellung und Satz je eine Zeile, nie mitten in „nächster Lauf" umgebrochen. */
+  .vp-gu-ok-nacht-satz { display: block; }
+  .vp-gu-ok-nacht-trenner { display: none; }
+  .vp-gu-ok-nacht > button { flex: none; }
+  .vp-gu-ok-zeile { grid-template-columns: minmax(0, 1fr); row-gap: 6px; }
+  .vp-gu-ok-grund { text-align: left; }
+  .vp-gu-ok-knopf { width: 100%; justify-content: center; }
 }

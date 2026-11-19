@@ -196,7 +196,7 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
       fragtZuletztAm: new Date(Date.now() - 20_000).toISOString(), neueste: 'edge-light-2026.11.15',
       werkstattFassung: 'edge-light-2026.11.5', werkstattAm: new Date(Date.now() - 9 * 86_400_000).toISOString(),
       moeglich: true, gruende: [], haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true },
-      verlauf: [], stand: new Date().toISOString(),
+      verlauf: [], nachtlauf: null as { dran: boolean; grund: string | null } | null, stand: new Date().toISOString(),
     };
 
     it('Reiter Software einer wartenden Box: Linie und Stand (N2) statt „Noch nicht verbunden", Knopf mit Bestätigung', async () => {
@@ -223,6 +223,36 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
       expect(await screen.findByTestId('akte-fernlauf-grund')).toHaveTextContent('Der Werkstatt-Dienst meldet sich nicht.');
       expect(screen.getByTestId('akte-fernlauf-knopf')).toBeDisabled();
       expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
+    });
+
+    it('S4: unter dem Knopf „Sonst heute Nacht von selbst", nur wenn die Automatik die Box nimmt', async () => {
+      geraeteFernlauf.mockResolvedValue({ ...stand, nachtlauf: { dran: true, grund: null } });
+      const { unmount } = render(<GeraeteAktePage boxRef="edge-k7m2xq3" reiter="software" />);
+      expect(await screen.findByTestId('akte-fernlauf-heute-nacht')).toHaveTextContent('Sonst heute Nacht von selbst');
+      unmount();
+
+      // Angehalten (oder nicht dran): kein Satz, der Knopf bleibt.
+      geraeteFernlauf.mockResolvedValue({ ...stand,
+        nachtlauf: { dran: false, grund: 'Nachts von selbst ist angehalten; es bleibt der Knopf.' } });
+      render(<GeraeteAktePage boxRef="edge-k7m2xq3" reiter="software" />);
+      expect(await screen.findByTestId('akte-fernlauf-knopf')).toBeEnabled();
+      expect(screen.queryByTestId('akte-fernlauf-heute-nacht')).toBeNull();
+    });
+
+    it('S4: im Verlauf „über den Tunnel auf 2026.11.15 · Automatik · nachts"', async () => {
+      const iso = new Date(Date.now() - 6 * 3_600_000).toISOString();
+      geraeteFernlauf.mockResolvedValue({ ...stand, laeuft: 'edge-light-2026.11.15', moeglich: false,
+        gruende: [{ code: 'schon_neueste', text: 'Die Box läuft schon edge-light-2026.11.15; neuer ist nichts.' }],
+        verlauf: [{
+          id: 'n', art: 'aufspielen', zustand: 'fertig', fassungVorher: 'edge-light-2026.11.5',
+          fassungZiel: 'edge-light-2026.11.15', akteurName: 'Automatik · nachts', nachts: true, erteiltAm: iso,
+          begonnenAm: iso, schritt: 'tunnel', schrittSeit: null, schritte: [], fensterEnde: null,
+          ergebnis: { ergebnis: 'fertig', grund: null, schritt: 'tunnel', fassungNachher: 'edge-light-2026.11.15',
+            belege: {}, quelle: 'dienst', erfasstAm: iso },
+        }] });
+      render(<GeraeteAktePage boxRef="edge-k7m2xq3" reiter="verlauf" />);
+      expect(await screen.findByTestId('akte-verlauf-fernlauf'))
+        .toHaveTextContent('Über den Tunnel auf 2026.11.15 · fertig · Automatik · nachts');
     });
 
     it('S3 §4.7: eine wartende Docker-Box sagt einen ehrlichen Satz statt des Fernlauf-Knopfs (kein Wartungstunnel)', async () => {

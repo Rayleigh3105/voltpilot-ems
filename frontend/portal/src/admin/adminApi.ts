@@ -1,4 +1,4 @@
-import type { Fernlauf, FernlaufStand } from '../werkstattFernlauf';
+import type { Fernlauf, FernlaufStand, NachtlaufSchalter } from '../werkstattFernlauf';
 import type { BenutzerAngelegt, BenutzerAnlage } from '../benutzer';
 import {
   ANFRAGE_KENNUNG_KOPF,
@@ -1033,6 +1033,17 @@ export const adminApi = {
    */
   geraeteOhneKundenkonto: () =>
     request<FernlaufStand[]>('/api/v1/admin/geraete/ohne-kundenkonto'),
+
+  /** S4: der Schalter „Nachts von selbst" (ab Werk an) mit der Nacht und den Läufen darin. */
+  nachtlaufSchalter: () =>
+    request<NachtlaufSchalter>('/api/v1/admin/geraete/ohne-kundenkonto/nachtlauf'),
+
+  /** „Anhalten" (`false`) oder „Einschalten" (`true`); dieselbe Stellung ändert nichts. */
+  nachtlaufSchalten: (an: boolean) =>
+    request<NachtlaufSchalter>('/api/v1/admin/geraete/ohne-kundenkonto/nachtlauf', {
+      method: 'POST',
+      body: JSON.stringify({ an }),
+    }),
 
   /** L1 (B1-B4): der Befund „Vom Kunden lösen" - informativ, prüft nichts unter Sperre. */
   geraeteLoesenBefund: (ref: string) =>

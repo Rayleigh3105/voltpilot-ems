@@ -36,4 +36,5 @@ Der nächste Auftrag für dieselbe Box schreibt für solche Aufträge das Ergebn
 - Nie angefasst: OpenWrt, Passwort, Notfall-Schlüssel, Tunnel (WireGuard, Dropbear 2222, Abholer, Tunnel-Ketten), LAN, `/etc/vp-edge-light/identity` und `ref`.
 - Kein Schlüssel und kein Passwort in Log, Protokoll, Schritt oder Ergebnis; die API weist Schlüsselmaterial ab (422).
 - Der Akteur ist ein Feld (`akteur_sub`, `akteur_name`): Sammellauf (S2) und Nachtlauf (S4) legen denselben Auftrag an.
+  Der Nachtlauf trägt `akteur_sub` `nachtlauf` und `akteur_name` „Automatik · nachts“; die Akte liest daraus `nachts: true` (Regeln in [Werkstatt](../werkstatt.md#neue-software-durch-den-tunnel-box-ohne-kundenkonto), Schalter `/api/v1/admin/geraete/ohne-kundenkonto/nachtlauf`).
 - Was der Dienst meldet, ist Anzeige und Beleg; den Weg zur Box gibt allein das Fenster der API.

@@ -8753,6 +8753,43 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/FernlaufStand" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/geraete/ohne-kundenkonto/nachtlauf:
+    get:
+      tags: [werkstatt]
+      summary: Schalter „Nachts von selbst“ (S4) - an oder angehalten, die Nacht und wie viele Läufe darin angelegt sind.
+      description: >
+        Konzept vp-update-vor-zuordnung §11.2 (E3 = B). Nur platform-admin. Zwischen 02:00 und 05:00 Berliner Zeit
+        legt der Takt je Durchlauf höchstens einen Auftrag „aufspielen“ an (Akteur „Automatik · nachts“), höchstens
+        grenze je Nacht. Ab Werk an; geaendertVon/geaendertAm sind null, solange niemand umgestellt hat.
+      responses:
+        "200":
+          description: Der Schalter.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NachtlaufSchalter" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [werkstatt]
+      summary: „Anhalten“ (an false) oder „Einschalten“ (an true); dieselbe Stellung ändert nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [an]
+              properties:
+                an: { type: boolean }
+      responses:
+        "200":
+          description: Der Schalter danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NachtlaufSchalter" }
+        "400": { description: an fehlt. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/werkstatt-dienst/fernlaeufe/{id}/beginnen:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -40470,6 +40507,7 @@ components:
         fassungVorher: { type: string, nullable: true }
         fassungZiel: { type: string }
         akteurName: { type: string, nullable: true }
+        nachts: { type: boolean, description: "Angelegt von der Automatik „nachts von selbst“ (Akteur nachtlauf, S4)." }
         erteiltAm: { type: string, format: date-time }
         begonnenAm: { type: string, format: date-time, nullable: true }
         schritt: { type: string, nullable: true }
@@ -40495,6 +40533,19 @@ components:
             belege: { type: object, additionalProperties: { type: string } }
             quelle: { type: string, enum: [dienst, portal] }
             erfasstAm: { type: string, format: date-time }
+    NachtlaufSchalter:
+      type: object
+      properties:
+        an: { type: boolean }
+        geaendertVon: { type: string, nullable: true }
+        geaendertAm: { type: string, format: date-time, nullable: true }
+        beginn: { type: string, format: date-time, description: "Beginn der laufenden oder nächsten Nacht (02:00 Berlin)." }
+        ende: { type: string, format: date-time, description: "Ende dieser Nacht (05:00 Berlin)." }
+        naechsterLauf: { type: string, format: date-time }
+        imFenster: { type: boolean }
+        angelegt: { type: integer, description: "Nachtläufe, die in dieser Nacht schon angelegt sind." }
+        grenze: { type: integer, example: 20 }
+        stand: { type: string, format: date-time }
     FernlaufStand:
       type: object
       properties:
@@ -40525,4 +40576,13 @@ components:
             fragtNachSchluesseln: { type: boolean }
             keinKundenkonto: { type: boolean }
         verlauf: { type: array, items: { $ref: "#/components/schemas/Fernlauf" } }
+        nachtlauf:
+          type: object
+          nullable: true
+          description: >
+            S4: ob die Box in der nächsten (oder laufenden) Nacht von selbst dran ist; grund (ein Satz für den Admin),
+            wenn nicht. Der Takt in der Nacht urteilt mit dem Stand von dann neu.
+          properties:
+            dran: { type: boolean }
+            grund: { type: string, nullable: true }
         stand: { type: string, format: date-time }

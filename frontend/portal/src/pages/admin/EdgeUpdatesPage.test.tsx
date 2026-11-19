@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EdgeUpdates, FleetRow, UpdateFakten } from '../../adminEdgeUpdates';
-import type { FernlaufStand } from '../../werkstattFernlauf';
+import type { Fernlauf, FernlaufStand, NachtlaufSchalter } from '../../werkstattFernlauf';
 
 const edgeUpdates = vi.fn();
 const edgeRelease = vi.fn();
@@ -16,6 +16,8 @@ const erstverbindungSchalten = vi.fn();
 const geraeteOhneKundenkonto = vi.fn();
 const geraeteFernlauf = vi.fn();
 const geraeteFernlaufAufspielen = vi.fn();
+const nachtlaufSchalter = vi.fn();
+const nachtlaufSchalten = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -32,6 +34,8 @@ vi.mock('../../admin/adminApi', () => ({
     geraeteOhneKundenkonto: (...a: unknown[]) => geraeteOhneKundenkonto(...a),
     geraeteFernlauf: (...a: unknown[]) => geraeteFernlauf(...a),
     geraeteFernlaufAufspielen: (...a: unknown[]) => geraeteFernlaufAufspielen(...a),
+    nachtlaufSchalter: (...a: unknown[]) => nachtlaufSchalter(...a),
+    nachtlaufSchalten: (...a: unknown[]) => nachtlaufSchalten(...a),
   },
 }));
 
@@ -157,6 +161,7 @@ describe('EdgeUpdatesPage', () => {
     listDevices.mockResolvedValue([]);
     erstverbindungSchalter.mockResolvedValue({ alle: true, docker: true, light: true, eintraege: [] });
     geraeteOhneKundenkonto.mockResolvedValue([]);
+    nachtlaufSchalter.mockRejectedValue(new Error('kein Schalter im Test'));
   });
 
   it('Erstverbindung: der Schalter der Automatik je Linie, ohne Deploy - danach lädt die Seite neu', async () => {
@@ -691,7 +696,7 @@ describe('EdgeUpdatesPage', () => {
         fragtZuletztAm: '2026-11-18T16:57:40Z', neueste: 'edge-light-2026.11.15',
         werkstattFassung: 'edge-light-2026.11.5', werkstattAm: '2026-11-09T15:06:00Z', moeglich: true, gruende: [],
         haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true }, verlauf: [],
-        stand: '2026-11-18T16:58:00Z', ...over,
+        nachtlauf: null, stand: '2026-11-18T16:58:00Z', ...over,
       };
     }
 
@@ -785,6 +790,101 @@ describe('EdgeUpdatesPage', () => {
       expect(nav).toHaveBeenCalledWith(expect.objectContaining({
         geraeteAkte: expect.objectContaining({ ref: 'edge-k7m2xq3' }),
       }));
+    });
+
+    describe('Nachts von selbst (S4)', () => {
+      function schalter(over: Partial<NachtlaufSchalter> = {}): NachtlaufSchalter {
+        return {
+          an: true, geaendertVon: null, geaendertAm: null, beginn: '2026-11-19T01:00:00Z',
+          ende: '2026-11-19T04:00:00Z', naechsterLauf: '2026-11-19T01:00:00Z', imFenster: false, angelegt: 0,
+          grenze: 20, stand: '2026-11-18T16:58:00Z', ...over,
+        };
+      }
+
+      it('zeigt den Schalter mit dem nächsten Lauf; „Anhalten" und wieder „Einschalten"', async () => {
+        geraeteOhneKundenkonto.mockResolvedValue([fernlaufStand({ nachtlauf: { dran: true, grund: null } })]);
+        nachtlaufSchalter.mockResolvedValue(schalter());
+        nachtlaufSchalten.mockImplementation(async (an: boolean) => {
+          const neu = schalter({ an, geaendertVon: 'moritz', geaendertAm: '2026-11-18T17:00:00Z' });
+          nachtlaufSchalter.mockResolvedValue(neu);
+          geraeteOhneKundenkonto.mockResolvedValue([fernlaufStand({ nachtlauf: an ? { dran: true, grund: null }
+            : { dran: false, grund: 'Nachts von selbst ist angehalten; es bleibt der Knopf.' } })]);
+          return neu;
+        });
+        render(<EdgeUpdatesPage />);
+        const zeile = await screen.findByTestId('ohne-kundenkonto-nachtlauf');
+        expect(zeile).toHaveTextContent('Nachts von selbst: an · nächster Lauf 02:00');
+        const karte = screen.getByTestId('ohne-kundenkonto');
+        expect(within(karte).getByTestId('ohne-kundenkonto-heute-nacht')).toHaveTextContent('heute Nacht');
+
+        fireEvent.click(within(zeile).getByRole('button', { name: 'Anhalten' }));
+        await waitFor(() => expect(nachtlaufSchalten).toHaveBeenCalledWith(false));
+        await waitFor(() => expect(screen.getByTestId('ohne-kundenkonto-nachtlauf'))
+          .toHaveTextContent('Nachts von selbst: angehalten · es bleibt der Knopf'));
+        // Angehalten ist keine Box „heute Nacht" dran; der Knopf je Box bleibt.
+        await waitFor(() => expect(within(karte).queryByTestId('ohne-kundenkonto-heute-nacht')).toBeNull());
+        expect(within(karte).getByRole('button', { name: 'Auf 2026.11.15 bringen' })).toBeEnabled();
+
+        fireEvent.click(within(screen.getByTestId('ohne-kundenkonto-nachtlauf'))
+          .getByRole('button', { name: 'Einschalten' }));
+        await waitFor(() => expect(nachtlaufSchalten).toHaveBeenLastCalledWith(true));
+        expect(await within(karte).findByTestId('ohne-kundenkonto-heute-nacht')).toBeInTheDocument();
+      });
+
+      it('in der Nacht: „läuft bis 05:00" mit den angelegten Läufen', async () => {
+        geraeteOhneKundenkonto.mockResolvedValue([fernlaufStand()]);
+        nachtlaufSchalter.mockResolvedValue(schalter({ imFenster: true, angelegt: 3 }));
+        render(<EdgeUpdatesPage />);
+        expect(await screen.findByTestId('ohne-kundenkonto-nachtlauf'))
+          .toHaveTextContent('Nachts von selbst: an · läuft bis 05:00 · 3 von 20');
+      });
+
+      it('„heute Nacht" nur an einer Box, die dran ist', async () => {
+        geraeteOhneKundenkonto.mockResolvedValue([
+          fernlaufStand({ edgeRef: 'edge-aaaaaa1', nachtlauf: { dran: true, grund: null } }),
+          fernlaufStand({ edgeRef: 'edge-bbbbbb2', nachtlauf: { dran: false, grund: 'Der letzte Lauf …' } }),
+        ]);
+        nachtlaufSchalter.mockResolvedValue(schalter());
+        render(<EdgeUpdatesPage />);
+        const karte = await screen.findByTestId('ohne-kundenkonto');
+        await within(karte).findByTestId('ohne-kundenkonto-nachtlauf');
+        const zeilen = within(karte).getAllByTestId('ohne-kundenkonto-zeile');
+        expect(within(zeilen[0]).getByTestId('ohne-kundenkonto-heute-nacht')).toBeInTheDocument();
+        expect(within(zeilen[1]).queryByTestId('ohne-kundenkonto-heute-nacht')).toBeNull();
+      });
+
+      it('ohne geladenen Schalter keine Zeile und kein „heute Nacht" (keine Behauptung)', async () => {
+        geraeteOhneKundenkonto.mockResolvedValue([fernlaufStand({ nachtlauf: { dran: true, grund: null } })]);
+        render(<EdgeUpdatesPage />);
+        const karte = await screen.findByTestId('ohne-kundenkonto');
+        expect(within(karte).queryByTestId('ohne-kundenkonto-nachtlauf')).toBeNull();
+        expect(within(karte).queryByTestId('ohne-kundenkonto-heute-nacht')).toBeNull();
+      });
+
+      it('„Braucht dich" am Morgen: ein zurückgenommener Nachtlauf mit Grund und dem Halt der Automatik', async () => {
+        const nacht: Fernlauf = {
+          id: 'n', art: 'aufspielen', zustand: 'zurueck', fassungVorher: 'edge-light-2026.11.5',
+          fassungZiel: 'edge-light-2026.11.15', akteurName: 'Automatik · nachts', nachts: true,
+          erteiltAm: '2026-11-19T01:00:30Z', begonnenAm: '2026-11-19T01:00:40Z', schritt: 'meldet_sich',
+          schrittSeit: null, schritte: [], fensterEnde: null,
+          ergebnis: { ergebnis: 'zurueck', grund: 'Meldet sich nicht mit der neuen Fassung.', schritt: 'meldet_sich',
+            fassungNachher: 'edge-light-2026.11.5', belege: {}, quelle: 'dienst', erfasstAm: '2026-11-19T01:06:00Z' },
+        };
+        geraeteOhneKundenkonto.mockResolvedValue([
+          fernlaufStand({ verlauf: [nacht], nachtlauf: { dran: false, grund: 'Der letzte Lauf …' } }),
+          fernlaufStand({ edgeRef: 'edge-mnpqrsb', verlauf: [{ ...nacht, id: 'h', nachts: false, akteurName: 'moritz' }] }),
+        ]);
+        nachtlaufSchalter.mockResolvedValue(schalter());
+        render(<EdgeUpdatesPage />);
+        const braucht = await screen.findByTestId('ohne-kundenkonto-braucht-dich');
+        expect(braucht).toHaveTextContent('Über den Tunnel auf 2026.11.15 · zurückgenommen · Automatik · nachts');
+        expect(within(braucht).getAllByTestId('ohne-kundenkonto-braucht-grund')[0])
+          .toHaveTextContent('Meldet sich nicht mit der neuen Fassung.');
+        // Der Halt-Hinweis steht nur am Nachtlauf, nicht am Lauf von Hand.
+        const halt = within(braucht).getAllByTestId('ohne-kundenkonto-braucht-halt');
+        expect(halt).toHaveLength(1);
+        expect(halt[0]).toHaveTextContent('Die Automatik hat für 2026.11.15 angehalten');
+      });
     });
   });
 });

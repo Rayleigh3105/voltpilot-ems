@@ -39,6 +39,8 @@ export interface Fernlauf {
   fassungVorher: string | null;
   fassungZiel: string;
   akteurName: string | null;
+  /** Angelegt von der Automatik „nachts von selbst" (S4), nicht von Hand. */
+  nachts: boolean;
   erteiltAm: string;
   begonnenAm: string | null;
   schritt: string | null;
@@ -69,6 +71,8 @@ export interface FernlaufStand {
   haken: { tunnelVerbunden: boolean; fragtNachSchluesseln: boolean; keinKundenkonto: boolean };
   /** Die letzten Aufträge, neueste zuerst. */
   verlauf: Fernlauf[];
+  /** S4: ob die Box in der nächsten (oder laufenden) Nacht von selbst dran ist, sonst warum nicht. */
+  nachtlauf: { dran: boolean; grund: string | null } | null;
   stand: string;
 }
 
@@ -311,12 +315,17 @@ export interface BrauchtDichFernlaufEintrag {
   edgeRef: string;
   titel: string;
   text: string;
+  /** Der Grund aus dem Ergebnis, wenn einer gemeldet ist. */
+  grund: string | null;
+  /** Nur nach einem Nachtlauf: die Automatik hat für diese Fassung angehalten. */
+  halt: string | null;
   ton: 'warn' | 'off';
 }
 
 /**
- * „Braucht dich" der Karte: jede Box, deren letzter Fernlauf zurückgenommen wurde oder offen blieb - mit Grund
- * und (über `edgeRef`) dem Weg in ihre Akte. Ein Fernlauf, der nichts geändert hat (Fenster zu, inzwischen
+ * „Braucht dich" der Karte: jede Box, deren letzter Fernlauf zurückgenommen wurde oder offen blieb - mit Grund,
+ * nach einem Nachtlauf dem Hinweis, dass die Automatik für diese Fassung angehalten hat, und (über `edgeRef`) dem
+ * Weg in ihre Akte. Ein Fernlauf, der nichts geändert hat (Fenster zu, inzwischen
  * verbunden) oder fertig wurde, braucht niemanden.
  */
 export function brauchtDichFernlauf(liste: FernlaufStand[], jetzt: Date): BrauchtDichFernlaufEintrag[] {
@@ -325,7 +334,10 @@ export function brauchtDichFernlauf(liste: FernlaufStand[], jetzt: Date): Brauch
     const f = s.verlauf[0];
     if (!f || (f.zustand !== 'zurueck' && f.zustand !== 'offen')) continue;
     const zeile = verlaufZeile(f, jetzt);
-    eintraege.push({ edgeRef: s.edgeRef, titel: s.edgeRef, text: zeile.text, ton: zeile.ton === 'off' ? 'off' : 'warn' });
+    eintraege.push({
+      edgeRef: s.edgeRef, titel: s.edgeRef, text: zeile.text, grund: f.ergebnis?.grund ?? null,
+      halt: nachtlaufHalt(f), ton: zeile.ton === 'off' ? 'off' : 'warn',
+    });
   }
   return eintraege;
 }
@@ -336,4 +348,66 @@ export interface AlleAufspielenStand {
   erledigt: number;
   aktuellRef: string | null;
   abgebrochen: { edgeRef: string; grund: string } | null;
+}
+
+// ── Nachts von selbst (S4, Konzept §11.2) ──────────────────────────────────
+//
+// `GET /api/v1/admin/geraete/ohne-kundenkonto/nachtlauf`: der Schalter des Betriebs (ab Werk an). Zwischen 02:00
+// und 05:00 Berliner Zeit legt die Automatik je Takt höchstens einen Auftrag an, denselben wie der Knopf.
+
+export interface NachtlaufSchalter {
+  an: boolean;
+  /** Wer zuletzt umgelegt hat; `null` = nie (ab Werk an). */
+  geaendertVon: string | null;
+  geaendertAm: string | null;
+  /** Die laufende oder nächste Nacht. */
+  beginn: string;
+  ende: string;
+  naechsterLauf: string;
+  imFenster: boolean;
+  /** Nachtläufe, die in dieser Nacht schon angelegt sind. */
+  angelegt: number;
+  grenze: number;
+  stand: string;
+}
+
+function uhrzeit(iso: string): string {
+  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+}
+
+/**
+ * Die Zeile des Schalters in der Karte „Ohne Kundenkonto": „Nachts von selbst: an · nächster Lauf 02:00" mit
+ * „Anhalten", angehalten mit „Einschalten"; der Knopf je Box bleibt in beiden Fällen.
+ */
+export function nachtlaufZeile(s: NachtlaufSchalter): { stellung: string; satz: string; knopf: 'Anhalten' | 'Einschalten' } {
+  if (!s.an) {
+    return { stellung: 'angehalten', satz: 'es bleibt der Knopf', knopf: 'Einschalten' };
+  }
+  if (s.imFenster) {
+    return { stellung: 'an', satz: `läuft bis ${uhrzeit(s.ende)} · ${s.angelegt} von ${s.grenze}`, knopf: 'Anhalten' };
+  }
+  return { stellung: 'an', satz: `nächster Lauf ${uhrzeit(s.naechsterLauf)}`, knopf: 'Anhalten' };
+}
+
+/** „heute Nacht": die Box ist in der nächsten (oder laufenden) Nacht dran - nur bei eingeschaltetem Schalter. */
+export function heuteNacht(s: FernlaufStand, schalter: NachtlaufSchalter | null): boolean {
+  return schalter?.an === true && s.nachtlauf?.dran === true;
+}
+
+/**
+ * Akte, Reiter „Software": „Sonst heute Nacht von selbst" unter dem Knopf - nur, wenn die Automatik die Box in der
+ * nächsten Nacht nimmt (dann ist der Schalter an; angehalten ist keine Box dran) und der Knopf gerade geht.
+ */
+export function sonstHeuteNacht(s: FernlaufStand): boolean {
+  return s.moeglich && s.nachtlauf?.dran === true;
+}
+
+/**
+ * Der Hinweis zu einem zurückgenommenen oder offenen Nachtlauf in „Braucht dich" (§11.2): die Automatik hat für
+ * diese Fassung angehalten - an dieser Box bis „Noch einmal" von Hand, an den anderen bis zur nächsten Nacht.
+ */
+export function nachtlaufHalt(f: Fernlauf): string | null {
+  if (!f.nachts || (f.zustand !== 'zurueck' && f.zustand !== 'offen')) return null;
+  return `Die Automatik hat für ${fassungKurz(f.fassungZiel)} angehalten: hier erst wieder nach „Noch einmal“, `
+    + 'an anderen Boxen ab der nächsten Nacht.';
 }

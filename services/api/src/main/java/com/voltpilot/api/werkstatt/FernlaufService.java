@@ -63,10 +63,13 @@ public class FernlaufService {
     private static final int MAX_BELEGE = 40;
     private static final int MAX_BELEG = 4096;
 
-    /** Was die Akte über die Box und ihren Fernlauf weiß. */
+    /**
+     * Was die Akte über die Box und ihren Fernlauf weiß; {@code rueckmeldungAm} ist, wann die API die letzte
+     * Meldung des Tunnel-Dienstes zu ihr annahm ({@code null} = nie), für den Nachtlauf ({@link Nachtlauf}).
+     */
     public record Stand(String edgeRef, String laeuft, Instant laeuftGemeldetAm, Instant fragtZuletztAm,
             String neueste, String werkstattFassung, Instant werkstattAm, FernlaufRegel.Urteil urteil,
-            List<Fernlauf> verlauf, Instant jetzt) {
+            List<Fernlauf> verlauf, Instant rueckmeldungAm, Instant jetzt) {
     }
 
     /** Was der Dienst beim Annehmen bekommt: alles für seinen Lauf, nichts Geheimes. */
@@ -128,7 +131,7 @@ public class FernlaufService {
                 l.neueste().soll() == null ? l.neueste().name() : l.neueste().soll().edgeLight().fassung(),
                 l.abnahme().map(WerkstattRepository.Abnahme::fassung).orElse(null),
                 l.abnahme().map(WerkstattRepository.Abnahme::erfasstAm).orElse(null),
-                FernlaufRegel.vorpruefen(l.eingabe(), jetzt), verlauf, jetzt);
+                FernlaufRegel.vorpruefen(l.eingabe(), jetzt), verlauf, l.eingabe().rueckmeldungAm(), jetzt);
     }
 
     /**
@@ -197,7 +200,7 @@ public class FernlaufService {
             return new Stand(edgeRef, null, null, null, null, null, null,
                     new FernlaufRegel.Urteil(false, List.of(new FernlaufRegel.Grund("stand_unlesbar", grund)),
                             new FernlaufRegel.Haken(false, false, true)),
-                    List.of(), uhr.instant());
+                    List.of(), null, uhr.instant());
         }
     }
 
