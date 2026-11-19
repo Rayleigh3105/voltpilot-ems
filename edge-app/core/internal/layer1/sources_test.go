@@ -303,7 +303,7 @@ func TestReadsAsSourceAgreesWithTheReader(t *testing.T) {
 		{"fronius_solar_api", "fronius_solar_api"},
 		{"kaco_http", "kaco_nh3"},
 		{"solarman_v5", "deye_hybrid"},
-		{"modbus_tcp", "sma"},
+		{"modbus_tcp", "sunspec"},
 		{"kostal_modbus", "kostal_plenticore"},
 		{"kostal_piko_rtu", "kostal_piko"},
 		{"zauberei", "f"},

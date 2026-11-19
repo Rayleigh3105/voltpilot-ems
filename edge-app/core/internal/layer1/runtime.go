@@ -300,6 +300,13 @@ func (r *Runtime) pollOnce(ctx context.Context) {
 			return
 		}
 		r.pollKostalPikoRtu(ctx, p)
+	case CommModbusTCP:
+		p, why := planModbus(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollModbus(ctx, p)
 	default:
 		// Honest, not silent: the parity matrix names what is ported. The core
 		// then shows "keine aktuellen Daten" exactly as for a dead device.

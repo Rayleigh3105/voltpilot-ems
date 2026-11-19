@@ -210,6 +210,15 @@ func (r *Runtime) readSource(ctx context.Context, p sourcePlan) {
 			in.class = "invalid_response"
 		}
 		out = inverterOutcome(p, in)
+	case CommModbusTCP:
+		regs, err := r.readModbus(rctx, p.Modbus)
+		release()
+		in := modbusSourceReading(p.Modbus, regs, err)
+		in.requests, in.class = 1, modbusSourceClass(rctx, err)
+		if err == nil && in.reading == nil {
+			in.class = "invalid_response"
+		}
+		out = inverterOutcome(p, in)
 	case CommShellyEM:
 		out = r.readShellyEMSource(rctx, p)
 		release()

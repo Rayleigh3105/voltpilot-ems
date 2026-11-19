@@ -8,8 +8,10 @@ package agent
 // Diese Datei ist ausschliesslich die VERDRAHTUNG. Jede Regel, die eine Probe
 // verhindern kann, liegt in `internal/probe` und ist ohne Socket, ohne Bus und
 // ohne Uhr pruefbar (das otaapply/calibration/curtailcal-Muster); die
-// eigentliche Lesung fuehrt Node-RED aus, weil dort die Socket-Disziplin wohnt
-// (`lib/modbus-conn.js`: EIN Socket je (host, port) ueber alle Leser hinweg).
+// eigentliche Lesung fuehrt der Leser der Box aus, weil dort die
+// Socket-Disziplin wohnt: auf der Docker-Box Node-RED (`lib/modbus-conn.js`:
+// EIN Socket je (host, port) ueber alle Leser hinweg), auf Edge Light die
+// Go-Schicht 1 (`layer1/modbus.go`, unter der Spur der Adresse).
 //
 // ⚠ Der Core oeffnet hier bewusst KEINEN eigenen Modbus-Socket. Viele
 // Kundengeraete (Solarman-Logger, billige Gateways) bedienen genau einen

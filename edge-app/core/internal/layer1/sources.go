@@ -17,8 +17,9 @@ const TopicSourcesConfig = sources.TopicConfig
 // sourcePlan is one source Edge Light reads - the Go twin of a plan the
 // flow's "sources-store" node builds (build-flows.js): a go-e over HTTP, a
 // Huawei SUN2000 over Modbus TCP, a Powador behind its RS485 converter, a
-// SunSpec inverter (sunspec_tcp / fronius_sunspec), a Shelly meter or a classic
-// KOSTAL PIKO over its Web-API (kostal_dxs). Every other transport is named in
+// SunSpec inverter (sunspec_tcp / fronius_sunspec), a Shelly meter, a classic
+// KOSTAL PIKO over its Web-API (kostal_dxs) or a generic Modbus TCP device
+// with a register profile (modbus_tcp). Every other transport is named in
 // the log, never silently skipped - and ReadsAsSource tells the core the same
 // before it applies a portal plan.
 type sourcePlan struct {
@@ -35,6 +36,7 @@ type sourcePlan struct {
 	Sunspec  *sunspecPlan    // sunspec_tcp / fronius_sunspec
 	ShellyEM *shellyEMPlan   // shelly_em_http
 	Kostal   *kostalDxsPlan  // kostal_dxs
+	Modbus   *modbusPlan     // modbus_tcp
 
 	// DataSourceID is the assigned data source (DQ-…) the push named, the
 	// identity of the read receipt (else the local id).
@@ -48,8 +50,9 @@ type sourceNote struct {
 }
 
 // The transports the flow can read as a source. Edge Light names the ones it
-// does not read yet instead of calling them unknown (kaco_serial, huawei_modbus
-// and the SunSpec way are read here, like in the flow's source executor).
+// does not read yet instead of calling them unknown (kaco_serial, huawei_modbus,
+// modbus_tcp and the SunSpec way are read here, like in the flow's source
+// executor).
 var knownSourceComms = map[string]bool{
 	"modbus_tcp": true, "fronius_sunspec": true, "sunspec_tcp": true, "kaco_http": true,
 	"kaco_modbus": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,
@@ -74,6 +77,8 @@ func ReadsAsSource(comm, role string) string {
 			return "ein Zähler liefert keinen PV-Wert (als Netz-Zähler oder Unterzähler/Verbraucher anlegen)"
 		}
 		return ""
+	case CommModbusTCP:
+		return modbusSourceRefusal(role)
 	case CommKostalDxs:
 		if role != sources.RoleErzeuger {
 			return "ein KOSTAL PIKO liefert nur seine Erzeugung (PV-Leistung), keinen Netz- oder Verbrauchswert (als Erzeuger anlegen)"
@@ -204,6 +209,16 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 			}
 			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: sp.IP, Port: sp.Port, Addr: sp.Addr, Sunspec: sp})
 			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): " + comm + " " + sp.Addr + " -> Leseplan sunspec_live (unit " + strconv.Itoa(int(sp.UnitID)) + ", model_type " + sp.ModelType + ")"})
+		case comm == CommModbusTCP:
+			// The flow's plan: port num(conn.port, 502), unit num(conn.unit_id, 1),
+			// the family is the register profile.
+			mp, why := planModbus(&selection{Family: family, Communication: comm, Connection: conn})
+			if mp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: mp.IP, Port: mp.Port, Addr: mp.Addr, Modbus: mp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): modbus_tcp " + mp.Addr + " -> Leseplan (Profil " + mp.Profile + ")"})
 		case comm == CommKostalDxs:
 			kp, why := planKostalDxs(&selection{Family: family, Communication: comm, Connection: conn})
 			if kp == nil {
