@@ -224,6 +224,22 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
       expect(screen.getByTestId('akte-fernlauf-knopf')).toBeDisabled();
       expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
     });
+
+    it('S3 §4.7: eine wartende Docker-Box sagt einen ehrlichen Satz statt des Fernlauf-Knopfs (kein Wartungstunnel)', async () => {
+      geraeteFernlauf.mockResolvedValue({ ...stand, laeuft: 'edge-2026.10.7', neueste: null,
+        moeglich: false, gruende: [{ code: 'keine_edge_light', text: 'Nur eine Edge-Light-Box hat den Wartungstunnel.' }] });
+      render(<GeraeteAktePage boxRef="edge-k7m2xq3" reiter="software" />);
+      expect(await screen.findByRole('heading', { name: 'Docker-Box' })).toBeInTheDocument();
+      expect(screen.getByText(/Läuft edge-2026.10.7/)).toHaveTextContent(
+        'Läuft edge-2026.10.7 · Holt beim Verbinden die neueste Fassung. Docker-Boxen haben keinen Wartungstunnel.');
+      expect(screen.queryByTestId('akte-fernlauf-knopf')).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Noch nicht verbunden' })).toBeNull();
+      // Review zu PR #1948: der Kopf nennt die Bauart (wie bei Edge Light „Edge Light" vor der
+      // Kennung), und ohne Knopf bleibt das Menü „⋯" neben Stand/Zustand statt auf einer eigenen Zeile.
+      expect(screen.getByTestId('box-art')).toHaveTextContent('Docker-Box');
+      expect(screen.getByTestId('box-art')).toHaveAttribute('data-box-art', 'docker');
+      expect(document.querySelector('.vp-akte-aktionen--nur-menu')).not.toBeNull();
+    });
   });
 
   it('N5: Reiter Einrichtung nennt, ob die Box gerade fragt, und den letzten Start - nicht „meldet sich seit"', async () => {

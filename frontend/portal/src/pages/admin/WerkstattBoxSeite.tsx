@@ -37,6 +37,7 @@ import {
   type ErstesVerbinden,
 } from '../../werkstattEinrichtung';
 import type { GehaeuseAuftragAnsicht } from '../../werkstattBank';
+import type { Fernlauf } from '../../werkstattFernlauf';
 import { PhasenListe } from './WerkstattBank';
 import { liveSeitSek, schrittTitel, seitText } from '../../werkstattLauf';
 import { AbnahmeAnzeige, BeschriftungKarte, DirektlinkQr, STAND_BADGE } from './WerkstattTeile';
@@ -221,6 +222,20 @@ export function WerkstattBoxSeite({
     };
   }, [ref]);
 
+  // Fernlauf S3 (§4.6): der letzte Fernlauf durch den Wartungstunnel für diese Box, „Nach der Werkstatt".
+  const [fernlauf, setFernlauf] = useState<Fernlauf | null>(null);
+  useEffect(() => {
+    let aktuell = true;
+    setFernlauf(null);
+    adminApi.werkstattFernlaufZeile(ref).then(
+      (f) => aktuell && setFernlauf(f ?? null),
+      () => aktuell && setFernlauf(null),
+    );
+    return () => {
+      aktuell = false;
+    };
+  }, [ref]);
+
   useEffect(() => {
     let aktuell = true;
     setVerb({ art: 'laedt' });
@@ -373,7 +388,7 @@ export function WerkstattBoxSeite({
         <WsKarte titel="Einrichtung" testId="ws-einrichtung" urteil={box ? einrichtung(box, freigabe)[0]?.wert ?? undefined : 'ohne Eintrag'}>
           {box ? (
             <>
-              <Zeilen zeilen={einrichtung(box, freigabe, erstesVerbinden)} />
+              <Zeilen zeilen={einrichtung(box, freigabe, erstesVerbinden, fernlauf, jetzt)} />
               <p className="vp-muted vp-ws-fuss">
                 Im Register seit {zeitpunkt(box.angelegtAm, jetzt)} ({box.angelegtVon}), zuletzt geändert {zeitpunkt(box.geaendertAm, jetzt)}.
                 {!abnahme && ' Ohne Abnahme gibt es keinen geprüften Stand: Fassung, Tunnel-Adresse und Host-Schlüssel fehlen.'}

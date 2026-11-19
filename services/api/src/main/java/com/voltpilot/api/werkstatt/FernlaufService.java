@@ -184,6 +184,15 @@ public class FernlaufService {
 
     // ── Dienst ────────────────────────────────────────────────────────────
 
+    /**
+     * Der letzte Fernlauf dieser Box, neueste zuerst (für die Werkstatt-Seite, S3 §4.6 „Nach der Werkstatt");
+     * {@code empty}, wenn für diese Box noch nie einer lief.
+     */
+    public Optional<Fernlauf> letzter(String edgeRef) {
+        pruefeRef(edgeRef);
+        return repo.letzte(edgeRef, 1).stream().findFirst();
+    }
+
     /** Aufträge, die der Dienst annehmen kann (in der Antwort auf seine Ansicht, nicht verbraucht). */
     public List<Fernlauf> abholbar() {
         return repo.abholbar(uhr.instant().minus(FernlaufRegel.ABHOLFRIST));

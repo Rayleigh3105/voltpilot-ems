@@ -28,7 +28,7 @@ class ErstverbindungTest {
     private static final Erstverbindung.Neueste D112 = new Erstverbindung.Neueste(63, "edge-2026.11.2", null);
 
     private static Erstverbindung.Box box(String art, boolean vertrauen, String loader, Long istSeq, String ist) {
-        return new Erstverbindung.Box(art, vertrauen, loader, istSeq, ist, ERSTE_MELDUNG, false, false, false);
+        return new Erstverbindung.Box(art, vertrauen, loader, istSeq, ist, ERSTE_MELDUNG, false, false, false, false);
     }
 
     /** edge-cyhchfr: Mango aus der Werkstatt, 2026.11.10, Vertrauen gekreuzt, Loader kennt Updates. */
@@ -61,11 +61,11 @@ class ErstverbindungTest {
     void nichtNeu() {
         var b = mango();
         assertThat(urteil(new Erstverbindung.Box(b.boxArt(), true, "update", 61L, b.istRelease(), null, false, false,
-                false), L113).art()).as("Bestandsbox ohne erste Meldung").isEqualTo(Erstverbindung.Art.NICHTS);
+                false, false), L113).art()).as("Bestandsbox ohne erste Meldung").isEqualTo(Erstverbindung.Art.NICHTS);
         assertThat(urteil(new Erstverbindung.Box(b.boxArt(), true, "update", 61L, b.istRelease(), ERSTE_MELDUNG, true,
-                false, false), L113).art()).as("hatte eine Zuweisung").isEqualTo(Erstverbindung.Art.NICHTS);
+                false, false, false), L113).art()).as("hatte eine Zuweisung").isEqualTo(Erstverbindung.Art.NICHTS);
         assertThat(urteil(new Erstverbindung.Box(b.boxArt(), true, "update", 61L, b.istRelease(), ERSTE_MELDUNG, false,
-                true, false), L113).art()).as("schon entschieden").isEqualTo(Erstverbindung.Art.NICHTS);
+                true, false, false), L113).art()).as("schon entschieden").isEqualTo(Erstverbindung.Art.NICHTS);
         assertThat(Erstverbindung.of(mango(), L113, Erstverbindung.Schalter.AN,
                 ERSTE_MELDUNG.plus(Erstverbindung.NACHLAUF).plusSeconds(1)).art()).isEqualTo(Erstverbindung.Art.NICHTS);
     }
@@ -139,10 +139,41 @@ class ErstverbindungTest {
     }
 
     @Test
+    @DisplayName("S3 §4.6: während eines offenen Fernlaufs wartet die Regel - kein Wettlauf mit dem Tunnel-Update")
+    void fernlaufOffenWartet() {
+        // Offen: sonst wäre die Box ZUWEISEN-fällig, aber der Fernlauf durch den Tunnel blockiert.
+        var m = mango();
+        var offen = new Erstverbindung.Box(m.boxArt(), m.vertrauenGekreuzt(), m.loader(), m.istSeq(), m.istRelease(),
+                m.ersteMeldung(), m.hatteZuweisung(), m.entschieden(), m.beendet(), true);
+        assertThat(urteil(offen, L113)).isEqualTo(new Erstverbindung.Urteil(Erstverbindung.Art.WARTEN, null, null,
+                Erstverbindung.GRUND_FERNLAUF));
+
+        // Auch eine Box, die ohnehin schon die neueste meldet, wartet: ihre Meldung könnte mitten im
+        // Tausch des Fernlaufs stehen, kein voreiliges „aktuell".
+        var offenAktuell = new Erstverbindung.Box(BoxArt.LIGHT, true, "update", 65L, "edge-light-2026.11.13",
+                ERSTE_MELDUNG, false, false, false, true);
+        assertThat(urteil(offenAktuell, L113).art()).isEqualTo(Erstverbindung.Art.WARTEN);
+
+        // Nach dem Fenster verstreicht trotzdem „aufgeben" statt endlosem Warten.
+        assertThat(Erstverbindung.of(offen, L113, Erstverbindung.Schalter.AN,
+                ERSTE_MELDUNG.plus(Duration.ofMinutes(90))))
+                .isEqualTo(new Erstverbindung.Urteil(Erstverbindung.Art.AUFGEBEN, null, null,
+                        Erstverbindung.GRUND_FERNLAUF));
+
+        // Fertig (nicht mehr offen), die Box meldet jetzt die neueste: nichts fällig - wie heute.
+        assertThat(urteil(box(BoxArt.LIGHT, true, "update", 65L, "edge-light-2026.11.13"), L113).art())
+                .as("Fernlauf fertig, Box läuft die neueste").isEqualTo(Erstverbindung.Art.AKTUELL);
+
+        // Zurückgenommen (nicht mehr offen), die Box meldet weiter die alte Fassung: der normale Weg übernimmt.
+        assertThat(urteil(mango(), L113).art()).as("Fernlauf zurückgenommen, Box läuft weiter die alte")
+                .isEqualTo(Erstverbindung.Art.ZUWEISEN);
+    }
+
+    @Test
     @DisplayName("beendeter Kundenbereich bekommt nichts")
     void beendet() {
         var b = new Erstverbindung.Box(BoxArt.LIGHT, true, "update", 61L, "edge-light-2026.11.10", ERSTE_MELDUNG,
-                false, false, true);
+                false, false, true, false);
         assertThat(urteil(b, L113)).isEqualTo(new Erstverbindung.Urteil(Erstverbindung.Art.GESPERRT, null, null,
                 UpdateEignung.GRUND_BEENDET));
     }

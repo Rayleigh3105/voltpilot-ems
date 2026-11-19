@@ -82,6 +82,14 @@ for (const breite of [1440, 390, 375]) {
     }
     await expect(detail.getByTestId('ws-zeile-hardware')).toContainText('GL-MT300N-V2');
     await expect(detail.getByTestId('ws-zeile-edge-light')).toHaveText('edge-light-2026.11.1');
+    // Fernlauf S3 (§4.6): „Nach der Werkstatt" steht vor der Erstverbindung-Zeile, die Abnahme bleibt unverändert.
+    await expect(detail.getByTestId('ws-zeile-fernlauf')).toContainText('Über den Tunnel auf 2026.11.3 · fertig · Alex Beispiel');
+    if (process.env.WEG_BILDER) {
+      if (breite <= 720) await detail.locator('details > summary').filter({ hasText: 'Einrichtung' }).first().click();
+      await detail.getByTestId('ws-zeile-fernlauf').evaluate((e) => e.scrollIntoView({ block: 'center' }));
+      await page.screenshot({ path: `${process.env.WEG_BILDER}/werkstatt-nach-der-werkstatt-${breite}.png`, animations: 'disabled' });
+      if (breite <= 720) await detail.locator('details > summary').filter({ hasText: 'Einrichtung' }).first().click();
+    }
     // Erstverbindung S3 (E7 = A): die abgenommene Box ist beim Kunden auf die neueste Fassung gekommen.
     await expect(detail.getByTestId('ws-zeile-beim-kunden')).toContainText('auf 2026.11.3 · automatisch beim ersten Verbinden');
     if (process.env.WEG_BILDER) {

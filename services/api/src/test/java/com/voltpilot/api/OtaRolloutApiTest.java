@@ -1037,6 +1037,72 @@ class OtaRolloutApiTest {
         assertThat(getJson(admin, "/api/v1/admin/edge-updates/erstverbindung").get("light").asBoolean()).isTrue();
     }
 
+    @Test
+    @Order(11)
+    void erstverbindungWartetWaehrendEinFernlaufDurchDenTunnelOffenIstKeinWettlauf() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        UpdateStatusListener ingest = new UpdateStatusListener("tcp://localhost:1883", "", "",
+                deviceRepo, updateStatusRepo);
+        String block = "{\"backend\":\"light\",\"current\":\"edge-light-2026.10.1-9b37439a02c1\",\"state\":\"idle\""
+                + ",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_key_ids\":[\"rel-2026-a\"]}"
+                + ",\"geraet\":{\"modell\":\"GL.iNet GL-MT300N-V2\",\"arch\":\"mipsle\",\"loader\":\"update\"}}";
+
+        String ref = TestKennung.box("ota-fl-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID device = claim(customer, ref);
+        herzschlagRoh(ingest, device, "edge-light-2026.10.1-9b37439a02c1", block);
+        Instant jetzt = ersteMeldung(device);
+        assertThat(jetzt).as("der Ingest setzt die erste Meldung").isNotNull();
+
+        // Ein offener Fernlauf durch den Tunnel für dieselbe Referenz (S1, roh angelegt - Werkstatt und
+        // Fernwartung sind in diesem Test nicht der Punkt): Box- und Techniker-Zugang, ein Fenster, der
+        // Auftrag ohne Ergebnis.
+        UUID boxZugang = UUID.randomUUID();
+        UUID technikerZugang = UUID.randomUUID();
+        UUID fenster = UUID.randomUUID();
+        UUID fernlauf = UUID.randomUUID();
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO fernwartung_zugang (id, art, edge_ref, public_key, tunnel_adresse, status, "
+                    + "angelegt_von, geaendert_von) VALUES ('" + boxZugang + "', 'box', '" + ref + "', "
+                    + "'jUg9DePFPkIQ+KNIAXqSEuVTw2UNHwbUH/HPFK5HiEM=', '10.77.0.1/32', 'aktiv', 'test', 'test')");
+            st.execute("INSERT INTO fernwartung_zugang (id, art, name, public_key, tunnel_adresse, status, "
+                    + "angelegt_von, geaendert_von) VALUES ('" + technikerZugang + "', 'techniker', "
+                    + "'Werkstatt-Dienst', 'FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y=', '10.77.0.2/32', "
+                    + "'aktiv', 'test', 'test')");
+            st.execute("INSERT INTO fernwartung_fenster (id, box_id, techniker_id, grund, beginn, ende, "
+                    + "geoeffnet_von) VALUES ('" + fenster + "', '" + boxZugang + "', '" + technikerZugang + "', "
+                    + "'Software aufspielen', '" + jetzt + "', '" + jetzt.plus(Duration.ofMinutes(30)) + "', "
+                    + "'admin')");
+            st.execute("INSERT INTO werkstatt_fernlauf (id, edge_ref, art, fassung_vorher, fassung_ziel, "
+                    + "release_seq, quelle, programm_sha256, skripte_sha256, fenster_id, akteur_sub, erteilt_am) "
+                    + "VALUES ('" + fernlauf + "', '" + ref + "', 'aufspielen', 'edge-light-2026.10.1', "
+                    + "'edge-light-2026.10.9', 1, 'https://test.example/', '" + "a".repeat(64) + "', '"
+                    + "a".repeat(64) + "', '" + fenster + "', 'admin', '" + jetzt + "')");
+        }
+
+        // Die allerneueste Fassung erscheint: ohne den Fernlauf wäre die Box sofort ZUWEISEN-fällig.
+        long seq;
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery("SELECT coalesce(max(release_seq), 0) + 1 FROM edge_release")) {
+            rs.next();
+            seq = rs.getLong(1);
+        }
+        String version = "edge-light-2026.10.4";
+        registerRelease(admin, version, seq, LIGHT_MANIFEST.replace("edge-light-2026.10.1", version)
+                .replace("\"release_seq\": 41", "\"release_seq\": " + seq), SIGNATURE);
+        hochladen(admin, version, LIGHT_GZ);
+
+        rollouts.erstverbindung(jetzt);
+        assertThat(ziel(device)).as("der Fernlauf durch den Tunnel läuft noch - kein Wettlauf").isNull();
+        assertThat(erstverbindungEreignisse(device)).as("warten schreibt nichts ins Journal").isEmpty();
+
+        // Der Werkstatt-Dienst hat den Auftrag nie abgeholt: nach der Abholfrist (10 Min.) ist der Fernlauf
+        // nicht mehr offen - jetzt entscheidet die Regel wie sonst.
+        rollouts.erstverbindung(jetzt.plus(Duration.ofMinutes(11)));
+        assertThat(ziel(device)).isEqualTo(version + " von erstverbindung");
+        assertThat(erstverbindungEreignisse(device)).containsExactly("target_assigned");
+    }
+
     /** Die erste Meldung einer Box ({@code device_update_status.erste_meldung_am}). */
     private Instant ersteMeldung(UUID deviceId) throws Exception {
         try (Connection c = superuser(); Statement st = c.createStatement();

@@ -20,6 +20,7 @@ const werkstattZurSeite = vi.fn();
 const werkstattGehaeuseErneut = vi.fn();
 const edgeUpdates = vi.fn();
 const werkstattErstesVerbinden = vi.fn();
+const werkstattFernlaufZeile = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -37,6 +38,7 @@ vi.mock('../../admin/adminApi', () => ({
     werkstattGehaeuseErneut: (r: string) => werkstattGehaeuseErneut(r),
     edgeUpdates: () => edgeUpdates(),
     werkstattErstesVerbinden: (r: string) => werkstattErstesVerbinden(r),
+    werkstattFernlaufZeile: (r: string) => werkstattFernlaufZeile(r),
   },
 }));
 
@@ -109,6 +111,7 @@ beforeEach(() => {
   fernwartung.mockResolvedValue({ rueckmeldungen: [] });
   edgeUpdates.mockRejectedValue(new ApiError(503, 'nicht da'));
   werkstattErstesVerbinden.mockResolvedValue(undefined);
+  werkstattFernlaufZeile.mockResolvedValue(undefined);
 });
 
 describe('Werkstatt: Übersicht am Rechner', () => {
@@ -269,6 +272,30 @@ describe('Werkstatt: Einrichtungs-Detailseite einer Box', () => {
     expect(await within(nach).findByTestId('ws-zeile-beim-kunden'))
       .toHaveTextContent('✓ 16.11., 10:46 auf 2026.11.13 · automatisch beim ersten Verbinden');
     expect(within(nach).queryByTestId('ws-zeile-erstes-verbinden')).toBeNull();
+  });
+
+  it('Fernlauf S3 (§4.6): „Nach der Werkstatt" zeigt den letzten Fernlauf durch den Tunnel, keine Zeile ohne einen', async () => {
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    const { unmount } = render(<WerkstattPage />);
+    const ohne = await screen.findByTestId('ws-einrichtung');
+    await waitFor(() => expect(werkstattFernlaufZeile).toHaveBeenCalledWith('edge-5t2dcy6'));
+    expect(within(ohne).queryByTestId('ws-zeile-fernlauf')).toBeNull();
+    unmount();
+
+    werkstattFernlaufZeile.mockResolvedValue({
+      id: 'f1', art: 'aufspielen', zustand: 'fertig', fassungVorher: 'edge-light-2026.11.5',
+      fassungZiel: 'edge-light-2026.11.15', akteurName: 'Moritz', erteiltAm: '2026-11-18T16:00:00Z',
+      begonnenAm: '2026-11-18T16:00:30Z', schritt: 'fenster_zu', schrittSeit: '2026-11-18T16:05:00Z',
+      schritte: [], fensterEnde: '2026-11-18T16:30:00Z',
+      ergebnis: {
+        ergebnis: 'fertig', grund: null, schritt: 'fenster_zu', fassungNachher: 'edge-light-2026.11.15',
+        belege: {}, quelle: 'dienst', erfasstAm: '2026-11-18T16:09:00Z',
+      },
+    });
+    render(<WerkstattPage />);
+    const e = await screen.findByTestId('ws-einrichtung');
+    expect(await within(e).findByTestId('ws-zeile-fernlauf'))
+      .toHaveTextContent('Über den Tunnel auf 2026.11.15 · fertig · Moritz · 18.11., 17:09');
   });
 
   it('Bindung: Kunde, Zugang und Verbindung kommen aus der Fernwartung; ohne Meldung des Tunnel-Dienstes „unbekannt“', async () => {

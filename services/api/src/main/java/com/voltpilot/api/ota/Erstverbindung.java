@@ -32,6 +32,10 @@ import java.time.Instant;
  *       Grund.</li>
  *   <li>Der Schalter des Betriebs ({@link Schalter}) hält die Automatik je Linie
  *       oder ganz an.</li>
+ *   <li>Läuft für die Referenz der Box gerade ein Fernlauf durch den
+ *       Wartungstunnel ({@code vp-update-vor-zuordnung}, S3 §4.6), wartet die
+ *       Regel, bis er ein Ergebnis hat - kein Wettlauf zwischen Tunnel- und
+ *       Cloud-Update; danach entscheidet sie wie sonst.</li>
  * </ul>
  *
  * <p>Was danach geschieht, ist der vorhandene Update-Weg, unverändert: die
@@ -73,6 +77,8 @@ public final class Erstverbindung {
             "Die Box hat noch nicht gemeldet, ob sie eine Docker-Box oder Edge Light ist.";
     public static final String GRUND_FENSTER =
             "Die erste Stunde nach der ersten Meldung ist verstrichen, bevor zugewiesen werden konnte.";
+    public static final String GRUND_FERNLAUF =
+            "Für diese Box läuft gerade ein Fernlauf durch den Wartungstunnel.";
 
     private Erstverbindung() {
     }
@@ -123,9 +129,11 @@ public final class Erstverbindung {
      * @param hatteZuweisung    die Box hat oder hatte je eine Zuweisung
      * @param entschieden       die Regel hat für diese Box schon entschieden (Journal)
      * @param beendet           ihr Kundenbereich ist beendet
+     * @param fernlaufOffen     für ihre Referenz läuft gerade ein Fernlauf durch den Wartungstunnel (S3 §4.6)
      */
     public record Box(String boxArt, boolean vertrauenGekreuzt, String loader, Long istSeq, String istRelease,
-            Instant ersteMeldung, boolean hatteZuweisung, boolean entschieden, boolean beendet) {
+            Instant ersteMeldung, boolean hatteZuweisung, boolean entschieden, boolean beendet,
+            boolean fernlaufOffen) {
     }
 
     /**
@@ -165,6 +173,9 @@ public final class Erstverbindung {
             return Urteil.nur(Art.NICHTS);
         }
         boolean imFenster = !now.isAfter(box.ersteMeldung().plus(FENSTER));
+        if (box.fernlaufOffen()) {
+            return warten(imFenster, GRUND_FERNLAUF);
+        }
         String linie = box.boxArt();
         if (!schalter.an(linie)) {
             return Urteil.mitGrund(Art.AUS, schalter.alle()

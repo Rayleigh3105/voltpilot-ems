@@ -50,7 +50,8 @@ import { AdminPageHead } from './AdminPageHead';
 import { Zeitleiste } from './Zeitleiste';
 import { WerkstattBoxSeite } from './WerkstattBoxSeite';
 import {
-  bestaetigung, FERNLAUF_SCHRITTE, fragtSatz, haken as fernlaufHaken, schrittleiste, standZeilen, tunnelKarte, verlaufZeile,
+  bestaetigung, fassungKurz, fernlaufLinie, FERNLAUF_SCHRITTE, fragtSatz, haken as fernlaufHaken, schrittleiste,
+  standZeilen, tunnelKarte, verlaufZeile,
   type Fernlauf, type FernlaufStand,
 } from '../../werkstattFernlauf';
 import '../GeraetSeite.css';
@@ -261,7 +262,7 @@ export function GeraeteAktePage({
       <AktenKopf boxRef={boxRef} row={row} deviceRow={deviceRow} pendingRow={pendingRow} jetzt={jetzt}
         tunnelUpdate={row == null && fernlauf != null && (fernlauf.moeglich || fernlauf.verlauf.length > 0)}
         reiter={reiter} onReiter={nav} onNavigate={onNavigate} pulsiert={pulsiert} nieGemeldet={nieGemeldet}
-        werkstattBoxArt={werkstattBoxArtWert}
+        werkstattBoxArt={fernlaufLinie(werkstattBoxArtWert, fernlauf?.laeuft ?? null)}
         onLoesenOeffnen={() => setLoesenOffen(true)}
         ausgebautAm={ausgebaut ? (akte?.kopf?.ausgebautAm ?? akte?.lebensabschnittSeit ?? null) : null}
         onEndgueltigOeffnen={() => setEndgueltigOffen(true)}
@@ -352,7 +353,8 @@ function AktenKopf({
   /** Ausgebaut (vierter Löschweg): der Kopf sagt es, das Menü bietet „Endgültig löschen …" an. */
   ausgebautAm: string | null;
   onEndgueltigOeffnen: () => void;
-  /** N2: Bauart aus der Werkstatt, solange die Box selbst noch nichts meldet. */
+  /** N2/Fernlauf S3 (§4.7): Bauart aus der Werkstatt oder (ohne Werkstatt-Eintrag) aus der von
+      ihr gemeldeten Fassung, solange die Box selbst noch kein Kundenkonto hat. */
   werkstattBoxArt: BoxArt | null;
   /** Fernlauf (§4.5): „Aktualisieren" auch für die wartende Box, führt auf die Karte im Reiter „Software". */
   tunnelUpdate: boolean;
@@ -361,6 +363,11 @@ function AktenKopf({
   const reiterRand = useReiterRand<HTMLDivElement>();
   const verbindung = row ? verbindungSicht(row, jetzt) : null;
   const name = row?.siteName?.trim() || deviceRow?.label || boxRef;
+  const zeigtFernwartung = row != null && !nieGemeldet;
+  const zeigtAktualisieren = (row != null && !nieGemeldet && !(row.stand === 'hand' || row.stufe1)) || (row == null && tunnelUpdate);
+  // S3 §4.7: eine wartende Docker-Box hat keinen der beiden Knöpfe - ohne Markierung stand das Menü
+  // am Telefon dann allein auf einer eigenen, fast leeren Zeile statt rechtsbündig neben Stand/Zustand.
+  const nurMenu = !zeigtFernwartung && !zeigtAktualisieren;
   const zustandBadge = ausgebautAm != null
     ? { variant: 'off' as const, text: `Ausgebaut · ${fmtRelative(ausgebautAm, jetzt)}` }
     : verbindung
@@ -390,51 +397,75 @@ function AktenKopf({
         actions={
           // Am Telefon: Zustand und Stand in EINER Zeile, darunter die Knöpfe in einer Reihe
           // (vorher verteilten sich Stand, Zustand und drei Knöpfe auf drei unordentliche Zeilen).
-          <div className="vp-row-gap vp-akte-aktionen" style={{ alignItems: 'center' }}>
-            <span className="vp-akte-status">
-              <span className="vp-muted vp-text-sm" data-testid="akte-stand">{stand}</span>
+          // Ohne Knopf (S3 §4.7, wartende Docker-Box) bekäme das Menü sonst eine eigene, fast leere
+          // Zeile - es teilt sich dann stattdessen die Zeile von "Stand" (nurMenu).
+          (() => {
+            const menu = (
+              <div className="vp-akte-menu" style={{ position: 'relative' }}>
+                <Button variant="ghost" size="sm" aria-label="Weitere Handlungen" onClick={() => setMenuOffen((v) => !v)}>⋯</Button>
+                {menuOffen && (
+                  <div className="vp-akte-menu-liste" role="menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 5 }}>
+                    <button type="button" role="menuitem" onClick={() => { void navigator.clipboard?.writeText(boxRef); setMenuOffen(false); }}>
+                      Kennung kopieren
+                    </button>
+                    {row && onNavigate && (
+                      <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onNavigate(pageRoute('geraete-registry')); }}>
+                        Zur Geräte-Liste
+                      </button>
+                    )}
+                    {/* vp-admin-box-ausbauen: EIN Einstieg für beide Ergebnisse - hat die Box schon Daten
+                        (kein nieGemeldet), bietet der Dialog selbst "Box ausbauen" statt "Lösen" an. */}
+                    {row && ausgebautAm == null && (
+                      <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onLoesenOeffnen(); }}>
+                        Vom Kunden lösen …
+                      </button>
+                    )}
+                    {ausgebautAm != null && (
+                      <button type="button" role="menuitem"
+                        onClick={() => { setMenuOffen(false); onEndgueltigOeffnen(); }}>
+                        Endgültig löschen …
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+            const badge = (
               <Badge variant={zustandBadge.variant} dot pulse={pulsiert} data-testid="akte-zustand">
                 {zustandBadge.text}
               </Badge>
-            </span>
-            {/* N8: eine Box, die sich nie gemeldet hat, hat weder einen Tunnel noch einen Software-
-                Stand zu öffnen - die Knöpfe boten vorher zwei Reiter an, deren Inhalt nie entstehen
-                kann, und am Telefon klebte „Fernwartung öffnen" zusätzlich am Rand. */}
-            {row && !nieGemeldet && (
-              <Button variant="outline" size="sm" onClick={() => onReiter('verbindung')}>Fernwartung öffnen</Button>
-            )}
-            {((row && !nieGemeldet && !(row.stand === 'hand' || row.stufe1)) || (!row && tunnelUpdate)) && (
-              <Button variant="outline" size="sm" onClick={() => onReiter('software')}>Aktualisieren</Button>
-            )}
-            <div className="vp-akte-menu" style={{ position: 'relative' }}>
-              <Button variant="ghost" size="sm" aria-label="Weitere Handlungen" onClick={() => setMenuOffen((v) => !v)}>⋯</Button>
-              {menuOffen && (
-                <div className="vp-akte-menu-liste" role="menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 5 }}>
-                  <button type="button" role="menuitem" onClick={() => { void navigator.clipboard?.writeText(boxRef); setMenuOffen(false); }}>
-                    Kennung kopieren
-                  </button>
-                  {row && onNavigate && (
-                    <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onNavigate(pageRoute('geraete-registry')); }}>
-                      Zur Geräte-Liste
-                    </button>
-                  )}
-                  {/* vp-admin-box-ausbauen: EIN Einstieg für beide Ergebnisse - hat die Box schon Daten
-                      (kein nieGemeldet), bietet der Dialog selbst "Box ausbauen" statt "Lösen" an. */}
-                  {row && ausgebautAm == null && (
-                    <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onLoesenOeffnen(); }}>
-                      Vom Kunden lösen …
-                    </button>
-                  )}
-                  {ausgebautAm != null && (
-                    <button type="button" role="menuitem"
-                      onClick={() => { setMenuOffen(false); onEndgueltigOeffnen(); }}>
-                      Endgültig löschen …
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+            );
+            const standText = <span className="vp-muted vp-text-sm" data-testid="akte-stand">{stand}</span>;
+            return (
+              <div className={`vp-row-gap vp-akte-aktionen${nurMenu ? ' vp-akte-aktionen--nur-menu' : ''}`} style={{ alignItems: 'center' }}>
+                {nurMenu ? (
+                  // Dieselbe Reihenfolge wie in .vp-akte-status (Stand, Zustand): am Rechner liest sich
+                  // die Zeile links nach rechts, am Telefon (order:-1 in GeraeteAkte.css) steht der
+                  // Zustand zuerst, Stand und Menü teilen sich die Zeile darunter.
+                  <>
+                    {standText}
+                    {badge}
+                    {menu}
+                  </>
+                ) : (
+                  <>
+                    <span className="vp-akte-status">{standText}{badge}</span>
+                    {/* N8: eine Box, die sich nie gemeldet hat, hat weder einen Tunnel noch einen
+                        Software-Stand zu öffnen - die Knöpfe boten vorher zwei Reiter an, deren
+                        Inhalt nie entstehen kann, und am Telefon klebte „Fernwartung öffnen"
+                        zusätzlich am Rand. */}
+                    {zeigtFernwartung && (
+                      <Button variant="outline" size="sm" onClick={() => onReiter('verbindung')}>Fernwartung öffnen</Button>
+                    )}
+                    {zeigtAktualisieren && (
+                      <Button variant="outline" size="sm" onClick={() => onReiter('software')}>Aktualisieren</Button>
+                    )}
+                    {menu}
+                  </>
+                )}
+              </div>
+            );
+          })()
         }
       />
       <div ref={reiterRand} className="vp-seg vp-bereich-tabs" role="tablist" aria-label="Geräteakte" data-testid="akte-reiter">
@@ -614,6 +645,22 @@ function AusgebautKarte({ akte, befund, jetzt, onEndgueltigOeffnen }: {
 // ── Software ──────────────────────────────────────────────────────────────
 
 /**
+ * Reiter „Software" einer wartenden Docker-Box (Konzept vp-update-vor-zuordnung S3, §4.7): kein Knopf, denn
+ * Docker-Boxen haben keinen Wartungstunnel - ein ehrlicher Satz statt eines gesperrten Wegs.
+ */
+function DockerWartendeSoftware({ stand }: { stand: FernlaufStand }) {
+  return (
+    <EmptyState icon="refresh-cw" category="primary" title="Docker-Box"
+      description={
+        <>
+          {stand.laeuft ? `Läuft ${fassungKurz(stand.laeuft)} · ` : ''}
+          Holt beim Verbinden die neueste Fassung. Docker-Boxen haben keinen Wartungstunnel.
+        </>
+      } />
+  );
+}
+
+/**
  * Reiter „Software" einer Box ohne Kundenkonto (Konzept vp-update-vor-zuordnung S1, §4.5): „Linie und Stand" mit
  * der Fassung aus ihrer letzten Zertifikatsanfrage (N2) und „Durch den Tunnel aufspielen" - Knopf mit Haken,
  * Bestätigung, Schrittleiste während des Laufs, danach das Ergebnis mit seinen Belegen.
@@ -629,7 +676,7 @@ function WartendeSoftware({ boxRef, stand, jetzt, busy, werkstattBoxArt, onAufsp
 }) {
   const [frage, setFrage] = useState(false);
   const [belegeOffen, setBelegeOffen] = useState(false);
-  const linie: BoxArt | null = werkstattBoxArt ?? (stand.laeuft?.startsWith('edge-light-') ? 'light' : null);
+  const linie = fernlaufLinie(werkstattBoxArt, stand.laeuft);
   const karte = tunnelKarte(stand, jetzt);
   const frageText = bestaetigung(boxRef, stand);
   const knopf = karte.art === 'laeuft' ? null : karte.knopf;
@@ -757,6 +804,10 @@ function SoftwareReiter({ boxRef, fernlauf, row, ersterLeerLauf, verlauf, jetzt,
   werkstattStand: { fassung: string; erfasstAm: string } | null;
 }) {
   if ((ersterLeerLauf || !row) && fernlauf) {
+    // Docker-Boxen haben keinen Wartungstunnel (4.7): ein ehrlicher Satz statt des Fernlauf-Knopfs.
+    if (fernlaufLinie(werkstattBoxArt, fernlauf.laeuft) === 'docker') {
+      return <DockerWartendeSoftware stand={fernlauf} />;
+    }
     return <WartendeSoftware boxRef={boxRef} stand={fernlauf} jetzt={jetzt} busy={busy} werkstattBoxArt={werkstattBoxArt}
       onAufspielen={onAufspielen} onVerbindung={onVerbindung} />;
   }

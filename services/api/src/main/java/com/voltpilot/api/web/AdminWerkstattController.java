@@ -7,6 +7,7 @@ import com.voltpilot.api.werkstatt.LanNetz;
 import com.voltpilot.api.werkstatt.WerkstattPruefungen;
 import com.voltpilot.api.werkstatt.WerkstattRepository.Abnahme;
 import com.voltpilot.api.werkstatt.DienstAnsichtService;
+import com.voltpilot.api.werkstatt.FernlaufService;
 import com.voltpilot.api.werkstatt.LaufSeiteService;
 import com.voltpilot.api.werkstatt.FreigabeRepository;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Abbild;
@@ -240,6 +241,7 @@ public class AdminWerkstattController {
     private final DienstAnsichtService ansichten;
     private final LaufSeiteService laufSeite;
     private final WerkstattGehaeuseRepository gehaeuseDateien;
+    private final FernlaufService fernlauf;
     private final ObjectMapper json;
 
     /** Erstverbindung S3: der Beleg der Automatik beim ersten Verbinden; ohne Bean (Minimal-Kontexte) keiner. */
@@ -252,13 +254,14 @@ public class AdminWerkstattController {
 
     public AdminWerkstattController(WerkstattService service, FreigabeService freigaben, WerkstattRegel regel,
             DienstAnsichtService ansichten, LaufSeiteService laufSeite, WerkstattGehaeuseRepository gehaeuseDateien,
-            ObjectMapper json) {
+            FernlaufService fernlauf, ObjectMapper json) {
         this.service = service;
         this.freigaben = freigaben;
         this.regel = regel;
         this.ansichten = ansichten;
         this.laufSeite = laufSeite;
         this.gehaeuseDateien = gehaeuseDateien;
+        this.fernlauf = fernlauf;
         this.json = json;
     }
 
@@ -338,6 +341,19 @@ public class AdminWerkstattController {
         var b = rollouts.erstverbindungBeleg(s.box().edgeRef(), linie, Instant.now());
         return b == null ? ResponseEntity.noContent().build()
                 : ResponseEntity.ok(new ErstesVerbindenDto(b.stand(), b.release(), b.am(), b.grund()));
+    }
+
+    /**
+     * Die Zeile „Nach der Werkstatt“ (Fernlauf S3, §4.6): der letzte Fernlauf durch den Wartungstunnel für diese
+     * Box, in derselben Form wie die Akte ({@link AdminFernlaufController.FernlaufDto}); die Abnahme bleibt
+     * unverändert. 204, wenn für diese Box noch nie ein Fernlauf lief. 404 nicht im Register.
+     */
+    @GetMapping("/boxen/{ref}/fernlauf")
+    public ResponseEntity<AdminFernlaufController.FernlaufDto> fernlaufZeile(@PathVariable String ref) {
+        Stand s = service.box(referenz(ref));
+        return fernlauf.letzter(s.box().edgeRef())
+                .map(f -> ResponseEntity.ok(AdminFernlaufController.dto(f, Instant.now(), json)))
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     /** Ins Register aufnehmen: 201 neu, 200 schon da (unverändert). */

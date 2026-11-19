@@ -108,6 +108,17 @@ public class RolloutService {
         this.beendete = beendete;
     }
 
+    /**
+     * Der Fernlauf durch den Wartungstunnel (S3 §4.6): während einer für die Referenz offen ist, wartet
+     * {@link Erstverbindung}. Ohne Bean (Minimal-Kontexte) läuft nie einer.
+     */
+    private com.voltpilot.api.werkstatt.FernlaufRepository fernlaeufe;
+
+    @Autowired(required = false)
+    void setFernlaeufe(com.voltpilot.api.werkstatt.FernlaufRepository fernlaeufe) {
+        this.fernlaeufe = fernlaeufe;
+    }
+
     public RolloutService(RolloutRepository rollouts, EdgeReleaseRepository releases,
             ObjectProvider<OtaTargetPublisher> publisher, ObjectMapper json,
             @Value("${voltpilot.ota.republish-after:PT30M}") Duration republishAfter) {
@@ -400,10 +411,12 @@ public class RolloutService {
                     .computeIfAbsent(linie, l -> neuesteFassung(l).map(f -> new Erstverbindung.Neueste(
                             f.release().releaseSeq(), f.release().version(), f.nichtZuweisbar())))
                     .orElse(null);
+            boolean fernlaufOffen = fernlaeufe != null && fernlaeufe.letzte(d.externalRef(), 5).stream()
+                    .anyMatch(f -> com.voltpilot.api.werkstatt.FernlaufRegel.offen(f.zustand(now)));
             Erstverbindung.Urteil u = Erstverbindung.of(new Erstverbindung.Box(linie,
                     vertrauenGekreuzt(d), d.loader(), ist == null ? null : ist.releaseSeq(),
                     ist == null ? null : ist.version(), k.ersteMeldungAm(),
-                    k.hatteZuweisung(), k.entschieden(), beendete.beendet(d.tenantId())),
+                    k.hatteZuweisung(), k.entschieden(), beendete.beendet(d.tenantId()), fernlaufOffen),
                     neueste, schalter, now);
             try {
                 erstverbindungAusfuehren(d, u);
