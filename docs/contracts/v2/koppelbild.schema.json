@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/koppelbild.schema.json",
+  "title": "VoltPilot-Koppelbild v1: Aufbau, Regeln und Fälle",
+  "description": "Schema der Vektor-Datei koppelbild-vectors.json (KB-1). Prosa: koppelbild.md. Teilmenge des UEMS-Schema-Läufers (frontend/portal/src/test/uemsSchemaLaeufer.ts).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_comment", "schema_version", "$schema_datei", "vertrag", "herkunft", "zwillinge", "pruefer", "koppelbild", "typen", "w", "q", "siegel", "vokabular", "bitfelder", "art_band", "sps", "leser", "edge", "faelle"],
+  "properties": {
+    "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "schema_version": { "const": "1.0" },
+    "$schema_datei": { "const": "./koppelbild.schema.json" },
+    "vertrag": { "const": "./koppelbild.md" },
+    "herkunft": { "type": "string", "minLength": 1 },
+    "zwillinge": { "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 1 } },
+    "pruefer": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "koppelbild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signatur_w", "signatur_q", "hauptversion", "nebenversion", "version_wort", "plaetze"],
+      "properties": {
+        "signatur_w": { "const": "VP KW" },
+        "signatur_q": { "const": "VP KQ" },
+        "hauptversion": { "const": 1 },
+        "nebenversion": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "version_wort": { "$ref": "#/$defs/wort" },
+        "plaetze": { "const": 8 }
+      }
+    },
+    "typen": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["typ", "woerter", "ungueltig", "vorzeichen"],
+        "properties": {
+          "typ": { "$ref": "#/$defs/typ" },
+          "woerter": { "enum": [1, 2] },
+          "ungueltig": { "$ref": "#/$defs/u32" },
+          "vorzeichen": { "type": "boolean" }
+        }
+      }
+    },
+    "w": { "$ref": "#/$defs/abschnitt" },
+    "q": { "$ref": "#/$defs/abschnitt" },
+    "siegel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verfahren", "polynom_gespiegelt", "start", "schluss_xor", "byte_folge", "ueber", "pruefwert"],
+      "properties": {
+        "verfahren": { "const": "CRC-16/MODBUS" },
+        "polynom_gespiegelt": { "const": 40961 },
+        "start": { "const": 65535 },
+        "schluss_xor": { "const": 0 },
+        "byte_folge": { "type": "string", "minLength": 1 },
+        "ueber": { "type": "string", "minLength": 1 },
+        "pruefwert": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "crc"],
+          "properties": { "text": { "const": "123456789" }, "crc": { "const": 19255 } }
+        }
+      }
+    },
+    "vokabular": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "ziel", "grund", "kopf_urteil", "q_urteil"],
+      "properties": {
+        "art": { "$ref": "#/$defs/vokabular" },
+        "ziel": { "$ref": "#/$defs/vokabular" },
+        "grund": { "$ref": "#/$defs/vokabular" },
+        "kopf_urteil": { "$ref": "#/$defs/vokabular" },
+        "q_urteil": { "$ref": "#/$defs/vokabular" }
+      }
+    },
+    "bitfelder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["e_bits", "q_bits", "a_bits"],
+      "properties": {
+        "e_bits": { "$ref": "#/$defs/bitfeld" },
+        "q_bits": { "$ref": "#/$defs/bitfeld" },
+        "a_bits": { "$ref": "#/$defs/bitfeld" }
+      }
+    },
+    "art_band": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["min", "max"],
+        "properties": { "min": { "$ref": "#/$defs/s32" }, "max": { "$ref": "#/$defs/s32" } }
+      }
+    },
+    "sps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pruefreihenfolge", "platz_reihenfolge", "frist_s", "hoechste_frist_s", "edge_lebt_ms", "programmstart", "nur_geaendert", "rest_s"],
+      "properties": {
+        "pruefreihenfolge": { "$ref": "#/$defs/namen" },
+        "platz_reihenfolge": { "$ref": "#/$defs/namen" },
+        "frist_s": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "max", "vorgabe"],
+          "properties": { "min": { "const": 5 }, "max": { "const": 600 }, "vorgabe": { "const": 60 } }
+        },
+        "hoechste_frist_s": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["vorgabe"],
+          "properties": { "vorgabe": { "const": 60 } }
+        },
+        "edge_lebt_ms": { "const": 15000 },
+        "programmstart": { "type": "string", "minLength": 1 },
+        "nur_geaendert": { "type": "string", "minLength": 1 },
+        "rest_s": { "type": "string", "minLength": 1 }
+      }
+    },
+    "leser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pruefreihenfolge", "leer_gruende"],
+      "properties": {
+        "pruefreihenfolge": { "$ref": "#/$defs/namen" },
+        "leer_gruende": { "$ref": "#/$defs/namen" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["takt_s", "min_abstand_ms", "frist_s", "herzschlag_steht_ab_lesung", "schrittgrenze", "ruhe_lesungen", "lage"],
+      "properties": {
+        "takt_s": { "const": 5 },
+        "min_abstand_ms": { "const": 1000 },
+        "frist_s": { "type": "integer", "minimum": 5, "maximum": 600 },
+        "herzschlag_steht_ab_lesung": { "type": "integer", "minimum": 2 },
+        "schrittgrenze": { "type": "integer", "minimum": 1 },
+        "ruhe_lesungen": { "type": "integer", "minimum": 1 },
+        "lage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "schreibt", "wuenscht", "bedeutung"],
+            "properties": {
+              "name": { "$ref": "#/$defs/name" },
+              "schreibt": { "type": "boolean" },
+              "wuenscht": { "type": "boolean" },
+              "bedeutung": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "faelle": {
+      "type": "array",
+      "minItems": 28,
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+  "$defs": {
+    "wort": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "u32": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "s32": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+    "typ": { "enum": ["U16", "S16", "U32", "S32"] },
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "namen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/name" } },
+    "woerter": { "type": "array", "items": { "$ref": "#/$defs/wort" } },
+    "feld": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feld", "adresse", "woerter", "typ", "art", "ungueltig", "einheit", "bedeutung"],
+      "properties": {
+        "feld": { "$ref": "#/$defs/name" },
+        "adresse": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "woerter": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "typ": { "$ref": "#/$defs/typ" },
+        "art": { "enum": ["pruefwert", "version", "fest", "zahl", "zaehler", "echo", "bitfeld", "vokabular", "frei", "siegel"] },
+        "ungueltig": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/u32" }] },
+        "einheit": { "type": "string", "minLength": 1 },
+        "bedeutung": { "type": "string", "minLength": 1 },
+        "soll_woerter": { "$ref": "#/$defs/woerter" },
+        "soll": {},
+        "bits": { "enum": ["e_bits", "q_bits", "a_bits"] },
+        "vokabular": { "enum": ["art", "ziel", "grund", "kopf_urteil", "q_urteil"] }
+      }
+    },
+    "abschnitt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tabelle", "basis", "woerter", "funktionscode", "kopf", "platz", "siegel_wort"],
+      "properties": {
+        "tabelle": { "enum": ["halteregister", "eingangsregister"] },
+        "basis": { "type": "integer", "minimum": 0 },
+        "woerter": { "type": "integer", "minimum": 1, "maximum": 120 },
+        "funktionscode": { "enum": [4, 16] },
+        "zuruecklesen": { "const": 3 },
+        "kopf": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/feld" } },
+        "platz": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["basis", "laenge", "felder"],
+          "properties": {
+            "basis": { "type": "integer", "minimum": 0 },
+            "laenge": { "type": "integer", "minimum": 1 },
+            "felder": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/feld" } }
+          }
+        },
+        "siegel_wort": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "vokabular": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "name"],
+        "properties": {
+          "code": { "$ref": "#/$defs/wort" },
+          "name": { "$ref": "#/$defs/name" },
+          "einheit": { "type": "string", "minLength": 1 },
+          "bedeutung": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "bitfeld": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frei_ab", "bits"],
+      "properties": {
+        "frei_ab": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "bits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bit", "name", "bedeutung"],
+            "properties": {
+              "bit": { "type": "integer", "minimum": 0, "maximum": 15 },
+              "name": { "$ref": "#/$defs/name" },
+              "bedeutung": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "angebot_ein": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "ziel", "nr", "min", "max", "bereit", "gruende"],
+      "properties": {
+        "art": { "$ref": "#/$defs/name" },
+        "ziel": { "$ref": "#/$defs/name" },
+        "nr": { "$ref": "#/$defs/wort" },
+        "min": { "$ref": "#/$defs/s32" },
+        "max": { "$ref": "#/$defs/s32" },
+        "bereit": { "type": "boolean" },
+        "gruende": { "$ref": "#/$defs/namen_leer" }
+      }
+    },
+    "namen_leer": { "type": "array", "items": { "$ref": "#/$defs/name" } },
+    "sps_eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steuerung_id", "fernsteuerung_frei", "hand_ort", "bibliothek", "hoechste_frist_s", "angebot", "rueck"],
+      "properties": {
+        "steuerung_id": { "$ref": "#/$defs/u32" },
+        "fernsteuerung_frei": { "type": "boolean" },
+        "hand_ort": { "type": "boolean" },
+        "bibliothek": { "$ref": "#/$defs/wort" },
+        "hoechste_frist_s": { "type": "integer", "minimum": 5, "maximum": 600 },
+        "angebot": { "type": "object", "additionalProperties": { "$ref": "#/$defs/angebot_ein" } },
+        "rueck": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "wirksam": { "$ref": "#/$defs/s32" }, "ueberstimmt": { "type": "boolean" } }
+          }
+        }
+      }
+    },
+    "fall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "herkunft", "belegt", "steuerung_soll", "sps_anfang", "schritte"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^K[0-9]+b? [a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "const": "vertrag" },
+        "belegt": { "const": false },
+        "steuerung_soll": { "$ref": "#/$defs/u32" },
+        "sps_anfang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["herzschlag", "angenommen_zaehler", "abgelehnt_zaehler"],
+          "properties": {
+            "herzschlag": { "$ref": "#/$defs/wort" },
+            "angenommen_zaehler": { "$ref": "#/$defs/wort" },
+            "abgelehnt_zaehler": { "$ref": "#/$defs/wort" }
+          }
+        },
+        "schritte": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/schritt" } }
+      }
+    },
+    "schritt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t_ms", "q_woerter", "erwartet_sps"],
+      "properties": {
+        "t_ms": { "type": "integer", "minimum": 0 },
+        "warum": { "type": "string", "minLength": 1 },
+        "sps_neustart": { "const": true },
+        "edge_neustart": { "const": true },
+        "sps_steht": { "const": true },
+        "nur_lesen": { "const": true },
+        "liest": { "const": false },
+        "w": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["woerter", "von"],
+          "properties": {
+            "absicht": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sitzung", "herzschlag", "steuerung_id", "frist_s", "e_bits", "plaetze"],
+              "properties": {
+                "sitzung": { "$ref": "#/$defs/wort" },
+                "herzschlag": { "$ref": "#/$defs/wort" },
+                "steuerung_id": { "$ref": "#/$defs/u32" },
+                "frist_s": { "$ref": "#/$defs/wort" },
+                "e_bits": { "$ref": "#/$defs/namen_leer" },
+                "plaetze": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["art", "grund", "wert", "folge"],
+                    "properties": {
+                      "art": { "$ref": "#/$defs/name" },
+                      "grund": { "$ref": "#/$defs/name" },
+                      "wert": { "$ref": "#/$defs/s32" },
+                      "folge": { "$ref": "#/$defs/wort" }
+                    }
+                  }
+                }
+              }
+            },
+            "woerter": { "type": "array", "minItems": 64, "items": { "$ref": "#/$defs/wort" } },
+            "von": { "enum": ["edge", "fremd", "start"] }
+          }
+        },
+        "sps": { "$ref": "#/$defs/sps_eingang" },
+        "q_woerter": { "type": "array", "minItems": 116, "items": { "$ref": "#/$defs/wort" } },
+        "erwartet_sps": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kopf_urteil", "rest_s", "edge_lebt", "wunsch"],
+              "properties": {
+                "kopf_urteil": { "$ref": "#/$defs/name" },
+                "rest_s": { "$ref": "#/$defs/wort" },
+                "edge_lebt": { "type": "boolean" },
+                "wunsch": {
+                  "type": "array",
+                  "minItems": 8,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["gilt", "wert", "grund", "urteil"],
+                    "properties": {
+                      "gilt": { "type": "boolean" },
+                      "wert": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/s32" }] },
+                      "grund": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/name" }, { "$ref": "#/$defs/wort" }] },
+                      "urteil": { "$ref": "#/$defs/name" }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "lesung": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "woerter": { "$ref": "#/$defs/woerter" }, "keine_antwort": { "const": true } }
+        },
+        "erwartet_lesung": { "anyOf": [{ "type": "null" }, { "type": "object" }] },
+        "erwartet_lage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lage", "schreibt", "wuenscht"],
+          "properties": {
+            "lage": { "$ref": "#/$defs/name" },
+            "schreibt": { "type": "boolean" },
+            "wuenscht": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}
