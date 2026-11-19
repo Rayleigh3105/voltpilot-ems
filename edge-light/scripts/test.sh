@@ -42,7 +42,13 @@ go_run CGO_ENABLED=1 -- test -count=1 -race -run 'EdgeLight' ./internal/agent/
 # und schreibt der Core selbst, gegen ein gestelltes Geraet.
 go_run CGO_ENABLED=1 -- test -count=1 -race -run 'Steuerlogik|LogikQuelle|LogikBefehle|ModbusGeraet|KlimaLogik|KuehlraumLogik' ./internal/agent/
 
-echo "--- 4. MIPS-Build (Mango)"
+echo "--- 4. SPS-Bibliothek (CODESYS) gegen die Vertragsvektoren des Erzeuger-Bilds"
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$REPO_ROOT/sps/codesys/pruefer/pruefe.py"
+else
+  echo "    uebersprungen: python3 fehlt"
+fi
+echo "--- 5. MIPS-Build (Mango)"
 go_run GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light
 
 echo "--- alles gruen"
