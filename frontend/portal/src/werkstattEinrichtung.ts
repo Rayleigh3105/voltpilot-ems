@@ -13,6 +13,7 @@
 import { boxOrt, type FernwartungBox } from './adminFernwartung';
 import { beschriftung, type WerkstattAbnahme, type WerkstattBox, type WerkstattGehaeuseDatei } from './werkstatt';
 import { kurzSha, type GehaeuseAuftragAnsicht, type WerkstattFreigabe } from './werkstattBank';
+import { verlaufZeile, type Fernlauf } from './werkstattFernlauf';
 
 /** Die Hardware der Mango, wie das Gehäuse-Programm sie nennt. */
 export const MANGO_HARDWARE = 'GL.iNet GL-MT300N-V2 („Mango“)';
@@ -122,13 +123,17 @@ export function einrichtung(
   box: WerkstattBox,
   freigabe: WerkstattFreigabe | null,
   erstesVerbinden: ErstesVerbinden | null = null,
+  fernlauf: Fernlauf | null = null,
+  jetzt: Date = new Date(),
 ): EinrichtungZeile[] {
   const a = box.abnahmen[0] ?? null;
   const hardware = box.boxArt === 'edge-light' ? MANGO_HARDWARE : 'Docker-Box (Edge App)';
+  const nachDerWerkstatt = fernlaufEinrichtungZeile(fernlauf, jetzt);
   const automatik = erstesVerbindenZeile(erstesVerbinden);
   return [
     { id: 'hardware', titel: 'Hardware', wert: hardware },
     { id: 'edge-light', titel: 'Edge Light (aufgespielt)', wert: a?.fassung ?? null },
+    ...(nachDerWerkstatt ? [nachDerWerkstatt] : []),
     ...(automatik ? [automatik] : []),
     { id: 'openwrt', titel: 'OpenWrt (laut Freigabe)', wert: freigabe ? freigabe.openwrt.fassung : null },
     {
@@ -186,6 +191,16 @@ export function erstesVerbindenZeile(e: ErstesVerbinden | null): EinrichtungZeil
     case 'nicht':
       return { id: 'beim-kunden', titel: 'Beim Kunden', wert: `nicht aktualisiert${e.grund ? `: ${e.grund}` : ''}` };
   }
+}
+
+/**
+ * Die Zeile „Nach der Werkstatt“ (Fernlauf S3, §4.6): der letzte Fernlauf durch den Wartungstunnel für
+ * diese Box, in derselben Sprache wie die Karte „Durch den Tunnel aufspielen“ der Akte; `null` ohne einen.
+ */
+export function fernlaufEinrichtungZeile(f: Fernlauf | null, jetzt: Date): EinrichtungZeile | null {
+  if (!f) return null;
+  const { text, wann } = verlaufZeile(f, jetzt);
+  return { id: 'fernlauf', titel: 'Nach der Werkstatt', wert: `${text} · ${wann}` };
 }
 
 /** Die Bindung: Tunnel-Schlüssel, Zugang, Kunde. `null` = für die Box ist kein Tunnel-Schlüssel hinterlegt (404), also auch kein Kunde. */

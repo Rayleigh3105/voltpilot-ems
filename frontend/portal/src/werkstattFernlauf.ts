@@ -103,6 +103,16 @@ export function fassungKurz(f: string | null | undefined): string {
   return f.replace(/^edge-light-/, '');
 }
 
+/**
+ * Die Linie einer wartenden Box ohne Kundenkonto (4.7): aus der Werkstatt, sonst aus ihrer gemeldeten
+ * Fassung (ohne `edge-light-` ist es eine Docker-Box); `null` ohne beides - unbekannt ist nie „Docker".
+ */
+export function fernlaufLinie(werkstattBoxArt: 'docker' | 'light' | null, laeuft: string | null): 'docker' | 'light' | null {
+  if (werkstattBoxArt) return werkstattBoxArt;
+  if (laeuft == null) return null;
+  return laeuft.startsWith('edge-light-') ? 'light' : 'docker';
+}
+
 function gruppeVon(schritt: string | null): string | null {
   return FERNLAUF_SCHRITTE.find((s) => s.id === schritt)?.gruppe ?? null;
 }

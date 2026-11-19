@@ -92,5 +92,20 @@ for (const breite of BREITEN) {
       await expect(page.getByTestId('akte-verlauf-fernlauf')).toContainText('Über den Tunnel auf 2026.11.15 · fertig · Alex Beispiel');
       await keinUeberlauf(page);
     });
+
+    test('S3 §4.7: eine wartende Docker-Box sagt einen ehrlichen Satz statt des Knopfs - kein Wartungstunnel', async ({ page }, info) => {
+      test.skip(info.project.name !== 'desktop-chromium');
+      const fehler = wache(page);
+      await oeffne(page, breite, 'docker');
+      await expect(page.getByRole('heading', { name: 'Docker-Box' })).toBeVisible();
+      await expect(page.getByText(/Holt beim Verbinden die neueste Fassung/)).toBeVisible();
+      await expect(page.getByTestId('akte-fernlauf-knopf')).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: 'Noch nicht verbunden' })).toHaveCount(0);
+      await keinUeberlauf(page);
+      expect(fehler).toEqual([]);
+      if (process.env.WEG_BILDER) {
+        await page.screenshot({ path: `${process.env.WEG_BILDER}/akte-docker-box-${breite}.png`, animations: 'disabled' });
+      }
+    });
   });
 }

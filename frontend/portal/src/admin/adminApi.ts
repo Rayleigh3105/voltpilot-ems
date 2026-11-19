@@ -966,6 +966,10 @@ export const adminApi = {
   werkstattErstesVerbinden: (ref: string) =>
     request<ErstesVerbinden | undefined>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/erstes-verbinden`),
 
+  /** Fernlauf S3 (§4.6): die Zeile „Nach der Werkstatt" dieser Box; 204 ohne einen. */
+  werkstattFernlaufZeile: (ref: string) =>
+    request<Fernlauf | undefined>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/fernlauf`),
+
   /**
    * Eine Box löschen (etwa einen Fehlversuch) samt Tunnel-Schlüssel, Codes und Geräteschlüssel: 204;
    * 409 mit Grund, wenn sie abgenommen oder gekoppelt ist.

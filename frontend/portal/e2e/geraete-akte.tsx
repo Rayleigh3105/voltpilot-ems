@@ -99,6 +99,11 @@ function fernlaufStand() {
       verlauf: [{ ...auftrag, erteiltAm: iso(-2_000), begonnenAm: null, zustand: 'erteilt', schritt: null, schrittSeit: null, schritte: [], ergebnis: null }] };
   }
   switch (FERNLAUF) {
+    case 'docker':
+      return { ...basis, laeuft: 'edge-2026.10.7', neueste: null, werkstattFassung: null, werkstattAm: null,
+        moeglich: false, haken: { tunnelVerbunden: false, fragtNachSchluesseln: false, keinKundenkonto: true },
+        gruende: [{ code: 'keine_edge_light', text: 'Nur eine Edge-Light-Box hat den Wartungstunnel; diese ist '
+          + 'keine oder meldet ihre Bauart nicht.' }] };
     case 'gesperrt':
       return { ...basis, moeglich: false, haken: { tunnelVerbunden: false, fragtNachSchluesseln: false, keinKundenkonto: true },
         gruende: [{ code: 'nicht_verbunden', text: 'Die Box ist gerade nicht im Tunnel (kein Handshake in den letzten 3 Minuten).' }] };
@@ -152,7 +157,8 @@ Object.assign(adminApi, {
     externalRef: BOX, deviceInfo: 'vp-edge-core edge-light-2026.11.5', csrUpdatedAt: iso(-3 * 3_600_000), everIssued: false,
     issuedAt: null, werkstattAbnahmeAm: iso(-9 * 86_400_000), zuletztAbgefragtAm: iso(-25_000),
   }] : []),
-  werkstattBoxen: async () => (WARTET ? [{
+  // Eine Docker-Box geht nie durch die Werkstatt (2.10): kein Register-Eintrag, also keine Bauart von dort.
+  werkstattBoxen: async () => (WARTET && FERNLAUF !== 'docker' ? [{
     id: 'w1', edgeRef: BOX, boxArt: 'edge-light', lanNetz: '10.213.0.1/24', schritte: {}, notiz: null,
     angelegtAm: iso(-9 * 86_400_000), angelegtVon: 'Werkstatt-Dienst', geaendertAm: iso(-9 * 86_400_000),
     abnahmen: [{ id: 'a1', fassung: 'edge-light-2026.11.5', erfasstAm: iso(-9 * 86_400_000) }],

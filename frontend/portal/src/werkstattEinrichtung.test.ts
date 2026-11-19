@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { FernwartungBox } from './adminFernwartung';
 import type { WerkstattAbnahme, WerkstattBox } from './werkstatt';
-import { bindung, einrichtung, freigabeDerBox, fruehereAbnahmen, gehaeuseStand } from './werkstattEinrichtung';
+import { bindung, einrichtung, fernlaufEinrichtungZeile, freigabeDerBox, fruehereAbnahmen, gehaeuseStand } from './werkstattEinrichtung';
 import type { WerkstattFreigabe } from './werkstattBank';
+import type { Fernlauf } from './werkstattFernlauf';
 
 describe('gehaeuseStand (vp-mango-3mf-pro-box)', () => {
   it('ohne Register-Eintrag: wartet (nie erfunden)', () => {
@@ -84,6 +85,37 @@ describe('einrichtung', () => {
   it('benennt die Hardware je Box-Art', () => {
     expect(wert(einrichtung(box(), null), 'hardware')).toContain('GL-MT300N-V2');
     expect(wert(einrichtung(box({ boxArt: 'edge-app' }), null), 'hardware')).toContain('Docker');
+  });
+});
+
+describe('fernlaufEinrichtungZeile (Fernlauf S3, §4.6: „Nach der Werkstatt")', () => {
+  const lauf: Fernlauf = {
+    id: 'f1', art: 'aufspielen', zustand: 'fertig', fassungVorher: 'edge-light-2026.11.5',
+    fassungZiel: 'edge-light-2026.11.15', akteurName: 'Moritz', erteiltAm: '2026-11-18T16:00:00Z',
+    begonnenAm: '2026-11-18T16:00:30Z', schritt: 'fenster_zu', schrittSeit: '2026-11-18T16:05:00Z',
+    schritte: [], fensterEnde: '2026-11-18T16:30:00Z',
+    ergebnis: {
+      ergebnis: 'fertig', grund: null, schritt: 'fenster_zu', fassungNachher: 'edge-light-2026.11.15',
+      belege: {}, quelle: 'dienst', erfasstAm: '2026-11-18T16:09:00Z',
+    },
+  };
+  const jetzt = new Date('2026-11-19T08:00:00Z');
+
+  it('ohne Fernlauf keine Zeile', () => {
+    expect(fernlaufEinrichtungZeile(null, jetzt)).toBeNull();
+  });
+
+  it('nennt Fassung, Zustand und Akteur wie die Karte „Durch den Tunnel aufspielen" der Akte', () => {
+    expect(fernlaufEinrichtungZeile(lauf, jetzt)).toEqual({
+      id: 'fernlauf', titel: 'Nach der Werkstatt',
+      wert: 'Über den Tunnel auf 2026.11.15 · fertig · Moritz · 18.11., 17:09',
+    });
+  });
+
+  it('einrichtung() reiht sie zwischen der aufgespielten Fassung und „Beim ersten Verbinden" ein', () => {
+    const z = einrichtung(box(), null, null, lauf, jetzt);
+    expect(z.find((x) => x.id === 'fernlauf')?.wert).toContain('fertig');
+    expect(z.map((x) => x.id)).toContain('fernlauf');
   });
 });
 

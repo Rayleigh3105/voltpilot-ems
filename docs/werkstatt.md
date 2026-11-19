@@ -90,6 +90,16 @@ Sicherung zurück. Routen: `GET/POST /api/v1/admin/geraete/{ref}/fernlauf` (Admi
 (Dienst); Tabellen `werkstatt_fernlauf` (Auftrag) und `werkstatt_fernlauf_ergebnis` (nur angehängt), Rechte und RLS
 wie die übrigen Werkstatt-Tabellen.
 
+**Zusammenspiel mit dem ersten Verbinden (S3, §4.6).** Verbindet sich eine Box mit einem Kundenkonto, während für
+ihre Referenz noch ein Fernlauf offen ist (`erteilt` oder `laeuft`), wartet die Regel „neueste Software beim ersten
+Verbinden" (`Erstverbindung.of`, neue Eingabe `fernlaufOffen`), statt ein Urteil zu fällen oder gar zuzuweisen - kein
+Wettlauf zwischen Tunnel- und Cloud-Update. Sobald der Fernlauf kein offener Auftrag mehr ist (Ergebnis, Abholfrist
+oder Fensterende verstrichen), entscheidet die Regel im nächsten Takt wie gewohnt. Die Werkstatt-Seite einer Box
+zeigt den letzten Fernlauf zusätzlich als eigene Zeile „Nach der Werkstatt" (`GET
+/api/v1/admin/werkstatt/boxen/{ref}/fernlauf`, 204 ohne einen); die Abnahme bleibt davon unberührt. Eine wartende
+Docker-Box bekommt in der Geräteakte keinen Knopf (kein Wartungstunnel): „Docker-Box · läuft … · holt beim
+Verbinden die neueste Fassung".
+
 ## Gehäuse-Druckdatei zum Herunterladen
 
 Die Detailseite einer Mango bietet GENAU die Druckdatei dieser Box an, mit Referenz in Klarschrift und

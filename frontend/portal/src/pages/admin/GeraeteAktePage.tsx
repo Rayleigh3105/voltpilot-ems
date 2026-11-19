@@ -50,7 +50,8 @@ import { AdminPageHead } from './AdminPageHead';
 import { Zeitleiste } from './Zeitleiste';
 import { WerkstattBoxSeite } from './WerkstattBoxSeite';
 import {
-  bestaetigung, FERNLAUF_SCHRITTE, fragtSatz, haken as fernlaufHaken, schrittleiste, standZeilen, tunnelKarte, verlaufZeile,
+  bestaetigung, fassungKurz, fernlaufLinie, FERNLAUF_SCHRITTE, fragtSatz, haken as fernlaufHaken, schrittleiste,
+  standZeilen, tunnelKarte, verlaufZeile,
   type Fernlauf, type FernlaufStand,
 } from '../../werkstattFernlauf';
 import '../GeraetSeite.css';
@@ -614,6 +615,22 @@ function AusgebautKarte({ akte, befund, jetzt, onEndgueltigOeffnen }: {
 // ── Software ──────────────────────────────────────────────────────────────
 
 /**
+ * Reiter „Software" einer wartenden Docker-Box (Konzept vp-update-vor-zuordnung S3, §4.7): kein Knopf, denn
+ * Docker-Boxen haben keinen Wartungstunnel - ein ehrlicher Satz statt eines gesperrten Wegs.
+ */
+function DockerWartendeSoftware({ stand }: { stand: FernlaufStand }) {
+  return (
+    <EmptyState icon="refresh-cw" category="primary" title="Docker-Box"
+      description={
+        <>
+          {stand.laeuft ? `Läuft ${fassungKurz(stand.laeuft)} · ` : ''}
+          Holt beim Verbinden die neueste Fassung. Docker-Boxen haben keinen Wartungstunnel.
+        </>
+      } />
+  );
+}
+
+/**
  * Reiter „Software" einer Box ohne Kundenkonto (Konzept vp-update-vor-zuordnung S1, §4.5): „Linie und Stand" mit
  * der Fassung aus ihrer letzten Zertifikatsanfrage (N2) und „Durch den Tunnel aufspielen" - Knopf mit Haken,
  * Bestätigung, Schrittleiste während des Laufs, danach das Ergebnis mit seinen Belegen.
@@ -629,7 +646,7 @@ function WartendeSoftware({ boxRef, stand, jetzt, busy, werkstattBoxArt, onAufsp
 }) {
   const [frage, setFrage] = useState(false);
   const [belegeOffen, setBelegeOffen] = useState(false);
-  const linie: BoxArt | null = werkstattBoxArt ?? (stand.laeuft?.startsWith('edge-light-') ? 'light' : null);
+  const linie = fernlaufLinie(werkstattBoxArt, stand.laeuft);
   const karte = tunnelKarte(stand, jetzt);
   const frageText = bestaetigung(boxRef, stand);
   const knopf = karte.art === 'laeuft' ? null : karte.knopf;
@@ -757,6 +774,10 @@ function SoftwareReiter({ boxRef, fernlauf, row, ersterLeerLauf, verlauf, jetzt,
   werkstattStand: { fassung: string; erfasstAm: string } | null;
 }) {
   if ((ersterLeerLauf || !row) && fernlauf) {
+    // Docker-Boxen haben keinen Wartungstunnel (4.7): ein ehrlicher Satz statt des Fernlauf-Knopfs.
+    if (fernlaufLinie(werkstattBoxArt, fernlauf.laeuft) === 'docker') {
+      return <DockerWartendeSoftware stand={fernlauf} />;
+    }
     return <WartendeSoftware boxRef={boxRef} stand={fernlauf} jetzt={jetzt} busy={busy} werkstattBoxArt={werkstattBoxArt}
       onAufspielen={onAufspielen} onVerbindung={onVerbindung} />;
   }

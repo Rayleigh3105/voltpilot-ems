@@ -284,6 +284,15 @@ Object.assign(adminApi, {
   werkstattErstesVerbinden: async (ref: string) => (ref === 'edge-5t2dcy6'
     ? { stand: 'fertig', release: 'edge-light-2026.11.3', am: iso(-20 * 60_000), grund: null }
     : { stand: 'vorher', release: 'edge-light-2026.11.3', am: null, grund: null }),
+  // Fernlauf S3 (§4.6): edge-5t2dcy6 bekam ihre Fassung schon vor dem Kunden durch den Tunnel.
+  werkstattFernlaufZeile: async (ref: string) => (ref === 'edge-5t2dcy6' ? {
+    id: 'fl1', art: 'aufspielen', zustand: 'fertig' as const, fassungVorher: 'edge-light-2026.11.1',
+    fassungZiel: 'edge-light-2026.11.3', akteurName: 'Alex Beispiel', erteiltAm: iso(-40 * 60_000),
+    begonnenAm: iso(-39 * 60_000), schritt: 'fenster_zu', schrittSeit: iso(-35 * 60_000), schritte: [],
+    fensterEnde: iso(-10 * 60_000),
+    ergebnis: { ergebnis: 'fertig' as const, grund: null, schritt: 'fenster_zu', fassungNachher: 'edge-light-2026.11.3',
+      belege: {}, quelle: 'dienst' as const, erfasstAm: iso(-35 * 60_000) },
+  } : undefined),
   werkstattFreigaben: async () => freigaben,
   werkstattRegel: async () => regel(),
   werkstattAnhalten: async (grund: string | null) => {
