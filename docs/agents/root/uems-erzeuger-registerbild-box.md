@@ -101,6 +101,17 @@ Rollen `pv-generation`/`grid-meter`, und die Rolle `plant-controller` las kein F
 - Abgleich bei Bau: der Leser stimmt mit den EZ-1-Vektoren (20 Fälle) und den EZ-2-Simulatorfällen (9) überein;
   EZ-2 nennt den Wortfolge-Grund noch `wortfolge_abweichend` (WAGO-Wort), der Vertrag `wortfolge_falsch`.
 
+## Koppelbild auf Edge Light (PFC200 Stufe 4)
+
+Box-Seite des [Koppelbilds](../../contracts/v2/koppelbild.md): `internal/koppelbild` (Schreiber, Leser, Lage, Laufzeit je Steuerung) und `layer1/koppel.go`.
+
+- ⚠ **Eine Sitzung:** die Quittung (FC4 1000+116) und das Telegramm (FC16 0+64) laufen in der Sitzung des Erzeuger-Bilds derselben Steuerung, unter ihrer Spur; ein Wunsch-Wechsel schreibt sofort in einer eigenen kurzen Sitzung (höchstens ein Telegramm je Sekunde).
+- ⚠ **Nur mit Erzeuger-Plan und Pin:** ohne Erzeuger-Messplan oder ohne Quelle hinter `edge_source_id` gibt es kein Koppelbild, auch keinen Schalt-Test (`koppel_test` antwortet mit Satz).
+- ⚠ **Ohne `steuerung_kennung` schreibt die Box nie** (Lage `ohne_soll`).
+- **Wünsche** kommen wie bei jedem Adapter aus dem retained `edge/entities/{id}/command` (Stellplätze als `actuate` mit `platz` und `ziel`), `control_enabled` ist das Tor; der Fahrplan legt seine Grenze der Erzeugung (`pv_limit_kw`) auf einen `limit_kw`-Stellplatz mit Ziel `erzeugung_gesamt` (`agent/arbitration.go`).
+- Der Kern pinnt die Anlagensteuerung auf `measure-only` (kein Verbraucher-, Erzeuger- oder Speicherweg); ihre einzige Stufe ist `guard:stellplatz_band`.
+- Stand: retained `edge/koppelbild/status`, im Herzschlag als Block `koppel`; Fähigkeit `koppelbild` nur auf Edge Light.
+
 ## Nachweise
 
 `erzeuger-registerbild.test.js` (Vorlage ⟷ Leser, Gore, Büttner, Fehlerfälle, Stufe, Melde-Regel),
