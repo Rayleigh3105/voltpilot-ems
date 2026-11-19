@@ -100,6 +100,9 @@
               },
               {
                 "$ref": "#/$defs/op_nach_stromausfall_aus"
+              },
+              {
+                "$ref": "#/$defs/op_koppel_test"
               }
             ]
           }
@@ -644,6 +647,82 @@
         }
       }
     },
+    "op_koppel_test": {
+      "type": "object",
+      "title": "op 'koppel_test' - der Schalt-Test eines Stellplatzes im VoltPilot-Koppelbild v1 (PFC200 Stufe 4)",
+      "description": "Der Schalt-Test eines Stellplatzes einer Anlagensteuerung mit Koppelbild (docs/contracts/v2/koppelbild.md §15). Die Box schreibt fuer ttl_s Sekunden auf genau diesem Stellplatz einen Testwunsch (Grund test, e_bits probe) in ihr Telegramm; er hat in dieser Zeit Vorrang vor dem Schiedsrichter der Box und laeuft danach von selbst ab (die Frist des Telegramms ist hoechstens ttl_s). Die SPS entscheidet wie immer selbst: das Ergebnis ist ihre QUITTUNG (Urteil, Folge, wirksamer Wert), nie eine Wirkung. Die Wirkung an der Anlage bestaetigt ein Mensch; erst danach gibt es die Freigabe des Stellplatzes in der Cloud.\n\nDie Box liest das Koppelbild ueber die Verbindung host/port/unit_id derselben Steuerung, die sie fuer das Erzeuger-Bild liest; steuerung_id ist das Soll der Steuerungskennung. Verweigert wird der Test, wenn die Steuerung kein Koppelbild hat, die Kennung nicht passt, eine andere Lage das Schreiben nicht erlaubt (zweiter Schreiber, SPS steht) oder der Stellplatz die Art nicht anbietet - jeweils mit dem Block 'koppel_test', der sagt, was die Box sah.\n\nEine Box, die diesen Op-Typ nicht ausfuehrt (Docker-Box, aelterer Stand), antwortet ehrlich mit 'not_supported'.",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "id",
+        "host",
+        "steuerung_id",
+        "platz",
+        "art",
+        "wert",
+        "ttl_s"
+      ],
+      "properties": {
+        "op": {
+          "const": "koppel_test"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 502
+        },
+        "unit_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 1
+        },
+        "steuerung_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967294,
+          "description": "Das Soll der Steuerungskennung (steuerung_kennung der Fassung); 0 = Grundprogramm ohne Anlage."
+        },
+        "platz": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "art": {
+          "enum": [
+            "limit_w",
+            "limit_pct",
+            "setpoint_w",
+            "on_off",
+            "mode",
+            "setpoint_c"
+          ],
+          "description": "Die Art des Angebots, das die Cloud getestet haben will; bietet der Stellplatz eine andere an, schreibt die Box nichts."
+        },
+        "wert": {
+          "type": "integer",
+          "minimum": -2147483647,
+          "maximum": 2147483646,
+          "description": "Der Testwert in den ganzen Einheiten der Art (W, 0,1 %, 0/1, 1..8, 0,1 °C). Die Cloud hat ihn vorher gegen das Band des Angebots geprueft; die SPS begrenzt trotzdem selbst."
+        },
+        "ttl_s": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 60,
+          "description": "So lange gilt der Testwunsch; danach traegt der Stellplatz wieder, was der Schiedsrichter gewaehrt."
+        }
+      }
+    },
     "probe_result": {
       "type": "object",
       "title": "probe_result (Edge -> Cloud, .../v2/probe-result)",
@@ -771,6 +850,94 @@
             "readback_matches": {
               "type": "boolean",
               "description": "Ob der zurueckgelesene Wert dem geschriebenen entspricht. Fehlt zusammen mit readback - eine nicht durchgefuehrte Ruecklesung ist kein 'passt nicht'."
+            }
+          }
+        },
+        "koppel_test": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lage"
+          ],
+          "description": "Nur bei op 'koppel_test': was die Box sah und was die SPS quittierte. Steht auch bei ok=false, damit eine Ablehnung handhabbar ist. Felder ohne Wert FEHLEN, nie 0.",
+          "properties": {
+            "lage": {
+              "enum": [
+                "bereit",
+                "gesperrt",
+                "sps_neustart",
+                "sps_steht",
+                "zweiter_schreiber",
+                "steuerung_fremd",
+                "nicht_lesbar",
+                "keine_antwort",
+                "ohne_soll"
+              ]
+            },
+            "grund": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "Bei Lage nicht_lesbar der Lesegrund (z. B. signatur_fremd = die Steuerung hat kein Koppelbild)."
+            },
+            "kopf_urteil": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "angebot": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "art",
+                "ziel",
+                "nr",
+                "min",
+                "max",
+                "bits"
+              ],
+              "properties": {
+                "art": {
+                  "type": "string"
+                },
+                "ziel": {
+                  "type": "string"
+                },
+                "nr": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                "min": {
+                  "type": "integer"
+                },
+                "max": {
+                  "type": "integer"
+                },
+                "bits": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "geschrieben": {
+              "type": "boolean",
+              "description": "Ob die Box den Testwunsch geschrieben hat."
+            },
+            "folge": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Die Folge des Testwunschs."
+            },
+            "urteil": {
+              "type": "string",
+              "maxLength": 32,
+              "description": "q_urteil der SPS zu genau dieser Folge; fehlt, solange keine Quittung dazu kam."
+            },
+            "wirksam": {
+              "type": "integer",
+              "description": "q_wirksam: was das Anlagenprogramm fuer das Ziel anwendet; fehlt ohne Wert."
             }
           }
         },

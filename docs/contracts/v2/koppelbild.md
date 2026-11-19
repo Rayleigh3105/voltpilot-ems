@@ -426,9 +426,31 @@ Ein Schalt-Test schreibt für 30 s einen Testwert auf genau einen Stellplatz (Gr
 Sein Beleg ist die Quittung: `q_urteil` und `q_wirksam` zur Folge des Testwunschs.
 Die Wirkung an der Anlage bestätigt ein Mensch; erst danach gibt es die Freigabe.
 
+Der Schalt-Test ist die Probe-Art `koppel_test` (`docs/contracts/mqtt-probe.schema.json`): Verbindung, Soll der Kennung, Stellplatz, Art, Testwert in den Einheiten des Bilds, `ttl_s` 5 bis 60.
+Die Box antwortet mit dem Block `koppel_test` (Lage, Angebot, Folge des Testwunschs, Urteil und wirksamer Wert der SPS); `ok` ist wahr, wenn sie den Testwunsch schreiben konnte und die SPS ihn zu genau dieser Folge quittiert hat.
+
 **Herzschlag-Block `koppel`.**
-Je Steuerung: Datenquelle, Lage, Kopf der Quittung (`bibliothek`, `kopf_urteil`, `rest_s`, `q_bits`, Zähler) und je Stellplatz Angebot, Wunsch der Box (Art, Wert, Grund, Folge), Urteil, Folge und wirksamer Wert.
-Er ist Anzeige; die Cloud zeigt Wunsch, Quittung und Wirkung getrennt und leitet daraus Alarme ab („Steuerung nimmt Wünsche nicht an“, „Bibliothek veraltet“, „zweiter Schreiber“).
+Die Box (Edge Light, Layer 1) legt ihren Stand retained auf `edge/koppelbild/status`, der Core trägt ihn als Block `koppel` im Herzschlag; ohne Steuerung mit Erzeuger-Plan fehlt der Block.
+Er ist Anzeige: die Cloud übernimmt ihn nie in den Soll-Stand, sie zeigt Wunsch, Quittung und Wirkung getrennt und leitet daraus Alarme ab („Steuerung nimmt Wünsche nicht an“, „Bibliothek veraltet“, „zweiter Schreiber“).
+
+```json
+"koppel": [{
+  "steuerung": "<entity_id der Anlagensteuerung>", "data_source_id": "DQ-1",
+  "lage": "bereit", "grund": "signatur_fremd nur bei nicht_lesbar", "gelesen_at": "2026-11-19T21:30:02Z",
+  "bibliothek": "1.0", "kopf_urteil": "angenommen", "rest_s": 58, "q_bits": ["fernsteuerung_frei", "edge_lebt"],
+  "angenommen_zaehler": 97, "abgelehnt_zaehler": 0,
+  "plaetze": [{
+    "platz": 1,
+    "angebot": {"art": "limit_w", "ziel": "erzeugung_gesamt", "nr": 0, "min": 0, "max": 265000, "bits": ["bereit"]},
+    "wunsch": {"art": "limit_w", "grund": "markt", "wert": 159000, "folge": 7}, "test": false,
+    "urteil": "angenommen", "folge": 7, "wirksam": 159000
+  }]
+}]
+```
+
+- `gelesen_at` ist die letzte lesbare Lesung; ohne sie sind Kopf und Stellplätze `null`, nie 0.
+- `plaetze` nennt nur Stellplätze mit Angebot, Wunsch der Box oder einem Urteil außer `kein_wunsch`; `folge` ist das Echo der SPS (`q_folge`), `wunsch.folge` die eigene Folge der Box.
+- Eine Steuerung ohne Koppelbild steht mit `lage` `nicht_lesbar` und `grund` `signatur_fremd` darin.
 
 ## 16. Offen und am Gerät zu erheben
 
