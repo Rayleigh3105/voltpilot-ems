@@ -1188,7 +1188,11 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			"version":         snap.Version,
 			"pairing_state":   snap.PairingState,
 			"cloud_connected": snap.CloudConnected,
-			"uptime_seconds":  int(time.Since(snap.StartedAt).Seconds()),
+			// Erreicht die Box die Cloud (Verbindung steht, oder das Portal
+			// hat eben geantwortet)? Danach schliesst der Waechter des
+			// Einrichtungs-WLANs (edge-light einrichtung-wlan.sh).
+			"cloud_erreicht": snap.CloudReached(time.Now()),
+			"uptime_seconds": int(time.Since(snap.StartedAt).Seconds()),
 			// The OTA verdict (Stufe 1): the supervised on-box test drops a
 			// release into <data_dir>/ota/ and reads it back here - no cloud
 			// link required. Absent until something was actually checked;

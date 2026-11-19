@@ -28,10 +28,14 @@ type Snapshot struct {
 	TenantID     string `json:"tenant_id,omitempty"`
 	MqttHost     string `json:"mqtt_host,omitempty"`
 
-	CloudConnected bool      `json:"cloud_connected"`
-	LastTelemetry  time.Time `json:"last_telemetry,omitzero"`
-	LastCloudPub   time.Time `json:"last_cloud_publish,omitzero"`
-	BufferPending  int       `json:"buffer_pending"`
+	CloudConnected bool `json:"cloud_connected"`
+	// PortalAnsweredAt is the last time the portal answered an enrollment
+	// request (enroll.Enroller.OnAnswer) - how a box without a certificate
+	// (waiting for its assignment) shows that it reaches the cloud.
+	PortalAnsweredAt time.Time `json:"portal_answered_at,omitzero"`
+	LastTelemetry    time.Time `json:"last_telemetry,omitzero"`
+	LastCloudPub     time.Time `json:"last_cloud_publish,omitzero"`
+	BufferPending    int       `json:"buffer_pending"`
 	// BufferDataLoss is true while a long outage is discarding the oldest
 	// buffered telemetry (retention horizon overrun) - the UI warns the customer
 	// instead of the pending count silently plateauing.
@@ -1022,6 +1026,25 @@ type OcppInfo struct {
 // BootNotification IS the connection proof for a charge point. It lives HERE,
 // on the snapshot, so the web gate and the heartbeat cannot drift into two
 // answers to one question.
+// CloudReachWindow is how long a portal answer counts as "reaches the cloud":
+// longer than the slowest poll that produces one (the enrollment poll backs
+// off to 60 s, the identity re-check of a removed box runs every 5 min).
+const CloudReachWindow = 6 * time.Minute
+
+// CloudReached says whether the box reaches the cloud right now: the cloud
+// link is up, or the portal answered an enrollment request within
+// CloudReachWindow (a box waiting for its assignment holds no certificate
+// and so no link). /health reports it as cloud_erreicht; the setup-WLAN
+// watchdog of Edge Light (einrichtung-wlan.sh) closes "VoltPilot-Einrichtung"
+// only on this - an address on WAN or a WLAN without internet is not a
+// connection.
+func (s Snapshot) CloudReached(now time.Time) bool {
+	if s.CloudConnected {
+		return true
+	}
+	return !s.PortalAnsweredAt.IsZero() && now.Sub(s.PortalAnsweredAt) < CloudReachWindow
+}
+
 func (s Snapshot) HasReportedChargePoint() bool {
 	if s.Ocpp == nil {
 		return false

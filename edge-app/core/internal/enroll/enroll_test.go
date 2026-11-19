@@ -873,3 +873,45 @@ func TestContextCancelStopsRun(t *testing.T) {
 		t.Error("cancelled run must return an error")
 	}
 }
+
+// OnAnswer marks every answer of the portal (the proof that a box without a
+// certificate reaches the cloud) - and only an answer: a pending 404 counts,
+// a dial error or a 5xx does not.
+func TestOnAnswerOnlyForRealPortalAnswers(t *testing.T) {
+	zaehle := func(baseURL string) int {
+		var mu sync.Mutex
+		n := 0
+		var states []State
+		e := newEnroller(t, baseURL, t.TempDir(), &states)
+		e.OnAnswer = func() {
+			mu.Lock()
+			defer mu.Unlock()
+			n++
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+		_, _ = e.Run(ctx)
+		mu.Lock()
+		defer mu.Unlock()
+		return n
+	}
+
+	stub := &apiStub{t: t, ca: newTestCA(t), refKnown: true} // never claimed: 202, then 404 polls
+	srv := httptest.NewServer(stub.handler())
+	defer srv.Close()
+	if n := zaehle(srv.URL); n < 2 {
+		t.Errorf("CSR accepted + pending polls must each count as an answer, got %d", n)
+	}
+
+	if n := zaehle("http://127.0.0.1:1"); n != 0 {
+		t.Errorf("a dial error is no answer, got %d", n)
+	}
+
+	err502 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer err502.Close()
+	if n := zaehle(err502.URL); n != 0 {
+		t.Errorf("a 5xx is no answer, got %d", n)
+	}
+}

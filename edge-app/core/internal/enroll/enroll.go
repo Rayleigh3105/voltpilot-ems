@@ -103,6 +103,11 @@ type Enroller struct {
 	DeviceInfo    string
 	// OnState is called on every pairing-state change (for the web UI).
 	OnState func(State)
+	// OnAnswer is called whenever the portal ANSWERED an enrollment request
+	// (CSR upload or certificate poll, any status below 500) - the proof that
+	// the box reaches the cloud before it holds a certificate. A dial error,
+	// a timeout or a 5xx is no answer.
+	OnAnswer func()
 	// Backoff bounds; overridable in tests.
 	PollMin time.Duration
 	PollMax time.Duration
@@ -113,6 +118,12 @@ func (e *Enroller) client() *http.Client {
 		return e.HTTP
 	}
 	return &http.Client{Timeout: 30 * time.Second}
+}
+
+func (e *Enroller) answered(status int) {
+	if status < 500 && e.OnAnswer != nil {
+		e.OnAnswer()
+	}
 }
 
 func (e *Enroller) setState(s State) {
@@ -525,6 +536,7 @@ func (e *Enroller) postCSR(ctx context.Context, csrPem string) (int, []byte, err
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
+	e.answered(resp.StatusCode)
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	return resp.StatusCode, body, nil
 }
@@ -550,6 +562,7 @@ func (e *Enroller) getCertificate(ctx context.Context) (*certificateResponse, er
 		return nil, fmt.Errorf("%w: %v", errPortalUnreachable, err)
 	}
 	defer resp.Body.Close()
+	e.answered(resp.StatusCode)
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, errPending // pending (unclaimed / unknown - indistinguishable by design)
 	}

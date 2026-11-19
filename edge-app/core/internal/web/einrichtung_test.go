@@ -437,7 +437,7 @@ func TestEinrichtungSchranke(t *testing.T) {
 	if w := anfrage("10.213.1.1", "GET", "/api/einrichtung/anmeldung"); w.Code != 200 {
 		t.Fatalf("anmeldung: %d", w.Code)
 	}
-	for _, pfad := range []string{"/api/state", "/einrichten.html", "/index.html", "/", "/health", "/hotspot-detect.html"} {
+	for _, pfad := range []string{"/api/state", "/einrichten.html", "/index.html", "/", "/health", "/hotspot-detect.html", "/api/einrichtungs-wlan"} {
 		w := anfrage("10.213.1.1", "GET", pfad)
 		if w.Code != 302 || w.Header().Get("Location") != "/einrichtung.html" {
 			t.Fatalf("GET %s im Einrichtungs-WLAN: %d %s, soll 302 auf die Seite", pfad, w.Code, w.Header().Get("Location"))
@@ -493,5 +493,92 @@ func TestEinrichtungSeiteTraegtDieSchritte(t *testing.T) {
 		if !strings.Contains(seite, soll) {
 			t.Fatalf("einrichtung.html ohne %q", soll)
 		}
+	}
+}
+
+// Am Kabel zeigt die Seite der Box, ob das Einrichtungs-WLAN offen ist,
+// warum, und wann es sich aendert (Werkbank 19.11.2026: das WLAN war weg, und
+// niemand sah, warum). Ohne Kennung lesbar wie die uebrige Seite am Kabel;
+// nur die Felder fuer die Anzeige, keine Adressen.
+func TestEinrichtungsWlanZustandAmKabel(t *testing.T) {
+	dir := t.TempDir()
+	skript := filepath.Join(dir, "wlan-anschluss.sh")
+	waechter := filepath.Join(dir, "einrichtung-wlan.sh")
+	for _, p := range []string{skript, waechter} {
+		if err := os.WriteFile(p, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := NewEinrichtung(testKennung, skript, "10.213.1.1")
+	if e.waechter != waechter {
+		t.Fatalf("Waechter %q, soll neben dem Netz-Skript liegen (%q)", e.waechter, waechter)
+	}
+	var aufgerufen []string
+	e.waechterAusfuehren = func(_ context.Context, arg ...string) (string, int, error) {
+		aufgerufen = append(aufgerufen, strings.Join(arg, " "))
+		return "einrichtung=zu\nsendet=nein\nkanal=\nssid=VoltPilot-Einrichtung\ncloud=nein\n" +
+			"cloud_grund=portal_nicht_erreichbar\ngrund=wartet\nauf_in=420\nzu_in=\n" +
+			"kunden_wlan=Familie Müller\nwan_traeger=1\nletzte_adresse=192.168.178.44/24\nnotweg=\ntakt=812\n", 0, nil
+	}
+	srv := einrichtungServer(t, e)
+	resp, err := srv.Client().Get(srv.URL + "/api/einrichtungs-wlan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&m)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("Status %d: %v", resp.StatusCode, m)
+	}
+	if len(aufgerufen) != 1 || aufgerufen[0] != "status" {
+		t.Fatalf("Waechter-Aufrufe %v, soll genau einmal status", aufgerufen)
+	}
+	soll := map[string]any{
+		"verfuegbar": true, "einrichtung": "zu", "sendet": "nein", "cloud": "nein",
+		"cloud_grund": "portal_nicht_erreichbar", "grund": "wartet", "auf_in": float64(420),
+		"kunden_wlan": "Familie Müller", "wan_traeger": "1", "takt_ausgeblieben": false,
+	}
+	for k, v := range soll {
+		if m[k] != v {
+			t.Errorf("%s = %v, soll %v", k, m[k], v)
+		}
+	}
+	if _, ok := m["zu_in"]; ok {
+		t.Errorf("zu_in ohne Wert soll fehlen: %v", m["zu_in"])
+	}
+	for _, k := range []string{"letzte_adresse", "notweg"} {
+		if _, ok := m[k]; ok {
+			t.Errorf("%s gehoert nicht in die Antwort", k)
+		}
+	}
+
+	// Ein ausgebliebener Takt (cron) steht als eigene Tatsache drin.
+	e.waechterAusfuehren = func(context.Context, ...string) (string, int, error) {
+		return "einrichtung=zu\ngrund=takt_aus\ntakt=AUSGEBLIEBEN seit 900 s\n", 0, nil
+	}
+	resp, err = srv.Client().Get(srv.URL + "/api/einrichtungs-wlan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = nil
+	_ = json.NewDecoder(resp.Body).Decode(&m)
+	resp.Body.Close()
+	if m["takt_ausgeblieben"] != true || m["grund"] != "takt_aus" {
+		t.Fatalf("ausgebliebener Takt: %v", m)
+	}
+
+	// Ohne Waechter (Docker-Box): nicht verfuegbar, die Seite blendet nichts ein.
+	ohne := NewEinrichtung(testKennung, filepath.Join(t.TempDir(), "wlan-anschluss.sh"), "")
+	srv2 := einrichtungServer(t, ohne)
+	resp, err = srv2.Client().Get(srv2.URL + "/api/einrichtungs-wlan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = nil
+	_ = json.NewDecoder(resp.Body).Decode(&m)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || m["verfuegbar"] != false {
+		t.Fatalf("ohne Waechter: %d %v", resp.StatusCode, m)
 	}
 }
