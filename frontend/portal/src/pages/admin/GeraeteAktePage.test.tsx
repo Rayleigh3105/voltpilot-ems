@@ -295,6 +295,28 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
     expect(screen.getByText('Frisch — normal während der Einrichtung')).toBeInTheDocument();
   });
 
+  // Firstmate vp-wartend-online-aktuell: die Kopfzeile sagte vorher IMMER denselben neutralen
+  // Satz, egal ob die Box noch fragte oder längst verstummt war - dieselbe Rechnung wie die
+  // Karte im Reiter „Einrichtung" muss auch hier gelten, nie eine zweite, abweichende Aussage.
+  it('Kopfzeile einer wartenden Box: „Meldet sich nicht" sobald ihr eigenes Fenster abgelaufen ist, nicht pauschal 11 Minuten', async () => {
+    listPendingEnrollments.mockResolvedValue([{
+      externalRef: 'edge-cyhchfr', deviceInfo: null,
+      csrUpdatedAt: new Date(Date.now() - 8 * 60_000).toISOString(), everIssued: false, issuedAt: null,
+    }]);
+    render(<GeraeteAktePage boxRef="edge-cyhchfr" reiter="einrichtung" />);
+    const kopf = await screen.findByTestId('akte-zustand');
+    expect(kopf).toHaveTextContent('Meldet sich nicht, wartet auf Zuordnung');
+  });
+
+  it('Kopfzeile einer wartenden Box: „Meldet sich" so lange sie innerhalb ihres eigenen Fensters fragt', async () => {
+    listPendingEnrollments.mockResolvedValue([{
+      externalRef: 'edge-cyhchfr', deviceInfo: null, csrUpdatedAt: new Date().toISOString(), everIssued: false, issuedAt: null,
+    }]);
+    render(<GeraeteAktePage boxRef="edge-cyhchfr" reiter="einrichtung" />);
+    const kopf = await screen.findByTestId('akte-zustand');
+    expect(kopf).toHaveTextContent('Meldet sich, wartet auf Zuordnung');
+  });
+
   describe('Reiter Anlage (§4.4, Scheibe S3): Plan, Steuerung, Fassung, Werkzeuge aus vorhandenen Antworten', () => {
     beforeEach(() => {
       edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [connectedRow] });

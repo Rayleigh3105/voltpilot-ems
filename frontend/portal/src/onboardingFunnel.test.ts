@@ -3,6 +3,7 @@ import type { AdminDeviceRow, PendingEnrollment, ProvisionedDevice } from './adm
 import {
   PENDING_KONTEXT,
   TYPO_SUSPECT_AFTER_MS,
+  WARTET_NIE_ZUGEORDNET_ONLINE_WINDOW_MS,
   WARTET_ONLINE_WINDOW_MS,
   deviceRows,
   funnelStages,
@@ -119,14 +120,50 @@ describe('pendingRows', () => {
     expect(pendingErreichbarText(frisch.erreichbar)).toBe('Online');
     expect(pendingErreichbarText(frisch.erreichbar)).not.toBe('Verbunden');
 
-    // Das Fenster folgt dem Abfragetakt der Box (≤ 60 s nie zugeordnet, 5 min getrennt),
-    // nicht dem 15-s-Herzschlag der Flotte: eine verpasste Abfrage kippt sie nicht.
-    const [knapp] = pendingRows([pending('edge-knapp', WARTET_ONLINE_WINDOW_MS - 1000)], NOW);
+    // Das Fenster folgt dem Abfragetakt der Box: eine NIE zugeordnete Box fragt alle ≤ 60 s
+    // und bekommt darum ein enges Fenster (vp-wartend-online-aktuell), nicht dem
+    // 15-s-Herzschlag der Flotte - eine einzelne verpasste Abfrage kippt sie noch nicht.
+    const [knapp] = pendingRows([pending('edge-knapp', WARTET_NIE_ZUGEORDNET_ONLINE_WINDOW_MS - 1000)], NOW);
     expect(knapp.erreichbar.zustand).toBe('online');
 
-    const [offline] = pendingRows([pending('edge-offline', WARTET_ONLINE_WINDOW_MS + 1000)], NOW);
+    const [offline] = pendingRows([pending('edge-offline', WARTET_NIE_ZUGEORDNET_ONLINE_WINDOW_MS + 1000)], NOW);
     expect(offline.erreichbar.zustand).toBe('offline');
     expect(pendingErreichbarText(offline.erreichbar)).toBe('Meldet sich nicht');
+  });
+
+  // Firstmate vp-wartend-online-aktuell (Captain 19.11.2026): „komplett vom Strom genommen
+  // und das wird seit 8 Minuten als online angezeigt" - eine NIE zugeordnete Box fragt alle
+  // ≤ 60 s, die alte pauschale 11-Minuten-Schwelle ließ sie nach dem Ausstecken viel zu lange
+  // auf „Online" stehen. Eine getrennte Box MIT Zertifikat (5-min-Takt) bleibt bei derselben
+  // Stille dagegen zu Recht online - ihr eigener Takt ist viel langsamer.
+  it('eine NIE zugeordnete Box kippt viel früher als eine getrennte mit Zertifikat, bei derselben Stille', () => {
+    const achtMinutenStill = 8 * 60_000;
+    const [nieZugeordnet] = pendingRows([pending('edge-cyhchfr', achtMinutenStill)], NOW);
+    expect(nieZugeordnet.erreichbar.zustand).toBe('offline');
+    expect(pendingErreichbarText(nieZugeordnet.erreichbar)).toBe('Meldet sich nicht');
+
+    const getrennt: PendingEnrollment = {
+      ...pending('edge-getrennt-cert', 30 * 24 * 3600_000, true),
+      zuletztAbgefragtAm: new Date(NOW.getTime() - achtMinutenStill).toISOString(),
+    };
+    const [mitZertifikat] = pendingRows([getrennt], NOW);
+    expect(mitZertifikat.erreichbar.zustand).toBe('online');
+  });
+
+  it('eine getrennte Box MIT Zertifikat behält ihr 11-Minuten-Fenster (5-min-Takt, unverändert)', () => {
+    const knappGetrennt: PendingEnrollment = {
+      ...pending('edge-knapp-getrennt', 30 * 24 * 3600_000, true),
+      zuletztAbgefragtAm: new Date(NOW.getTime() - (WARTET_ONLINE_WINDOW_MS - 1000)).toISOString(),
+    };
+    const [knapp] = pendingRows([knappGetrennt], NOW);
+    expect(knapp.erreichbar.zustand).toBe('online');
+
+    const offlineGetrennt: PendingEnrollment = {
+      ...pending('edge-offline-getrennt', 30 * 24 * 3600_000, true),
+      zuletztAbgefragtAm: new Date(NOW.getTime() - (WARTET_ONLINE_WINDOW_MS + 1000)).toISOString(),
+    };
+    const [offline] = pendingRows([offlineGetrennt], NOW);
+    expect(offline.erreichbar.zustand).toBe('offline');
   });
 
   // vp-entkoppelte-box-meldet-verbunden (edge-px6jphw, D3 = A): eine getrennte Box mit

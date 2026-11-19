@@ -176,25 +176,41 @@ export function pendingErreichbarText(v: BoxVerbindung): string {
 }
 
 /**
- * Online-Fenster einer wartenden Box (vp-entkoppelte-box-meldet-verbunden, D3 = A). Ihr
+ * Online-Fenster einer wartenden Box, die schon einmal ein Zertifikat bekommen hat
+ * (`everIssued`) und jetzt getrennt ist (vp-entkoppelte-box-meldet-verbunden, D3 = A). Ihr
  * Lebenszeichen ist keine Herzschlag-Meldung (15 s, dafür gilt `boxVerbindung` der Flotte),
- * sondern ihre Zertifikats-Abfrage: eine nie zugeordnete Box fragt alle ≤ 60 s, eine
- * getrennte Box mit Zertifikat im Abgleich-Takt alle 5 min (Edge-Core `reconcileLoop`), und
- * die API notiert höchstens eine Abfrage je Minute. Zwei Abgleich-Takte plus diese Minute:
- * eine verpasste Abfrage kippt die Box noch nicht auf „Meldet sich nicht". Mit der
+ * sondern ihre Zertifikats-Abfrage im Abgleich-Takt alle 5 min (Edge-Core `reconcileLoop`),
+ * und die API notiert höchstens eine Abfrage je Minute. Zwei Abgleich-Takte plus diese
+ * Minute: eine verpasste Abfrage kippt die Box noch nicht auf „Meldet sich nicht". Mit der
  * Flotten-Schwelle (45 s / 5 min) stünde eine erreichbare getrennte Box fast immer auf
  * „Verzögert" und flackerte an der 5-min-Grenze.
  */
 export const WARTET_ONLINE_WINDOW_MS = 11 * 60 * 1000;
 
 /**
+ * Online-Fenster einer wartenden Box, die NIE zugeordnet war (noch kein Zertifikat bekam -
+ * `everIssued === false`): sie fragt laut Edge-Core-Enrollment alle ≤ 60 s, nicht alle 5 min
+ * (Firstmate vp-wartend-online-aktuell, Captain 19.11.2026: komplett vom Strom genommen
+ * stand sie mit der pauschalen 11-Minuten-Schwelle noch 8 Minuten lang weiter auf „Online" -
+ * ihr eigener, viel schnellerer Takt hätte das Schweigen längst verraten). Zwei ausgebliebene
+ * Abfragen plus die eine Minute, die die API höchstens einmal je Minute notiert: 2 × 60 s +
+ * 60 s = 3 Min.
+ */
+export const WARTET_NIE_ZUGEORDNET_ONLINE_WINDOW_MS = 3 * 60 * 1000;
+
+/**
  * Erreichbarkeit einer wartenden Box aus ihrem letzten Lebenszeichen: die spätere von
  * letzter CSR (`csrUpdatedAt`) und letzter Zertifikats-Abfrage (`zuletztAbgefragtAm`).
  * Eine Box mit Zertifikat schickt nie wieder eine CSR - ohne die Abfrage stünde sie nach
  * einer Trennung für immer auf „Meldet sich nicht", auch wenn sie im Takt fragt.
+ *
+ * Das Fenster selbst folgt `everIssued` (vp-wartend-online-aktuell): eine nie zugeordnete
+ * Box fragt sehr viel öfter als eine getrennte mit Zertifikat, darum braucht sie ein viel
+ * engeres Fenster, um „ziemlich aktuell" zu sein - EIN Ort für diese Entscheidung, den auch
+ * die Akte und die Kopfzeile lesen (`pendingRows`).
  */
 export function wartendeVerbindung(
-  p: Pick<PendingEnrollment, 'csrUpdatedAt' | 'zuletztAbgefragtAm'>,
+  p: Pick<PendingEnrollment, 'csrUpdatedAt' | 'zuletztAbgefragtAm' | 'everIssued'>,
   now: Date,
 ): BoxVerbindung {
   const zeiten = [p.csrUpdatedAt, p.zuletztAbgefragtAm ?? null]
@@ -204,7 +220,8 @@ export function wartendeVerbindung(
     return { zustand: 'nie', tone: 'off', text: 'Wartet auf erste Meldung', lastSeenText: DASH };
   }
   const age = now.getTime() - Math.max(...zeiten);
-  if (age <= WARTET_ONLINE_WINDOW_MS) {
+  const window = p.everIssued ? WARTET_ONLINE_WINDOW_MS : WARTET_NIE_ZUGEORDNET_ONLINE_WINDOW_MS;
+  if (age <= window) {
     return { zustand: 'online', tone: 'ok', text: 'Online', lastSeenText: relAge(age) };
   }
   return { zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht', lastSeenText: relAge(age) };

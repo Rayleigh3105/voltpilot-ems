@@ -256,11 +256,20 @@ Object.assign(adminApi, {
   ],
   // Herkunft (vp-geraete-herkunft): eine Anmeldung aus der Werkstatt neben einer selbst
   // angemeldeten - die eine ehrliche Angabe, nie eine Vermutung über die Ursache.
+  // Firstmate vp-wartend-online-aktuell (Captain 19.11.2026): „komplett vom Strom genommen,
+  // seit 8 Minuten als online angezeigt" - eine NIE zugeordnete Box fragt alle ≤ 60 s und
+  // kippt darum nach ca. 3 Minuten Stille, eine getrennte Box MIT Zertifikat fragt nur alle
+  // 5 min und bleibt bei derselben Stille zu Recht online.
   listPendingEnrollments: async () => [
     { externalRef: 'edge-xyz234q', deviceInfo: 'Box im Lager', csrUpdatedAt: now,
       everIssued: false, issuedAt: null, werkstattAbnahmeAm: null },
     { externalRef: 'edge-wrk88z2k', deviceInfo: null, csrUpdatedAt: vor(2 * 24 * 3600_000 + 60_000),
       everIssued: false, issuedAt: null, werkstattAbnahmeAm: vor(10 * 24 * 3600_000) },
+    { externalRef: 'edge-cyhchfr', deviceInfo: null, csrUpdatedAt: vor(8 * MIN),
+      everIssued: false, issuedAt: null, werkstattAbnahmeAm: vor(10 * 24 * 3600_000) },
+    { externalRef: 'edge-px6jphw', deviceInfo: null, csrUpdatedAt: vor(30 * 24 * 3600_000),
+      everIssued: true, issuedAt: vor(30 * 24 * 3600_000), werkstattAbnahmeAm: null,
+      zuletztAbgefragtAm: vor(8 * MIN) },
   ],
   createRollout: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },
   setUpdateTarget: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },
