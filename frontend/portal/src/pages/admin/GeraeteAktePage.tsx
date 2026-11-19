@@ -262,7 +262,7 @@ export function GeraeteAktePage({
       <AktenKopf boxRef={boxRef} row={row} deviceRow={deviceRow} pendingRow={pendingRow} jetzt={jetzt}
         tunnelUpdate={row == null && fernlauf != null && (fernlauf.moeglich || fernlauf.verlauf.length > 0)}
         reiter={reiter} onReiter={nav} onNavigate={onNavigate} pulsiert={pulsiert} nieGemeldet={nieGemeldet}
-        werkstattBoxArt={werkstattBoxArtWert}
+        werkstattBoxArt={fernlaufLinie(werkstattBoxArtWert, fernlauf?.laeuft ?? null)}
         onLoesenOeffnen={() => setLoesenOffen(true)}
         ausgebautAm={ausgebaut ? (akte?.kopf?.ausgebautAm ?? akte?.lebensabschnittSeit ?? null) : null}
         onEndgueltigOeffnen={() => setEndgueltigOffen(true)}
@@ -353,7 +353,8 @@ function AktenKopf({
   /** Ausgebaut (vierter Löschweg): der Kopf sagt es, das Menü bietet „Endgültig löschen …" an. */
   ausgebautAm: string | null;
   onEndgueltigOeffnen: () => void;
-  /** N2: Bauart aus der Werkstatt, solange die Box selbst noch nichts meldet. */
+  /** N2/Fernlauf S3 (§4.7): Bauart aus der Werkstatt oder (ohne Werkstatt-Eintrag) aus der von
+      ihr gemeldeten Fassung, solange die Box selbst noch kein Kundenkonto hat. */
   werkstattBoxArt: BoxArt | null;
   /** Fernlauf (§4.5): „Aktualisieren" auch für die wartende Box, führt auf die Karte im Reiter „Software". */
   tunnelUpdate: boolean;
@@ -362,6 +363,11 @@ function AktenKopf({
   const reiterRand = useReiterRand<HTMLDivElement>();
   const verbindung = row ? verbindungSicht(row, jetzt) : null;
   const name = row?.siteName?.trim() || deviceRow?.label || boxRef;
+  const zeigtFernwartung = row != null && !nieGemeldet;
+  const zeigtAktualisieren = (row != null && !nieGemeldet && !(row.stand === 'hand' || row.stufe1)) || (row == null && tunnelUpdate);
+  // S3 §4.7: eine wartende Docker-Box hat keinen der beiden Knöpfe - ohne Markierung stand das Menü
+  // am Telefon dann allein auf einer eigenen, fast leeren Zeile statt rechtsbündig neben Stand/Zustand.
+  const nurMenu = !zeigtFernwartung && !zeigtAktualisieren;
   const zustandBadge = ausgebautAm != null
     ? { variant: 'off' as const, text: `Ausgebaut · ${fmtRelative(ausgebautAm, jetzt)}` }
     : verbindung
@@ -391,7 +397,7 @@ function AktenKopf({
         actions={
           // Am Telefon: Zustand und Stand in EINER Zeile, darunter die Knöpfe in einer Reihe
           // (vorher verteilten sich Stand, Zustand und drei Knöpfe auf drei unordentliche Zeilen).
-          <div className="vp-row-gap vp-akte-aktionen" style={{ alignItems: 'center' }}>
+          <div className={`vp-row-gap vp-akte-aktionen${nurMenu ? ' vp-akte-aktionen--nur-menu' : ''}`} style={{ alignItems: 'center' }}>
             <span className="vp-akte-status">
               <span className="vp-muted vp-text-sm" data-testid="akte-stand">{stand}</span>
               <Badge variant={zustandBadge.variant} dot pulse={pulsiert} data-testid="akte-zustand">
@@ -401,10 +407,10 @@ function AktenKopf({
             {/* N8: eine Box, die sich nie gemeldet hat, hat weder einen Tunnel noch einen Software-
                 Stand zu öffnen - die Knöpfe boten vorher zwei Reiter an, deren Inhalt nie entstehen
                 kann, und am Telefon klebte „Fernwartung öffnen" zusätzlich am Rand. */}
-            {row && !nieGemeldet && (
+            {zeigtFernwartung && (
               <Button variant="outline" size="sm" onClick={() => onReiter('verbindung')}>Fernwartung öffnen</Button>
             )}
-            {((row && !nieGemeldet && !(row.stand === 'hand' || row.stufe1)) || (!row && tunnelUpdate)) && (
+            {zeigtAktualisieren && (
               <Button variant="outline" size="sm" onClick={() => onReiter('software')}>Aktualisieren</Button>
             )}
             <div className="vp-akte-menu" style={{ position: 'relative' }}>

@@ -234,6 +234,11 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
         'Läuft edge-2026.10.7 · Holt beim Verbinden die neueste Fassung. Docker-Boxen haben keinen Wartungstunnel.');
       expect(screen.queryByTestId('akte-fernlauf-knopf')).toBeNull();
       expect(screen.queryByRole('heading', { name: 'Noch nicht verbunden' })).toBeNull();
+      // Review zu PR #1948: der Kopf nennt die Bauart (wie bei Edge Light „Edge Light" vor der
+      // Kennung), und ohne Knopf bleibt das Menü „⋯" neben Stand/Zustand statt auf einer eigenen Zeile.
+      expect(screen.getByTestId('box-art')).toHaveTextContent('Docker-Box');
+      expect(screen.getByTestId('box-art')).toHaveAttribute('data-box-art', 'docker');
+      expect(document.querySelector('.vp-akte-aktionen--nur-menu')).not.toBeNull();
     });
   });
 

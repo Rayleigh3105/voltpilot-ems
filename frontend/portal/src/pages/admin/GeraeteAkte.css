@@ -69,6 +69,11 @@
   .vp-akte-aktionen .vp-akte-status [data-testid='akte-stand'] { font-size: 0.8125rem; }
   .vp-akte-aktionen > .vp-btn { flex: 1 1 0; min-width: 0; }
   .vp-akte-aktionen > .vp-akte-menu { flex: 0 0 auto; }
+
+  /* S3 §4.7: ohne „Fernwartung öffnen" oder „Aktualisieren" (wartende Docker-Box) bleibt das Menü
+     in der Zeile von Stand/Zustand, rechtsbündig - statt allein auf einer eigenen, fast leeren Zeile. */
+  .vp-akte-aktionen--nur-menu .vp-akte-status { flex: 1 1 auto; }
+  .vp-akte-aktionen--nur-menu > .vp-akte-menu { flex: 0 0 auto; margin-left: auto; }
 }
 
 .vp-akte-menu-liste {
