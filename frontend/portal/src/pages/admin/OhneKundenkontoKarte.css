@@ -9,9 +9,14 @@
 .vp-gu-ok-reihe .vp-alert { margin: 0; }
 
 .vp-gu-ok-liste { display: grid; gap: 8px; }
+/* Jede Zeile ist ihr EIGENER Grid-Container (ein `<li>`); „auto"- oder `fr`-Spalten neben einer
+   inhaltsabhängigen Spalte (Grund-Satz, mal ein Knopf) läsen sich je Zeile VERSCHIEDEN auf - Box, Fassung
+   und Tunnel rutschten dann zeilenweise gegeneinander. Deshalb feste (oder fest begrenzte) Breiten für
+   Fassung/Tunnel/Knopf-oder-Grund; nur die Box-Spalte ist `1fr` und holt sich den ganzen Rest - der ist in
+   jeder Zeile gleich groß, weil die drei anderen Spalten nie vom Inhalt abhängen. */
 .vp-gu-ok-zeile {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 104px minmax(170px, 230px) minmax(210px, 260px);
   gap: 12px;
   align-items: center;
   background: #fff;
@@ -19,9 +24,10 @@
   border-radius: 12px;
   padding: 10px 14px;
 }
-.vp-gu-ok-ref { font-weight: 700; text-align: left; overflow-wrap: anywhere; }
+.vp-gu-ok-ref { font-weight: 700; text-align: left; overflow-wrap: anywhere; min-width: 0; }
 .vp-gu-ok-fassung { justify-self: start; }
-.vp-gu-ok-grund { text-align: right; }
+/* Der Grund nimmt die Spalte des Knopfs ein und bricht DORT um - die anderen Spalten rücken nicht. */
+.vp-gu-ok-grund { text-align: left; }
 
 @media (max-width: 720px) {
   .vp-gu-ok-zeile { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
