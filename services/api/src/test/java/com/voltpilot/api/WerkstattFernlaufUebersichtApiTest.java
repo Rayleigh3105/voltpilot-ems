@@ -54,11 +54,11 @@ class WerkstattFernlaufUebersichtApiTest {
     private static final String ADMIN_USER = "voltpilot_admin";
     private static final String ADMIN_PW = "voltpilot_admin_test_pw";
 
-    /** Erfundene Kennungen mit gültigem Prüfzeichen (edge-ref-vectors.json). */
-    private static final String BEREIT = "edge-k9n3xy7";
-    private static final String GESPERRT = "edge-m4p7qr2";
-    private static final String MIT_KONTO = "edge-q2w5er8";
-    private static final String MIT_ZERTIFIKAT = "edge-t6y9ui3";
+    /** Gültige Kennungen aus edge-ref-vectors.json ({@code gueltig}). */
+    private static final String BEREIT = "edge-k7m2xq3";
+    private static final String GESPERRT = "edge-mnpqrsb";
+    private static final String MIT_KONTO = "edge-zz9988g";
+    private static final String MIT_ZERTIFIKAT = "edge-h4n7wp7";
     private static final UUID TECHNIKER = UUID.fromString("7e57ab1e-0001-4000-8000-00000000f1a5");
     private static final String ALT = "edge-light-2026.11.5";
     private static final String NEU = "edge-light-2026.11.15";
@@ -148,9 +148,19 @@ class WerkstattFernlaufUebersichtApiTest {
         anlegenUndMelden(BEREIT, "10.10.18.1");
         rueckmeldung(zugangDer(BEREIT), Instant.now().minusSeconds(60), Instant.now().minusSeconds(10));
 
-        // GESPERRT: dieselbe Lage, aber ihr Tunnel-Dienst hat seit mehr als drei Minuten nichts gemeldet.
+        // GESPERRT: dieselbe Lage, aber ihr Tunnel-Dienst hat seit mehr als drei Minuten nichts gemeldet - keine
+        // Rückmeldung in der Fernwartung, keine `rueckmeldung()` hier (sonst wäre die Meldung gerade erst
+        // angenommen, nur mit alten Werten drin).
         anlegenUndMelden(GESPERRT, "10.10.18.2");
-        rueckmeldung(zugangDer(GESPERRT), Instant.now().minusSeconds(600), Instant.now().minusSeconds(600));
+
+        // UNLESBAR: eine freie Kennung ohne gültiges Prüfzeichen (wie {@code edge-fresh-01} aus
+        // edge-ref-vectors.json - kein Tippfehler, sondern ein echtes, freies Format). Die Vorprüfung einer
+        // einzelnen Box lehnt das mit 422 ab; die Liste darf das nicht in einen 422 für alle verwandeln, sondern
+        // zeigt diese eine Box mit Grund.
+        String unlesbar = "edge-fresh-01";
+        adminJdbc.update("INSERT INTO fernwartung_zugang (id, art, edge_ref, public_key, tunnel_adresse, "
+                + "angelegt_von, geaendert_von) VALUES (?, 'box', ?, ?, ?::inet, 'test', 'test')",
+                UUID.randomUUID(), unlesbar, zugangsSchluessel(unlesbar), "10.10.18.9/32");
 
         // MIT_KONTO: hat längst ein Kundenkonto (Gerätezeile) - ihr Update läuft über die Updates im Portal.
         anlegenUndMelden(MIT_KONTO, "10.10.18.3");
@@ -177,17 +187,26 @@ class WerkstattFernlaufUebersichtApiTest {
         JsonNode liste = json.readTree(r.getBody());
         List<String> refs = StreamSupport.stream(liste.spliterator(), false).map(n -> n.get("edgeRef").asText())
                 .toList();
-        // Nur die zwei Boxen ohne Kundenkonto und ohne Zertifikat; alphabetisch, nie die anderen zwei.
-        assertThat(refs).containsExactly(BEREIT, GESPERRT);
+        // Die drei Boxen ohne Kundenkonto und ohne Zertifikat; alphabetisch, nie die anderen zwei.
+        // "edge-fresh-01" vor "edge-k7m2xq3" vor "edge-mnpqrsb" ('f' < 'k' < 'm').
+        assertThat(refs).containsExactly(unlesbar, BEREIT, GESPERRT);
 
-        JsonNode bereit = liste.get(0);
+        JsonNode kaputt = liste.get(0);
+        assertThat(kaputt.get("moeglich").asBoolean()).as(kaputt.toString()).isFalse();
+        assertThat(kaputt.get("laeuft").isNull()).isTrue();
+        assertThat(StreamSupport.stream(kaputt.get("gruende").spliterator(), false).map(g -> g.get("code").asText())
+                .toList()).containsExactly("stand_unlesbar");
+
+        JsonNode bereit = liste.get(1);
+        assertThat(bereit.get("edgeRef").asText()).isEqualTo(BEREIT);
         assertThat(bereit.get("moeglich").asBoolean()).as(bereit.toString()).isTrue();
         assertThat(bereit.get("laeuft").asText()).isEqualTo(ALT);
         assertThat(bereit.get("neueste").asText()).isEqualTo(NEU);
         assertThat(bereit.get("haken").get("keinKundenkonto").asBoolean()).isTrue();
         assertThat(bereit.get("verlauf").isArray()).isTrue();
 
-        JsonNode gesperrt = liste.get(1);
+        JsonNode gesperrt = liste.get(2);
+        assertThat(gesperrt.get("edgeRef").asText()).isEqualTo(GESPERRT);
         assertThat(gesperrt.get("moeglich").asBoolean()).isFalse();
         List<String> codes = StreamSupport.stream(gesperrt.get("gruende").spliterator(), false)
                 .map(g -> g.get("code").asText()).toList();
