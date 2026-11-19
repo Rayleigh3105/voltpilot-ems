@@ -276,3 +276,54 @@ export function fragtSatz(
   const fragt = fragtText(p.zuletztAbgefragtAm ?? null, jetzt);
   return `Fragt ${fragt} · zuletzt gestartet ${zeitpunkt(p.csrUpdatedAt, jetzt)}${p.deviceInfo ? ` · ${p.deviceInfo}` : ''}.`;
 }
+
+// ── Karte „Ohne Kundenkonto" (S2: Plattform › Geräte › Updates) ─────────────
+//
+// `GET /api/v1/admin/geraete/ohne-kundenkonto` liefert denselben Stand wie `geraeteFernlauf`, einmal je Box ohne
+// Kundenkonto mit Tunnel-Zugang - reine Ableitung, die Seite rendert nur.
+
+/** Die Boxen, die „Aufspielen" oder „Alle aufspielen" gerade anfassen dürfen: die Vorprüfung ist erfüllt. */
+export function bereitZumAufspielen(liste: FernlaufStand[]): FernlaufStand[] {
+  return liste.filter((s) => s.moeglich);
+}
+
+/** Die Kopfzeile der Karte: „3 Boxen warten auf ihr Kundenkonto · 2 laufen älter als 2026.11.15". */
+export function ohneKundenkontoKopf(liste: FernlaufStand[]): string {
+  if (liste.length === 0) return 'Keine Box wartet gerade auf ihr Kundenkonto.';
+  const satz = `${liste.length} ${liste.length === 1 ? 'Box wartet' : 'Boxen warten'} auf ihr Kundenkonto`;
+  const bereit = bereitZumAufspielen(liste);
+  const ziel = liste.find((s) => s.neueste)?.neueste ?? null;
+  if (bereit.length === 0 || !ziel) return satz;
+  return `${satz} · ${bereit.length} ${bereit.length === 1 ? 'läuft' : 'laufen'} älter als ${fassungKurz(ziel)}`;
+}
+
+export interface BrauchtDichFernlaufEintrag {
+  edgeRef: string;
+  titel: string;
+  text: string;
+  ton: 'warn' | 'off';
+}
+
+/**
+ * „Braucht dich" der Karte: jede Box, deren letzter Fernlauf zurückgenommen wurde oder offen blieb - mit Grund
+ * und (über `edgeRef`) dem Weg in ihre Akte. Ein Fernlauf, der nichts geändert hat (Fenster zu, inzwischen
+ * verbunden) oder fertig wurde, braucht niemanden.
+ */
+export function brauchtDichFernlauf(liste: FernlaufStand[], jetzt: Date): BrauchtDichFernlaufEintrag[] {
+  const eintraege: BrauchtDichFernlaufEintrag[] = [];
+  for (const s of liste) {
+    const f = s.verlauf[0];
+    if (!f || (f.zustand !== 'zurueck' && f.zustand !== 'offen')) continue;
+    const zeile = verlaufZeile(f, jetzt);
+    eintraege.push({ edgeRef: s.edgeRef, titel: s.edgeRef, text: zeile.text, ton: zeile.ton === 'off' ? 'off' : 'warn' });
+  }
+  return eintraege;
+}
+
+/** Der Fortschritt von „Alle aufspielen" (§4.1: nacheinander, einer zur Zeit, Abbruch nach einer Rücknahme). */
+export interface AlleAufspielenStand {
+  gesamt: number;
+  erledigt: number;
+  aktuellRef: string | null;
+  abgebrochen: { edgeRef: string; grund: string } | null;
+}

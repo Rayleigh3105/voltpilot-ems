@@ -81,14 +81,21 @@ public class AdminFernlaufController {
 
     @GetMapping
     public ResponseEntity<StandDto> stand(@PathVariable String ref) {
-        FernlaufService.Stand s = fernlauf.stand(ref);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(standDto(fernlauf.stand(ref), json));
+    }
+
+    /**
+     * Derselbe Stand, wie ihn eine Box in ihrer Akte zeigt - auch für die Karte „Ohne Kundenkonto" (S2, einmal je
+     * Box, {@link AdminFernlaufUebersichtController}): keine zweite Vorprüfung, nur dieselbe Abbildung.
+     */
+    static StandDto standDto(FernlaufService.Stand s, ObjectMapper json) {
         FernlaufRegel.Urteil u = s.urteil();
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new StandDto(s.edgeRef(), s.laeuft(),
-                s.laeuftGemeldetAm(), s.fragtZuletztAm(), s.neueste(), s.werkstattFassung(), s.werkstattAm(),
-                u.moeglich(), u.gruende().stream().map(g -> new GrundDto(g.code(), g.text())).toList(),
+        return new StandDto(s.edgeRef(), s.laeuft(), s.laeuftGemeldetAm(), s.fragtZuletztAm(), s.neueste(),
+                s.werkstattFassung(), s.werkstattAm(), u.moeglich(),
+                u.gruende().stream().map(g -> new GrundDto(g.code(), g.text())).toList(),
                 new HakenDto(u.haken().tunnelVerbunden(), u.haken().fragtNachSchluesseln(),
                         u.haken().keinKundenkonto()),
-                s.verlauf().stream().map(f -> dto(f, s.jetzt())).toList(), s.jetzt()));
+                s.verlauf().stream().map(f -> dto(f, s.jetzt(), json)).toList(), s.jetzt());
     }
 
     /** „Auf … bringen“: 201 mit dem Auftrag; 409 mit Grund; 422 Kennung. */

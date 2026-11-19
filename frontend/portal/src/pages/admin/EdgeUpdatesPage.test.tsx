@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EdgeUpdates, FleetRow, UpdateFakten } from '../../adminEdgeUpdates';
+import type { FernlaufStand } from '../../werkstattFernlauf';
 
 const edgeUpdates = vi.fn();
 const edgeRelease = vi.fn();
@@ -12,6 +13,9 @@ const revertUpdateTarget = vi.fn();
 const listDevices = vi.fn();
 const erstverbindungSchalter = vi.fn();
 const erstverbindungSchalten = vi.fn();
+const geraeteOhneKundenkonto = vi.fn();
+const geraeteFernlauf = vi.fn();
+const geraeteFernlaufAufspielen = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -25,6 +29,9 @@ vi.mock('../../admin/adminApi', () => ({
     listDevices: (...a: unknown[]) => listDevices(...a),
     erstverbindungSchalter: (...a: unknown[]) => erstverbindungSchalter(...a),
     erstverbindungSchalten: (...a: unknown[]) => erstverbindungSchalten(...a),
+    geraeteOhneKundenkonto: (...a: unknown[]) => geraeteOhneKundenkonto(...a),
+    geraeteFernlauf: (...a: unknown[]) => geraeteFernlauf(...a),
+    geraeteFernlaufAufspielen: (...a: unknown[]) => geraeteFernlaufAufspielen(...a),
   },
 }));
 
@@ -149,6 +156,7 @@ describe('EdgeUpdatesPage', () => {
     boxVerlauf.mockResolvedValue({ deviceId: 'd1', eintraege: [] });
     listDevices.mockResolvedValue([]);
     erstverbindungSchalter.mockResolvedValue({ alle: true, docker: true, light: true, eintraege: [] });
+    geraeteOhneKundenkonto.mockResolvedValue([]);
   });
 
   it('Erstverbindung: der Schalter der Automatik je Linie, ohne Deploy - danach lädt die Seite neu', async () => {
@@ -674,5 +682,109 @@ describe('EdgeUpdatesPage', () => {
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
     expect(await screen.findByTestId('fleet-pointer')).toHaveTextContent('Crossover offen');
+  });
+
+  describe('Ohne Kundenkonto (vp-update-vor-zuordnung, S2)', () => {
+    function fernlaufStand(over: Partial<FernlaufStand> = {}): FernlaufStand {
+      return {
+        edgeRef: 'edge-k7m2xq3', laeuft: 'edge-light-2026.11.5', laeuftGemeldetAm: '2026-11-18T15:55:00Z',
+        fragtZuletztAm: '2026-11-18T16:57:40Z', neueste: 'edge-light-2026.11.15',
+        werkstattFassung: 'edge-light-2026.11.5', werkstattAm: '2026-11-09T15:06:00Z', moeglich: true, gruende: [],
+        haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true }, verlauf: [],
+        stand: '2026-11-18T16:58:00Z', ...over,
+      };
+    }
+
+    it('zeigt jede Box mit ihrem Stand; eine Box ohne Knopf nennt den Grund', async () => {
+      geraeteOhneKundenkonto.mockResolvedValue([
+        fernlaufStand(),
+        fernlaufStand({ edgeRef: 'edge-mnpqrsb', moeglich: false,
+          gruende: [{ code: 'nicht_verbunden', text: 'Die Box ist gerade nicht im Tunnel.' }] }),
+      ]);
+      render(<EdgeUpdatesPage />);
+      const karte = await screen.findByTestId('ohne-kundenkonto');
+      expect(karte).toHaveTextContent('2 Boxen warten auf ihr Kundenkonto');
+      const zeilen = within(karte).getAllByTestId('ohne-kundenkonto-zeile');
+      expect(zeilen[0]).toHaveTextContent('edge-k7m2xq3');
+      expect(within(zeilen[0]).getByRole('button', { name: 'Auf 2026.11.15 bringen' })).toBeInTheDocument();
+      expect(zeilen[1]).toHaveTextContent('nicht im Tunnel');
+      expect(within(zeilen[1]).queryByRole('button', { name: /bringen/ })).toBeNull();
+    });
+
+    it('„Aufspielen" je Box legt denselben Auftrag wie die Akte an (S1, keine zweite Logik)', async () => {
+      geraeteOhneKundenkonto.mockResolvedValue([fernlaufStand()]);
+      geraeteFernlaufAufspielen.mockResolvedValue({});
+      render(<EdgeUpdatesPage />);
+      const karte = await screen.findByTestId('ohne-kundenkonto');
+      fireEvent.click(within(karte).getByRole('button', { name: 'Auf 2026.11.15 bringen' }));
+      await waitFor(() => expect(geraeteFernlaufAufspielen)
+        .toHaveBeenCalledWith('edge-k7m2xq3', 'edge-light-2026.11.15'));
+      await waitFor(() => expect(geraeteOhneKundenkonto.mock.calls.length).toBeGreaterThan(1));
+    });
+
+    it('„Alle n aufspielen": nacheinander, einer zur Zeit', async () => {
+      geraeteOhneKundenkonto.mockResolvedValue([
+        fernlaufStand({ edgeRef: 'edge-aaaaaa1' }),
+        fernlaufStand({ edgeRef: 'edge-bbbbbb2' }),
+      ]);
+      geraeteFernlaufAufspielen.mockResolvedValue({});
+      // Jede Box meldet sofort „fertig" - kein Warten auf einen echten Takt.
+      geraeteFernlauf.mockImplementation(async (ref: string) => fernlaufStand({ edgeRef: ref, verlauf: [{
+        id: 'a', art: 'aufspielen', zustand: 'fertig', fassungVorher: 'edge-light-2026.11.5',
+        fassungZiel: 'edge-light-2026.11.15', akteurName: 'admin', erteiltAm: '2026-11-18T16:55:00Z',
+        begonnenAm: '2026-11-18T16:55:05Z', schritt: 'tunnel', schrittSeit: null, schritte: [], fensterEnde: null,
+        ergebnis: { ergebnis: 'fertig', grund: null, schritt: 'tunnel', fassungNachher: 'edge-light-2026.11.15',
+          belege: {}, quelle: 'dienst', erfasstAm: '2026-11-18T17:00:00Z' },
+      }] }));
+      render(<EdgeUpdatesPage />);
+      const karte = await screen.findByTestId('ohne-kundenkonto');
+      fireEvent.click(within(karte).getByTestId('ohne-kundenkonto-alle'));
+      await waitFor(() => expect(geraeteFernlaufAufspielen).toHaveBeenCalledTimes(2));
+      expect(geraeteFernlaufAufspielen.mock.calls.map((c) => c[0]))
+        .toEqual(['edge-aaaaaa1', 'edge-bbbbbb2']);
+    });
+
+    it('brach die restlichen Aufträge nach einer Rücknahme ab, mit Hinweis', async () => {
+      geraeteOhneKundenkonto.mockResolvedValue([
+        fernlaufStand({ edgeRef: 'edge-ccccccc' }),
+        fernlaufStand({ edgeRef: 'edge-ddddddd' }),
+      ]);
+      geraeteFernlaufAufspielen.mockResolvedValue({});
+      geraeteFernlauf.mockImplementation(async (ref: string) => fernlaufStand({ edgeRef: ref, verlauf: [{
+        id: 'z', art: 'aufspielen', zustand: 'zurueck', fassungVorher: 'edge-light-2026.11.5',
+        fassungZiel: 'edge-light-2026.11.15', akteurName: 'admin', erteiltAm: '2026-11-18T16:55:00Z',
+        begonnenAm: '2026-11-18T16:55:05Z', schritt: 'neustart', schrittSeit: null, schritte: [], fensterEnde: null,
+        ergebnis: { ergebnis: 'zurueck', grund: 'Testgrund', schritt: 'neustart',
+          fassungNachher: 'edge-light-2026.11.5', belege: {}, quelle: 'dienst', erfasstAm: '2026-11-18T17:00:00Z' },
+      }] }));
+      render(<EdgeUpdatesPage />);
+      const karte = await screen.findByTestId('ohne-kundenkonto');
+      fireEvent.click(within(karte).getByTestId('ohne-kundenkonto-alle'));
+      await waitFor(() => expect(geraeteFernlaufAufspielen).toHaveBeenCalledTimes(1));
+      expect(geraeteFernlaufAufspielen).toHaveBeenCalledWith('edge-ccccccc', 'edge-light-2026.11.15');
+      expect(await within(karte).findByTestId('ohne-kundenkonto-abgebrochen'))
+        .toHaveTextContent('edge-ccccccc');
+      // Die restlichen Aufträge dieser Reihe laufen nicht mehr an.
+      expect(geraeteFernlaufAufspielen).not.toHaveBeenCalledWith('edge-ddddddd', expect.anything());
+    });
+
+    it('„Braucht dich" nennt eine zurückgenommene Box mit Grund und führt in ihre Akte', async () => {
+      const nav = vi.fn();
+      geraeteOhneKundenkonto.mockResolvedValue([fernlaufStand({ verlauf: [{
+        id: 'z', art: 'aufspielen', zustand: 'zurueck', fassungVorher: 'edge-light-2026.11.5',
+        fassungZiel: 'edge-light-2026.11.15', akteurName: 'admin', erteiltAm: '2026-11-18T16:55:00Z',
+        begonnenAm: '2026-11-18T16:55:05Z', schritt: 'neustart', schrittSeit: null, schritte: [], fensterEnde: null,
+        ergebnis: { ergebnis: 'zurueck', grund: '/health nennt eine andere Fassung', schritt: 'neustart',
+          fassungNachher: 'edge-light-2026.11.5', belege: {}, quelle: 'dienst', erfasstAm: '2026-11-18T17:00:00Z' },
+      }] })]);
+      render(<EdgeUpdatesPage onNavigate={nav} />);
+      const braucht = await screen.findByTestId('ohne-kundenkonto-braucht-dich');
+      expect(braucht).toHaveTextContent('edge-k7m2xq3');
+      expect(braucht).toHaveTextContent('zurückgenommen');
+      fireEvent.click(within(braucht).getByRole('button', { name: 'Box ansehen' }));
+      expect(nav).toHaveBeenCalledWith(expect.objectContaining({
+        geraeteAkte: expect.objectContaining({ ref: 'edge-k7m2xq3' }),
+      }));
+    });
   });
 });

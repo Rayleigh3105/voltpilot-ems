@@ -1023,6 +1023,13 @@ export const adminApi = {
       body: JSON.stringify({ fassung }),
     }),
 
+  /**
+   * Die Karte „Ohne Kundenkonto" (vp-update-vor-zuordnung S2): derselbe Stand wie `geraeteFernlauf`, für jede
+   * Edge-Light-Box mit Tunnel-Zugang ohne Kundenkonto - einmal für alle, Grund steht an jeder Box.
+   */
+  geraeteOhneKundenkonto: () =>
+    request<FernlaufStand[]>('/api/v1/admin/geraete/ohne-kundenkonto'),
+
   /** L1 (B1-B4): der Befund „Vom Kunden lösen" - informativ, prüft nichts unter Sperre. */
   geraeteLoesenBefund: (ref: string) =>
     request<BoxLoesenBefund>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/loesen`),

@@ -8737,6 +8737,22 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { description: "Der erste Grund der Vorprüfung, oder die bestätigte Fassung ist nicht mehr die neueste." }
         "422": { description: Keine Kennung mit gültigem Prüfzeichen. }
+  /api/v1/admin/geraete/ohne-kundenkonto:
+    get:
+      tags: [werkstatt]
+      summary: Karte „Ohne Kundenkonto" (Geräte & Updates) - derselbe Stand wie unter {ref}/fernlauf, für jede Box.
+      description: >
+        Konzept vp-update-vor-zuordnung S2. Nur platform-admin. Jede Edge-Light-Box mit Tunnel-Zugang, die weder
+        eine Gerätezeile noch ein Zertifikat hat - dieselbe Vorprüfung wie GET {ref}/fernlauf, einmal je Box, keine
+        zweite Logik. „Aufspielen" je Box und „Alle aufspielen" legen ihre Aufträge über POST {ref}/fernlauf an.
+      responses:
+        "200":
+          description: Die Liste, sortiert nach Kennung.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/FernlaufStand" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/werkstatt-dienst/fernlaeufe/{id}/beginnen:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }

@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  bestaetigung, FERNLAUF_ERGEBNISSE, FERNLAUF_GRUPPEN, FERNLAUF_SCHRITTE, fassungKurz, fragtSatz, fragtText, haken,
-  schrittleiste, standZeilen, tunnelKarte, verlaufZeile, type Fernlauf, type FernlaufStand,
+  bereitZumAufspielen, bestaetigung, brauchtDichFernlauf, FERNLAUF_ERGEBNISSE, FERNLAUF_GRUPPEN, FERNLAUF_SCHRITTE,
+  fassungKurz, fragtSatz, fragtText, haken, ohneKundenkontoKopf, schrittleiste, standZeilen, tunnelKarte,
+  verlaufZeile, type Fernlauf, type FernlaufStand,
 } from './werkstattFernlauf';
 
 const vektor = JSON.parse(readFileSync(resolve(__dirname, '../../../docs/contracts/werkstatt-fernlauf.json'), 'utf8')) as {
@@ -116,5 +117,44 @@ describe('Fernlauf durch den Tunnel (vp-update-vor-zuordnung S1)', () => {
     expect(b.folgen.join(' ')).toContain('deinem Namen');
     expect(verlaufZeile(auftrag({ zustand: 'zurueck' }), JETZT)).toEqual({ wann: '17:55', text: 'Über den Tunnel auf 2026.11.15 · zurückgenommen · admin', ton: 'warn' });
     expect(fassungKurz(null)).toBe('unbekannt');
+  });
+
+  describe('Karte „Ohne Kundenkonto" (S2)', () => {
+    it('bereitZumAufspielen: nur, wo die Vorprüfung durchkommt', () => {
+      const liste = [stand({ edgeRef: 'edge-a' }), stand({ edgeRef: 'edge-b', moeglich: false,
+        gruende: [{ code: 'nicht_verbunden', text: 'x' }] })];
+      expect(bereitZumAufspielen(liste).map((s) => s.edgeRef)).toEqual(['edge-a']);
+    });
+
+    it('ohneKundenkontoKopf: zählt die Boxen und, wenn welche bereit sind, wie viele älter laufen', () => {
+      expect(ohneKundenkontoKopf([])).toBe('Keine Box wartet gerade auf ihr Kundenkonto.');
+      const einzeln = [stand({ edgeRef: 'edge-a' })];
+      expect(ohneKundenkontoKopf(einzeln)).toBe('1 Box wartet auf ihr Kundenkonto · 1 läuft älter als 2026.11.15');
+      const zwei = [stand({ edgeRef: 'edge-a' }), stand({ edgeRef: 'edge-b' })];
+      expect(ohneKundenkontoKopf(zwei)).toBe('2 Boxen warten auf ihr Kundenkonto · 2 laufen älter als 2026.11.15');
+      // Schon aktuell: zählt nicht mehr als „älter".
+      const aktuell = [stand({ edgeRef: 'edge-c', moeglich: false,
+        gruende: [{ code: 'schon_neueste', text: 'x' }] })];
+      expect(ohneKundenkontoKopf(aktuell)).toBe('1 Box wartet auf ihr Kundenkonto');
+    });
+
+    it('brauchtDichFernlauf: nur zurückgenommene oder offen gebliebene Fernläufe, mit Grund', () => {
+      const liste = [
+        stand({ edgeRef: 'edge-fertig', verlauf: [auftrag({ zustand: 'fertig',
+          ergebnis: { ergebnis: 'fertig', grund: null, schritt: 'tunnel', fassungNachher: 'edge-light-2026.11.15',
+            belege: {}, quelle: 'dienst', erfasstAm: '2026-11-18T16:09:00Z' } })] }),
+        stand({ edgeRef: 'edge-zurueck', verlauf: [auftrag({ zustand: 'zurueck',
+          ergebnis: { ergebnis: 'zurueck', grund: '/health nennt edge-light-2026.11.9', schritt: 'neustart',
+            fassungNachher: 'edge-light-2026.11.5', belege: {}, quelle: 'dienst',
+            erfasstAm: '2026-11-18T17:05:00Z' } })] }),
+        stand({ edgeRef: 'edge-offen', verlauf: [auftrag({ zustand: 'offen', schritt: 'aufspielen' })] }),
+        stand({ edgeRef: 'edge-ohne-lauf', verlauf: [] }),
+      ];
+      const eintraege = brauchtDichFernlauf(liste, JETZT);
+      expect(eintraege.map((e) => e.edgeRef)).toEqual(['edge-zurueck', 'edge-offen']);
+      expect(eintraege[0]).toMatchObject({ ton: 'warn' });
+      expect(eintraege[0].text).toContain('zurückgenommen');
+      expect(eintraege[1].text).toContain('offen');
+    });
   });
 });
