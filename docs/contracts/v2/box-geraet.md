@@ -17,7 +17,7 @@ Geräte & Updates G8 (Konzept vom 05.11.2026, Entscheid E4 A). Additiv im Status
 |---|---|
 | `modell` | Die Angabe des Geräts, nie geraten. Fehlt, wenn keine Quelle lesbar ist oder nur Platzhalter nennt. |
 | `arch` | `runtime.GOARCH` des laufenden Programms (`amd64`, `arm64`, `mipsle`, `arm` …). |
-| `loader` | Nur Edge Light: `update` – der Loader kennt das Update-Protokoll (er setzt `VP_OTA_RAM_DIR`, Stufe 2); `flash` – er startet immer die Fassung aus dem Flash (Stufe 1). Fehlt bei der Docker-Box. |
+| `loader` | Nur der Go-Kern (Edge Light und Edge Industrie): `update` – der Loader kennt das Update-Protokoll (er setzt `VP_OTA_RAM_DIR`, Stufe 2); `flash` – er startet immer die Fassung aus dem Flash (Stufe 1). Fehlt bei der Docker-Box. |
 | `loader_stand` | Nur Edge Light, additiv seit dem Loader-Selbstupdate: die `LOADER_STAND`-Marke des Loaders im Flash (`edge-app/core/internal/loaderstand`), gelesen vom Programm. Fehlt bei alten Loadern ohne Marke, bei alten Programmen, bei der Docker-Box und auf Edge Industrie (WAGO PFC200; dort pflegt das Programm keinen Loader, `edge-industrie`). Damit ist ohne Wartungstunnel prüfbar, welche Box welchen Loader fährt. |
 
 ## Erkennung (Box, `edge-app/core/internal/geraet`)

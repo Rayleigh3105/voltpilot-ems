@@ -3,8 +3,8 @@
  * auf dem bisherigen Weg (Node-RED auf der Docker-Box, die Verbraucherregel und der Heizstab-Regler der Box) oder auf
  * dem neuen (die Box rechnet selbst, im Kern der Regelsprache). Keine Anlage wechselt still: der Schalter ist ab Werk
  * aus; an rechnet der neue Weg nur zum Vergleich mit, erst „Übernehmen“ lässt ihn schalten, und „Zurück“ wirkt sofort.
- * Der Schalter hat zwei Gruppen: die Regeln (auf einer Edge Light immer der neue Weg) und die Geräte mit Steuerart
- * oder Heizstab-Regler (auf beiden Box-Arten). Ein Schritt bewegt jede Gruppe, die ihn gehen kann.
+ * Der Schalter hat zwei Gruppen: die Regeln (auf Edge Light und Edge Industrie immer der neue Weg) und die Geräte
+ * mit Steuerart oder Heizstab-Regler (auf allen Box-Arten). Ein Schritt bewegt jede Gruppe, die ihn gehen kann.
  * Rein und getestet (`steuerweg.test.ts`); die Karte rendert nur, was hier entsteht.
  */
 import type { SteuerwegAntwort, SteuerwegGeraet, SteuerwegRegel, SteuerwegStand, SteuerwegVergleich } from '../api';
@@ -26,7 +26,7 @@ export interface WegAnsicht {
   titel: string;
   pille: Pille;
   satz: string;
-  /** Die Schritte, die der Schalter jetzt anbietet (leer auf einer Edge Light oder ohne Box). */
+  /** Die Schritte, die der Schalter jetzt anbietet (leer auf Edge Light, Edge Industrie oder ohne Box). */
   knoepfe: Knopf[];
   /** Ein Grund, warum es keinen Schritt gibt, obwohl es Regeln gibt (etwa ein Update der Box). */
   hinweis: string | null;

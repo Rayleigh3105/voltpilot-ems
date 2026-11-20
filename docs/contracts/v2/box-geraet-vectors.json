@@ -123,7 +123,7 @@
       "gespeichert": { "modell": "Raspberry Pi 4 Model B Rev 1.4", "arch": "arm64", "loader": null, "loader_stand": null }
     },
     {
-      "name": "Edge Light auf dem WAGO PFC200: der Loader kennt Updates, eine Marke gibt es dort nicht",
+      "name": "Edge Industrie auf dem WAGO PFC200: der Loader kennt Updates, eine Marke gibt es dort nicht",
       "geraet": { "modell": "WAGO 750-8212", "arch": "arm", "loader": "update" },
       "gespeichert": { "modell": "WAGO 750-8212", "arch": "arm", "loader": "update", "loader_stand": null }
     },

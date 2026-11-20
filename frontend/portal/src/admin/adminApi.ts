@@ -160,9 +160,9 @@ export interface AdminDeviceRow {
   /** Das gemeldete Gerät (Geräte & Updates G8, `update.geraet`); `null` = nicht gemeldet. */
   geraetModell?: string | null;
   geraetArch?: string | null;
-  /** Nur Edge Light: `update` (Stufe 2) oder `flash` (Stufe 1). */
+  /** Nur der Go-Kern (Edge Light, Edge Industrie): `update` (Stufe 2) oder `flash` (Stufe 1). */
   loader?: string | null;
-  /** Nur Edge Light: die `LOADER_STAND`-Marke des Loaders im Flash; `null` = nicht gemeldet. */
+  /** Nur Edge Light (Mango): die `LOADER_STAND`-Marke des Loaders im Flash; `null` = nicht gemeldet. */
   loaderStand?: number | null;
   /** Herkunft (vp-geraete-herkunft): die Werkstatt-Abnahme dieser Referenz; `null` = selbst angemeldet. */
   werkstattAbnahmeAm: string | null;

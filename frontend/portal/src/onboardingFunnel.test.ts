@@ -266,6 +266,18 @@ describe('Funnel-Stufe 4 „Vertrauen gekreuzt"', () => {
       'Diese Geräte können Releases anwenden. 1 Edge-Light-Box bekommt Updates von Hand (Stufe 1).');
   });
 
+  it('nennt Edge Industrie ohne Updates aus dem Portal unter ihrem eigenen Namen', () => {
+    const stages = funnelStages([], [], [
+      fleetRow({ deviceId: 'a', externalRef: 'a', trust: crossed }),
+      fleetRow({ deviceId: 'p', externalRef: 'p', boxArt: 'industrie', trust: {
+        rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
+        trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' } }),
+    ]);
+    const trust = stages.find((s) => s.id === 'vertrauen')!;
+    expect(trust.attention).toBe(false);
+    expect(trust.note).toBe('Diese Geräte können Releases anwenden. 1 Edge-Industrie-Box bekommt Updates von Hand.');
+  });
+
   it('erscheint GAR NICHT ohne Flotte - eine „0 von 0"-Kachel ist kein Befund', () => {
     expect(funnelStages([], [], []).map((s) => s.id)).toEqual([
       'registriert', 'wartet', 'verbunden',

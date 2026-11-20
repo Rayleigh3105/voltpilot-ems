@@ -30,7 +30,7 @@ Wer den Aufbau ändert, ändert Vektor-Datei, Vertrag, Prüfer und beide Zwillin
 
 | Regel | Festlegung |
 |---|---|
-| Rollen | Server ist die SPS, Client ist die Edge. Auf einem PFC200 mit Edge Light spricht die Edge 127.0.0.1 („in diesem Gerät“); steht die Box neben der Steuerung, ändert sich nur die Adresse der Datenquelle. |
+| Rollen | Server ist die SPS, Client ist die Edge. Auf einem PFC200 mit Edge Industrie spricht die Edge 127.0.0.1 („in diesem Gerät“); steht die Box neben der Steuerung, ändert sich nur die Adresse der Datenquelle. |
 | Zwei Tabellen, zwei Eigentümer | **Eingangsregister gehören der SPS** (kein Client kann sie schreiben), **Halteregister 0 bis 63 gehören der Edge** (die SPS schreibt dort nie). |
 | Funktionscodes | 4 (Eingangsregister lesen), 16 (Halteregister schreiben, immer alle 64 Wörter in einem Telegramm), 3 (Halteregister zurücklesen, nur zur Kontrolle). Einzelne Register schreibt niemand (kein Funktionscode 6). |
 | Port, Unit-ID | gehören zur Datenquelle, nie zum Bild; Vorgabe Port 502. |

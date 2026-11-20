@@ -63,7 +63,7 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   `uncertain`) und meldet `frozen_source`/`device_restart`; dazu die Probe-Art `erzeuger_kopf`
   ([Probe-Vertrag](../mqtt-probe.schema.json), [Box-Leser](../../agents/root/uems-erzeuger-registerbild-box.md)).
   Beleg `edge-app/nodered/measurements/erzeuger-laufzeit.test.js`. Keine Zeile in `edge-capabilities.json`
-  (Begründung wie `plan_quittung`). Edge Light meldet es seit Stufe 2 des PFC200-Konzepts: der Go-Zwilling
+  (Begründung wie `plan_quittung`). Der Go-Kern (Edge Light, Edge Industrie) meldet es seit Stufe 2 des PFC200-Konzepts: der Go-Zwilling
   `internal/erzeugerbild` liest dasselbe Bild hinter denselben Bus-Topics, Beleg `erzeugerbild/laufzeit_test.go` (gegen
   die aus der Palette erzeugten `erzeuger-laufzeit-vectors.json`) und `layer1/erzeuger_test.go`.
 - `anlagensteuerung_quelle` (UEMS EZ-21): der Applier (`componentapply`) leitet aus dem Registry-Treiber einer
@@ -78,7 +78,7 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   Applier trägt. Beleg `edge-app/core/internal/componentapply/plant_controller_test.go`. Keine Zeile in
   `edge-capabilities.json`: eine Zeile gälte für jeden Stand ab einem Release-Tag, und ein Tag, das diesen Applier
   doch nicht trägt, bekäme den Treiber und verweigerte damit jede Konfiguration der Anlage — nur die eigene Meldung
-  der Box ist dafür sicher. Auf Edge Light (seit Stufe 2 des PFC200-Konzepts) leitet derselbe Applier die Quelle ab,
+  der Box ist dafür sicher. Auf dem Go-Kern (seit Stufe 2 des PFC200-Konzepts) leitet derselbe Applier die Quelle ab,
   und die Go-Schicht 1 bindet die Komponente über ihren Pin daran (`layer1/erzeuger.go`, Beleg
   `layer1/erzeuger_quelle_test.go`).
 - `geraetesuche` (Gerätesuche, 30.10.2026): die Box sucht auf `.../v2/geraetesuche` lesend im Heimnetz, meldet alle 2 s

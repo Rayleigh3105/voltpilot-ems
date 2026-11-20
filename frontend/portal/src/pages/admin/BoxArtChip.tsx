@@ -2,7 +2,7 @@ import { Badge } from '../../../designsystem/components/core/Badge';
 import { boxArtLabel } from '../../adminEdgeUpdates';
 
 /**
- * Die Bauart einer Box als Chip: „Docker-Box", „Edge Light" oder ehrlich
+ * Die Bauart einer Box als Chip: „Docker-Box", „Edge Light", „Edge Industrie" oder ehrlich
  * „Box-Art unbekannt". Abgeleitet wird sie in der API (`ota.BoxArt`); der Chip
  * übersetzt nur.
  */

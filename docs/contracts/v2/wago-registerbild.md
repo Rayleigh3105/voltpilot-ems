@@ -23,7 +23,7 @@ ihre Herkunft (§1). Was am Gerät festzustellen ist, steht gesammelt in §9.
 | `frontend/portal/src/wagoRegisterbild.test.ts` | Prüfer: Schema, lückenloser Aufbau, Herkunft jeder Zahl, Vertrag ⟷ Datei ⟷ Hardwareblatt-Vorlage, Rechenbeispiele, ein unabhängiger Leser über alle Fälle |
 
 **Zwillinge:** der Leser der Docker-Box (`edge-app/nodered/measurements/wago-registerbild.js`, IP-6/IP-7), sein
-Go-Zwilling in Edge Light (`edge-app/core/internal/wagobild`, gegen diese Fälle und die Folge-Vektoren
+Go-Zwilling im Go-Kern von Edge Light und Edge Industrie (`edge-app/core/internal/wagobild`, gegen diese Fälle und die Folge-Vektoren
 `wago-vectors.json`) und der Baustein `FB_VP_WagoBild` der CODESYS-Bibliothek (`sps/codesys`), dessen Prüfer
 jeden erzeugbaren Fall schreibt und vom Leser der Box lesen lässt. Wer den Aufbau ändert, ändert Vektor-Datei,
 Vertrag, Test und Zwillinge gemeinsam.

@@ -2,6 +2,8 @@
 
 Diese Liste ist der Maßstab dafür, was Edge Light kann und was ihm gegenüber der Docker-Box noch fehlt. Beide Edge-Arten bestehen vorerst nebeneinander, je nach Anwendungsfall: Edge Light für kleine Hardware und einfachere Anlagen, die Docker-Box für komplexere Anforderungen vor Ort (Produktentscheid 07.10.2026). Ob die Docker-Box je auf Edge Light umgestellt wird und Node-RED entfällt, ist offen; die Stufe 8 und das [Abschlusskriterium](#abschlusskriterium-komplett-umschalten) beschreiben nur, was dafür gelten müsste.
 
+Die Liste gilt für den Go-Kern als Ganzes: Edge Industrie auf dem WAGO PFC200 (`cmd/vp-edge-industrie`, [edge-industrie/](../../edge-industrie/README.md)) ist dasselbe Programm unter eigenem Namen und kann dasselbe; was nur die Mango betrifft (OpenWrt, WLAN, Loader-Selbstupdate), steht in [mango.md](mango.md).
+
 Legende: ✅ läuft in Edge Light · 🟡 teilweise · ⬜ offen · 🔒 braucht Prüfstand mit echter Hardware
 
 ## A. Was der Go-Core schon heute kann (keine Portierung nötig)
