@@ -381,3 +381,57 @@ func (r *Runtime) installerAusfuehren(ctx context.Context, p *solarmanPlan, fc b
 		"vorher", *before, "nachher", *after)
 	return einmalschreiben.Ergebnis{OK: true, Wrote: true, Before: before, After: after}
 }
+
+// --- the guided switch test (vp-modbus-switch-test) -------------------------
+
+// switchAntwort is edge/switch/result.
+type switchAntwort struct {
+	RequestID string                           `json:"request_id"`
+	Results   []einmalschreiben.SchaltErgebnis `json:"results"`
+}
+
+// onSwitchTest runs the ops of one edge/switch/request one after another
+// (parse(): a request id and 1..8 ops, structure only - the core owns every
+// policy) and answers on edge/switch/result. Each op takes the device's lane,
+// so a switch never runs beside the poll of the very device being watched.
+func (r *Runtime) onSwitchTest(ctx context.Context, payload []byte) {
+	var req struct {
+		RequestID string           `json:"request_id"`
+		Ops       []map[string]any `json:"ops"`
+	}
+	if json.Unmarshal(payload, &req) != nil || req.RequestID == "" || len(req.Ops) == 0 || len(req.Ops) > 8 {
+		r.log.Warn("Schaltbefehl unlesbar; verworfen")
+		return
+	}
+	results := make([]einmalschreiben.SchaltErgebnis, 0, len(req.Ops))
+	for _, op := range req.Ops {
+		results = append(results, r.schalteEinmal(ctx, op))
+	}
+	raw, _ := json.Marshal(switchAntwort{RequestID: req.RequestID, Results: results})
+	if err := r.bus.Publish(localbus.TopicSwitchResult, raw, false); err != nil {
+		r.log.Warn("Schalt-Ergebnis nicht gesendet", "err", err)
+	}
+}
+
+func (r *Runtime) schalteEinmal(ctx context.Context, op map[string]any) einmalschreiben.SchaltErgebnis {
+	p, ok := einmalschreiben.SchaltPlanAus(op)
+	if !ok {
+		return einmalschreiben.Schalten(ctx, op, nil) // names the unusable op, touches nothing
+	}
+	g := &modbusSchreiber{r: r, addr: netJoin(p.Host, p.Port), unit: byte(p.UnitID)}
+	defer g.close()
+	release, frei := r.lanes.acquire(ctx, g.addr, r.writeLaneWait())
+	if !frei {
+		id, _ := op["id"].(string)
+		if id == "" {
+			id = "schalten"
+		}
+		code, satz := einmalschreiben.Klassifiziere(modbusprofil.MeldungWarteschlange + " für " + g.addr + " belegt")
+		return einmalschreiben.SchaltErgebnis{ID: id, ErrorCode: code, Message: satz}
+	}
+	defer release()
+	sctx, cancel := context.WithTimeout(ctx, writeSessionBudget)
+	defer cancel()
+	r.log.Info("Schalt-Test", "ziel", g.addr, "register", p.Addr, "fc", p.FC, "wert", *p.Value)
+	return einmalschreiben.Schalten(sctx, op, g)
+}

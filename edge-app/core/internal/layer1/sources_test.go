@@ -110,8 +110,12 @@ func TestSourcesConfigIsPlannedLikeTheFlow(t *testing.T) {
 	if !ok || entries != 5 {
 		t.Fatalf("ok=%v entries=%d (zwei Eintraege scheitern schon an der Struktur)", ok, entries)
 	}
-	if len(plans) != 2 {
+	if len(plans) != 3 {
 		t.Fatalf("Leseplaene: %+v", plans)
+	}
+	if p := plans[2]; p.ID != "src-fro" || p.Addr != "10.0.0.7:80" || p.Fronius == nil ||
+		p.Fronius.URL != "http://10.0.0.7:80/solar_api/v1/GetPowerFlowRealtimeData.fcgi" {
+		t.Errorf("Fronius-Plan: %+v", p)
 	}
 	if p := plans[0]; p.ID != "src-goe" || p.IP != "192.168.2.105" || p.Port != 80 ||
 		p.URL != "http://192.168.2.105:80/api/status?filter=nrg,car,alw,amp,wh" || p.Addr != "192.168.2.105:80" {
@@ -125,7 +129,7 @@ func TestSourcesConfigIsPlannedLikeTheFlow(t *testing.T) {
 		all += n.text + "\n"
 	}
 	for _, want := range []string{
-		`Quelle src-fro (pv-generation) NICHT VERDRAHTET: Edge Light liest die Anbindung "fronius_solar_api" als Energiequelle noch nicht`,
+		`Quelle src-fro (pv-generation): fronius_solar_api 10.0.0.7:80 -> Leseplan (Solar API v1)`,
 		`Quelle src-x (consumer) NICHT VERDRAHTET: unbekannte Kommunikation "zauberei"`,
 		`Quelle src-rolle NICHT VERDRAHTET: unbekannte Rolle "speicher"`,
 		`Quelle verworfen - Eintrag #6: keine id`,
@@ -301,8 +305,10 @@ func TestReadsAsSourceAgreesWithTheReader(t *testing.T) {
 		{CommShellyEM, "shelly_em_triphase"},
 		{CommKostalDxs, "kostal_piko"},
 		{"fronius_solar_api", "fronius_solar_api"},
-		{"kaco_http", "kaco_nh3"},
-		{"solarman_v5", "deye_hybrid"},
+		{"kaco_http", "kaco_http"},
+		{"kaco_http", "kaco_http_hybrid"},
+		{"kaco_modbus", "kaco_nh3"},
+		{"solarman_v5", "hybrid_3p"},
 		{"modbus_tcp", "sunspec"},
 		{"kostal_modbus", "kostal_plenticore"},
 		{"kostal_piko_rtu", "kostal_piko"},
@@ -312,7 +318,7 @@ func TestReadsAsSourceAgreesWithTheReader(t *testing.T) {
 			id := "src-" + f.comm + "-" + role
 			plans, notes, _, ok := parseSourcesConfig(sourcesConfig(map[string]any{
 				"id": id, "role": role, "communication": f.comm, "family": f.family,
-				"connection": map[string]any{"ip": "10.0.0.7", "port": 80, "unit_id": 1, "address": 1},
+				"connection": map[string]any{"ip": "10.0.0.7", "port": 80, "unit_id": 1, "address": 1, "serial": 1234567890},
 			}))
 			if !ok {
 				t.Fatalf("%s: Konfiguration unbrauchbar", id)

@@ -4,6 +4,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/jsnum"
 )
 
 // The few JavaScript semantics the JS runtime leans on, for values decoded
@@ -39,47 +41,8 @@ func jsNumber(v any) float64 {
 	return math.NaN()
 }
 
-// jsStringToNumber is ToNumber of a string: trimmed, "" is 0, decimal or
-// 0x/0o/0b integers, [+-]Infinity; anything else NaN.
-func jsStringToNumber(s string) float64 {
-	t := strings.Trim(s, " \t\n\v\f\r\u00a0\ufeff\u2028\u2029")
-	if t == "" {
-		return 0
-	}
-	if len(t) > 2 && t[0] == '0' {
-		base := 0
-		switch t[1] {
-		case 'x', 'X':
-			base = 16
-		case 'o', 'O':
-			base = 8
-		case 'b', 'B':
-			base = 2
-		}
-		if base != 0 {
-			if i, err := strconv.ParseUint(t[2:], base, 64); err == nil {
-				return float64(i)
-			}
-			return math.NaN()
-		}
-	}
-	switch t {
-	case "Infinity", "+Infinity":
-		return math.Inf(1)
-	case "-Infinity":
-		return math.Inf(-1)
-	}
-	for _, c := range t {
-		if !(c >= '0' && c <= '9' || c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-') {
-			return math.NaN()
-		}
-	}
-	f, err := strconv.ParseFloat(t, 64)
-	if err != nil {
-		return math.NaN()
-	}
-	return f
-}
+// jsStringToNumber is ToNumber of a string.
+func jsStringToNumber(s string) float64 { return jsnum.StringToNumber(s) }
 
 // jsString is String(v) for scalars.
 func jsString(v any) string {

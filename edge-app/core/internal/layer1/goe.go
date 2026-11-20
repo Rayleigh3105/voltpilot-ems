@@ -222,6 +222,45 @@ func (r *Runtime) readSource(ctx context.Context, p sourcePlan) {
 	case CommShellyEM:
 		out = r.readShellyEMSource(rctx, p)
 		release()
+	case CommSolarmanV5:
+		res, requests, err := r.readDeyeSource(rctx, p.Deye)
+		release()
+		in := deyeSourceReading(res, err)
+		in.requests, in.class = max(requests, 1), errorClassOf(rctx, err, false)
+		if err == nil && in.reading == nil {
+			in.class = "invalid_response"
+		}
+		out = inverterOutcome(p, in)
+	case CommFroniusSolarAPI:
+		res, err := r.getFronius(rctx, p.Fronius, r.opts.HTTPTimeout)
+		release()
+		in := froniusSourceReading(res, err)
+		in.requests, in.class = 1, errorClassOf(rctx, err, false)
+		if errors.Is(err, errFroniusNoReading) || errors.Is(err, errHTTPStatus) || errors.Is(err, errBodyTooLarge) {
+			in.class = "fronius_api" // the flow's class for an answer without a reading
+		}
+		out = inverterOutcome(p, in)
+	case CommKacoHTTP:
+		res, ev := r.readKacoHTTP(rctx, p.KacoHTTP)
+		release()
+		in := kacoHTTPSourceReading(res)
+		in.requests = ev.requests
+		if res == nil {
+			in.class = orDefault(ev.class, "invalid_response")
+		}
+		out = inverterOutcome(p, in)
+	case CommKacoModbus:
+		rd, res, err := r.readNH3(rctx, p.NH3)
+		release()
+		in := nh3SourceReading(res)
+		in.requests, in.class = 1, errorClassOf(rctx, err, false)
+		if rd != nil && rd.Attempts > 0 {
+			in.requests = rd.Attempts
+		}
+		if err == nil && res == nil {
+			in.class = "invalid_response"
+		}
+		out = inverterOutcome(p, in)
 	case CommKostalDxs:
 		// The same bundle as the primary inverter's tick (kostaldxs.PollIDs),
 		// one GET; the PIKO's weak webserver never sees a second request at once
@@ -378,6 +417,9 @@ type inverterSourceReading struct {
 	why      string
 	requests int
 	class    string
+	// withLoad: the transport also measures the house load (the Fronius
+	// PowerFlow's P_Load), so a Verbraucher source gets its load_kw.
+	withLoad bool
 }
 
 func huaweiSourceReading(rd *huaweiRead, err error, p *huaweiPlan) inverterSourceReading {
@@ -438,8 +480,11 @@ func inverterOutcome(p sourcePlan, in inverterSourceReading) sourceOutcome {
 	case sources.RoleNetz:
 		key, missing = "power_kw", "kein Netzwert in der Antwort (Smart Power Sensor am Netzpunkt?)"
 	default:
-		out.why, out.class = "ein Wechselrichter liefert keinen Verbrauchswert (load_kw)", "invalid_response"
-		return out
+		if !in.withLoad {
+			out.why, out.class = "ein Wechselrichter liefert keinen Verbrauchswert (load_kw)", "invalid_response"
+			return out
+		}
+		key, missing = "load_kw", "kein Verbrauchswert in der Antwort"
 	}
 	v, ok := in.reading[key]
 	if !ok {

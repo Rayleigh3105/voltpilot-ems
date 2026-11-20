@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/aiswei"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goeapi"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kacohttp"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 )
 
@@ -18,10 +20,12 @@ const TopicSourcesConfig = sources.TopicConfig
 // flow's "sources-store" node builds (build-flows.js): a go-e over HTTP, a
 // Huawei SUN2000 over Modbus TCP, a Powador behind its RS485 converter, a
 // SunSpec inverter (sunspec_tcp / fronius_sunspec), a Shelly meter, a classic
-// KOSTAL PIKO over its Web-API (kostal_dxs) or a generic Modbus TCP device
-// with a register profile (modbus_tcp). Every other transport is named in
-// the log, never silently skipped - and ReadsAsSource tells the core the same
-// before it applies a portal plan.
+// KOSTAL PIKO over its Web-API (kostal_dxs), a generic Modbus TCP device
+// with a register profile (modbus_tcp), a Fronius over its Solar API, a KACO
+// over its App-Schnittstelle or its NH3 register map and a Deye behind its
+// Solarman logger - every transport the flow's source executor reads. Every
+// other transport is named in the log, never silently skipped - and
+// ReadsAsSource tells the core the same before it applies a portal plan.
 type sourcePlan struct {
 	ID   string
 	Role string
@@ -37,6 +41,10 @@ type sourcePlan struct {
 	ShellyEM *shellyEMPlan   // shelly_em_http
 	Kostal   *kostalDxsPlan  // kostal_dxs
 	Modbus   *modbusPlan     // modbus_tcp
+	Fronius  *froniusPlan    // fronius_solar_api
+	KacoHTTP *kacoHTTPPlan   // kaco_http
+	NH3      *nh3Plan        // kaco_modbus
+	Deye     *solarmanPlan   // solarman_v5
 
 	// DataSourceID is the assigned data source (DQ-…) the push named, the
 	// identity of the read receipt (else the local id).
@@ -47,16 +55,6 @@ type sourcePlan struct {
 type sourceNote struct {
 	warn bool
 	text string
-}
-
-// The transports the flow can read as a source. Edge Light names the ones it
-// does not read yet instead of calling them unknown (kaco_serial, huawei_modbus,
-// modbus_tcp and the SunSpec way are read here, like in the flow's source
-// executor).
-var knownSourceComms = map[string]bool{
-	"modbus_tcp": true, "fronius_sunspec": true, "sunspec_tcp": true, "kaco_http": true,
-	"kaco_modbus": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,
-	"kostal_dxs": true,
 }
 
 // ReadsAsSource is THE answer to "does Edge Light read this transport as an
@@ -70,7 +68,8 @@ var knownSourceComms = map[string]bool{
 // (no IP, a bad unit id) is the plan's own, per-device refusal.
 func ReadsAsSource(comm, role string) string {
 	switch comm {
-	case goeapi.Family, CommHuaweiModbus, CommKacoSerial, CommSunSpecTCP, CommFroniusSunSpec:
+	case goeapi.Family, CommHuaweiModbus, CommKacoSerial, CommSunSpecTCP, CommFroniusSunSpec, CommFroniusSolarAPI,
+		CommKacoHTTP, CommKacoModbus, CommSolarmanV5:
 		return ""
 	case CommShellyEM:
 		if role == sources.RoleErzeuger {
@@ -84,9 +83,6 @@ func ReadsAsSource(comm, role string) string {
 			return "ein KOSTAL PIKO liefert nur seine Erzeugung (PV-Leistung), keinen Netz- oder Verbrauchswert (als Erzeuger anlegen)"
 		}
 		return ""
-	}
-	if knownSourceComms[comm] {
-		return "Edge Light liest die Anbindung \"" + comm + "\" als Energiequelle noch nicht"
 	}
 	return "unbekannte Kommunikation \"" + comm + "\""
 }
@@ -219,6 +215,51 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 			}
 			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: mp.IP, Port: mp.Port, Addr: mp.Addr, Modbus: mp})
 			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): modbus_tcp " + mp.Addr + " -> Leseplan (Profil " + mp.Profile + ")"})
+		case comm == CommSolarmanV5:
+			// The store node: a Deye family with measurement registers, the
+			// logger serial, port 8899 - the same plan as the primary inverter.
+			dp, why := planSolarman(&selection{Family: family, Communication: comm, Connection: conn})
+			if dp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: dp.IP, Port: dp.Port, Addr: dp.Addr, Deye: dp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): solarman_v5 " + dp.Addr + " -> Leseplan (Deye-Familie " + family + ")"})
+		case comm == CommFroniusSolarAPI:
+			// The store node: no family check, port 80, https only with insecure_tls.
+			fp, why := planFronius(&selection{Family: family, Communication: comm, Connection: conn})
+			if fp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: fp.IP, Port: fp.Port, Addr: fp.Addr, Fronius: fp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): fronius_solar_api " + fp.IP + ":" + strconv.Itoa(fp.Port) + " -> Leseplan (Solar API v1)"})
+		case comm == CommKacoHTTP:
+			// The family decides whether the battery is asked (a source
+			// without one must not run into a timeout).
+			if !kacohttp.Known(family) {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " NICHT VERDRAHTET: unbekannte KACO-Familie \"" + family + "\""})
+				continue
+			}
+			kp, why := planKacoHTTP(&selection{Family: family, Communication: comm, Connection: conn})
+			if kp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: kp.IP, Port: kp.Port, Addr: kp.Addr, KacoHTTP: kp})
+			notes = append(notes, sourceNote{false, kacoHTTPNote(id, role, kp)})
+		case comm == CommKacoModbus:
+			if !aiswei.Known(family) {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " NICHT VERDRAHTET: unbekannte KACO-Familie \"" + family + "\""})
+				continue
+			}
+			np, why := planNH3(&selection{Family: family, Communication: comm, Connection: conn})
+			if np == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: np.IP, Port: np.Port, Addr: np.Addr, NH3: np})
+			notes = append(notes, sourceNote{false, nh3Note(id, role, np)})
 		case comm == CommKostalDxs:
 			kp, why := planKostalDxs(&selection{Family: family, Communication: comm, Connection: conn})
 			if kp == nil {

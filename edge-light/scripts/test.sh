@@ -4,7 +4,8 @@
 #   1. die gemeinsamen Vektoren sind aus den aktuellen JS-Modulen erzeugt
 #      (Node-RED bleibt die Quelle der Wahrheit),
 #   2. die Go-Zwillinge (solarmanv5, deyedecode, goeapi, verbraucherregel,
-#      huaweidecode, kacoserial, modbusprofil, einmalschreiben, messwerte, wagobild) stimmen mit ihnen ueberein; der
+#      huaweidecode, kacoserial, modbusprofil, einmalschreiben, messwerte, wagobild, froniusapi,
+#      kostalplenticore, kacohttp, aiswei) stimmen mit ihnen ueberein; der
 #      gemeinsame Modbus-TCP-Client (modbustcp),
 #   3. die Go-Schicht 1 (layer1) inklusive des Integrationstests
 #      "unveraenderter Kern + Go-Schicht 1" und die Geraetesuche
@@ -32,7 +33,10 @@ if command -v node >/dev/null 2>&1; then
     "$NODERED/measurements/erzeuger-laufzeit-vectors.test.js" "$NODERED/modbus-tcp-vectors.test.js" \
     "$NODERED/register-write-vectors.test.js" "$NODERED/measurements/measurement-driver-vectors.test.js" \
     "$NODERED/measurements/measurement-planner-vectors.test.js" "$NODERED/measurements/measurement-runtime-vectors.test.js" \
-    "$NODERED/measurements/wago-vectors.test.js"
+    "$NODERED/measurements/wago-vectors.test.js" "$NODERED/fronius/solar-api-vectors.test.js" \
+    "$NODERED/kostal/kostal-decode-vectors.test.js" "$NODERED/kaco/kaco-http-vectors.test.js" \
+    "$NODERED/kaco/aiswei-decode-vectors.test.js" "$NODERED/kostal/kostal-dxs-vectors.test.js" \
+    "$NODERED/kostal/kostal-piko-rtu-vectors.test.js"
   # Verbraucherregel (vp-consumer-policy): die Vektoren kommen aus der JS-Referenz.
   node "$NODERED/vp-palette/test/verbraucherregel-vectors.gen.js" --check
   # Messwerte-Bibliothek: Katalog und Budget-Vertrag, die Edge Light einbettet,
@@ -45,8 +49,8 @@ else
 fi
 
 echo "--- 2.+3. Go-Zwillinge und Schicht 1 (mit Race-Detector)"
-go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/koppelbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/einmalschreiben/... ./internal/messwerte/... ./internal/wagobild/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
-go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/koppelbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/einmalschreiben/... ./internal/messwerte/... ./internal/wagobild/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/...
+go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/koppelbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/einmalschreiben/... ./internal/messwerte/... ./internal/wagobild/... ./internal/froniusapi/... ./internal/kostalplenticore/... ./internal/kacohttp/... ./internal/aiswei/... ./internal/jsnum/... ./internal/kostaldxs/... ./internal/kostalrtu/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
+go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/koppelbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/einmalschreiben/... ./internal/messwerte/... ./internal/wagobild/... ./internal/froniusapi/... ./internal/kostalplenticore/... ./internal/kacohttp/... ./internal/aiswei/... ./internal/jsnum/... ./internal/kostaldxs/... ./internal/kostalrtu/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/...
 # Das Update im Programm (Konzept vp-edge-light-update, K3): laden, pruefen,
 # Probe - und die Lader-Pflege des bestaetigten Programms (Loader-Selbstupdate).
 go_run CGO_ENABLED=1 -- test -count=1 -race -run 'EdgeLight' ./internal/agent/

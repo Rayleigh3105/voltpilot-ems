@@ -2680,3 +2680,18 @@ test('flow Deye decoder still DROPS an all-zero read even with a coupled BMS, li
   assert.strictEqual(runDeyeDecode(cfg, blocks).ret, null);
   assert.strictEqual(deyeDecode.decode(blocks, cfg), null);
 });
+
+test('every embedded module a function node uses is embedded in THAT node', () => {
+  // Ein Flow-Knoten kann nichts requiren: ein `__NAME.` ohne `var __NAME =` im
+  // selben Knoten ist ein ReferenceError zur Laufzeit, der die ganze Lesung
+  // abbricht (Quellen-Executor ohne __KACO/__AISWEI, gefunden 20.11.2026).
+  const missing = [];
+  for (const n of JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'))) {
+    if (n.type !== 'function' || typeof n.func !== 'string') continue;
+    const used = new Set([...n.func.matchAll(/\b(__[A-Z][A-Z0-9_]*)\./g)].map((m) => m[1]));
+    for (const name of used) {
+      if (!new RegExp('\\b(var|const|let)\\s+' + name + '\\s*=').test(n.func)) missing.push(n.name + ': ' + name);
+    }
+  }
+  assert.deepStrictEqual(missing, []);
+});

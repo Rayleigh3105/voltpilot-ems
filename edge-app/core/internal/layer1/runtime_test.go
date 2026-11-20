@@ -323,9 +323,9 @@ func TestConnectionTestClassifiesLikeTestReadJS(t *testing.T) {
 		t.Errorf("fehlende Seriennummer = invalid_request mit Router-Satz, got %v", res)
 	}
 
-	other := map[string]any{"brand": "fronius", "model": "x", "family": "f", "communication": "fronius_solar_api", "connection": map[string]any{"ip": "1.2.3.4"}}
+	other := map[string]any{"brand": "x", "model": "x", "family": "f", "communication": "zauberei", "connection": map[string]any{"ip": "1.2.3.4"}}
 	if res := testRead(t, r, "unported", other); res["error_code"] != "invalid_request" || res["message"] == nil {
-		t.Errorf("nicht portierte Anbindung = benanntes invalid_request statt Timeout, got %v", res)
+		t.Errorf("unbekannte Anbindung = benanntes invalid_request statt Timeout, got %v", res)
 	}
 }
 

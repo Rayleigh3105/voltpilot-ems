@@ -106,6 +106,13 @@ Produktivbetrieb **an einem echten Gerät verifizieren**:
 
 Ohne/bei unbekannter Auswahl bleibt der Tab idle-sicher.
 
+**Edge Light** ([Paritätsliste](../../edge-light/docs/paritaet.md)) liest die
+Solar API seit 20.11.2026 mit dem Go-Zwilling `core/internal/froniusapi`
+(Hauptgerät, weitere Quelle als Erzeuger, Netz-Zähler oder Verbraucher,
+Verbindungstest). Beide Seiten hängen an `fronius/solar-api-vectors.json`,
+erzeugt aus `solar-api.js` (`node fronius/solar-api-vectors.gen.js` nach jeder
+Änderung am Decoder).
+
 ## 5b. Wenn die Solar API NICHT funktioniert: SunSpec Modbus lesen (READ)
 
 Manche Fronius-Geräte liefern **keine** brauchbare Solar API - z. B. der
@@ -217,6 +224,10 @@ Anlage" → Erzeuger hinzufügen), gleiche IP, unterschiedliche Unit-ID:
   Lesezyklen verpasst").
 - Eine falsche Unit-ID meldet sich laut im Log (`docker compose logs nodered`),
   die übrigen Quellen liefern weiter.
+- Die Suche nach weiteren Wechselrichtern (Unit-ID 1 bis 10 an derselben
+  Adresse) läuft seit 20.11.2026 auch auf Edge Light, mit derselben Regel: eine
+  späte Antwort auf eine abgelaufene Probe wird verworfen, nach dem ersten Fund
+  bleibt die Suche auf dessen Basisadresse.
 
 ## 6. Steuerung über SunSpec
 
