@@ -15,8 +15,8 @@
 #   sha256sums                                              alle sieben, Format sha256sum
 #
 # Der Skriptstand ist der der Mango (OpenWrt). Die Skripte fuer den PFC200
-# (edge-light/pfc) gehen nicht in die Fassung: sie kommen von Hand aus dem
-# Projekt auf das Geraet (edge-light/pfc/install.sh), ein Update tauscht dort
+# (edge-industrie) gehen nicht in die Fassung: sie kommen von Hand aus dem
+# Projekt auf das Geraet (edge-industrie/install.sh), ein Update tauscht dort
 # wie auf der Mango nur das Programm.
 #
 # Die gepackte Lieferung ist das, was eine Box beim Update laedt (Konzept

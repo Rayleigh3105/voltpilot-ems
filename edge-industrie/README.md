@@ -1,7 +1,8 @@
-# Edge Light auf dem WAGO PFC200
+# Edge Industrie auf dem WAGO PFC200
 
-Edge Light als eigenes Programm auf der WAGO-Firmware eines PFC200 (750-8212, zweite Generation, ARMv7), neben der SPS-Laufzeit.
-Dasselbe Programm und dasselbe Update-Protokoll wie auf der Mango, nur ohne OpenWrt: BusyBox-Init statt procd, eine Einstellungsdatei statt UCI, ein eigener Benutzer statt root.
+Edge Industrie ist die VoltPilot-Box als eigenes Programm auf der WAGO-Firmware eines PFC200 (750-8212, zweite Generation, ARMv7), neben der SPS-Laufzeit.
+Der Kern ist derselbe wie bei Edge Light auf der Mango (`edge-app/core`), ebenso das Update-Protokoll; nur ohne OpenWrt: BusyBox-Init statt procd, eine Einstellungsdatei statt UCI, ein eigener Benutzer statt root.
+Der Name „Edge Light“ gehört allein der Mango ([edge-light/](../edge-light/README.md)).
 
 **Stand: von Hand einrichtbar, am Gerät noch nichts belegt.**
 Alles hier ist gegen ein BusyBox-Linux für ARMv7 im Container geprüft, so nah an der WAGO-Firmware, wie die Unterlagen es hergeben (Firmware 27: glibc 2.35, BusyBox 1.34.1, BusyBox-Init).
@@ -11,30 +12,33 @@ Lesen aus der SPS, Werkstatt, Wartungstunnel und Koppelbild gehören nicht zu di
 ## Aufbau
 
 ```
-edge-light/pfc/
+edge-industrie/
 ├── README.md                              dieser Überblick
 ├── install.sh                             Einrichtung über SSH: Benutzer, Loader, Dienst, Vertrauens-Set, bestätigte Fassung
-└── files/
-    ├── etc/init.d/vp-edge-light           Dienst-Skript (start, stop, restart, status)
-    └── home/voltpilot/
-        ├── konfig                         Einstellungen (Schlüssel = Wert)
-        └── libexec/boot.sh                Loader: Start aus dem RAM, Tausch, Probe, Behalten, Zurück
+├── files/
+│   ├── etc/init.d/vp-edge-industrie       Dienst-Skript (start, stop, restart, status)
+│   └── home/voltpilot/
+│       ├── konfig                         Einstellungen (Schlüssel = Wert)
+│       └── libexec/boot.sh                Loader: Start aus dem RAM, Tausch, Probe, Behalten, Zurück
+├── scripts/
+│   ├── build.sh                           baut dist/vp-edge-industrie-linux-arm
+│   └── loader-abgleich.sh                 Loader wortgleich mit dem Mango-Loader (läuft in edge-light/scripts/test.sh)
+└── test/
+    ├── install-probe.sh                   install.sh, Dienst und Loader gegen BusyBox-Linux für ARMv7 im Container
+    └── update-probe.sh                    das Update im Loader, dieselben Fälle wie boot-update-probe.sh der Mango
 ```
-
-Die Proben dazu liegen bei den übrigen Proben von Edge Light:
-`edge-light/test/pfc-install-probe.sh`, `edge-light/test/pfc-update-probe.sh` und `edge-light/scripts/pfc-abgleich.sh`.
 
 ## Was auf dem Gerät entsteht
 
 | Ort | Was | Gehört |
 |---|---|---|
-| `/etc/init.d/vp-edge-light` | Dienst-Skript | root |
-| `/etc/rc.d/S99_vp-edge-light` | Link auf das Dienst-Skript: Start beim Hochfahren | root |
+| `/etc/init.d/vp-edge-industrie` | Dienst-Skript | root |
+| `/etc/rc.d/S99_vp-edge-industrie` | Link auf das Dienst-Skript: Start beim Hochfahren | root |
 | `/home/voltpilot/libexec/boot.sh` | Loader | root |
 | `/home/voltpilot/konfig` | Einstellungen | root |
 | `/home/voltpilot/fassung/` | die bestätigte Fassung, gepackt, mit Prüfsummen | voltpilot |
 | `/home/voltpilot/daten/` | Kennung, Zertifikat, Vertrauens-Set, Auswahl, Marken der Update-Versuche | voltpilot (0700) |
-| `/tmp/vp-edge-light/` | das entpackte Programm und alles, was laufend geschrieben wird (RAM) | voltpilot (0700) |
+| `/tmp/vp-edge-industrie/` | das entpackte Programm und alles, was laufend geschrieben wird (RAM) | voltpilot (0700) |
 | `/home/voltpilot/programm/` | das entpackte Programm, nur wenn `/tmp` keine Programme startet | voltpilot |
 
 Die Wurzel des Geräts bekommt nur das Dienst-Skript und seinen Link.
@@ -49,7 +53,7 @@ Die SPS-Laufzeit, ihre Dienste, die Firewall und die Netzeinstellungen des Gerä
   Der Loader verweigert den Start als root.
 - Dienst-Skript, Loader und Einstellungen gehören root.
   Das Programm kann sie nicht ändern, auch nicht durch ein Update.
-- Bei Speichernot beendet der Kern zuerst Edge Light (`oom_score_adj = 800`), nie die Laufzeit; Go bekommt ein weiches Speicherlimit (`gomemlimit = 96MiB`).
+- Bei Speichernot beendet der Kern zuerst Edge Industrie (`oom_score_adj = 800`), nie die Laufzeit; Go bekommt ein weiches Speicherlimit (`gomemlimit = 96MiB`).
   Beide Zahlen sind Vorschläge, am Gerät noch nicht gemessen (PS-P6).
 
 ## Einrichten
@@ -57,22 +61,22 @@ Die SPS-Laufzeit, ihre Dienste, die Firewall und die Netzeinstellungen des Gerä
 Voraussetzung: SSH als root auf das Gerät, und das Programm für ARMv7.
 
 ```bash
-edge-light/scripts/build.sh arm        # dist/vp-edge-light-linux-arm (oder die Fassung aus einem Release)
-VP_LIGHT_MANIFEST=<release.json> edge-light/pfc/install.sh root@<pfc-ip>
-ssh root@<pfc-ip> /etc/init.d/vp-edge-light restart
-ssh root@<pfc-ip> /etc/init.d/vp-edge-light status
+edge-industrie/scripts/build.sh        # edge-industrie/dist/vp-edge-industrie-linux-arm
+VP_INDUSTRIE_MANIFEST=<release.json> edge-industrie/install.sh root@<pfc-ip>
+ssh root@<pfc-ip> /etc/init.d/vp-edge-industrie restart
+ssh root@<pfc-ip> /etc/init.d/vp-edge-industrie status
 ```
 
 `install.sh` prüft zuerst, ohne etwas zu ändern, ob das Gerät alles Nötige mitbringt, und nennt, was fehlt.
 Es legt den Benutzer an, kopiert Loader und Dienst-Skript, legt das Vertrauens-Set in den Flash und spielt das Programm als bestätigte Fassung ein.
 Die Prüfsumme der Fassung wird auf dem Gerät nachgerechnet, bevor sie gilt.
-Mit `VP_LIGHT_MANIFEST` (das signierte Manifest genau dieser Fassung) vermerkt die Box ihren Stand und kann die bestätigte Fassung nach einem Stromausfall beim Update aus dem Portal nachladen.
+Mit `VP_INDUSTRIE_MANIFEST` (das signierte Manifest genau dieser Fassung) vermerkt die Box ihren Stand und kann die bestätigte Fassung nach einem Stromausfall beim Update aus dem Portal nachladen.
 Ein erneuter Aufruf erneuert Loader, Dienst-Skript, Vertrauens-Set und Fassung; Kennung, Zertifikat, Auswahl und die Einstellungen bleiben.
 Alle Variablen stehen im Kopf von [`install.sh`](install.sh).
 
 Danach wird die Box gekoppelt wie jede andere, über die lokale Web-App `http://<pfc-ip>:8484`.
 
-Das Protokoll von Loader und Programm geht an syslog, Marke `vp-edge-light`.
+Das Protokoll von Loader und Programm geht an syslog, Marke `vp-edge-industrie`.
 
 ## Einstellungen
 
@@ -80,7 +84,7 @@ Das Protokoll von Loader und Programm geht an syslog, Marke `vp-edge-light`.
 Die Datei wird gelesen, nie ausgeführt.
 `install.sh` legt sie nur an, wenn sie fehlt, und setzt darin nur `local_dir`, `arch`, `enabled` und bei Bedarf `programm_dir`.
 Weitere Einstellungen der Box (wie in `edge-app/.env.example`) stehen als Zeilen `env = NAME=wert`.
-Eine Änderung wirkt nach `/etc/init.d/vp-edge-light restart`.
+Eine Änderung wirkt nach `/etc/init.d/vp-edge-industrie restart`.
 
 Zwei Dinge sind nicht einstellbar:
 
@@ -105,8 +109,9 @@ Ob 8484, 8887, 1883 und 1502 am Gerät wirklich frei sind, zeigt PS-P5.
 
 ## Updates
 
-Unverändert die Edge-Light-Linie ([Updates](../docs/boot-und-updates.md)): Das Programm prüft Manifest und Signatur, lädt die Fassung in den RAM, der Loader tauscht beim nächsten Start, die neue Fassung läuft zehn Minuten zur Probe und wird behalten oder zurückgenommen.
-Jede Edge-Light-Fassung enthält dafür ein Programm `vp-edge-light:linux/arm`.
+Dasselbe Protokoll wie Edge Light ([Updates](../edge-light/docs/boot-und-updates.md)): Das Programm prüft Manifest und Signatur, lädt die Fassung in den RAM, der Loader tauscht beim nächsten Start, die neue Fassung läuft zehn Minuten zur Probe und wird behalten oder zurückgenommen.
+Bis Edge Industrie eigene Fassungen hat, kommt das Programm aus den Fassungen der Edge-Light-Linie: Jede enthält ein Programm `vp-edge-light:linux/arm`, angehängt als `vp-edge-light-linux-arm`.
+Für `install.sh` wird es als `edge-industrie/dist/vp-edge-industrie-linux-arm` abgelegt; auf dem Gerät heißt es `vp-edge-industrie`.
 Eine ältere Fassung ohne dieses Programm wendet die Box nicht an und sagt das.
 
 Ein Update tauscht nur das Programm.
@@ -120,23 +125,23 @@ Der Loader trägt zwei Marken:
 - `ABGLEICH_MANGO_STAND`: der `LOADER_STAND` des Mango-Loaders, mit dem die gemeinsamen Funktionen abgeglichen sind.
 
 Die Funktionen des Update-Protokolls stehen im Loader des PFC200 wortgleich wie im Mango-Loader.
-`edge-light/scripts/pfc-abgleich.sh` (Teil von `scripts/test.sh`) scheitert, sobald eine davon abweicht oder der Mango-Loader einen neuen Stand trägt.
+`edge-industrie/scripts/loader-abgleich.sh` (Teil von `edge-light/scripts/test.sh`) scheitert, sobald eine davon abweicht oder der Mango-Loader einen neuen Stand trägt.
 
 ## Was belegt ist
 
 ```bash
-VP_LIGHT_VERSION=edge-light-2099.01.0 edge-light/scripts/build.sh arm   # ein Release-Name: die Probe erzeugt dazu ein Manifest
-edge-light/test/pfc-install-probe.sh    # install.sh, Dienst und Loader mit dem echten ARMv7-Programm
-edge-light/test/pfc-update-probe.sh     # das Update im Loader: dieselben Fälle wie boot-update-probe.sh der Mango
-edge-light/scripts/pfc-abgleich.sh      # Loader wortgleich mit dem Mango-Loader; läuft in scripts/test.sh
+VP_INDUSTRIE_VERSION=edge-light-2099.01.0 edge-industrie/scripts/build.sh   # ein Release-Name: die Probe erzeugt dazu ein Manifest
+edge-industrie/test/install-probe.sh        # install.sh, Dienst und Loader mit dem echten ARMv7-Programm
+edge-industrie/test/update-probe.sh         # das Update im Loader: dieselben Fälle wie boot-update-probe.sh der Mango
+edge-industrie/scripts/loader-abgleich.sh   # Loader wortgleich mit dem Mango-Loader; läuft in edge-light/scripts/test.sh
 ```
 
 Beide Proben laufen in `busybox:1.34.1-glibc` für `linux/arm/v7`, ohne Netz, mit BusyBox-Init als erstem Prozess.
 
 | Probe | Belegt |
 |---|---|
-| `pfc-install-probe.sh` | `install.sh` verweigert vor dem ersten SSH-Aufruf, was nicht passt, und ändert nichts, wenn dem Gerät ein Werkzeug fehlt. Ablage, Eigentümer und Schreibschutz stimmen. Das echte Programm läuft als `voltpilot` mit `nice 10`, meldet „WAGO 750-8212“ und `arm` und ist update-bereit. Der Datenspiegel ist aus und lauscht eingeschaltet auf 1502, nichts auf 502. Der Dienst startet das Programm nach einem Absturz nach 10 s neu, beendet es geordnet und startet nach „Strom aus“ von selbst. Ein zweiter Aufruf von `install.sh` erhält Einstellungen und Kennung. Trägt `/tmp` `noexec`, läuft das Programm aus dem Flash |
-| `pfc-update-probe.sh` | Als Benutzer `voltpilot`: Gut-Fall mit Behalten; Probestart scheitert; drei Abstürze; keine Cloud bis zur Frist; Selbsttest durchgefallen; Fälschung im RAM; Strom weg in der Probe; Strom weg beim Tausch mit Nachladen genau dieser Fassung; Obergrenze der Marken im Flash. Mit dem echten Programm: Probestart, Urteil „offen“ ohne Cloud, Rücknahme mit dessen Grund, geordnetes Ende auf TERM. Kein Loader-Selbstupdate, auch wenn das Programm am Pfad der Mango schreiben dürfte |
+| `install-probe.sh` | `install.sh` verweigert vor dem ersten SSH-Aufruf, was nicht passt, und ändert nichts, wenn dem Gerät ein Werkzeug fehlt. Ablage, Eigentümer und Schreibschutz stimmen. Das echte Programm läuft als `voltpilot` mit `nice 10`, meldet „WAGO 750-8212“ und `arm` und ist update-bereit. Der Datenspiegel ist aus und lauscht eingeschaltet auf 1502, nichts auf 502. Der Dienst startet das Programm nach einem Absturz nach 10 s neu, beendet es geordnet und startet nach „Strom aus“ von selbst. Ein zweiter Aufruf von `install.sh` erhält Einstellungen und Kennung. Trägt `/tmp` `noexec`, läuft das Programm aus dem Flash |
+| `update-probe.sh` | Als Benutzer `voltpilot`: Gut-Fall mit Behalten; Probestart scheitert; drei Abstürze; keine Cloud bis zur Frist; Selbsttest durchgefallen; Fälschung im RAM; Strom weg in der Probe; Strom weg beim Tausch mit Nachladen genau dieser Fassung; Obergrenze der Marken im Flash. Mit dem echten Programm: Probestart, Urteil „offen“ ohne Cloud, Rücknahme mit dessen Grund, geordnetes Ende auf TERM. Kein Loader-Selbstupdate, auch wenn das Programm am Pfad der Mango schreiben dürfte |
 
 **Was der Container nicht belegt:** alles, was von der echten Firmware abhängt.
 Er hat keine SPS-Laufzeit, kein WBM, keine Firewall, kein echtes `get_coupler_details`, keinen echten Flash und rechnet unter Emulation.
@@ -211,13 +216,13 @@ Weicht eine Antwort von der Tabelle oben ab, wird zuerst dieser Ordner angepasst
 
 Beschrieben, nicht ausgeführt: Das Test-Gerät ist erst mit Stufe 0 erreichbar.
 Er folgt auf Stufe 0 und setzt voraus, dass deren Antworten zur Tabelle oben passen.
-Der Test braucht eine Edge-Light-Fassung, die nach diesem Stand gebaut ist (mit `linux/arm`), und für den Update-Teil eine zweite, neuere.
+Der Test braucht eine Fassung, die nach diesem Stand gebaut ist (mit `linux/arm`), und für den Update-Teil eine zweite, neuere.
 
 1. **Einrichten.**
-   `VP_LIGHT_MANIFEST=<release.json> edge-light/pfc/install.sh root@<pfc>` mit dem Programm `vp-edge-light-linux-arm` der Fassung in `edge-light/dist/`, dann `restart`.
+   `VP_INDUSTRIE_MANIFEST=<release.json> edge-industrie/install.sh root@<pfc>` mit dem Programm `linux/arm` der Fassung als `edge-industrie/dist/vp-edge-industrie-linux-arm`, dann `restart`.
    Erwartet: `status` nennt Dienst und Programm; im syslog steht „device detected“ mit `"model":"WAGO 750-8212","arch":"arm"`.
 2. **Läuft es, und was kostet es (PS-P6).**
-   Nach zehn Minuten: `ssh root@<pfc> 'for q in /proc/[0-9]*; do case "$(readlink $q/exe)" in */vp-edge-light/vp-edge-light | */programm/vp-edge-light) grep -E "VmRSS|VmHWM|Threads" $q/status ;; esac; done; top -bn1 | head -15; free -m; wget -qO- http://127.0.0.1:8484/health'`.
+   Nach zehn Minuten: `ssh root@<pfc> 'for q in /proc/[0-9]*; do case "$(readlink $q/exe)" in */vp-edge-industrie/vp-edge-industrie | */programm/vp-edge-industrie) grep -E "VmRSS|VmHWM|Threads" $q/status ;; esac; done; top -bn1 | head -15; free -m; wget -qO- http://127.0.0.1:8484/health'`.
    Festhalten: RAM des Prozesses, Rechenlast neben der Laufzeit, freier RAM.
    Daraus folgen `gomemlimit` und `prozess_reserve_kb`.
 3. **Geräteliste.**

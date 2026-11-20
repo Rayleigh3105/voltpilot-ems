@@ -87,11 +87,11 @@ Ohne neuen Stand erreicht eine Änderung keine Box im Feld, denn der Rückschrit
 Sichtbar ist der Stand dreifach: der Loader meldet ihn bei jedem Start im Log (`logread -e vp-edge-light`), das Programm meldet ihn additiv im Herzschlag (`update.geraet.loader_stand`, [Vertrag](../../docs/contracts/v2/box-geraet.md)), und das Portal zeigt ihn in der Geräte-Zeile der Flotte („… · Loader-Stand n“).
 Ein per Tunnel gezielt eingespielter älterer Stand hält nur, solange kein Programm mit neuerem eingebettetem Stand startet - zum Festnageln den Dienst stoppen oder ein Programm mit höchstens diesem Stand fahren.
 
-**Auf dem WAGO PFC200 gibt es kein Loader-Selbstupdate.**
-Sein Loader und sein Dienst-Skript sind eigene Dateien ([pfc/](../pfc/README.md)), gehören root und liegen nicht am Loader-Pfad der Mango; das Programm findet dort keinen Loader und schreibt nichts (Regel 6).
-Sie ändern sich nur durch `pfc/install.sh`.
-Der Loader des PFC200 trägt deshalb nicht `LOADER_STAND`, sondern `PFC_LOADER_STAND`, und dazu `ABGLEICH_MANGO_STAND`: Die Funktionen des Update-Protokolls stehen in beiden Loadern wortgleich, `scripts/pfc-abgleich.sh` (Teil von `scripts/test.sh`) erzwingt das.
-Wer `LOADER_STAND` der Mango erhöht, zieht die geänderte Funktion im Loader des PFC200 nach, setzt `ABGLEICH_MANGO_STAND` auf den neuen Stand, erhöht `PFC_LOADER_STAND` und lässt `test/pfc-update-probe.sh` laufen.
+**Edge Industrie (WAGO PFC200) hat kein Loader-Selbstupdate.**
+Sein Loader und sein Dienst-Skript sind eigene Dateien ([edge-industrie/](../../edge-industrie/README.md)), gehören root und liegen nicht am Loader-Pfad der Mango; das Programm findet dort keinen Loader und schreibt nichts (Regel 6).
+Sie ändern sich nur durch `edge-industrie/install.sh`.
+Der Loader des PFC200 trägt deshalb nicht `LOADER_STAND`, sondern `PFC_LOADER_STAND`, und dazu `ABGLEICH_MANGO_STAND`: Die Funktionen des Update-Protokolls stehen in beiden Loadern wortgleich, `edge-industrie/scripts/loader-abgleich.sh` (Teil von `scripts/test.sh`) erzwingt das.
+Wer `LOADER_STAND` der Mango erhöht, zieht die geänderte Funktion im Loader des PFC200 nach, setzt `ABGLEICH_MANGO_STAND` auf den neuen Stand, erhöht `PFC_LOADER_STAND` und lässt `edge-industrie/test/update-probe.sh` laufen.
 
 ## Nicht verhandelbar
 
@@ -108,7 +108,7 @@ Wer `LOADER_STAND` der Mango erhöht, zieht die geänderte Funktion im Loader de
 | 9 | Kein Drängeln | zurückgenommen = kein neuer Versuch ohne neue Zuweisung (anderes `assigned_at`) | `otalight_test.go`, P3 |
 | 10 | Datenformat | anderes `state_schema` als bestätigt → nicht automatisch | `otalight_test.go` |
 
-Die Fälle stehen in `edge-light/test/boot-update-probe.sh` (OpenWrt 25.12.5 im Container, alle Zweige des Loaders, einmal mit dem echten Programm). Dieselben Fälle für den Loader des WAGO PFC200 stehen in `edge-light/test/pfc-update-probe.sh` (BusyBox-Linux für ARMv7 im Container, als Benutzer ohne root-Rechte). Der Nachweis am Gerät ist der [Laborbeweis P1–P11](../labor/README.md).
+Die Fälle stehen in `edge-light/test/boot-update-probe.sh` (OpenWrt 25.12.5 im Container, alle Zweige des Loaders, einmal mit dem echten Programm). Dieselben Fälle für den Loader von Edge Industrie (WAGO PFC200) stehen in `edge-industrie/test/update-probe.sh` (BusyBox-Linux für ARMv7 im Container, als Benutzer ohne root-Rechte). Der Nachweis am Gerät ist der [Laborbeweis P1–P11](../labor/README.md).
 
 ## Einrichten und Nachrüsten
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Abgleich des PFC200-Loaders mit dem Mango-Loader, ohne Docker und ohne Geraet.
+# Abgleich des Edge-Industrie-Loaders (WAGO PFC200) mit dem Mango-Loader, ohne Docker und ohne Geraet.
 #
-# Der Loader des WAGO PFC200 (edge-light/pfc/files/home/voltpilot/libexec/boot.sh)
+# Der Loader des WAGO PFC200 (edge-industrie/files/home/voltpilot/libexec/boot.sh)
 # spricht dasselbe Update-Protokoll wie der Mango-Loader
 # (edge-light/openwrt/files/usr/libexec/vp-edge-light/boot.sh): Tausch, Probe,
 # Behalten, Zurueck. Die Funktionen, die das Protokoll ausmachen, stehen in
@@ -9,19 +9,19 @@
 # dann LOADER_STAND), scheitert diese Pruefung, bis der PFC200-Loader
 # nachgezogen ist: Funktion uebernehmen, ABGLEICH_MANGO_STAND auf den neuen
 # LOADER_STAND setzen, PFC_LOADER_STAND erhoehen und
-# edge-light/test/pfc-update-probe.sh laufen lassen.
+# edge-industrie/test/update-probe.sh laufen lassen.
 #
 # Dazu: die Skripte des PFC200 sind syntaktisch gueltiges POSIX-sh (die
 # BusyBox-ash des Geraets kennt keine bash-Erweiterungen).
 #
-#   edge-light/scripts/pfc-abgleich.sh
+#   edge-industrie/scripts/loader-abgleich.sh
 set -euo pipefail
 
-LIGHT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
-MANGO="$LIGHT_DIR/openwrt/files/usr/libexec/vp-edge-light/boot.sh"
-PFC="$LIGHT_DIR/pfc/files/home/voltpilot/libexec/boot.sh"
-DIENST="$LIGHT_DIR/pfc/files/etc/init.d/vp-edge-light"
-INSTALL="$LIGHT_DIR/pfc/install.sh"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+MANGO="$REPO_ROOT/edge-light/openwrt/files/usr/libexec/vp-edge-light/boot.sh"
+PFC="$REPO_ROOT/edge-industrie/files/home/voltpilot/libexec/boot.sh"
+DIENST="$REPO_ROOT/edge-industrie/files/etc/init.d/vp-edge-industrie"
+INSTALL="$REPO_ROOT/edge-industrie/install.sh"
 # Das Protokoll: Speicherbedarf, Pruefsumme, Uhr, Marken, Ruecknahme, Behalten,
 # Probestart, Tausch, Urteil, Wache.
 GEMEINSAM="free_kb bedarf_kb summe uptime_s versuch zurueck behalten probestart tauschen probe_pruefen waechter"
@@ -38,7 +38,7 @@ funktion() {
 
 for f in "$PFC" "$DIENST" "$INSTALL"; do
   if ! sh -n "$f"; then
-    echo "FEHLER: ${f#"$LIGHT_DIR"/} ist kein gueltiges sh" >&2
+    echo "FEHLER: ${f#"$REPO_ROOT"/} ist kein gueltiges sh" >&2
     FEHLER=1
   fi
 done

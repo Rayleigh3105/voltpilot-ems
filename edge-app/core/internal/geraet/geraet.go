@@ -10,7 +10,7 @@
 //
 //  1. die Bestellnummer eines WAGO-Controllers, die der Startweg auf dem
 //     Geraet erfragt und dem Programm mitgibt (VP_WAGO_BESTELLNUMMER,
-//     edge-light/pfc): „WAGO 750-8212". Sie gewinnt vor dem Device-Tree, weil
+//     edge-industrie): „WAGO 750-8212". Sie gewinnt vor dem Device-Tree, weil
 //     der nur die Baugruppe nennt, nicht den Artikel. Was nicht wie eine
 //     Bestellnummer aussieht, zaehlt nicht als Angabe.
 //  2. /tmp/sysinfo/model - OpenWrt (Edge Light auf der Mango, auf dem Pi).

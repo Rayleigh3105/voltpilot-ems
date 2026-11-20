@@ -18,13 +18,13 @@ Geräte & Updates G8 (Konzept vom 05.11.2026, Entscheid E4 A). Additiv im Status
 | `modell` | Die Angabe des Geräts, nie geraten. Fehlt, wenn keine Quelle lesbar ist oder nur Platzhalter nennt. |
 | `arch` | `runtime.GOARCH` des laufenden Programms (`amd64`, `arm64`, `mipsle`, `arm` …). |
 | `loader` | Nur Edge Light: `update` – der Loader kennt das Update-Protokoll (er setzt `VP_OTA_RAM_DIR`, Stufe 2); `flash` – er startet immer die Fassung aus dem Flash (Stufe 1). Fehlt bei der Docker-Box. |
-| `loader_stand` | Nur Edge Light, additiv seit dem Loader-Selbstupdate: die `LOADER_STAND`-Marke des Loaders im Flash (`edge-app/core/internal/loaderstand`), gelesen vom Programm. Fehlt bei alten Loadern ohne Marke, bei alten Programmen, bei der Docker-Box und auf dem WAGO PFC200 (dort pflegt das Programm keinen Loader, `edge-light/pfc`). Damit ist ohne Wartungstunnel prüfbar, welche Box welchen Loader fährt. |
+| `loader_stand` | Nur Edge Light, additiv seit dem Loader-Selbstupdate: die `LOADER_STAND`-Marke des Loaders im Flash (`edge-app/core/internal/loaderstand`), gelesen vom Programm. Fehlt bei alten Loadern ohne Marke, bei alten Programmen, bei der Docker-Box und auf Edge Industrie (WAGO PFC200; dort pflegt das Programm keinen Loader, `edge-industrie`). Damit ist ohne Wartungstunnel prüfbar, welche Box welchen Loader fährt. |
 
 ## Erkennung (Box, `edge-app/core/internal/geraet`)
 
 Einmal beim Start, die erste Quelle mit Inhalt gewinnt:
 
-1. Die Bestellnummer eines WAGO-Controllers, die der Startweg auf dem Gerät erfragt und dem Programm mitgibt (`VP_WAGO_BESTELLNUMMER`, `edge-light/pfc`): `WAGO 750-8212`. Sie gilt nur in der Form zweier Zifferngruppen mit Bindestrich, wahlweise mit Variante (`750-8212/025-000`), und wird nie ergänzt oder umgeschrieben; alles andere ist keine Angabe, dann gilt die nächste Quelle.
+1. Die Bestellnummer eines WAGO-Controllers, die der Startweg auf dem Gerät erfragt und dem Programm mitgibt (`VP_WAGO_BESTELLNUMMER`, `edge-industrie`): `WAGO 750-8212`. Sie gilt nur in der Form zweier Zifferngruppen mit Bindestrich, wahlweise mit Variante (`750-8212/025-000`), und wird nie ergänzt oder umgeschrieben; alles andere ist keine Angabe, dann gilt die nächste Quelle.
 2. `/tmp/sysinfo/model` (OpenWrt).
 3. `/proc/device-tree/model`, `/sys/firmware/devicetree/base/model` (ARM-Boards; im Docker-Container maskiert).
 4. Die Zeile `Model` in `/proc/cpuinfo` (Raspberry-Pi-Kerne, auch im Container lesbar).

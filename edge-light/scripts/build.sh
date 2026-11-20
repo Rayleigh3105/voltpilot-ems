@@ -3,7 +3,7 @@
 #
 #   linux/mipsle (GOMIPS=softfloat)  GL.iNet Mango GL-MT300N-V2 (MT7628, ohne FPU)
 #   linux/arm64                      Raspberry Pi 3/4/5, NanoPi, ...
-#   linux/arm (GOARM=7)              WAGO PFC200 G2 (Cortex-A8, ARMv7, edge-light/pfc)
+#   linux/arm (GOARM=7)              WAGO PFC200 G2 (Cortex-A8, ARMv7, Edge Industrie: edge-industrie/)
 #   linux/amd64                      x86-Thin-Clients, Entwicklung
 #
 # Ergebnis in edge-light/dist/ (oder VP_LIGHT_DIST): je Architektur das

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Probe fuer das Update im Loader des WAGO PFC200
-# (pfc/files/home/voltpilot/libexec/boot.sh) in einem BusyBox-Linux fuer ARMv7
+# (files/home/voltpilot/libexec/boot.sh) in einem BusyBox-Linux fuer ARMv7
 # (busybox:1.34.1-glibc, wie die WAGO-Firmware 27: glibc, BusyBox 1.34.1) -
 # ohne PFC200 und ohne Netz. Das Gegenstueck zu boot-update-probe.sh der
 # Mango: DIESELBEN Faelle, damit belegt ist, dass der PFC200 dasselbe
@@ -33,7 +33,7 @@
 #   8. Strom weg beim Flash-Tausch (P9): Kopie unvollstaendig -> genau diese
 #      Fassung nachladen und pruefen; ohne Netz kein Start
 #   9. Marken: feste Obergrenze im Flash
-#  10. mit dem ECHTEN Programm fuer ARMv7 (edge-light/dist/vp-edge-light-linux-arm,
+#  10. mit dem ECHTEN Programm fuer ARMv7 (edge-industrie/dist/vp-edge-industrie-linux-arm,
 #      wenn gebaut): Probestart, probe.json vom Loader, Selbsttest des
 #      Programms ohne Cloud -> Urteil offen; nach der Frist nimmt der Loader
 #      mit dem Grund aus dem Urteil des Programms zurueck
@@ -41,15 +41,15 @@
 #      schreibt es weder an den Pfad des Mango-Loaders (auch wenn es dort
 #      duerfte) noch aendert es den Loader des PFC200
 #
-#   edge-light/scripts/build.sh arm
-#   edge-light/test/pfc-update-probe.sh
+#   edge-industrie/scripts/build.sh
+#   edge-industrie/test/update-probe.sh
 #   VPPU_LOADER=<pfad>/boot.sh ...   Gegenprobe mit einem anderen Stand
 # shellcheck disable=SC2015,SC2016 # ok/falsch-Zeilen; Ausdruecke werten im Container aus
 set -eu
 
 HIER="$(cd "$(dirname "$0")" && pwd -P)"
-LOADER="${VPPU_LOADER:-$HIER/../pfc/files/home/voltpilot/libexec/boot.sh}"
-KONFIG="$HIER/../pfc/files/home/voltpilot/konfig"
+LOADER="${VPPU_LOADER:-$HIER/../files/home/voltpilot/libexec/boot.sh}"
+KONFIG="$HIER/../files/home/voltpilot/konfig"
 BILD="${VPPU_BILD:-busybox:1.34.1-glibc}"
 PLATTFORM=linux/arm/v7
 C="vppu-$$"
@@ -60,8 +60,8 @@ ALT=edge-light-2026.11.1
 NEU=edge-light-2026.11.2
 LADER=/home/voltpilot/libexec/boot.sh
 LD=/home/voltpilot/fassung
-N=vp-edge-light-linux-arm
-RAM=/tmp/vp-edge-light/ota
+N=vp-edge-industrie-linux-arm
+RAM=/tmp/vp-edge-industrie/ota
 FEST=/home/voltpilot/daten/ota
 
 aufraeumen() {
@@ -109,7 +109,7 @@ stopp() {
 strom_aus() {
   x 'touch /probe/stopp'
   sleep 2
-  x 'rm -rf /tmp/vp-edge-light /probe/lauf.rc'
+  x 'rm -rf /tmp/vp-edge-industrie /probe/lauf.rc'
 }
 uhr() { x "printf '%s.00 0.00\n' $1 >/probe/proc/uptime"; }
 # ksetze <schluessel> <wert> - eine Angabe in den Einstellungen (root).
@@ -191,7 +191,7 @@ bestaetigt() {
 frisch() { # frischer Box-Zustand: alte Fassung bestaetigt, keine Marken, RAM leer
   x 'touch /probe/stopp'
   sleep 1
-  r "rm -rf /tmp/vp-edge-light /home/voltpilot/daten $LD /probe/lauf.* /probe/srv/* /probe/kein-netz /probe/umgebung /probe/abrufe
+  r "rm -rf /tmp/vp-edge-industrie /home/voltpilot/daten $LD /probe/lauf.* /probe/srv/* /probe/kein-netz /probe/umgebung /probe/abrufe
      mkdir -p /home/voltpilot/daten $LD && chown voltpilot /home/voltpilot/daten $LD && chmod 0700 /home/voltpilot/daten"
   bestaetigt "$ALT"
   uhr 1000
@@ -235,7 +235,7 @@ pruef "die Loader-Pfade sind leer - eine env-Zeile aendert das nicht" "grep -qx 
 pruef "die Bestellnummer kommt vom Dienst-Skript, nicht aus den Einstellungen" "grep -qx 'VP_WAGO_BESTELLNUMMER=750-8212' /probe/umgebung"
 pruef "ungueltige env-Zeilen werden uebergangen und gemeldet" "! grep -q -e '9FALSCH' -e 'ohne-gleich' /probe/umgebung && [ \"\$(grep -c 'env-Zeile ohne' /probe/lauf.err)\" = 2 ]"
 pruef "der Loader meldet seinen Stand" "grep -q 'Loader PFC Stand $(sed -n 's/^PFC_LOADER_STAND=\([0-9][0-9]*\)$/\1/p' "$LOADER") ' /probe/lauf.err"
-pruef "was laufend geschrieben wird, liegt im RAM (Links im Datenverzeichnis)" '[ "$(readlink /home/voltpilot/daten/buffer)" = /tmp/vp-edge-light/buffer ] && [ -L /home/voltpilot/daten/ocpp-journal ]'
+pruef "was laufend geschrieben wird, liegt im RAM (Links im Datenverzeichnis)" '[ "$(readlink /home/voltpilot/daten/buffer)" = /tmp/vp-edge-industrie/buffer ] && [ -L /home/voltpilot/daten/ocpp-journal ]'
 pruef "kein Download" '[ ! -f /probe/abrufe ]'
 stopp
 r "sed '/^env = /d' /home/voltpilot/konfig >/tmp/k && cat /tmp/k >/home/voltpilot/konfig && rm -f /tmp/k"
@@ -375,16 +375,16 @@ warte "Ruecknahme geschrieben" "grep -q '^zurueck 51 z-10' $FEST/versuche"
 pruef "hoechstens 40 Zeilen" "[ \"\$(wc -l <$FEST/versuche)\" -le 40 ]"
 stopp
 
-ECHT="$HIER/../dist/vp-edge-light-linux-arm"
+ECHT="$HIER/../dist/vp-edge-industrie-linux-arm"
 # Das echte Programm beachtet /probe/stopp nicht: beenden und auf das Ende des
 # Loaders warten, sonst haelt es 8484/1883 besetzt. Die Klammer im Muster:
 # pkill findet so nicht die Befehlszeile, die es aufruft.
 echt_ende() {
-  x 'pkill -f "/tmp/vp-edge-light/vp-edge[-]light"' || true
+  x 'pkill -f "/tmp/vp-edge-industrie/vp-edge[-]industrie"' || true
   i=0
   while ! x '[ -f /probe/lauf.rc ]' >/dev/null 2>&1; do i=$((i + 1)); [ "$i" -gt 20 ] && break; sleep 1; done
 }
-echt_laeuft='pgrep -f "/tmp/vp-edge-light/vp-edge[-]light"'
+echt_laeuft='pgrep -f "/tmp/vp-edge-industrie/vp-edge[-]industrie"'
 
 schritt "10. Mit dem echten Programm (ARMv7)"
 if [ -f "$ECHT" ]; then
@@ -416,7 +416,7 @@ if [ -f "$ECHT" ]; then
   stopp
   ksetze version_frist 2
 else
-  echo "  uebersprungen: $ECHT fehlt (edge-light/scripts/build.sh arm)"
+  echo "  uebersprungen: $ECHT fehlt (edge-industrie/scripts/build.sh)"
 fi
 
 schritt "11. Kein Loader-Selbstupdate mit dem echten Programm (ARMv7)"
@@ -437,12 +437,12 @@ if [ -f "$ECHT" ]; then
   # Die Pflege-Pruefung des Programms kommt nach ~30 s; im Emulator grosszuegig.
   sleep 60
   pruef "das Programm laeuft weiter" "$echt_laeuft && [ ! -f /probe/lauf.rc ]"
-  pruef "nichts am Pfad des Mango-Loaders geschrieben" '[ -z "$(ls -A /usr/libexec/vp-edge-light)" ] && [ ! -e /etc/init.d/vp-edge-light ]'
+  pruef "nichts am Pfad des Mango-Loaders geschrieben" '[ -z "$(ls -A /usr/libexec/vp-edge-light)" ] && [ ! -e /etc/init.d/vp-edge-industrie ]'
   pruef "der Loader des PFC200 ist unveraendert" "[ \"\$(sha256sum $LADER | cut -d' ' -f1)\" = $VOR ]"
   echt_ende
   ksetze portal_url https://portal.voltpilot.de
 else
-  echo "  uebersprungen: $ECHT fehlt (edge-light/scripts/build.sh arm)"
+  echo "  uebersprungen: $ECHT fehlt (edge-industrie/scripts/build.sh)"
 fi
 
 echo

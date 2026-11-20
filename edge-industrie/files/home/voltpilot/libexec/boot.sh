@@ -1,5 +1,5 @@
 #!/bin/sh
-# Edge Light - Loader fuer den WAGO PFC200 (750-8212, ARMv7, WAGO-Firmware mit
+# Edge Industrie - Loader fuer den WAGO PFC200 (750-8212, ARMv7, WAGO-Firmware mit
 # BusyBox-Init). Die Fassung des Mango-Loaders
 # (edge-light/openwrt/files/usr/libexec/vp-edge-light/boot.sh) fuer ein Linux
 # ohne UCI, procd und jsonfilter.
@@ -21,7 +21,7 @@
 #   - JSON liest ein kleines awk-Programm statt jsonfilter.
 #   - Nachladen mit wget oder curl statt uclient-fetch.
 #   - Den Neustart nach dem Ende des Programms macht das Dienst-Skript
-#     (/etc/init.d/vp-edge-light) statt procd.
+#     (/etc/init.d/vp-edge-industrie) statt procd.
 #   - Der Loader laeuft als Benutzer voltpilot, NIE als root. Das Dienst-Skript
 #     legt das RAM-Verzeichnis an, fragt die Bestellnummer des Geraets ab und
 #     wechselt den Benutzer. Loader, Dienst-Skript und Einstellungen gehoeren
@@ -32,7 +32,7 @@
 #     Modbus-Server der SPS); er bleibt ab Werk aus.
 #   - Kein Loader-Selbstupdate: das Programm bringt nur den Mango-Loader
 #     eingebettet mit. Dieser Loader und das Dienst-Skript aendern sich nur
-#     durch edge-light/pfc/install.sh.
+#     durch edge-industrie/install.sh.
 #
 # In den Flash schreibt der Loader nur: die Marken (versuche, feste
 # Obergrenze, eine Zeile je Schritt), und beim Behalten Pruefsummen + Kopie.
@@ -45,7 +45,7 @@
 # jeder Aenderung erhoehen; ins Geraet kommt sie nur ueber install.sh.
 # Bewusst NICHT "LOADER_STAND": diese Marke liest das Programm fuer das
 # Loader-Selbstupdate der Mango.
-PFC_LOADER_STAND=1
+PFC_LOADER_STAND=2
 # ABGLEICH_MANGO_STAND: der LOADER_STAND des Mango-Loaders, mit dem diese
 # Fassung zuletzt abgeglichen wurde. Hebt die Mango ihren Stand, schlaegt
 # edge-light/scripts/test.sh fehl, bis die Aenderung hier nachgezogen (oder
@@ -56,11 +56,11 @@ PATH="${PATH:+$PATH:}/usr/sbin:/usr/bin:/sbin:/bin"
 export PATH
 
 # Die Ausgabe faengt das Dienst-Skript ein und gibt sie an syslog
-# (logger -t vp-edge-light). Von Hand gestartet steht sie im Terminal.
-log() { echo "vp-edge-light: $*" >&2; }
+# (logger -t vp-edge-industrie). Von Hand gestartet steht sie im Terminal.
+log() { echo "vp-edge-industrie: $*" >&2; }
 
 if [ "$(id -u)" = 0 ]; then
-  log "der Loader laeuft nie als root - starten mit /etc/init.d/vp-edge-light start"
+  log "der Loader laeuft nie als root - starten mit /etc/init.d/vp-edge-industrie start"
   exit 1
 fi
 log "Loader PFC Stand $PFC_LOADER_STAND (Protokoll wie Mango-Loader Stand $ABGLEICH_MANGO_STAND)"
@@ -79,7 +79,7 @@ kliste() { sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$KONFIG" 2>/d
 
 ARCH="$(kwert arch arm)"
 DATA_DIR="$(kwert data_dir /home/voltpilot/daten)"
-RAM_DIR="$(kwert ram_dir /tmp/vp-edge-light)"
+RAM_DIR="$(kwert ram_dir /tmp/vp-edge-industrie)"
 # programm_dir: wo das entpackte Programm liegt und startet. Vorgabe ist der
 # RAM. Traegt /tmp "noexec", setzt install.sh ein Verzeichnis im Flash.
 PROG_DIR="$(kwert programm_dir "$RAM_DIR")"
@@ -99,8 +99,8 @@ PROBE_TAKT="$(kwert probe_takt 5)"
 # Bei Speichernot trifft der Kernel zuerst das Programm, nie die SPS-Laufzeit.
 OOM_ADJ="$(kwert oom_score_adj 800)"
 
-BIN="$PROG_DIR/vp-edge-light"
-NAME="vp-edge-light-linux-$ARCH"
+BIN="$PROG_DIR/vp-edge-industrie"
+NAME="vp-edge-industrie-linux-$ARCH"
 LOCAL_GZ="$LOCAL_DIR/$NAME.gz"
 # Zeile 1: sha256 des ENTPACKTEN Programms, Zeile 2: sha256 der gepackten
 # Kopie - mit ihr laesst sich genau diese Fassung nachladen. Dazu die Zeile
@@ -116,11 +116,11 @@ PROBE="$OTA_RAM/probe.json"
 URTEIL="$OTA_RAM/probe-urteil.json"
 VERSUCHE_MAX=40
 
-# VP_LOADER_PROC nur fuer die Proben (edge-light/test/pfc-*-probe.sh).
+# VP_LOADER_PROC nur fuer die Proben (edge-industrie/test/*-probe.sh).
 PROC="${VP_LOADER_PROC:-/proc}"
 
 if ! mkdir -p "$RAM_DIR" "$DATA_DIR" "$PROG_DIR" 2>/dev/null || [ ! -w "$RAM_DIR" ] || [ ! -w "$DATA_DIR" ] || [ ! -w "$PROG_DIR" ]; then
-  log "$RAM_DIR, $DATA_DIR oder $PROG_DIR fehlt oder ist fuer $(id -un) nicht beschreibbar - edge-light/pfc/install.sh ausfuehren"
+  log "$RAM_DIR, $DATA_DIR oder $PROG_DIR fehlt oder ist fuer $(id -un) nicht beschreibbar - edge-industrie/install.sh ausfuehren"
   exit 1
 fi
 
@@ -152,7 +152,7 @@ mkdir -p "$OTA_FEST" "$OTA_RAM" || exit 1
 # (Pruefsummen-Datei ohne groesse-Zeile), gilt die Pauschale MIN_FREE_KB.
 # Gemessen wird MemAvailable. Die Zahlen sind die der Mango und fuer den
 # PFC200 (512 MB RAM, daneben die SPS-Laufzeit) noch NICHT am Geraet gemessen
-# (Pruefstein PS-P6, edge-light/pfc/README.md).
+# (Pruefstein PS-P6, edge-industrie/README.md).
 #
 # Anders als auf der Mango raeumt dieser Loader den Seitencache nie: liegt der
 # Wert unter der Schwelle, startet er nicht und das Dienst-Skript versucht es
@@ -352,7 +352,7 @@ nachladen() {
 # Ist die Kopie unvollstaendig (Strom weg beim Behalten), wird genau diese
 # Fassung nachgeladen.
 unpack_local() {
-  [ -f "$LOCAL_SUM" ] || { log "keine bestaetigte Fassung ($LOCAL_SUM) - edge-light/pfc/install.sh ausfuehren"; return 1; }
+  [ -f "$LOCAL_SUM" ] || { log "keine bestaetigte Fassung ($LOCAL_SUM) - edge-industrie/install.sh ausfuehren"; return 1; }
   want="$(awk 'NR == 1 {print $1; exit}' "$LOCAL_SUM")"
   gzwant="$(awk 'NR == 2 && $1 != "groesse" {print $1; exit}' "$LOCAL_SUM")"
   groesse="$(awk '$1 == "groesse" {print $2; exit}' "$LOCAL_SUM")"

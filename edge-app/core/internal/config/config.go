@@ -59,8 +59,8 @@ type Config struct {
 	// Das Programm selbst aendert nie die Konfiguration der Box.
 	WlanSkript string `json:"wlan_skript"`
 	// WagoBestellnummer ist die Bestellnummer des WAGO-Controllers, auf dem
-	// Edge Light laeuft ("750-8212"). Der Startweg auf dem Geraet erfragt sie
-	// (edge-light/pfc) und gibt sie mit; das Programm nennt damit sein Modell
+	// Edge Industrie laeuft ("750-8212"). Der Startweg auf dem Geraet erfragt sie
+	// (edge-industrie) und gibt sie mit; das Programm nennt damit sein Modell
 	// (internal/geraet). "" = kein WAGO-Geraet.
 	WagoBestellnummer string `json:"wago_bestellnummer"`
 	// EinrichtAddr ist die Adresse der Box im Einrichtungs-WLAN

@@ -2,7 +2,7 @@
 
 > **Weitermachen?** Stand, Entscheidungen, Messwerte und die nächsten Schritte stehen in der [Übergabe](docs/uebergabe.md).
 
-Die VoltPilot-Box als **ein einziges Programm** – ohne Docker, ohne Node-RED. Gebaut für kleine Router wie den GL.iNet Mango (OpenWrt, MIPS, 128 MB RAM, 16 MB Flash), läuft aber auf jedem Linux (arm64, amd64) und neben der SPS-Laufzeit auf dem WAGO PFC200 (ARMv7, [pfc/](pfc/README.md)).
+Die VoltPilot-Box als **ein einziges Programm** – ohne Docker, ohne Node-RED. Gebaut für kleine Router wie den GL.iNet Mango (OpenWrt, MIPS, 128 MB RAM, 16 MB Flash), läuft aber auf jedem Linux (arm64, amd64). Derselbe Kern läuft als **Edge Industrie** neben der SPS-Laufzeit auf dem WAGO PFC200 (ARMv7, [edge-industrie/](../edge-industrie/README.md)); „Edge Light“ heißt allein die Mango-Linie.
 
 **Ziel:** Edge Light und die Docker-Box bestehen vorerst nebeneinander, je nach Anwendungsfall (Produktentscheid 07.10.2026): Edge Light für kleine Hardware und einfachere Anlagen, die Docker-Box für komplexere Anforderungen vor Ort, die bessere Hardware brauchen. Was Edge Light kann, misst die [Paritätsliste](docs/paritaet.md); ob die Docker-Box je auf dasselbe Programm umgestellt wird, ist offen.
 
@@ -20,7 +20,7 @@ Die VoltPilot-Box als **ein einziges Programm** – ohne Docker, ohne Node-RED. 
 Benötigt Go ≥ 1.24 **oder** Docker (die Skripte wählen selbst).
 
 ```bash
-edge-light/scripts/test.sh          # Vektoren, Go-Tests (mit Race-Detector), MIPS-Build, ARMv7-Build, Loader-Abgleich PFC200
+edge-light/scripts/test.sh          # Vektoren, Go-Tests (mit Race-Detector), MIPS-Build, ARMv7-Build, Loader-Abgleich Edge Industrie
 edge-light/scripts/build.sh         # dist/vp-edge-light-linux-{mipsle,arm64,arm,amd64} + .sha256
 edge-light/scripts/release.sh edge-light-JJJJ.MM.N <ausgabe>  # eine Fassung: mipsle, arm64, arm, Skriptstand, sha256sums (nur lokales Go)
 edge-light/test/qemu-smoke.sh       # MIPS-Programm unter Emulation gegen simulierten Deye
@@ -31,8 +31,6 @@ edge-light/test/install-probe.sh    # install.sh gegen OpenWrt im Container (nac
 edge-light/test/boot-speicher-probe.sh  # Speicherpruefung des Loaders gegen OpenWrt im Container
 edge-light/test/boot-update-probe.sh    # Update im Loader (Tausch, Probe, Behalten, Zurueck, Strom weg) gegen OpenWrt im Container
 edge-light/test/wlan-anschluss-probe.sh # WLAN-Anschluss (Kabel oder WLAN), Einrichtungs-WLAN und Einrichtungsseite gegen OpenWrt 25.12.5 mit simuliertem Funk im Emulator (test/wlan-labor)
-edge-light/test/pfc-install-probe.sh     # WAGO PFC200: pfc/install.sh, Dienst und Loader gegen BusyBox-Linux fuer ARMv7 im Container (nach `VP_LIGHT_VERSION=edge-light-2099.01.0 edge-light/scripts/build.sh arm`)
-edge-light/test/pfc-update-probe.sh      # WAGO PFC200: Update im Loader als Benutzer voltpilot, dieselben Faelle wie boot-update-probe.sh (nach build.sh arm)
 edge-light/labor/laborbau.sh <aus> <seq> [mipsle|amd64]  # Laborbeweis: Wegwerf-Wurzel, Labor-Fassungen P1-P11 (labor/README.md)
 edge-light/labor/labor-probe.sh     # Trockenlauf des Labor-Pakets gegen OpenWrt im Container (echte Programme)
 ```
@@ -77,17 +75,10 @@ Der Dropbear des Mango-Images kennt nur **RSA**-Schlüssel (kein Ed25519) – f�
 
 > ⚠ **Nicht versenden, bevor U-6 erfüllt ist:** Laborbeweis P1–P11 grün und das erste Update über das Portal auf `edge-tgjn9gd` gelungen (Entscheid 5c). Boxen mit Stufe 1 werden einmal durch den Tunnel [nachgerüstet](docs/nachruesten.md).
 
-## Auf einem WAGO PFC200
+## Edge Industrie (WAGO PFC200)
 
-Dasselbe Programm für ARMv7, neben der SPS-Laufzeit auf der WAGO-Firmware: eigener Benutzer, BusyBox-Init, eine Einstellungsdatei, derselbe Weg für Updates mit Probe und Rücknahme.
-Einrichtung, Annahmen über die Firmware und die Handgriffe am Gerät stehen in [pfc/README.md](pfc/README.md).
-Am Gerät ist noch nichts belegt.
-
-```bash
-edge-light/scripts/build.sh arm
-VP_LIGHT_MANIFEST=<release.json> edge-light/pfc/install.sh root@<pfc-ip>
-ssh root@<pfc-ip> /etc/init.d/vp-edge-light restart
-```
+Derselbe Kern für ARMv7 heißt Edge Industrie und hat seinen eigenen Ordner [edge-industrie/](../edge-industrie/README.md): Einrichtung, Loader, Dienst, Proben und die Handgriffe am Gerät.
+Sein Loader spricht wortgleich das Update-Protokoll des Mango-Loaders; `test.sh` prüft das mit `edge-industrie/scripts/loader-abgleich.sh`.
 
 ## Aufbau
 
@@ -108,13 +99,10 @@ edge-light/
 │   ├── install.sh             Einrichtung über SSH (auch durch den WireGuard-Tunnel): Vertrauens-Set, bestätigte Fassung
 │   ├── service-tunnel.sh      Wartungstunnel zum Wartungsserver aus dem Portal (WireGuard, SSH mit Fenster-Schlüsseln, Web-App im Fenster)
 │   └── files/                 Loader, procd-Dienst, UCI-Konfiguration; `vp-wartung`: Abholer und Startskript der Fenster-Schlüssel, Ereignisliste der Fernwartung
-├── pfc/                       WAGO PFC200: install.sh, Loader, Dienst-Skript für BusyBox-Init, Einstellungen; Handgriffe am Gerät (pfc/README.md)
-├── scripts/                   build.sh, test.sh (lokales Go oder Docker); pfc-abgleich.sh hält den Loader des PFC200 wortgleich mit dem der Mango; release.sh und skripte-paket.py für eine Fassung edge-light-JJJJ.MM.N (Lauf `.forgejo/workflows/edge-light-release.yaml`: Tag → Prüfen → Anhänge am Forgejo-Release; mit `EDGE_LIGHT_SIGNIEREN=true` Manifest, Signatur, Register, Programme ins Portal)
+├── scripts/                   build.sh, test.sh (lokales Go oder Docker; ruft den Loader-Abgleich von Edge Industrie); release.sh und skripte-paket.py für eine Fassung edge-light-JJJJ.MM.N (Lauf `.forgejo/workflows/edge-light-release.yaml`: Tag → Prüfen → Anhänge am Forgejo-Release; mit `EDGE_LIGHT_SIGNIEREN=true` Manifest, Signatur, Register, Programme ins Portal)
 └── test/
     ├── qemu-smoke.sh          MIPS-Programm unter qemu gegen simulierten Logger
     ├── mango-labtest.sh       Start + Messung auf einem echten Mango per SSH (ohne Portal)
-    ├── pfc-install-probe.sh   WAGO PFC200: install.sh, Dienst und Loader mit dem echten ARMv7-Programm gegen BusyBox-Linux im Container
-    ├── pfc-update-probe.sh    WAGO PFC200: Update im Loader (Tausch, Probe, Behalten, Zurück, Strom weg, Nachladen) als Benutzer voltpilot
     ├── service-tunnel-probe.sh  service-tunnel.sh gegen OpenWrt im Container (Wechsel alt → Wartungsserver)
     ├── wartung-anmeldung-probe.sh  Fenster-Schlüssel: echte SSH-Anmeldung durch einen echten Tunnel (OpenWrt 25.12, Tunnel-Dienst aus dem Repo); Protokoll der Box und Ereignisliste
     ├── wlan-anschluss-probe.sh  WLAN-Anschluss der Box (scan, messen, verbinden, kabel, Störfälle), Einrichtungs-WLAN (Fenster, Zone, Notweg) und Einrichtungsseite (Ende-zu-Ende) gegen OpenWrt mit simuliertem Funk

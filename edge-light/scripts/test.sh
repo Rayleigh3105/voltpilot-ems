@@ -15,9 +15,10 @@
 #   4. die SPS-Bibliothek (sps/codesys) stimmt mit den Vertragsvektoren des
 #      Erzeuger-Bilds, des Koppelbilds und des WAGO-Bilds ueberein,
 #   5. das Programm laesst sich fuer MIPS bauen (der Mango),
-#   6. es laesst sich fuer ARMv7 bauen (der WAGO PFC200), und der Loader des
-#      PFC200 spricht wortgleich das Update-Protokoll des Mango-Loaders
-#      (pfc-abgleich.sh); die Modellangabe der Box (geraet),
+#   6. es laesst sich fuer ARMv7 bauen (Edge Industrie auf dem WAGO PFC200),
+#      und der Loader des PFC200 spricht wortgleich das Update-Protokoll des
+#      Mango-Loaders (edge-industrie/scripts/loader-abgleich.sh); die
+#      Modellangabe der Box (geraet),
 #   7. das Release-Programm ist nie der Pruefstand-Build (der Build-Tag
 #      `pruefstand` oeffnet die Steuerung ohne Freigabe).
 #
@@ -75,9 +76,9 @@ fi
 echo "--- 5. MIPS-Build (Mango)"
 go_run GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light
 
-echo "--- 6. ARMv7-Build und Loader-Abgleich (WAGO PFC200)"
+echo "--- 6. ARMv7-Build und Loader-Abgleich (Edge Industrie, WAGO PFC200)"
 go_run GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light
-"$LIGHT_DIR/scripts/pfc-abgleich.sh"
+"$REPO_ROOT/edge-industrie/scripts/loader-abgleich.sh"
 
 echo "--- 7. Release-Programm ohne Pruefstand-Tag, Pruefstand-Build baut"
 rel_dist="$(mktemp -d)"

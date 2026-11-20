@@ -1,9 +1,9 @@
-# Edge Light auf dem WAGO PFC200 - Einstellungen.
+# Edge Industrie auf dem WAGO PFC200 - Einstellungen.
 #
 # Form: "schluessel = wert", eine Angabe je Zeile, "#" am Zeilenanfang ist ein
 # Kommentar. Die Datei wird gelesen, nie ausgefuehrt. Sie gehoert root; das
 # Programm kann sie nicht aendern. install.sh legt sie nur an, wenn sie fehlt.
-# Eine Aenderung wirkt nach: /etc/init.d/vp-edge-light restart
+# Eine Aenderung wirkt nach: /etc/init.d/vp-edge-industrie restart
 
 # 1 = Dienst aktiv. Erst einschalten, wenn die bestaetigte Fassung im Flash
 # liegt (install.sh erledigt das).
@@ -17,7 +17,7 @@ benutzer = voltpilot
 # hinten).
 nice = 10
 
-# Die bestaetigte Fassung im Flash: <local_dir>/vp-edge-light-linux-<arch>.gz
+# Die bestaetigte Fassung im Flash: <local_dir>/vp-edge-industrie-linux-<arch>.gz
 # und .sha256 (Zeile 1: Pruefsumme des ungepackten Programms, Zeile 2: der
 # gepackten Kopie - mit ihr laedt der Loader genau diese Fassung aus dem
 # Portal nach, falls die Kopie beim Update unvollstaendig blieb). Neue
@@ -34,7 +34,7 @@ version_frist = 5
 
 # Dauerhafter Zustand (Flash) und fluechtiger Zustand (RAM).
 data_dir = /home/voltpilot/daten
-ram_dir = /tmp/vp-edge-light
+ram_dir = /tmp/vp-edge-industrie
 # Wo das entpackte Programm liegt und startet. Ohne Angabe: ram_dir. Nur
 # setzen, wenn /tmp keine Programme startet (noexec); install.sh prueft das
 # und traegt dann /home/voltpilot/programm ein.
@@ -46,7 +46,7 @@ web_addr = :8484
 bus_addr = 127.0.0.1:1883
 
 # Weiches Speicherlimit fuer Go (512 MB RAM teilen sich die SPS-Laufzeit, die
-# WAGO-Dienste und Edge Light). Vorschlag, am Geraet noch nicht gemessen.
+# WAGO-Dienste und Edge Industrie). Vorschlag, am Geraet noch nicht gemessen.
 gomemlimit = 96MiB
 # Speicherschwelle des Loaders vor Entpacken/Download: Groesse des entpackten
 # Programms plus prozess_reserve_kb (Vorgabe im Loader 12 000 kB, die Zahl der

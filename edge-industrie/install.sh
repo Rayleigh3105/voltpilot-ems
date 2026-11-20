@@ -1,7 +1,7 @@
 #!/bin/sh
-# Edge Light auf einem WAGO PFC200 (750-8212, WAGO-Firmware) einrichten -
-# update-bereit. Das Gegenstueck zu edge-light/openwrt/install.sh fuer ein
-# Linux mit BusyBox-Init statt OpenWrt.
+# Edge Industrie auf einem WAGO PFC200 (750-8212, WAGO-Firmware) einrichten -
+# update-bereit. Das Gegenstueck zu edge-light/openwrt/install.sh (Edge Light
+# auf der Mango) fuer ein Linux mit BusyBox-Init statt OpenWrt.
 #
 # Legt den Benutzer voltpilot an, kopiert Loader, Dienst-Skript und
 # Standard-Einstellungen auf das Geraet, legt das Vertrauens-Set in den Flash
@@ -11,29 +11,29 @@
 # Dienst-Skript aendern sich NUR durch dieses Skript (kein
 # Loader-Selbstupdate auf dem PFC200).
 #
-#   edge-light/scripts/build.sh arm           (oder die Fassung aus einem Release)
-#   edge-light/pfc/install.sh root@192.168.1.17
+#   edge-industrie/scripts/build.sh           (oder die Fassung aus einem Release)
+#   edge-industrie/install.sh root@192.168.1.17
 #
 # Umgebung (wie edge-light/openwrt/install.sh):
-#   VP_SSH_KEY=<datei>         Schluesseldatei fuer ssh (ssh -i); ohne die
-#                              Variable entscheidet ~/.ssh/config.
-#   VP_LIGHT_ARCH              Bauart (arm; arm64/amd64 nur fuer Proben).
-#   VP_LIGHT_MANIFEST=<datei>  das signierte Manifest (release.json) GENAU dieser Fassung.
-#                              Damit vermerkt die Box den Stand (current.json: release_seq,
-#                              state_schema = Anti-Rollback-Boden) und kann die bestaetigte
-#                              Fassung nach einem Stromausfall beim Update aus dem Portal
-#                              nachladen. Ohne Manifest: Programm laeuft, die Box ist aber
-#                              erst nach dem ersten Update ueber das Portal voll update-bereit.
-#   VP_TRUST_SET_DIR=<dir>     trust-set.json + trust-set.json.sig von dort. Sonst offen
-#                              vom Portal geladen:
-#   VP_PORTAL_URL              Vorgabe https://portal.voltpilot.de
-#   VP_PFC_RC_LINK             Name des Start-Links in /etc/rc.d
-#                              (Vorgabe S99_vp-edge-light).
+#   VP_SSH_KEY=<datei>             Schluesseldatei fuer ssh (ssh -i); ohne die
+#                                  Variable entscheidet ~/.ssh/config.
+#   VP_INDUSTRIE_ARCH              Bauart (arm; arm64/amd64 nur fuer Proben).
+#   VP_INDUSTRIE_MANIFEST=<datei>  das signierte Manifest (release.json) GENAU dieser Fassung.
+#                                  Damit vermerkt die Box den Stand (current.json: release_seq,
+#                                  state_schema = Anti-Rollback-Boden) und kann die bestaetigte
+#                                  Fassung nach einem Stromausfall beim Update aus dem Portal
+#                                  nachladen. Ohne Manifest: Programm laeuft, die Box ist aber
+#                                  erst nach dem ersten Update ueber das Portal voll update-bereit.
+#   VP_TRUST_SET_DIR=<dir>         trust-set.json + trust-set.json.sig von dort. Sonst offen
+#                                  vom Portal geladen:
+#   VP_PORTAL_URL                  Vorgabe https://portal.voltpilot.de
+#   VP_PFC_RC_LINK                 Name des Start-Links in /etc/rc.d
+#                                  (Vorgabe S99_vp-edge-industrie).
 #
 # Was auf dem Geraet entsteht (alles unter /home/voltpilot, dazu das
 # Dienst-Skript):
-#   /etc/init.d/vp-edge-light          Dienst-Skript            root
-#   /etc/rc.d/S99_vp-edge-light        Link: Start beim Hochfahren
+#   /etc/init.d/vp-edge-industrie      Dienst-Skript            root
+#   /etc/rc.d/S99_vp-edge-industrie    Link: Start beim Hochfahren
 #   /home/voltpilot/libexec/boot.sh    Loader                   root
 #   /home/voltpilot/konfig             Einstellungen            root
 #   /home/voltpilot/fassung/           bestaetigte Fassung      voltpilot
@@ -53,10 +53,10 @@ if [ "$#" -gt 1 ]; then
   echo "FEHLER: nur das Ziel angeben - neue Fassungen kommen signiert ueber das Portal" >&2
   exit 1
 fi
-ARCH="${VP_LIGHT_ARCH:-arm}"
+ARCH="${VP_INDUSTRIE_ARCH:-arm}"
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
-BIN="$HERE/../dist/vp-edge-light-linux-$ARCH"
-NAME="vp-edge-light-linux-$ARCH"
+BIN="$HERE/dist/vp-edge-industrie-linux-$ARCH"
+NAME="vp-edge-industrie-linux-$ARCH"
 BENUTZER=voltpilot
 HEIM=/home/voltpilot
 KONFIG="$HEIM/konfig"
@@ -65,18 +65,18 @@ DATA_DIR="$HEIM/daten"
 OTA_FEST="$DATA_DIR/ota"
 PROG_FLASH="$HEIM/programm"
 PORTAL="${VP_PORTAL_URL:-https://portal.voltpilot.de}"
-MANIFEST="${VP_LIGHT_MANIFEST:-}"
-RC_LINK="${VP_PFC_RC_LINK:-S99_vp-edge-light}"
+MANIFEST="${VP_INDUSTRIE_MANIFEST:-}"
+RC_LINK="${VP_PFC_RC_LINK:-S99_vp-edge-industrie}"
 
 case "$ARCH" in
   arm | arm64 | amd64) ;;
-  *) echo "FEHLER: unbekannte Bauart VP_LIGHT_ARCH=$ARCH (arm; arm64|amd64 nur fuer Proben)" >&2; exit 1 ;;
+  *) echo "FEHLER: unbekannte Bauart VP_INDUSTRIE_ARCH=$ARCH (arm; arm64|amd64 nur fuer Proben)" >&2; exit 1 ;;
 esac
 case "$RC_LINK" in
   '' | */* | *[!A-Za-z0-9_.-]*) echo "FEHLER: VP_PFC_RC_LINK=$RC_LINK ist kein Dateiname" >&2; exit 1 ;;
 esac
 if [ ! -f "$BIN" ]; then
-  echo "FEHLER: das Programm fehlt ($BIN) - erst edge-light/scripts/build.sh $ARCH" >&2
+  echo "FEHLER: das Programm fehlt ($BIN) - erst edge-industrie/scripts/build.sh" >&2
   exit 1
 fi
 if [ -n "${VP_SSH_KEY:-}" ] && [ ! -r "$VP_SSH_KEY" ]; then
@@ -106,7 +106,7 @@ SEQ=""
 SCHEMA=""
 GZSUM=""
 if [ -n "$MANIFEST" ]; then
-  [ -r "$MANIFEST" ] || { echo "FEHLER: VP_LIGHT_MANIFEST=$MANIFEST ist nicht lesbar" >&2; exit 1; }
+  [ -r "$MANIFEST" ] || { echo "FEHLER: VP_INDUSTRIE_MANIFEST=$MANIFEST ist nicht lesbar" >&2; exit 1; }
   wert() { sed -n "s/^  \"$1\": *\"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\}$/\1/p" "$MANIFEST" | head -n 1; }
   REL="$(wert release)"
   SEQ="$(wert release_seq)"
@@ -129,7 +129,7 @@ if [ -n "$MANIFEST" ]; then
   fi
   echo "--- Fassung $REL (Stand $SEQ, Datenformat $SCHEMA) laut signiertem Manifest"
 else
-  echo "--- ohne Manifest (VP_LIGHT_MANIFEST): kein Anti-Rollback-Boden, kein Nachladen der bestaetigten Fassung bis zum ersten Update"
+  echo "--- ohne Manifest (VP_INDUSTRIE_MANIFEST): kein Anti-Rollback-Boden, kein Nachladen der bestaetigten Fassung bis zum ersten Update"
 fi
 
 # --- Vertrauens-Set ---------------------------------------------------------------
@@ -223,7 +223,7 @@ echo "--- kopiere Loader und Dienst-Skript nach $TARGET"
 # Datei, dann mv, dann sync): Strom weg oder eine gerissene Verbindung laesst
 # nie einen halben Loader zurueck. Ein laufender Loader liest seine alte Datei
 # weiter; der neue Stand wirkt ab dem naechsten Start.
-for f in home/voltpilot/libexec/boot.sh etc/init.d/vp-edge-light; do
+for f in home/voltpilot/libexec/boot.sh etc/init.d/vp-edge-industrie; do
   # shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
   box_ssh "$TARGET" "cat > /$f.neu && chown root:root /$f.neu && chmod 0755 /$f.neu && mv -f /$f.neu /$f && sync" <"$HERE/files/$f"
 done
@@ -307,7 +307,7 @@ box_ssh "$TARGET" "set -e
   ksetze local_dir $LOCAL_DIR
   ksetze arch $ARCH
   ram=\"\$(kwert ram_dir)\"
-  ram=\"\${ram:-/tmp/vp-edge-light}\"
+  ram=\"\${ram:-/tmp/vp-edge-industrie}\"
   oben=\"\$(dirname \"\$ram\")\"
   if [ -z \"\$(kwert programm_dir)\" ]; then
     probe=\"\$oben/.vp-startprobe.\$\$\"
@@ -330,14 +330,14 @@ box_ssh "$TARGET" "set -e
   sync
   echo \"    \$oben liegt auf: \$(df -k \"\$oben\" 2>/dev/null | awk 'NR==2 {print \$1}')\"
   if [ -d /etc/rc.d ]; then
-    ln -sf ../init.d/vp-edge-light /etc/rc.d/$RC_LINK
+    ln -sf ../init.d/vp-edge-industrie /etc/rc.d/$RC_LINK
     echo '    Start beim Hochfahren: /etc/rc.d/$RC_LINK'
   else
     echo '    WARNUNG: /etc/rc.d fehlt - Start beim Hochfahren NICHT eingerichtet'
   fi"
 
-echo "--- fertig. Starten:  ssh $TARGET /etc/init.d/vp-edge-light restart"
-echo "    Zustand:           ssh $TARGET /etc/init.d/vp-edge-light status"
-echo "    Protokoll:         syslog des Geraets, Marke vp-edge-light"
+echo "--- fertig. Starten:  ssh $TARGET /etc/init.d/vp-edge-industrie restart"
+echo "    Zustand:           ssh $TARGET /etc/init.d/vp-edge-industrie status"
+echo "    Protokoll:         syslog des Geraets, Marke vp-edge-industrie"
 echo "    Lokale Web-App:    http://${TARGET#*@}:8484"
 echo "    Modbus-Datenspiegel: ab Werk aus; eingeschaltet lauscht er auf 1502 (502 gehoert der SPS)."
