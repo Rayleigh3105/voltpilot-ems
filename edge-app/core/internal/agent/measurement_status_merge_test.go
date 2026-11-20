@@ -23,8 +23,9 @@ import (
 
 const fuehlerPointKey = "shelly.gen2plus.temperature[100].tc"
 
-// layer1's own shape (layer1/einstellungen.go onMessplan): it walked the
-// whole plan, did not recognize the Fühler point, and refused it.
+// layer1's shape before the measurement library (the former closed set): it
+// walked the whole plan, did not recognize the Fühler point, and refused it.
+// The merger must still let the owner's acceptance win over such a refusal.
 const layer1BlanketRejection = `{"revision":12,"applied_at":"2026-11-14T12:00:00Z",` +
 	`"accepted":[],"rejected":[{"point_key":"` + fuehlerPointKey + `","reason":"edge_too_old"}]}`
 

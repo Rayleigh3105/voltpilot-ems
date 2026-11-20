@@ -17,6 +17,7 @@ left out of both files.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 from pathlib import Path
 
@@ -26,6 +27,10 @@ from cataloglib import CATALOG_VERSION, EDGE_FIELDS, ROOT, box_points, canonical
 REPO = ROOT.parents[1]
 SOURCE = ROOT / "dist" / f"measurement-point-catalog-{CATALOG_VERSION}.json"
 EDGE = REPO / "edge-app" / "nodered" / "measurements" / "catalog.json"
+# Edge Light (Go, no Node-RED) embeds the SAME box view gzip-compressed: 2 MB of
+# JSON would sit in the Mango's RAM as program text, 60 KB do not. --check
+# compares the DECOMPRESSED bytes, so another zlib build never reads as stale.
+EDGE_GO = REPO / "edge-app" / "core" / "internal" / "messwerte" / "katalog.json.gz"
 BUDGET = REPO / "docs" / "contracts" / "v2" / "measurement-budget-vectors.json"
 MIGRATIONS = REPO / "services" / "api" / "src" / "main" / "resources" / "db" / "migration"
 # ⚠ Eine angewandte Migration ist unveränderlich: jeder Laufzeitstand bekommt seine EIGENE
@@ -84,10 +89,13 @@ def main() -> int:
     args = parser.parse_args()
     edge, sql = outputs()
     expected = ((EDGE, edge), (sql_path(), sql),
-                (EDGE.with_name(BUDGET.name), BUDGET.read_bytes()))
+                (EDGE.with_name(BUDGET.name), BUDGET.read_bytes()),
+                (EDGE_GO.with_name(BUDGET.name), BUDGET.read_bytes()))
     if args.check:
         stale = [str(path.relative_to(REPO)) for path, raw in expected
                  if not path.exists() or path.read_bytes() != raw]
+        if not EDGE_GO.exists() or gzip.decompress(EDGE_GO.read_bytes()) != edge:
+            stale.append(str(EDGE_GO.relative_to(REPO)))
         if stale:
             raise SystemExit("runtime catalog derivatives are stale: " + ", ".join(stale))
         print(f"runtime derivatives of catalog {CATALOG_VERSION} match its runtime version")
@@ -95,6 +103,8 @@ def main() -> int:
     for path, raw in expected:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
+    EDGE_GO.parent.mkdir(parents=True, exist_ok=True)
+    EDGE_GO.write_bytes(gzip.compress(edge, compresslevel=9, mtime=0))
     print(f"packaged {len(json.loads(edge)['points'])} runtime points")
     return 0
 

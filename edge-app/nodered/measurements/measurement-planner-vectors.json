@@ -1,0 +1,2550 @@
+{
+ "_comment": [
+  "GENERIERT von measurement-planner-vectors.gen.js aus measurement-planner.js und catalog.json - nicht von Hand bearbeiten.",
+  "Gepruefte Seiten: measurement-planner-vectors.test.js (JS) und edge-app/core/internal/messwerte (Go, Edge Light)."
+ ],
+ "catalog_version": "2026.10.21.1",
+ "faelle": [
+  {
+   "name": "falsche Katalogfassung",
+   "config": {
+    "revision": 1,
+    "catalog_version": "1999.01.01.1",
+    "selections": [
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": false,
+    "accepted": [],
+    "rejected": [
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "reason": "unsupported_catalog"
+     }
+    ],
+    "metrics": null
+   }
+  },
+  {
+   "name": "Deye-Punkte am Primaer-Wechselrichter",
+   "config": {
+    "revision": 2,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "cadence_s": 300
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-capacity",
+      "cadence_s": 300
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-current",
+      "cadence_s": 300
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [
+     "deye.hybrid_3p.battery-1.battery-1",
+     "deye.hybrid_3p.battery-1.battery-1-alarm",
+     "deye.hybrid_3p.battery-1.battery-1-capacity",
+     "deye.hybrid_3p.battery-1.battery-1-current"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 0.8,
+     "requestsPerMinute": 0.8,
+     "dutyPercent": 0.5333333333333333,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1-capacity",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-capacity",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1-current",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-current",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10041,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1-current"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10047,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10050,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1-capacity"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10058,
+      "count": 2,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1-alarm"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "unbekannt, zu schnell, doppelt",
+   "config": {
+    "revision": 3,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "gibt.es.nicht",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 0
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "cadence_s": 90000
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-capacity",
+      "cadence_s": 300
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-capacity",
+      "cadence_s": 300
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery.battery",
+      "cadence_s": 4
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [
+     "deye.hybrid_3p.battery-1.battery-1-capacity"
+    ],
+    "rejected": [
+     {
+      "point_key": "gibt.es.nicht",
+      "reason": "unknown_point"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "reason": "invalid_cadence"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "reason": "invalid_cadence"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-capacity",
+      "reason": "unknown_point"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery.battery",
+      "reason": "invalid_cadence"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 0.2,
+     "requestsPerMinute": 0.2,
+     "dutyPercent": 0.13333333333333333,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1-capacity",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-capacity",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10050,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1-capacity"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "geteilter Punkt je Komponente",
+   "config": {
+    "revision": 4,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300,
+      "entity_id": "akku-1"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300,
+      "entity_id": "wr-5"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "cadence_s": 300,
+      "entity_id": "akku-1"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "cadence_s": 300
+     }
+    ]
+   },
+   "options": {
+    "binding": {
+     "entities": {
+      "akku-1": {
+       "entity_id": "akku-1",
+       "entity_type": "battery-hybrid",
+       "edge_source_id": "",
+       "data_source_id": "DQ-1"
+      },
+      "wr-2": {
+       "entity_id": "wr-2",
+       "entity_type": "inverter",
+       "edge_source_id": "src-fronius",
+       "data_source_id": "DQ-2"
+      },
+      "wr-3": {
+       "entity_id": "wr-3",
+       "entity_type": "inverter",
+       "edge_source_id": "src-weg"
+      },
+      "wr-4": {
+       "entity_id": "wr-4",
+       "entity_type": "inverter",
+       "edge_source_id": ""
+      },
+      "wr-5": {
+       "entity_id": "wr-5",
+       "entity_type": "inverter",
+       "edge_source_id": "inverter"
+      }
+     },
+     "sources": {
+      "src-fronius": {
+       "id": "src-fronius",
+       "communication": "sunspec_tcp",
+       "connection": {
+        "ip": "10.0.0.9",
+        "port": 502
+       }
+      }
+     }
+    }
+   },
+   "result": {
+    "applied": true,
+    "accepted": [
+     "deye.hybrid_3p.battery-1.battery-1",
+     "deye.hybrid_3p.battery-1.battery-1-alarm"
+    ],
+    "rejected": [
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "reason": "unknown_point"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 0.6000000000000001,
+     "requestsPerMinute": 0.4,
+     "dutyPercent": 0.26666666666666666,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary",
+       "dataSourceId": "DQ-1"
+      },
+      "entity_id": "akku-1"
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      },
+      "entity_id": "wr-5"
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-alarm",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary",
+       "dataSourceId": "DQ-1"
+      },
+      "entity_id": "akku-1"
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10047,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary",
+       "dataSourceId": "DQ-1"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10058,
+      "count": 2,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary",
+       "dataSourceId": "DQ-1"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1-alarm"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "Bindung: Quelle, fehlende Quelle, ohne Pin, Pin inverter",
+   "config": {
+    "revision": 5,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "sunspec.model_103.a",
+      "cadence_s": 60,
+      "entity_id": "wr-2"
+     },
+     {
+      "point_key": "sunspec.model_103.a_sf",
+      "cadence_s": 300,
+      "entity_id": "wr-3"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-current",
+      "cadence_s": 300,
+      "entity_id": "wr-4"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-cycles",
+      "cadence_s": 300,
+      "entity_id": "wr-5"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-fault",
+      "cadence_s": 300,
+      "entity_id": "gibts-nicht"
+     }
+    ]
+   },
+   "options": {
+    "binding": {
+     "entities": {
+      "akku-1": {
+       "entity_id": "akku-1",
+       "entity_type": "battery-hybrid",
+       "edge_source_id": "",
+       "data_source_id": "DQ-1"
+      },
+      "wr-2": {
+       "entity_id": "wr-2",
+       "entity_type": "inverter",
+       "edge_source_id": "src-fronius",
+       "data_source_id": "DQ-2"
+      },
+      "wr-3": {
+       "entity_id": "wr-3",
+       "entity_type": "inverter",
+       "edge_source_id": "src-weg"
+      },
+      "wr-4": {
+       "entity_id": "wr-4",
+       "entity_type": "inverter",
+       "edge_source_id": ""
+      },
+      "wr-5": {
+       "entity_id": "wr-5",
+       "entity_type": "inverter",
+       "edge_source_id": "inverter"
+      }
+     },
+     "sources": {
+      "src-fronius": {
+       "id": "src-fronius",
+       "communication": "sunspec_tcp",
+       "connection": {
+        "ip": "10.0.0.9",
+        "port": 502
+       }
+      }
+     }
+    },
+    "discoveries": {
+     "source:src-fronius": {
+      "models": {
+       "103": {
+        "base": 40070
+       },
+       "160": {
+        "base": 40200,
+        "moduleCount": 2
+       }
+      }
+     }
+    }
+   },
+   "result": {
+    "applied": true,
+    "accepted": [
+     "sunspec.model_103.a",
+     "deye.hybrid_3p.battery-1.battery-1-cycles"
+    ],
+    "rejected": [
+     {
+      "point_key": "sunspec.model_103.a_sf",
+      "reason": "binding_unavailable"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-current",
+      "reason": "binding_unavailable"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-fault",
+      "reason": "binding_unavailable"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 1.2,
+     "requestsPerMinute": 1.2,
+     "dutyPercent": 0.8,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "sunspec.model_103.a",
+      "point_key": "sunspec.model_103.a",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-fronius",
+       "sourceId": "src-fronius",
+       "dataSourceId": "DQ-2"
+      },
+      "entity_id": "wr-2"
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1-cycles",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1-cycles",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      },
+      "entity_id": "wr-5"
+     }
+    ],
+    "blocks": [
+     {
+      "key": "source:src-fronius:sunspec.model_103:sunspec_model:60",
+      "start": 40072,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "sunspec_model",
+      "target": {
+       "key": "source:src-fronius",
+       "sourceId": "src-fronius",
+       "dataSourceId": "DQ-2"
+      },
+      "points": [
+       "sunspec.model_103.a"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10056,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1-cycles"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "SunSpec mit und ohne Erkennung, Modul-Vorlage",
+   "config": {
+    "revision": 6,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "sunspec.model_103.a",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "sunspec.model_103.apha",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "sunspec.model_160.module[*].dca",
+      "cadence_s": 60
+     }
+    ]
+   },
+   "options": {
+    "discovery": {
+     "models": {
+      "103": {
+       "base": 40070
+      },
+      "160": {
+       "base": 40200,
+       "moduleCount": 2
+      }
+     }
+    }
+   },
+   "result": {
+    "applied": true,
+    "accepted": [
+     "sunspec.model_103.a",
+     "sunspec.model_103.apha",
+     "sunspec.model_160.module[*].dca"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 4,
+     "requestsPerMinute": 3,
+     "dutyPercent": 2,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "sunspec.model_103.a",
+      "point_key": "sunspec.model_103.a",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "sunspec.model_103.apha",
+      "point_key": "sunspec.model_103.apha",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "sunspec.model_160.module[*].dca",
+      "point_key": "sunspec.model_160.module[0].dca",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "sunspec.model_160.module[*].dca",
+      "point_key": "sunspec.model_160.module[1].dca",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:sunspec.model_103:sunspec_model:60",
+      "start": 40072,
+      "count": 2,
+      "cadence_s": 60,
+      "source_kind": "sunspec_model",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "sunspec.model_103.a",
+       "sunspec.model_103.apha"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:sunspec.model_160:sunspec_model:60",
+      "start": 40219,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "sunspec_model",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "sunspec.model_160.module[0].dca"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:sunspec.model_160:sunspec_model:60",
+      "start": 40239,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "sunspec_model",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "sunspec.model_160.module[1].dca"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "SunSpec ohne Erkennung",
+   "config": {
+    "revision": 7,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "sunspec.model_103.a",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "sunspec.model_160.module[*].dca",
+      "cadence_s": 60
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [
+     "sunspec.model_103.a"
+    ],
+    "rejected": [
+     {
+      "point_key": "sunspec.model_160.module[*].dca",
+      "reason": "driver_unavailable"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 1,
+     "requestsPerMinute": 0,
+     "dutyPercent": 0,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "sunspec.model_103.a",
+      "point_key": "sunspec.model_103.a",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "HTTP-Gruppen: go-e Filter, Shelly, Fronius, zwei Takte",
+   "config": {
+    "revision": 8,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "goe.api_v2.acp",
+      "cadence_s": 3600
+     },
+     {
+      "point_key": "goe.api_v2.acs",
+      "cadence_s": 3600
+     },
+     {
+      "point_key": "goe.api_v2.acu",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "goe.api_v2.acp",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "shelly.gen2plus.cloud.connected",
+      "cadence_s": 30
+     },
+     {
+      "point_key": "shelly.gen2plus.device_info.app",
+      "cadence_s": 30
+     },
+     {
+      "point_key": "fronius_solar_api.battery-power-crosscheck",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "fronius_solar_api.battery-soc",
+      "cadence_s": 120
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [
+     "goe.api_v2.acp",
+     "goe.api_v2.acs",
+     "goe.api_v2.acu",
+     "shelly.gen2plus.cloud.connected",
+     "shelly.gen2plus.device_info.app",
+     "fronius_solar_api.battery-power-crosscheck",
+     "fronius_solar_api.battery-soc"
+    ],
+    "rejected": [
+     {
+      "point_key": "goe.api_v2.acp",
+      "reason": "unknown_point"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 6.533333333333333,
+     "requestsPerMinute": 6.516666666666667,
+     "dutyPercent": 2.7152777777777777,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "goe.api_v2.acp",
+      "point_key": "goe.api_v2.acp",
+      "cadence_s": 3600,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "goe.api_v2.acs",
+      "point_key": "goe.api_v2.acs",
+      "cadence_s": 3600,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "goe.api_v2.acu",
+      "point_key": "goe.api_v2.acu",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "shelly.gen2plus.cloud.connected",
+      "point_key": "shelly.gen2plus.cloud.connected",
+      "cadence_s": 30,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "shelly.gen2plus.device_info.app",
+      "point_key": "shelly.gen2plus.device_info.app",
+      "cadence_s": 30,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "fronius_solar_api.battery-power-crosscheck",
+      "point_key": "fronius_solar_api.battery-power-crosscheck",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "fronius_solar_api.battery-soc",
+      "point_key": "fronius_solar_api.battery-soc",
+      "cadence_s": 120,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [],
+    "httpGroups": [
+     {
+      "key": "primary:goe:api_v2:config:3600",
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "key": "primary:goe:api_v2:status:60",
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "key": "primary:shelly:shelly.gen2plus:cloud.getstatus:30",
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "key": "primary:shelly:shelly.gen2plus:shelly.getdeviceinfo:30",
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "key": "primary:fronius_solar_api:/solar_api/v1/GetPowerFlowRealtimeData.fcgi:60",
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "key": "primary:fronius_solar_api:/solar_api/v1/GetPowerFlowRealtimeData.fcgi:120",
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "Decoder-Voraussetzungen: Vergleichswert, Variante, Byte-Reihenfolge",
+   "config": {
+    "revision": 9,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "deye.hybrid_1p.load.power",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery.battery-power",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "kostal_plenticore.battery-work-capacity",
+      "cadence_s": 900
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [
+     "deye.hybrid_1p.load.power",
+     "deye.hybrid_3p.battery.battery-power",
+     "kostal_plenticore.battery-work-capacity"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 2.066666666666667,
+     "requestsPerMinute": 4.133333333333333,
+     "dutyPercent": 2.755555555555556,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "deye.hybrid_1p.load.power",
+      "point_key": "deye.hybrid_1p.load.power",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery.battery-power",
+      "point_key": "deye.hybrid_3p.battery.battery-power",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "kostal_plenticore.battery-work-capacity",
+      "point_key": "kostal_plenticore.battery-work-capacity",
+      "cadence_s": 900,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:hybrid_1p:modbus_holding:60",
+      "start": 16,
+      "count": 2,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_1p.load.power"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_1p:modbus_holding:60",
+      "start": 175,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_1p.load.power"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:60",
+      "start": 0,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery.battery-power"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:60",
+      "start": 590,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery.battery-power"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:kostal_plenticore:modbus_holding:900",
+      "start": 5,
+      "count": 1,
+      "cadence_s": 900,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "kostal_plenticore.battery-work-capacity"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:kostal_plenticore:modbus_holding:900",
+      "start": 1068,
+      "count": 2,
+      "cadence_s": 900,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "kostal_plenticore.battery-work-capacity"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [
+     {
+      "point_key": "deye.hybrid_1p.info.device-rated-power",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      },
+      "requested_key": "deye.hybrid_1p.load.power",
+      "trigger_key": "deye.hybrid_1p.load.power"
+     }
+    ],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "Byte-Reihenfolge eingestellt",
+   "config": {
+    "revision": 10,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "kostal_plenticore.battery-work-capacity",
+      "cadence_s": 900
+     }
+    ]
+   },
+   "options": {
+    "byteOrder": "big"
+   },
+   "result": {
+    "applied": true,
+    "accepted": [
+     "kostal_plenticore.battery-work-capacity"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 0.06666666666666667,
+     "requestsPerMinute": 0.06666666666666667,
+     "dutyPercent": 0.044444444444444446,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "kostal_plenticore.battery-work-capacity",
+      "point_key": "kostal_plenticore.battery-work-capacity",
+      "cadence_s": 900,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:kostal_plenticore:modbus_holding:900",
+      "start": 1068,
+      "count": 2,
+      "cadence_s": 900,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "kostal_plenticore.battery-work-capacity"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "abgeleiteter Punkt",
+   "config": {
+    "revision": 11,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "deye.hybrid_1p.load.power-losses",
+      "cadence_s": 60
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [
+     "deye.hybrid_1p.load.power-losses"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 1,
+     "requestsPerMinute": 3,
+     "dutyPercent": 2,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "deye.hybrid_1p.load.power-losses",
+      "point_key": "deye.hybrid_1p.load.power-losses",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:hybrid_1p:modbus_holding:60",
+      "start": 175,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_1p.load.power-losses"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_1p:modbus_holding:60",
+      "start": 186,
+      "count": 2,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_1p.load.power-losses"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_1p:modbus_holding:60",
+      "start": 190,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_1p.load.power-losses"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "Bloecke: Luecke und Hoechstbreite",
+   "config": {
+    "revision": 12,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-10.battery-10",
+      "cadence_s": 300
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-10.battery-10-capacity",
+      "cadence_s": 300
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-10.battery-10-current",
+      "cadence_s": 300
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [
+     "deye.hybrid_3p.battery-1.battery-1",
+     "deye.hybrid_3p.battery-10.battery-10",
+     "deye.hybrid_3p.battery-10.battery-10-capacity",
+     "deye.hybrid_3p.battery-10.battery-10-current"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 0.8,
+     "requestsPerMinute": 0.8,
+     "dutyPercent": 0.5333333333333333,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery-10.battery-10",
+      "point_key": "deye.hybrid_3p.battery-10.battery-10",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery-10.battery-10-capacity",
+      "point_key": "deye.hybrid_3p.battery-10.battery-10-capacity",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.battery-10.battery-10-current",
+      "point_key": "deye.hybrid_3p.battery-10.battery-10-current",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10047,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10383,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-10.battery-10-current"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10389,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-10.battery-10"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10392,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-10.battery-10-capacity"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "freie Register: benachbart, je eigener Block",
+   "config": {
+    "revision": 13,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "custom.r0",
+      "cadence_s": 60,
+      "definition": {
+       "sourceKind": "modbus_holding",
+       "address": 42,
+       "widthBits": 16,
+       "valueType": "uint16",
+       "signed": false,
+       "endian": "big",
+       "scale": 1
+      }
+     },
+     {
+      "point_key": "custom.r1",
+      "cadence_s": 60,
+      "definition": {
+       "sourceKind": "modbus_holding",
+       "address": 43,
+       "widthBits": 16,
+       "valueType": "uint16",
+       "signed": false,
+       "endian": "big",
+       "scale": 1
+      }
+     },
+     {
+      "point_key": "custom.r2",
+      "cadence_s": 60,
+      "definition": {
+       "sourceKind": "modbus_holding",
+       "address": 44,
+       "widthBits": 16,
+       "valueType": "uint16",
+       "signed": false,
+       "endian": "big",
+       "scale": 1
+      }
+     },
+     {
+      "point_key": "custom.r3",
+      "cadence_s": 60,
+      "definition": {
+       "sourceKind": "modbus_holding",
+       "address": 45,
+       "widthBits": 16,
+       "valueType": "uint16",
+       "signed": false,
+       "endian": "big",
+       "scale": 1
+      }
+     },
+     {
+      "point_key": "custom.r4",
+      "cadence_s": 60,
+      "definition": {
+       "sourceKind": "modbus_holding",
+       "address": 46,
+       "widthBits": 16,
+       "valueType": "uint16",
+       "signed": false,
+       "endian": "big",
+       "scale": 1
+      }
+     },
+     {
+      "point_key": "custom.r5",
+      "cadence_s": 60,
+      "definition": {
+       "sourceKind": "modbus_holding",
+       "address": 47,
+       "widthBits": 16,
+       "valueType": "uint16",
+       "signed": false,
+       "endian": "big",
+       "scale": 1
+      }
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [
+     "custom.r0",
+     "custom.r1",
+     "custom.r2",
+     "custom.r3",
+     "custom.r4",
+     "custom.r5"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 6,
+     "requestsPerMinute": 6,
+     "dutyPercent": 20,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "custom.r0",
+      "point_key": "custom.r0",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "custom.r1",
+      "point_key": "custom.r1",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "custom.r2",
+      "point_key": "custom.r2",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "custom.r3",
+      "point_key": "custom.r3",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "custom.r4",
+      "point_key": "custom.r4",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "custom.r5",
+      "point_key": "custom.r5",
+      "cadence_s": 60,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:custom:modbus_holding:60:custom:modbus_holding:42",
+      "start": 42,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "custom.r0"
+      ],
+      "requestCostMs": 2000
+     },
+     {
+      "key": "primary:custom:modbus_holding:60:custom:modbus_holding:43",
+      "start": 43,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "custom.r1"
+      ],
+      "requestCostMs": 2000
+     },
+     {
+      "key": "primary:custom:modbus_holding:60:custom:modbus_holding:44",
+      "start": 44,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "custom.r2"
+      ],
+      "requestCostMs": 2000
+     },
+     {
+      "key": "primary:custom:modbus_holding:60:custom:modbus_holding:45",
+      "start": 45,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "custom.r3"
+      ],
+      "requestCostMs": 2000
+     },
+     {
+      "key": "primary:custom:modbus_holding:60:custom:modbus_holding:46",
+      "start": 46,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "custom.r4"
+      ],
+      "requestCostMs": 2000
+     },
+     {
+      "key": "primary:custom:modbus_holding:60:custom:modbus_holding:47",
+      "start": 47,
+      "count": 1,
+      "cadence_s": 60,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "custom.r5"
+      ],
+      "requestCostMs": 2000
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "freies Register zu schnell: Busbelegung",
+   "config": {
+    "revision": 14,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "custom.r",
+      "cadence_s": 5,
+      "definition": {
+       "sourceKind": "modbus_input",
+       "address": 7,
+       "widthBits": 32,
+       "valueType": "int32",
+       "scale": 0.1
+      }
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": false,
+    "accepted": [],
+    "rejected": [
+     {
+      "point_key": "custom.r",
+      "reason": "budget_duty_cycle"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 12,
+     "requestsPerMinute": 12,
+     "dutyPercent": 40,
+     "warning": null
+    }
+   }
+  },
+  {
+   "name": "Budget: zu viele Proben",
+   "config": {
+    "revision": 15,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "deye.hybrid_3p.battery.battery",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery.battery-corrected-capacity",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery.battery-temperature",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.generator-smartload-microinverter.generator-l1-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.generator-smartload-microinverter.generator-l2-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.generator-smartload-microinverter.generator-l3-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.external-ct1-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.external-ct2-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.external-ct3-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-frequency",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-l1-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-l2-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-l3-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-power-factor",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.internal-ct1-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.internal-ct2-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.internal-ct3-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.load.load-frequency",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.load.load-l1-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.load.load-l2-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.load.load-l3-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-frequency",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l1-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l1-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l2-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l2-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l3-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l3-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv1-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv1-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv2-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv2-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv3-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv3-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv4-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv4-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv5-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv5-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv6-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv6-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv7-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv7-voltage",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv8-current",
+      "cadence_s": 10
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv8-voltage",
+      "cadence_s": 10
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": false,
+    "accepted": [],
+    "rejected": [
+     {
+      "point_key": "deye.hybrid_3p.battery.battery",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery.battery-corrected-capacity",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery.battery-temperature",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.generator-smartload-microinverter.generator-l1-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.generator-smartload-microinverter.generator-l2-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.generator-smartload-microinverter.generator-l3-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.external-ct1-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.external-ct2-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.external-ct3-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-frequency",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-l1-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-l2-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-l3-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.grid-power-factor",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.internal-ct1-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.internal-ct2-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.grid.internal-ct3-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.load.load-frequency",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.load.load-l1-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.load.load-l2-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.load.load-l3-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-frequency",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l1-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l1-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l2-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l2-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l3-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.output.output-l3-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv1-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv1-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv2-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv2-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv3-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv3-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv4-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv4-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv5-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv5-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv6-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv6-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv7-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv7-voltage",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv8-current",
+      "reason": "budget_requests"
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv8-voltage",
+      "reason": "budget_requests"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 264,
+     "requestsPerMinute": 72,
+     "dutyPercent": 48,
+     "warning": "budget_warning_samples"
+    }
+   }
+  },
+  {
+   "name": "Budget: Warnung, aber angenommen",
+   "config": {
+    "revision": 20,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "deye.hybrid_3p.pv.pv1-voltage",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv1-current",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv2-voltage",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv2-current",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv3-voltage",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv3-current",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv4-voltage",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv4-current",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv5-voltage",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv6-voltage",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv7-voltage",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv8-voltage",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv5-current",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv6-current",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv7-current",
+      "cadence_s": 5
+     },
+     {
+      "point_key": "deye.hybrid_3p.pv.pv8-current",
+      "cadence_s": 5
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [
+     "deye.hybrid_3p.pv.pv1-voltage",
+     "deye.hybrid_3p.pv.pv1-current",
+     "deye.hybrid_3p.pv.pv2-voltage",
+     "deye.hybrid_3p.pv.pv2-current",
+     "deye.hybrid_3p.pv.pv3-voltage",
+     "deye.hybrid_3p.pv.pv3-current",
+     "deye.hybrid_3p.pv.pv4-voltage",
+     "deye.hybrid_3p.pv.pv4-current",
+     "deye.hybrid_3p.pv.pv5-voltage",
+     "deye.hybrid_3p.pv.pv6-voltage",
+     "deye.hybrid_3p.pv.pv7-voltage",
+     "deye.hybrid_3p.pv.pv8-voltage",
+     "deye.hybrid_3p.pv.pv5-current",
+     "deye.hybrid_3p.pv.pv6-current",
+     "deye.hybrid_3p.pv.pv7-current",
+     "deye.hybrid_3p.pv.pv8-current"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 192,
+     "requestsPerMinute": 24,
+     "dutyPercent": 16,
+     "warning": "budget_warning_samples"
+    },
+    "selections": [
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv1-voltage",
+      "point_key": "deye.hybrid_3p.pv.pv1-voltage",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv1-current",
+      "point_key": "deye.hybrid_3p.pv.pv1-current",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv2-voltage",
+      "point_key": "deye.hybrid_3p.pv.pv2-voltage",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv2-current",
+      "point_key": "deye.hybrid_3p.pv.pv2-current",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv3-voltage",
+      "point_key": "deye.hybrid_3p.pv.pv3-voltage",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv3-current",
+      "point_key": "deye.hybrid_3p.pv.pv3-current",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv4-voltage",
+      "point_key": "deye.hybrid_3p.pv.pv4-voltage",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv4-current",
+      "point_key": "deye.hybrid_3p.pv.pv4-current",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv5-voltage",
+      "point_key": "deye.hybrid_3p.pv.pv5-voltage",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv6-voltage",
+      "point_key": "deye.hybrid_3p.pv.pv6-voltage",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv7-voltage",
+      "point_key": "deye.hybrid_3p.pv.pv7-voltage",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv8-voltage",
+      "point_key": "deye.hybrid_3p.pv.pv8-voltage",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv5-current",
+      "point_key": "deye.hybrid_3p.pv.pv5-current",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv6-current",
+      "point_key": "deye.hybrid_3p.pv.pv6-current",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv7-current",
+      "point_key": "deye.hybrid_3p.pv.pv7-current",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     },
+     {
+      "requested_key": "deye.hybrid_3p.pv.pv8-current",
+      "point_key": "deye.hybrid_3p.pv.pv8-current",
+      "cadence_s": 5,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:hybrid_3p:modbus_holding:5",
+      "start": 676,
+      "count": 8,
+      "cadence_s": 5,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.pv.pv1-voltage",
+       "deye.hybrid_3p.pv.pv1-current",
+       "deye.hybrid_3p.pv.pv2-voltage",
+       "deye.hybrid_3p.pv.pv2-current",
+       "deye.hybrid_3p.pv.pv3-voltage",
+       "deye.hybrid_3p.pv.pv3-current",
+       "deye.hybrid_3p.pv.pv4-voltage",
+       "deye.hybrid_3p.pv.pv4-current"
+      ],
+      "requestCostMs": 400
+     },
+     {
+      "key": "primary:hybrid_3p:modbus_holding:5",
+      "start": 719,
+      "count": 8,
+      "cadence_s": 5,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.pv.pv5-voltage",
+       "deye.hybrid_3p.pv.pv6-voltage",
+       "deye.hybrid_3p.pv.pv7-voltage",
+       "deye.hybrid_3p.pv.pv8-voltage",
+       "deye.hybrid_3p.pv.pv5-current",
+       "deye.hybrid_3p.pv.pv6-current",
+       "deye.hybrid_3p.pv.pv7-current",
+       "deye.hybrid_3p.pv.pv8-current"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "OCPP unterstuetzt",
+   "config": {
+    "revision": 16,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60
+     }
+    ]
+   },
+   "options": {
+    "ocppCapability": {
+     "supported": true,
+     "readonly": false,
+     "maxLength": 1024
+    }
+   },
+   "result": {
+    "applied": true,
+    "accepted": [
+     "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+     "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 2,
+     "requestsPerMinute": 0,
+     "dutyPercent": 0,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+      "point_key": "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60,
+      "target": {
+       "key": "ocpp"
+      }
+     },
+     {
+      "requested_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+      "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60,
+      "target": {
+       "key": "ocpp"
+      }
+     }
+    ],
+    "blocks": [],
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {
+     "MeterValuesSampledData": "Current.Export,Current.Import",
+     "StopTxnSampledData": "Current.Export,Current.Import"
+    }
+   }
+  },
+  {
+   "name": "OCPP nur lesend",
+   "config": {
+    "revision": 17,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300
+     }
+    ]
+   },
+   "options": {
+    "ocppCapability": {
+     "supported": true,
+     "readonly": true
+    }
+   },
+   "result": {
+    "applied": true,
+    "accepted": [
+     "deye.hybrid_3p.battery-1.battery-1"
+    ],
+    "rejected": [
+     {
+      "point_key": "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+      "reason": "ocpp_configuration_incompatible"
+     },
+     {
+      "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+      "reason": "ocpp_configuration_incompatible"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 0.2,
+     "requestsPerMinute": 0.2,
+     "dutyPercent": 0.13333333333333333,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "deye.hybrid_3p.battery-1.battery-1",
+      "point_key": "deye.hybrid_3p.battery-1.battery-1",
+      "cadence_s": 300,
+      "target": {
+       "key": "primary"
+      }
+     }
+    ],
+    "blocks": [
+     {
+      "key": "primary:hybrid_3p:modbus_holding:300",
+      "start": 10047,
+      "count": 1,
+      "cadence_s": 300,
+      "source_kind": "modbus_holding",
+      "target": {
+       "key": "primary"
+      },
+      "points": [
+       "deye.hybrid_3p.battery-1.battery-1"
+      ],
+      "requestCostMs": 400
+     }
+    ],
+    "httpGroups": [],
+    "decoderPrerequisites": []
+   }
+  },
+  {
+   "name": "OCPP zu lang",
+   "config": {
+    "revision": 18,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60
+     }
+    ]
+   },
+   "options": {
+    "ocppCapability": {
+     "supported": true,
+     "readonly": false,
+     "maxLength": 5
+    }
+   },
+   "result": {
+    "applied": true,
+    "accepted": [],
+    "rejected": [
+     {
+      "point_key": "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+      "reason": "ocpp_configuration_incompatible"
+     },
+     {
+      "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+      "reason": "ocpp_configuration_incompatible"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 0,
+     "requestsPerMinute": 0,
+     "dutyPercent": 0,
+     "warning": null
+    },
+    "selections": [],
+    "blocks": [],
+    "httpGroups": [],
+    "decoderPrerequisites": []
+   }
+  },
+  {
+   "name": "OCPP ohne Faehigkeit",
+   "config": {
+    "revision": 19,
+    "catalog_version": "2026.10.21.1",
+    "selections": [
+     {
+      "point_key": "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60
+     },
+     {
+      "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+      "cadence_s": 60
+     }
+    ]
+   },
+   "options": {},
+   "result": {
+    "applied": true,
+    "accepted": [],
+    "rejected": [
+     {
+      "point_key": "ocpp.1_6.metervalues.current.export.context[*].format[*].phase[*].location[*].unit[*]",
+      "reason": "ocpp_configuration_incompatible"
+     },
+     {
+      "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+      "reason": "ocpp_configuration_incompatible"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 0,
+     "requestsPerMinute": 0,
+     "dutyPercent": 0,
+     "warning": null
+    },
+    "selections": [],
+    "blocks": [],
+    "httpGroups": [],
+    "decoderPrerequisites": []
+   }
+  }
+ ]
+}

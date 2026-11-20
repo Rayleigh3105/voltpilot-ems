@@ -11,6 +11,8 @@ flowchart LR
   Raw --> Core[Core und Cloud]
 ```
 
+Edge Light (ohne Node-RED) liest dieselben Punkte mit dem Go-Zwilling `edge-app/core/internal/messwerte`. Er wird an `measurement-driver-vectors.json`, `measurement-planner-vectors.json` und `measurement-runtime-vectors.json` gemessen; die Generatoren `*-vectors.gen.js` daneben erzeugen sie aus diesen Modulen. Wer Treiber, Planer oder Laufzeit ändert, erzeugt die Vektoren neu und lässt die Go-Tests laufen.
+
 ## Lokale Topics
 
 | Topic | Richtung | Retained |
