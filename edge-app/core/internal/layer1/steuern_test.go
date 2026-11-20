@@ -22,12 +22,17 @@ func remoteDeye(sim *v5sim.Sim) {
 	sim.Set(map[uint16]uint16{0x0000: 0x0006, 0x044d: 0xffff, 0x0451: 2})
 }
 
-func (r *rig) selectSteuerDeye() {
+func (r *rig) selectSteuerDeye() { r.selectSteuerDeyeFamilie("hybrid_3p") }
+
+// selectSteuerDeyeFamilie selects the simulated Deye under the given family;
+// hybrid_1p carries its own ToU register map (steuerplan/deye.go) and is not
+// an entry of freigaben, so it stays useful to prove the gate still blocks.
+func (r *rig) selectSteuerDeyeFamilie(familie string) {
 	r.t.Helper()
 	_, port, _ := net.SplitHostPort(r.sim.Addr())
 	p, _ := strconv.Atoi(port)
 	raw, _ := json.Marshal(map[string]any{"schema_version": "1.0", "brand": "deye", "model": "sun-30k-sg01hp3",
-		"family": "hybrid_3p", "communication": "solarman_v5", "control_tier": 3, "rated_kw": 30,
+		"family": familie, "communication": "solarman_v5", "control_tier": 3, "rated_kw": 30,
 		"connection": map[string]any{"ip": "127.0.0.1", "port": p, "serial": testSerial, "mb_slave_id": 1}})
 	if err := r.bus.Publish(localbus.TopicInverterConfig, raw, true); err != nil {
 		r.t.Fatal(err)
@@ -83,13 +88,16 @@ func pruefstand(t *testing.T) {
 	t.Cleanup(func() { pruefstandBuild.Store(false) })
 }
 
-// Without the Edge Light release the device is probed and planned, the
+// Without an entry in freigaben the device is probed and planned, the
 // readback names why, and not one register is written - although the core
-// says certified and control is enabled.
+// says certified and control is enabled. hybrid_1p has its own ToU register
+// map (steuerplan/deye.go) and reaches the same gate as hybrid_3p, but carries
+// no entry, so it stays useful to prove the gate still blocks after hybrid_3p
+// was released.
 func TestSteuernOhneFreigabeSchreibtNichts(t *testing.T) {
 	r, l, _ := steuerRig(t)
 	remoteDeye(r.sim)
-	r.selectSteuerDeye()
+	r.selectSteuerDeyeFamilie("hybrid_1p")
 	m := readbackUntil(t, r, l, nil, func(m map[string]any) bool { return m["blocked"] == true })
 	if reason, _ := m["reason"].(string); !strings.Contains(reason, "Edge Light") || !strings.Contains(reason, "Prüfstand") {
 		t.Fatalf("Grund: %v", m)
@@ -99,6 +107,30 @@ func TestSteuernOhneFreigabeSchreibtNichts(t *testing.T) {
 	}
 	if w := r.sim.Writes(); len(w) != 0 {
 		t.Fatalf("ohne Freigabe geschrieben: %+v", w)
+	}
+}
+
+// hybrid_3p (remote) is released in freigaben without a bench build: the
+// device writes the same load-bearing order as the bench build, and the
+// kill switch (control_enabled) still ends the session and hands the
+// device back - the Edge Light release ANDs with the other gates, it does
+// not replace them.
+func TestSteuernHybrid3pFreigegebenSchreibtOhnePruefstand(t *testing.T) {
+	r, l, _ := steuerRig(t)
+	remoteDeye(r.sim)
+	r.selectSteuerDeye()
+	m := readbackUntil(t, r, l, nil, func(m map[string]any) bool { return m["all_match"] == true })
+	if m["control_path"] != "remote" || m["wrote"] != true || m["certified"] != true {
+		t.Fatalf("Rueckmeldung: %v", m)
+	}
+	if w := r.sim.Writes(); len(w) == 0 {
+		t.Fatalf("mit Freigabe nicht geschrieben")
+	}
+	readbackUntil(t, r, l, map[string]any{"control_enabled": false}, func(m map[string]any) bool {
+		return m["mode"] == "release" && m["all_match"] == true
+	})
+	if v := r.sim.Reg(0x044c); v != 0 {
+		t.Fatalf("1100 nach der Rueckgabe = %d", v)
 	}
 }
 
