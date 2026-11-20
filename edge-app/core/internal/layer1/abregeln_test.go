@@ -39,6 +39,14 @@ func froniusSunspec(g *schreibGeraet) {
 var vorlauf atomic.Int64
 
 func abregelRig(t *testing.T) (*rig, *busLog, *schreibGeraet) {
+	return abregelRigKomm(t, "fronius_sunspec")
+}
+
+// abregelRigKomm selects the given communication for the SunSpec source;
+// sunspec_tcp (generic SunSpec, sunspec.go) reaches the same gate as
+// fronius_sunspec but carries no entry in freigaben, so it stays useful to
+// prove the gate still blocks after fronius_sunspec was released.
+func abregelRigKomm(t *testing.T, komm string) (*rig, *busLog, *schreibGeraet) {
 	t.Helper()
 	vorlauf.Store(0)
 	g := startSchreibGeraet(t)
@@ -47,7 +55,7 @@ func abregelRig(t *testing.T) (*rig, *busLog, *schreibGeraet) {
 		Now: func() time.Time { return time.Now().Add(time.Duration(vorlauf.Load())) }})
 	l := r.listen(localbus.TopicControlReadback)
 	if err := r.bus.Publish(TopicSourcesConfig, sourcesConfig(map[string]any{"id": "fro1", "role": "pv-generation",
-		"brand": "fronius", "model": "fronius_eco_27", "family": "fronius_eco", "communication": "fronius_sunspec",
+		"brand": "fronius", "model": "fronius_eco_27", "family": "fronius_eco", "communication": komm,
 		"connection": map[string]any{"ip": "127.0.0.1", "port": g.port(), "unit_id": 1}}), true); err != nil {
 		t.Fatal(err)
 	}
@@ -87,10 +95,12 @@ func abregelBis(t *testing.T, r *rig, l *busLog, ok func(map[string]any) bool) m
 	return nil
 }
 
-// Without the Edge Light release the unit is discovered and read back, the
-// readback names why, and no write frame reaches the device.
+// Without an entry in freigaben the unit is discovered and read back, the
+// readback names why, and no write frame reaches the device. sunspec_tcp
+// carries no entry, so it stays useful to prove the gate still blocks after
+// fronius_sunspec was released.
 func TestAbregelnOhneFreigabeSchreibtNichts(t *testing.T) {
-	r, l, g := abregelRig(t)
+	r, l, g := abregelRigKomm(t, "sunspec_tcp")
 	m := abregelBis(t, r, l, func(m map[string]any) bool {
 		reason, _ := m["reason"].(string)
 		return strings.Contains(reason, "Edge Light")
@@ -100,6 +110,20 @@ func TestAbregelnOhneFreigabeSchreibtNichts(t *testing.T) {
 	}
 	if w := g.geschrieben(); len(w) != 0 {
 		t.Fatalf("ohne Freigabe geschrieben: %v", w)
+	}
+}
+
+// fronius_sunspec (abregelung) is released in freigaben without a bench
+// build: the unit writes the same FC16 block as the bench build - the Edge
+// Light release ANDs with the certification gate, it does not replace it.
+func TestAbregelnFreigegebenSchreibtOhnePruefstand(t *testing.T) {
+	r, l, g := abregelRig(t)
+	m := abregelBis(t, r, l, func(m map[string]any) bool { return m["all_match"] == true })
+	if m["applied"] != true && m["applied"] != false {
+		t.Fatalf("Rueckmeldung: %v", m)
+	}
+	if w := g.geschrieben(); len(w) == 0 || w[0] != 16 {
+		t.Fatalf("Schreibrahmen %v (erwartet FC16)", w)
 	}
 }
 

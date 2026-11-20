@@ -48,9 +48,10 @@ VP_DATA_DIR=/tmp/vp VP_PORTAL_BASE_URL=http://127.0.0.1:9 \
 ## Steuern und Prüfstand-Build
 
 Edge Light steuert einen Deye selbst (Fernsteuerung 1100-1121 oder Zeitfenster, Rückgabe, Absturz-Wiederherstellung, Wechselrichter-Automatik) regelt Fronius-Erzeuger über SunSpec Model 123 ab (Pfad `abregelung`) und schreibt das generische SunSpec-/Modbus-Profil (Pfad `modbus`), aber nur mit **Edge-Light-Freigabe** je Gerätefamilie und Steuerpfad (`edge-app/core/internal/layer1/freigabe.go`).
-Die Tabelle ist leer, bis der Captain eine Familie am Prüfstand mit dem Go-Code freigegeben hat; ohne Eintrag wird geprüft und gelesen, nie geschrieben, und die Rückmeldung nennt den Grund.
+Ohne Eintrag wird geprüft und gelesen, nie geschrieben, und die Rückmeldung nennt den Grund.
+Der Normalweg ist eine Freigabe am Prüfstand mit dem Go-Code; der Captain kann eine Familie aber auch ohne Prüfstand freigeben, gestützt auf die Gleichheit mit dem Node-RED-Verhalten - so geschehen am 20.11.2026 für Deye `hybrid_3p` (`remote`, `tou`) und Fronius `fronius_sunspec` (`abregelung`), gegen die gemeinsamen Vektoren aus #1965/#1967. Die Prüfstand-Schritte dieser PRs bleiben vor dem ersten Feldeinsatz der jeweiligen Familie empfohlen, sind aber keine Voraussetzung mehr für den Eintrag.
 Sie kommt zu allen bestehenden Toren hinzu (Not-Aus, Zertifizierung oder First-Light-Freigabe, Automatik-Zertifikate) und lockert keines.
-Eine Deye-Freigabe, die mit dem Node-RED-Ausführer der Docker-Box erworben wurde, öffnet sie nicht.
+Eine Deye-Freigabe, die mit dem Node-RED-Ausführer der Docker-Box erworben wurde, öffnet sie nicht von selbst.
 
 Für die Sitzung am Prüfstand gibt es den Prüfstand-Build, der die Freigabe für alle Familien öffnet und beim Start laut warnt:
 
@@ -59,7 +60,7 @@ Für die Sitzung am Prüfstand gibt es den Prüfstand-Build, der die Freigabe f�
 ```
 
 Er läuft nur am Prüfgerät und wird nie ausgeliefert: `build.sh` verweigert den Tag, und `test.sh` prüft das Release-Programm.
-Nach bestandenem Prüfstand trägt ein PR die Familie mit Pfad und Prüfnachweis in `freigaben` ein.
+Nach bestandenem Prüfstand trägt ein PR die Familie mit Pfad und Prüfnachweis in `freigaben` ein; für eine Freigabe ohne Prüfstand nennt der Eintrag stattdessen ehrlich den Captain, das Datum und die Gleichheitsgrundlage.
 
 ## Auf einem OpenWrt-Router (Pilot)
 
