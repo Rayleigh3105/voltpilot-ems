@@ -60,6 +60,12 @@ class RechtRoutenArchitekturTest {
         m.put("WerkstattDienstController#abnahme", werkstattDienst);
         m.put("WerkstattDienstController#ansicht", werkstattDienst);
         m.put("WerkstattDienstController#gehaeuseHochladen", werkstattDienst);
+        // Fernlauf (neue Software durch den Tunnel, docs/werkstatt.md): derselbe Pfad, dasselbe Dienstkonto
+        // (WerkstattFernlaufApiTest).
+        m.put("WerkstattDienstController#fernlaufBeginnen", werkstattDienst);
+        m.put("WerkstattDienstController#fernlaufSchritt", werkstattDienst);
+        m.put("WerkstattDienstController#fernlaufErgebnis", werkstattDienst);
+        m.put("WerkstattDienstController#fernlaufFensterSchliessen", werkstattDienst);
         m.put("WerkstattEinloesenController#einloesen",
                 "öffentlich (SecurityConfig permitAll, exakter Pfad) wie die Zertifikatsanfrage: die frisch "
                         + "eingerichtete Box hat kein Konto; Nachweis sind Einmal-Code und Signatur mit dem "
