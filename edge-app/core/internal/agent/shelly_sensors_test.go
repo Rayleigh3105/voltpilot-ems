@@ -3,7 +3,7 @@ package agent
 // Steuerlogik-Konzept Stufe 1: the add-on sensor reader end to end - a
 // selected point_key template bound to a Shelly entity reads its add-on
 // sensors and publishes samples on the local bus, exactly like the Deye
-// settings reader (layer1/einstellungen.go) does for its own closed set.
+// measurement library (layer1/messwerte.go) does for every other catalog point.
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 )
 
 // fuehlerRegistry builds a one-entity registry: a sensor-only Shelly (no
@@ -349,5 +350,19 @@ func TestOnShellySensorPlanPublishesNothingForUnownedPointKey(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if got := statuses(); len(got) != 0 {
 		t.Fatalf("status published = %v, want none for a point this reader does not own", got)
+	}
+}
+
+// The templates this reader owns are exactly the ones every other reader
+// leaves to the core (measurements.KernEigeneVorlagen) - Edge Light's library
+// skips them, so a point is never read twice.
+func TestShellySensorTemplatesAreTheCoreOwnedTemplates(t *testing.T) {
+	if len(shellySensorTemplates) != len(measurements.KernEigeneVorlagen) {
+		t.Fatalf("%d Vorlagen im Leser, %d in der Liste", len(shellySensorTemplates), len(measurements.KernEigeneVorlagen))
+	}
+	for k := range shellySensorTemplates {
+		if !measurements.KernEigeneVorlagen[k] {
+			t.Errorf("%s fehlt in measurements.KernEigeneVorlagen", k)
+		}
 	}
 }

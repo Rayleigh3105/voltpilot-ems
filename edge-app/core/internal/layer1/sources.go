@@ -259,7 +259,12 @@ func (r *Runtime) onSourcesConfig(_ string, payload []byte) {
 	r.erzMu.Lock()
 	r.erzQuellen = quellen
 	r.erzMu.Unlock()
+	mw := messwerteQuellenAus(payload)
+	r.mwMu.Lock()
+	r.mw.quellen = mw
+	r.mwMu.Unlock()
 	r.erzBindungGeaendert()
+	r.messplanNeuBewerten()
 	if !changed {
 		return
 	}

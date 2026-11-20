@@ -23,7 +23,7 @@ import (
 // the same local-bus topics the palette serves on the Docker box -
 //
 //   - edge/measurements/config (retained): the plan; Erzeuger points are
-//     judged here, the status merges with the settings points (einstellungen.go)
+//     judged here, the status merges with the library's points (messwerte.go)
 //   - edge/entities/+/config, edge/sources/config (retained): the binding of a
 //     selection's component to its controller (pin -> connection)
 //   - edge/measurements/samples, edge/events, edge/sources/<pin>/telemetry,
@@ -138,6 +138,7 @@ func (r *Runtime) onEntityConfig(topic string, payload []byte) {
 	}
 	r.erzMu.Unlock()
 	r.erzBindungGeaendert()
+	r.messplanNeuBewerten() // the library binds its components through the registry too
 }
 
 // erzQuellenAus reads the connection of every source of edge/sources/config -

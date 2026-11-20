@@ -1,0 +1,1619 @@
+{
+ "_comment": [
+  "GENERIERT von measurement-runtime-vectors.gen.js aus measurement-runtime.js und catalog.json - nicht von Hand bearbeiten.",
+  "Gepruefte Seiten: measurement-runtime-vectors.test.js (JS) und edge-app/core/internal/messwerte (Go, Edge Light).",
+  "zeit ist ms nach 2026-11-20T08:00:00.000Z; modbus-Antworten sind nach \"ziel:start:anzahl\" geschluesselt, JSON nach der HTTP-Gruppe."
+ ],
+ "t0": "2026-11-20T08:00:00.000Z",
+ "catalog_version": "2026.10.21.1",
+ "faelle": [
+  {
+   "name": "Deye: Takte, Fehler eines Blocks, Abweichungspruefung ueber Takte",
+   "io": {},
+   "protokoll": [
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 3,
+       "catalog_version": "2026.10.21.1",
+       "selections": [
+        {
+         "point_key": "deye.hybrid_1p.battery.battery",
+         "cadence_s": 30
+        },
+        {
+         "point_key": "deye.hybrid_1p.meter.total-production",
+         "cadence_s": 30
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": true,
+      "pending": false
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 3,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [
+         "deye.hybrid_1p.battery.battery",
+         "deye.hybrid_1p.meter.total-production"
+        ],
+        "rejected": []
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "tick": true,
+      "modbus": {
+       "primary:184:1": [
+        61
+       ],
+       "primary:96:2": [
+        1000,
+        0
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 2
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:00.000Z",
+        "samples": [
+         {
+          "point_key": "deye.hybrid_1p.battery.battery",
+          "raw": 61,
+          "decoded": 61,
+          "quality": "good"
+         },
+         {
+          "point_key": "deye.hybrid_1p.meter.total-production",
+          "raw": "03e80000",
+          "decoded": 100,
+          "quality": "good"
+         }
+        ],
+        "applied_revision": 3
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "primary:96:2",
+       "source_kind": "modbus_holding"
+      },
+      {
+       "modbus": "primary:184:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "deye.hybrid_1p.battery.battery"
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "deye.hybrid_1p.meter.total-production"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 1000,
+      "tick": true
+     },
+     "ergebnis": {
+      "samples": 0
+     },
+     "veroeffentlicht": [],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 30000,
+      "tick": true,
+      "modbus": {
+       "primary:184:1": {
+        "fehler": "Zeitueberschreitung",
+        "code": "no_answer"
+       },
+       "primary:96:2": [
+        1050,
+        0
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 1
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:30.000Z",
+        "samples": [
+         {
+          "point_key": "deye.hybrid_1p.meter.total-production",
+          "raw": "041a0000",
+          "decoded": 105,
+          "quality": "good"
+         }
+        ],
+        "applied_revision": 3
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "primary:96:2",
+       "source_kind": "modbus_holding"
+      },
+      {
+       "modbus": "primary:184:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1,
+       "failed": true,
+       "error_class": "no_answer"
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "deye.hybrid_1p.meter.total-production"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 60000,
+      "tick": true,
+      "modbus": {
+       "primary:184:1": [
+        62
+       ],
+       "primary:96:2": [
+        9000,
+        0
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 0
+     },
+     "veroeffentlicht": [],
+     "anfragen": [
+      {
+       "modbus": "primary:96:2",
+       "source_kind": "modbus_holding"
+      },
+      {
+       "modbus": "primary:184:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "failed": true,
+       "error_class": "implausible",
+       "point_key": "deye.hybrid_1p.meter.total-production"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 90000,
+      "tick": true,
+      "modbus": {
+       "primary:184:1": [
+        63
+       ],
+       "primary:96:2": [
+        1,
+        0
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 0
+     },
+     "veroeffentlicht": [],
+     "anfragen": [
+      {
+       "modbus": "primary:96:2",
+       "source_kind": "modbus_holding"
+      },
+      {
+       "modbus": "primary:184:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "failed": true,
+       "error_class": "implausible",
+       "point_key": "deye.hybrid_1p.meter.total-production"
+      }
+     ],
+     "ocpp_auftraege": []
+    }
+   ]
+  },
+  {
+   "name": "geteilter Punkt: eine Lesung im schnellsten Takt, Proben je Komponente",
+   "io": {
+    "binding": {
+     "entities": {
+      "akku-1": {
+       "entity_id": "akku-1",
+       "entity_type": "battery-hybrid",
+       "edge_source_id": "",
+       "data_source_id": "DQ-1"
+      },
+      "wr-2": {
+       "entity_id": "wr-2",
+       "entity_type": "inverter",
+       "edge_source_id": "src-fronius",
+       "data_source_id": "DQ-2"
+      }
+     },
+     "sources": {
+      "src-fronius": {
+       "id": "src-fronius",
+       "communication": "sunspec_tcp",
+       "connection": {
+        "ip": "10.0.0.9",
+        "port": 502
+       }
+      }
+     }
+    }
+   },
+   "protokoll": [
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 4,
+       "catalog_version": "2026.10.21.1",
+       "selections": [
+        {
+         "point_key": "deye.hybrid_1p.battery.battery",
+         "cadence_s": 30,
+         "entity_id": "akku-1"
+        },
+        {
+         "point_key": "deye.hybrid_1p.battery.battery",
+         "cadence_s": 60,
+         "entity_id": "wr-9"
+        },
+        {
+         "point_key": "deye.hybrid_1p.battery.battery",
+         "cadence_s": 90
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": true,
+      "pending": false
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 4,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [
+         "deye.hybrid_1p.battery.battery"
+        ],
+        "rejected": [
+         {
+          "point_key": "deye.hybrid_1p.battery.battery",
+          "reason": "binding_unavailable"
+         },
+         {
+          "point_key": "deye.hybrid_1p.battery.battery",
+          "reason": "unknown_point"
+         }
+        ]
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "tick": true,
+      "modbus": {
+       "primary:184:1": [
+        50
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 1
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:00.000Z",
+        "samples": [
+         {
+          "point_key": "deye.hybrid_1p.battery.battery",
+          "raw": 50,
+          "decoded": 50,
+          "quality": "good",
+          "entity_id": "akku-1"
+         }
+        ],
+        "applied_revision": 4
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "primary:184:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary",
+        "dataSourceId": "DQ-1"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary",
+        "dataSourceId": "DQ-1"
+       },
+       "entity_id": "akku-1",
+       "samples": 1,
+       "point_key": "deye.hybrid_1p.battery.battery"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 30000,
+      "tick": true,
+      "modbus": {
+       "primary:184:1": [
+        51
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 1
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:30.000Z",
+        "samples": [
+         {
+          "point_key": "deye.hybrid_1p.battery.battery",
+          "raw": 51,
+          "decoded": 51,
+          "quality": "good",
+          "entity_id": "akku-1"
+         }
+        ],
+        "applied_revision": 4
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "primary:184:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary",
+        "dataSourceId": "DQ-1"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary",
+        "dataSourceId": "DQ-1"
+       },
+       "entity_id": "akku-1",
+       "samples": 1,
+       "point_key": "deye.hybrid_1p.battery.battery"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 60000,
+      "tick": true,
+      "modbus": {
+       "primary:184:1": [
+        52
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 1
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:01:00.000Z",
+        "samples": [
+         {
+          "point_key": "deye.hybrid_1p.battery.battery",
+          "raw": 52,
+          "decoded": 52,
+          "quality": "good",
+          "entity_id": "akku-1"
+         }
+        ],
+        "applied_revision": 4
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "primary:184:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary",
+        "dataSourceId": "DQ-1"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary",
+        "dataSourceId": "DQ-1"
+       },
+       "entity_id": "akku-1",
+       "samples": 1,
+       "point_key": "deye.hybrid_1p.battery.battery"
+      }
+     ],
+     "ocpp_auftraege": []
+    }
+   ]
+  },
+  {
+   "name": "Vergleichswert und invalidate_all: der ganze Takt wird verworfen",
+   "io": {},
+   "protokoll": [
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 5,
+       "catalog_version": "2026.10.21.1",
+       "selections": [
+        {
+         "point_key": "deye.hybrid_1p.load.power",
+         "cadence_s": 5
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": true,
+      "pending": false
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 5,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [
+         "deye.hybrid_1p.load.power"
+        ],
+        "rejected": []
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "tick": true,
+      "modbus": {
+       "primary:16:2": [
+        50000,
+        0
+       ],
+       "primary:175:1": [
+        20
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 1
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:00.000Z",
+        "samples": [
+         {
+          "point_key": "deye.hybrid_1p.load.power",
+          "raw": 20,
+          "decoded": 20,
+          "quality": "good"
+         }
+        ],
+        "applied_revision": 5
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "primary:16:2",
+       "source_kind": "modbus_holding"
+      },
+      {
+       "modbus": "primary:175:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "deye.hybrid_1p.load.power"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 5000,
+      "tick": true,
+      "modbus": {
+       "primary:16:2": [
+        5000,
+        0
+       ],
+       "primary:175:1": [
+        60000
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 0
+     },
+     "veroeffentlicht": [],
+     "anfragen": [
+      {
+       "modbus": "primary:16:2",
+       "source_kind": "modbus_holding"
+      },
+      {
+       "modbus": "primary:175:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "failed": true,
+       "error_class": "implausible",
+       "point_key": "deye.hybrid_1p.load.power"
+      }
+     ],
+     "ocpp_auftraege": []
+    }
+   ]
+  },
+  {
+   "name": "Byte-Reihenfolge aus dem Geraet, SunSpec ueber die erkannte Basis einer Quelle",
+   "io": {
+    "binding": {
+     "entities": {
+      "akku-1": {
+       "entity_id": "akku-1",
+       "entity_type": "battery-hybrid",
+       "edge_source_id": "",
+       "data_source_id": "DQ-1"
+      },
+      "wr-2": {
+       "entity_id": "wr-2",
+       "entity_type": "inverter",
+       "edge_source_id": "src-fronius",
+       "data_source_id": "DQ-2"
+      }
+     },
+     "sources": {
+      "src-fronius": {
+       "id": "src-fronius",
+       "communication": "sunspec_tcp",
+       "connection": {
+        "ip": "10.0.0.9",
+        "port": 502
+       }
+      }
+     }
+    },
+    "discoveries": {
+     "source:src-fronius": {
+      "models": {
+       "103": {
+        "base": 40070
+       }
+      }
+     }
+    }
+   },
+   "protokoll": [
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 6,
+       "catalog_version": "2026.10.21.1",
+       "selections": [
+        {
+         "point_key": "kostal_plenticore.battery-work-capacity",
+         "cadence_s": 900
+        },
+        {
+         "point_key": "sunspec.model_103.a",
+         "cadence_s": 60,
+         "entity_id": "wr-2"
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": true,
+      "pending": false
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 6,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [
+         "kostal_plenticore.battery-work-capacity",
+         "sunspec.model_103.a"
+        ],
+        "rejected": []
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "tick": true,
+      "modbus": {
+       "primary:5:1": [
+        1
+       ],
+       "primary:1068:2": [
+        16672,
+        0
+       ],
+       "source:src-fronius:40072:1": [
+        123
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 2
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:00.000Z",
+        "samples": [
+         {
+          "point_key": "kostal_plenticore.battery-work-capacity",
+          "raw": "41200000",
+          "quality": "good",
+          "decoded": 10
+         },
+         {
+          "point_key": "sunspec.model_103.a",
+          "raw": 123,
+          "quality": "good",
+          "entity_id": "wr-2"
+         }
+        ],
+        "applied_revision": 6
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "primary:5:1",
+       "source_kind": "modbus_holding"
+      },
+      {
+       "modbus": "primary:1068:2",
+       "source_kind": "modbus_holding"
+      },
+      {
+       "modbus": "source:src-fronius:40072:1",
+       "source_kind": "sunspec_model"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-fronius",
+        "sourceId": "src-fronius",
+        "dataSourceId": "DQ-2"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "kostal_plenticore.battery-work-capacity"
+      },
+      {
+       "target": {
+        "key": "source:src-fronius",
+        "sourceId": "src-fronius",
+        "dataSourceId": "DQ-2"
+       },
+       "entity_id": "wr-2",
+       "samples": 1,
+       "point_key": "sunspec.model_103.a"
+      }
+     ],
+     "ocpp_auftraege": []
+    }
+   ]
+  },
+  {
+   "name": "HTTP: go-e mit Filter, Shelly mit mehreren Antworten, Fehler",
+   "io": {},
+   "protokoll": [
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 7,
+       "catalog_version": "2026.10.21.1",
+       "selections": [
+        {
+         "point_key": "goe.api_v2.acp",
+         "cadence_s": 3600
+        },
+        {
+         "point_key": "goe.api_v2.acs",
+         "cadence_s": 3600
+        },
+        {
+         "point_key": "shelly.gen2plus.cover[*].aenergy.minute_ts",
+         "cadence_s": 60
+        },
+        {
+         "point_key": "fronius_solar_api.grid-power",
+         "cadence_s": 60
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": true,
+      "pending": false
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 7,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [
+         "goe.api_v2.acp",
+         "goe.api_v2.acs",
+         "shelly.gen2plus.cover[*].aenergy.minute_ts",
+         "fronius_solar_api.grid-power"
+        ],
+        "rejected": []
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "tick": true,
+      "json": {
+       "primary:goe:api_v2:config:3600": {
+        "acp": true,
+        "acs": 2,
+        "andere": 1
+       },
+       "primary:shelly:shelly.gen2plus:cover.getstatus-id-*:60": {
+        "__vpResponses": [
+         {
+          "id": 0,
+          "aenergy": {
+           "minute_ts": 1700000000
+          }
+         },
+         {
+          "id": 1,
+          "aenergy": {
+           "minute_ts": 12
+          }
+         }
+        ]
+       },
+       "primary:fronius_solar_api:/solar_api/v1/GetPowerFlowRealtimeData.fcgi:60": {
+        "fehler": "HTTP 500",
+        "code": "invalid_response"
+       }
+      }
+     },
+     "ergebnis": {
+      "samples": 4
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:00.000Z",
+        "samples": [
+         {
+          "point_key": "goe.api_v2.acp",
+          "raw": true,
+          "decoded": true,
+          "quality": "good"
+         },
+         {
+          "point_key": "goe.api_v2.acs",
+          "raw": 2,
+          "decoded": 2,
+          "quality": "good"
+         },
+         {
+          "point_key": "shelly.gen2plus.cover[0].aenergy.minute_ts",
+          "raw": 1700000000,
+          "decoded": 1700000000,
+          "quality": "good"
+         },
+         {
+          "point_key": "shelly.gen2plus.cover[1].aenergy.minute_ts",
+          "raw": 12,
+          "decoded": 12,
+          "quality": "good"
+         }
+        ],
+        "applied_revision": 7
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "json": "primary:goe:api_v2:config:3600",
+       "filter": "acp,acs",
+       "points": [
+        "goe.api_v2.acp",
+        "goe.api_v2.acs"
+       ]
+      },
+      {
+       "json": "primary:shelly:shelly.gen2plus:cover.getstatus-id-*:60",
+       "filter": "",
+       "points": [
+        "shelly.gen2plus.cover[*].aenergy.minute_ts"
+       ]
+      },
+      {
+       "json": "primary:fronius_solar_api:/solar_api/v1/GetPowerFlowRealtimeData.fcgi:60",
+       "filter": "",
+       "points": [
+        "fronius_solar_api.grid-power"
+       ]
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1,
+       "failed": true,
+       "error_class": "invalid_response"
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "goe.api_v2.acp"
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "goe.api_v2.acs"
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "shelly.gen2plus.cover[*].aenergy.minute_ts"
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "shelly.gen2plus.cover[*].aenergy.minute_ts"
+      }
+     ],
+     "ocpp_auftraege": []
+    }
+   ]
+  },
+  {
+   "name": "abgelehnter Plan: der vorige laeuft weiter",
+   "io": {},
+   "protokoll": [
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 8,
+       "catalog_version": "2026.10.21.1",
+       "selections": [
+        {
+         "point_key": "deye.hybrid_1p.battery.battery",
+         "cadence_s": 30
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": true,
+      "pending": false
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 8,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [
+         "deye.hybrid_1p.battery.battery"
+        ],
+        "rejected": []
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 9,
+       "catalog_version": "1999.01.01.1",
+       "selections": [
+        {
+         "point_key": "deye.hybrid_1p.battery.battery",
+         "cadence_s": 30
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": false,
+      "pending": false
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 9,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [],
+        "rejected": [
+         {
+          "point_key": "deye.hybrid_1p.battery.battery",
+          "reason": "unsupported_catalog"
+         }
+        ]
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "tick": true,
+      "modbus": {
+       "primary:184:1": [
+        44
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 1
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:00.000Z",
+        "samples": [
+         {
+          "point_key": "deye.hybrid_1p.battery.battery",
+          "raw": 44,
+          "decoded": 44,
+          "quality": "good"
+         }
+        ],
+        "applied_revision": 8
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "primary:184:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "deye.hybrid_1p.battery.battery"
+      }
+     ],
+     "ocpp_auftraege": []
+    }
+   ]
+  },
+  {
+   "name": "OCPP: Abstimmung bestaetigt, Zaehlerwerte im Takt je Komponente",
+   "io": {
+    "ocppCapability": {
+     "supported": true,
+     "readonly": false,
+     "maxLength": 1024
+    }
+   },
+   "protokoll": [
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 10,
+       "catalog_version": "2026.10.21.1",
+       "selections": [
+        {
+         "point_key": "ocpp.1_6.metervalues.energy.active.import.register.context[*].format[*].phase[*].location[*].unit[*]",
+         "cadence_s": 60
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": true,
+      "pending": true
+     },
+     "veroeffentlicht": [],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": [
+      {
+       "revision": 10,
+       "configuration": {
+        "MeterValuesSampledData": "Energy.Active.Import.Register",
+        "StopTxnSampledData": "Energy.Active.Import.Register"
+       }
+      }
+     ]
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "ocpp_ergebnis": {
+       "revision": 10,
+       "antwort": {
+        "applied": true
+       }
+      }
+     },
+     "ergebnis": null,
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 10,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [
+         "ocpp.1_6.metervalues.energy.active.import.register.context[*].format[*].phase[*].location[*].unit[*]"
+        ],
+        "rejected": []
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 1000,
+      "zaehler": {
+       "at": 1000,
+       "values": [
+        {
+         "measurand": "Energy.Active.Import.Register",
+         "value": "1234.5",
+         "unit": "Wh"
+        },
+        {
+         "measurand": "Energy.Active.Import.Register",
+         "value": "99999999999999999999",
+         "unit": "Wh",
+         "format": "Raw"
+        },
+        {
+         "measurand": "Current.Import",
+         "value": "7"
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 1
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:01.000Z",
+        "samples": [
+         {
+          "point_key": "ocpp.1_6.metervalues.energy.active.import.register.context[sample-periodic].format[raw].phase[none].location[outlet].unit[wh]",
+          "raw": "1234.5",
+          "quality": "good",
+          "decoded": 1234.5
+         }
+        ],
+        "applied_revision": 10
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [],
+     "belege": [
+      {
+       "target": {
+        "key": "ocpp"
+       },
+       "samples": 1,
+       "point_key": "ocpp.1_6.metervalues.energy.active.import.register.context[*].format[*].phase[*].location[*].unit[*]"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 30000,
+      "zaehler": {
+       "at": 30000,
+       "values": [
+        {
+         "measurand": "Energy.Active.Import.Register",
+         "value": "1300",
+         "unit": "Wh"
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 0
+     },
+     "veroeffentlicht": [],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 61000,
+      "zaehler": {
+       "at": 61000,
+       "values": [
+        {
+         "measurand": "Energy.Active.Import.Register",
+         "value": "1400",
+         "unit": "Wh"
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 1
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:01:01.000Z",
+        "samples": [
+         {
+          "point_key": "ocpp.1_6.metervalues.energy.active.import.register.context[sample-periodic].format[raw].phase[none].location[outlet].unit[wh]",
+          "raw": "1400",
+          "quality": "good",
+          "decoded": 1400
+         }
+        ],
+        "applied_revision": 10
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [],
+     "belege": [
+      {
+       "target": {
+        "key": "ocpp"
+       },
+       "samples": 1,
+       "point_key": "ocpp.1_6.metervalues.energy.active.import.register.context[*].format[*].phase[*].location[*].unit[*]"
+      }
+     ],
+     "ocpp_auftraege": []
+    }
+   ]
+  },
+  {
+   "name": "OCPP: Abstimmung abgelehnt, Rueckfall ohne OCPP",
+   "io": {
+    "ocppCapability": {
+     "supported": true,
+     "readonly": false,
+     "maxLength": 1024
+    }
+   },
+   "protokoll": [
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 11,
+       "catalog_version": "2026.10.21.1",
+       "selections": [
+        {
+         "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+         "cadence_s": 60
+        },
+        {
+         "point_key": "deye.hybrid_1p.battery.battery",
+         "cadence_s": 30
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": true,
+      "pending": true
+     },
+     "veroeffentlicht": [],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": [
+      {
+       "revision": 11,
+       "configuration": {
+        "MeterValuesSampledData": "Current.Import",
+        "StopTxnSampledData": "Current.Import"
+       }
+      }
+     ]
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "ocpp_ergebnis": {
+       "revision": 11,
+       "antwort": {
+        "applied": false,
+        "reason": "Rejected"
+       }
+      }
+     },
+     "ergebnis": null,
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 11,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [
+         "deye.hybrid_1p.battery.battery"
+        ],
+        "rejected": [
+         {
+          "point_key": "ocpp.1_6.metervalues.current.import.context[*].format[*].phase[*].location[*].unit[*]",
+          "reason": "ocpp_configuration_incompatible"
+         }
+        ]
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "tick": true,
+      "modbus": {
+       "primary:184:1": [
+        45
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 1
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:00.000Z",
+        "samples": [
+         {
+          "point_key": "deye.hybrid_1p.battery.battery",
+          "raw": 45,
+          "decoded": 45,
+          "quality": "good"
+         }
+        ],
+        "applied_revision": 11
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "primary:184:1",
+       "source_kind": "modbus_holding"
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "primary"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "primary"
+       },
+       "samples": 1,
+       "point_key": "deye.hybrid_1p.battery.battery"
+      }
+     ],
+     "ocpp_auftraege": []
+    }
+   ]
+  }
+ ]
+}
