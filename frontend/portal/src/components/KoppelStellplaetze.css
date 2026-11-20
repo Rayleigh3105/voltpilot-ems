@@ -1,0 +1,230 @@
+/*
+ * Abschnitt „Stellplätze“ einer Anlagensteuerung (PFC200 Stufe 4) - an der Karte unter Steuerung › Geräte und in
+ * der Karte „Gerät“ der Geräteseite, dazu was der Dialog „Schalt-Test und Freigabe“ über `vp-freigabe-*` hinaus
+ * braucht. Telefon zuerst: jede Zeile bricht um, jedes Kind darf schrumpfen; ab 560 px stehen Titel und Wert einer
+ * Zeile nebeneinander.
+ */
+
+.vp-kb {
+  min-width: 0;
+  margin-top: 14px;
+  overflow-wrap: anywhere;
+}
+
+.vp-kb-h {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-kb-satz {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-kb-satz.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-kb-satz.is-stoerung {
+  color: #b91c1c;
+}
+
+.vp-kb-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-kb-warnung {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fdf1dc;
+  color: #92400e;
+  font-size: 0.85rem;
+}
+
+.vp-kb-leer {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-kb-liste {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-kb-platz {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 14px;
+  background: var(--vp-c-card, #fff);
+}
+
+.vp-kb.is-alt .vp-kb-zeilen dd {
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-kb-platz-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.vp-kb-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  background: var(--vp-neutral-soft, #eef1f5);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-kb-pill.is-gut {
+  background: #e3f3e8;
+  color: #166534;
+}
+
+.vp-kb-pill.is-warn {
+  background: #fdf1dc;
+  color: #92400e;
+}
+
+.vp-kb-angebot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+}
+
+.vp-kb-angebot > span {
+  min-width: 0;
+}
+
+.vp-kb-band {
+  white-space: nowrap;
+}
+
+.vp-kb-angebot.is-leer {
+  font-style: italic;
+}
+
+.vp-kb-bereit.is-gut {
+  color: var(--vp-ok-ink, #2e7d32);
+  font-weight: 600;
+}
+
+.vp-kb-bereit.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+  font-weight: 600;
+}
+
+.vp-kb-zeilen {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-kb-zeilen > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 12px;
+  min-width: 0;
+}
+
+.vp-kb-zeilen dt {
+  flex: 0 0 100%;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-kb-zeilen dd {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 650;
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-kb-zeilen dd.is-still {
+  font-weight: 500;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-kb-zeilen dd.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-kb-zeilen dd.is-stoerung {
+  color: #b91c1c;
+}
+
+@media (min-width: 560px) {
+  .vp-kb-zeilen dt {
+    flex: 0 0 11.5rem;
+    font-size: 0.8rem;
+  }
+}
+
+.vp-kb-aktion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* Dialog: die zwei Werte von „Ein und Aus“ als Kacheln, wie die Schalt-Art im Freigabe-Assistenten. */
+.vp-kb-wahl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.vp-kb-wahl legend {
+  flex: 0 0 100%;
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.vp-kb-wahl .vp-freigabe-art {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.vp-kb-dialog .vp-kb-zeilen {
+  margin-top: 8px;
+}

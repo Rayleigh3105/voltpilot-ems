@@ -3,7 +3,7 @@ import {
 } from './api';
 import type {
   Ablesung, AblesungAntwort, Abweichung, AbweichungEintragNeu, AbweichungErgebnis, AbweichungListe, AbweichungNeu,
-  AnlageUmzug, AnlageUmzugAnfrage, AnlagensteuerungVerlauf, AnlagensteuerungWerte, Auffaelligkeit,
+  AnlageUmzug, AnlageUmzugAnfrage, AnlagensteuerungVerlauf, AnlagensteuerungWerte, Auffaelligkeit, Koppelbild,
   AuffaelligkeitAntwort, AuffaelligkeitListe, AuffaelligkeitenAlle, BerechneteMessstelleAnlegen, Bericht,
   BerichtAnlegen, BerichtAnstoss, BerichtDetail, BerichtEntwurf, BerichtStand, BerichtStrukturAnlass,
   BerichtVergleich, BerichteBetroffen, BewertungKriterienFassung, BewertungKriterienSpeichern,
@@ -1123,6 +1123,14 @@ const weitere = {
     if (at) q.set('at', at);
     return request<AnlagensteuerungVerlauf>(`/api/v1/sites/${siteId}/anlagensteuerungen/${geraetId}/verlauf?${q.toString()}`);
   },
+  /**
+   * Stellplätze des Koppelbilds (PFC200 Stufe 4): Angebot, Wunsch der Box, Quittung, wirksam, Freigabe. `null` =
+   * älteres Backend (404) - die Seiten zeigen dann keine Stellplätze.
+   */
+  anlagensteuerungKoppelbild: (siteId: string, geraetId: string) =>
+    request<Koppelbild>(`/api/v1/sites/${siteId}/anlagensteuerungen/${geraetId}/koppelbild`).catch((e: unknown) =>
+      e instanceof ApiError && e.status === 404 ? null : Promise.reject(e),
+    ),
   /** Stammdaten Netz und Vermarktung; `null` = älteres Backend (404). */
   netzVermarktung: (siteId: string) =>
     request<NetzVermarktung>(`/api/v1/sites/${siteId}/netz-vermarktung`).catch((e: unknown) =>

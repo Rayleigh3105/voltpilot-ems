@@ -9,6 +9,7 @@ import {
   goreNv,
   goreWerte,
   JETZT,
+  koppelbildBuettner,
   SITE_GORE,
 } from '../test/anlagensteuerungFixtures';
 import { AnlagensteuerungKarte, AnlagensteuerungKarten } from './AnlagensteuerungKarte';
@@ -78,10 +79,28 @@ describe('AnlagensteuerungKarte', () => {
     });
     vi.spyOn(api, 'netzVermarktung').mockResolvedValue(goreNv());
     const werte = vi.spyOn(api, 'anlagensteuerungWerte').mockResolvedValue(goreWerte());
+    const koppel = vi.spyOn(api, 'anlagensteuerungKoppelbild').mockResolvedValue(null);
     render(<AnlagensteuerungKarten siteId={SITE_GORE} now={now} />);
     expect(await screen.findByText('Anlagensteuerung Gore')).toBeInTheDocument();
     await waitFor(() => expect(werte).toHaveBeenCalledWith(SITE_GORE, gore().geraet_id));
     expect(await screen.findByText('Die Anlage folgt der wirksamen Grenze.')).toBeInTheDocument();
+    // Ein älteres Backend ohne Koppelbild-Route: keine Stellplätze, der Satz bleibt „liest nur“.
+    await waitFor(() => expect(koppel).toHaveBeenCalledWith(SITE_GORE, gore().geraet_id));
+    expect(screen.queryByTestId('koppel-stellplaetze')).not.toBeInTheDocument();
+    expect(screen.getByText(/^VoltPilot liest diese Anlage nur\./)).toBeInTheDocument();
+  });
+
+  it('PFC200 Stufe 4: mit freigegebenem Stellplatz liest VoltPilot nicht mehr nur - Satz und Stellplätze', async () => {
+    vi.spyOn(api, 'anlagensteuerungKoppelbild').mockResolvedValue(koppelbildBuettner());
+    render(<AnlagensteuerungKarte steuerung={buettner()} werte={buettnerWerte()} nv={buettnerNv()} now={now} siteId={SITE_GORE} />);
+    expect(await screen.findByTestId('koppel-stellplaetze')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Gesteuert wird diese Anlage vom Netzbetreiber N-ERGIE Netz GmbH und vom Direktvermarkter WVV. '
+          + 'VoltPilot schickt der Steuerung Wünsche an einem freigegebenen Stellplatz; sie entscheidet selbst.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/liest diese Anlage nur/)).not.toBeInTheDocument();
   });
 });
 

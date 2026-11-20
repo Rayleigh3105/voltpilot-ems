@@ -17,6 +17,7 @@ import { consumersApi } from '../src/consumers/consumersApi';
 import { erzeugerVorgabenApi } from '../src/erzeugerVorgabenApi';
 import { anlagensteuerungGeraetId, einheitGeraetId } from '../src/geraetAdresse';
 import { anbindungApi } from '../src/geraetAnbindung';
+import { anlagensteuerungApi } from '../src/anlagensteuerungApi';
 import { meldungenApi } from '../src/meldungenApi';
 import { AufbauSection } from '../src/pages/AufbauSection';
 import { BoxSeiteSection } from '../src/pages/BoxSeiteSection';
@@ -37,6 +38,7 @@ import {
   goreVerlauf,
   goreWerte,
   JETZT,
+  koppelbildBuettner,
 } from '../src/test/anlagensteuerungFixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -66,6 +68,8 @@ if (new URLSearchParams(window.location.search).get('admin') === '1') {
  * `flaeche=gateway` (GE-5): die Seite des Wegs DQ-1 — mit `&form=gateway` ein Gateway mit zwei Steuerungen, ohne die
  * Gegenprobe (1 : 1, keine Gateway-Seite).
  * `&update=laedt` (Erstverbindung S2): die Box ist eben verbunden und holt sich die neueste Software.
+ * `&koppel=1` (PFC200 Stufe 4): die Steuerung hat ein Koppelbild mit drei Stellplätzen; ohne es antwortet die Route
+ * wie ein älteres Backend (keine Stellplätze).
  * Belegt ist, was die Flächen fragen; alles Übrige antwortet „nichts da“ - die Bühne ruft nie eine Cloud.
  */
 const frage = new URLSearchParams(window.location.search);
@@ -74,6 +78,7 @@ const flaeche = frage.get('flaeche') ?? 'steuerung';
 const gatewayForm = frage.get('form') === 'gateway';
 const teNr = Number(frage.get('te') ?? '2');
 const updatePhase = frage.get('update');
+const mitKoppel = frage.get('koppel') === '1';
 
 const F = fall === 'gore'
   ? { s: gore(), w: goreWerte(), nv: goreNv(), entity: ENTITY_GORE, name: 'Gore' }
@@ -207,11 +212,14 @@ function heuteVerlauf(): AnlagensteuerungVerlauf {
 }
 
 const ok = <T,>(wert: T) => () => Promise.resolve(structuredClone(wert));
+// PFC200 Stufe 4: das Koppelbild lebt mit - ein angenommener Schalt-Test macht den Stellplatz freigabebereit.
+const koppel = mitKoppel ? koppelbildBuettner() : null;
 let nv = F.nv;
 const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   anlagensteuerungen: ok({ einrichtung: { moeglich: true, grund: null, boxen: [] }, steuerungen: [F.s] }),
   anlagensteuerungWerte: ok(werte),
   anlagensteuerungVerlauf: ok(flaeche === 'einheit' ? heuteVerlauf() : goreVerlauf()),
+  anlagensteuerungKoppelbild: (async () => structuredClone(koppel)) as never,
   // GE-3: Steuerung › Geräte und Verlauf verweisen auf die Seiten der Einheiten — unter der Box der Anlage.
   listDevices: ok(sichtbareListe([box])),
   boxSoftwareUpdate: ok(updatePhase
@@ -296,6 +304,35 @@ Object.assign(erzeugerVorgabenApi, {
   }),
 });
 Object.assign(meldungenApi, { jetzt: ok([]), verlauf: ok([]) });
+// PFC200 Stufe 4: der Schalt-Test eines Stellplatzes - die Steuerung nimmt den Testwert an und wendet ihn an.
+Object.assign(anlagensteuerungApi, {
+  koppelTest: async (_g: string, platz: number, wert: number) => {
+    const sp = koppel?.stellplaetze.find((p) => p.platz === platz);
+    if (sp) {
+      sp.freigabe = { ...sp.freigabe, status: 'getestet', test: { wert, urteil: 'angenommen', wirksam: wert, at: new Date().toISOString() } };
+      sp.freigabe_moeglich = true;
+      sp.freigabe_grund = null;
+    }
+    return {
+      ok: true, satz: '', error_code: null, beleg_gespeichert: true,
+      koppel_test: { lage: 'bereit', geschrieben: true, folge: 3, urteil: 'angenommen', wirksam: wert },
+    };
+  },
+  // Freigabe und Rücknahme antworten wie die Route mit dem frischen Koppelbild.
+  koppelFreigeben: async (_g: string, platz: number) => {
+    const sp = koppel?.stellplaetze.find((p) => p.platz === platz);
+    if (sp) {
+      sp.freigabe = { ...sp.freigabe, status: 'freigegeben', freigegeben_at: new Date().toISOString() };
+      sp.freigabe_moeglich = false;
+    }
+    return structuredClone(koppel);
+  },
+  koppelFreigabeZuruecknehmen: async (_g: string, platz: number) => {
+    const sp = koppel?.stellplaetze.find((p) => p.platz === platz);
+    if (sp) sp.freigabe = { ...sp.freigabe, status: 'offen', freigegeben_at: null, test: null };
+    return structuredClone(koppel);
+  },
+});
 
 function Flaeche() {
   if (flaeche === 'aufbau') {

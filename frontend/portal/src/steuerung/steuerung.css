@@ -72,8 +72,10 @@
 }
 .stn svg.ic,
 .stn-blatt svg.ic { flex: none; }
-.stn button,
-.stn-blatt button,
+/* Die Knöpfe der Fläche erben Schrift und Farbe; der Knopf des Designsystems (`Button`, `.vp-btn`) behält seine
+   eigene, sonst sähe derselbe Knopf hier anders aus als auf der Geräteseite. */
+.stn button:not(.vp-btn),
+.stn-blatt button:not(.vp-btn),
 .stn-blatt input { font: inherit; color: inherit; }
 .stn :focus-visible,
 .stn-blatt :focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }

@@ -7,7 +7,7 @@
  * Verwaltungsstand (`LIST_POLL_MS`); verdeckte Tabs fragen nicht.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type AnlagensteuerungListe, type AnlagensteuerungWerte, type NetzVermarktung } from './api';
+import { type AnlagensteuerungListe, type AnlagensteuerungWerte, type Koppelbild, type NetzVermarktung } from './api';
 import { api } from './apiVoll';
 import { LIST_POLL_MS, LIVE_POLL_MS } from './pollCadence';
 import { useFreshnessPoll } from './useFreshnessPoll';
@@ -101,4 +101,32 @@ export function useAnlagensteuerungWerte(siteId: string | null, geraetId: string
   }, [lade]);
   useFreshnessPoll(lade, LIVE_POLL_MS, ziel != null);
   return werte;
+}
+
+/**
+ * Das Koppelbild EINER Anlagensteuerung (PFC200 Stufe 4) im Takt der Ist-Werte. `undefined` = lädt noch,
+ * `null` = älteres Backend (404) oder nicht lesbar - dann zeigt die Seite keine Stellplätze.
+ */
+export function useKoppelbild(
+  siteId: string | null,
+  geraetId: string | null,
+): { bild: Koppelbild | null | undefined; neuLaden: () => void; setze: (bild: Koppelbild) => void } {
+  const [bild, setBild] = useState<Koppelbild | null | undefined>(undefined);
+  const ziel = siteId && geraetId ? `${siteId}|${geraetId}` : null;
+  const zielRef = useRef(ziel);
+  zielRef.current = ziel;
+  const lade = useCallback(() => {
+    if (!siteId || !geraetId) return;
+    const z = `${siteId}|${geraetId}`;
+    api.anlagensteuerungKoppelbild(siteId, geraetId).then(
+      (b) => zielRef.current === z && setBild(b),
+      () => zielRef.current === z && setBild((alt) => alt ?? null),
+    );
+  }, [siteId, geraetId]);
+  useEffect(() => {
+    setBild(undefined);
+    lade();
+  }, [lade]);
+  useFreshnessPoll(lade, LIVE_POLL_MS, ziel != null);
+  return { bild, neuLaden: lade, setze: setBild };
 }

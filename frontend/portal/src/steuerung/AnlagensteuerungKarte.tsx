@@ -3,7 +3,8 @@
  * Anlage steuert - Netzbetreiber und Direktvermarkter, VoltPilot liest nur - und je Einheit Soll, Ist, ob sie
  * folgt und ob sie für den Direktvermarkter bereit ist. Kein neuer Reiter; ohne Anlagensteuerung (oder an einem
  * älteren Backend) rendert die Karte nichts. Die Ableitungen stehen in `anlagensteuerung.ts`. Seit GE-3 führt der
- * Name jeder Einheit auf ihre eigene Seite (`einheitSeite.ts`).
+ * Name jeder Einheit auf ihre eigene Seite (`einheitSeite.ts`). Seit PFC200 Stufe 4 trägt die Karte die Stellplätze
+ * des Koppelbilds (`KoppelStellplaetze.tsx`).
  */
 import type { Anlagensteuerung, AnlagensteuerungWerte, NetzVermarktung } from '../api';
 import {
@@ -14,8 +15,9 @@ import {
   werteJe,
   type EinheitZeile,
 } from '../anlagensteuerung';
+import { KoppelStellplaetzeAnzeige } from '../components/KoppelStellplaetze';
 import { einheitHref } from '../erzeugungseinheit';
-import { useAnlagensteuerung } from '../useAnlagensteuerung';
+import { useAnlagensteuerung, useKoppelbild } from '../useAnlagensteuerung';
 import { useBoxRef } from '../useBoxRef';
 import { Ic } from './Ic';
 
@@ -33,6 +35,7 @@ export function AnlagensteuerungKarten({ siteId, now }: { siteId: string; now?: 
           werte={stand.werte[s.geraet_id] ?? null}
           nv={stand.netzVermarktung}
           now={now}
+          siteId={siteId}
           einheitHref={(teNr) => einheitHref(siteId, ref, s.entity_id, teNr)}
         />
       ))}
@@ -45,6 +48,7 @@ export function AnlagensteuerungKarte({
   werte,
   nv,
   now = new Date(),
+  siteId,
   einheitHref,
 }: {
   steuerung: Anlagensteuerung;
@@ -52,6 +56,8 @@ export function AnlagensteuerungKarte({
   werte: AnlagensteuerungWerte | null;
   nv: NetzVermarktung | null;
   now?: Date;
+  /** Die Anlage; mit ihr lädt die Karte die Stellplätze des Koppelbilds (ohne sie keine). */
+  siteId?: string;
   /** Die Seite einer Einheit (GE-3); fehlt sie oder gibt sie null, steht der Name ohne Weg. */
   einheitHref?: (teNr: number) => string | null;
 }) {
@@ -60,6 +66,9 @@ export function AnlagensteuerungKarte({
   const folgt = folgtSatz(je);
   const stand = datenstandZeile(werte, now);
   const ohneDaten = werte?.stand === 'noch_keine_daten';
+  // Ohne Anlage kein Abruf (Tests, ältere Einstiege); mit freigegebenem Stellplatz liest VoltPilot nicht mehr nur.
+  const koppel = useKoppelbild(siteId ?? null, s.geraet_id);
+  const freigegeben = koppel.bild?.stellplaetze.filter((p) => p.freigabe.status === 'freigegeben').length ?? 0;
   return (
     <section className="card links erz" id={`erz-${s.geraet_id}`} aria-labelledby={`erz-h-${s.geraet_id}`}>
       <div className="card-h">
@@ -69,7 +78,7 @@ export function AnlagensteuerungKarte({
         </h2>
         {werte && <span className="meta">{stand.wert}</span>}
       </div>
-      <p className="j-say">{steuerSatz(nv, je)}</p>
+      <p className="j-say">{steuerSatz(nv, je, freigegeben)}</p>
       {folgt && <p className="leise erz-folgt">{folgt}</p>}
       {ohneDaten && <p className="leise">Von dieser Steuerung liegen noch keine Daten vor.</p>}
       {zeilen.length === 0 ? (
@@ -80,6 +89,16 @@ export function AnlagensteuerungKarte({
             <EinheitEintrag key={z.teNr} z={z} href={einheitHref?.(z.teNr) ?? null} />
           ))}
         </ul>
+      )}
+      {siteId && koppel.bild && (
+        <KoppelStellplaetzeAnzeige
+          bild={koppel.bild}
+          geraetId={s.geraet_id}
+          ebene="karte"
+          einheitHref={einheitHref}
+          jetzt={now}
+          onChanged={(neu) => (neu ? koppel.setze(neu) : koppel.neuLaden())}
+        />
       )}
     </section>
   );
