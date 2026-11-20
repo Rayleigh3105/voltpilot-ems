@@ -42,7 +42,7 @@ async function fahre(fall) {
   };
   io.readModbus = (r) => {
     const key = `${r.target.key}:${r.start}:${r.count}`;
-    schritt.anfragen.push({ modbus:key, source_kind:r.source_kind || null });
+    schritt.anfragen.push({ modbus:key, source_kind:r.source_kind || null, ...(r.funktionscode ? { funktionscode:r.funktionscode } : {}) });
     return antwort(schritt.modbus, key);
   };
   io.readJSON = (r) => {
@@ -86,7 +86,26 @@ async function fahre(fall) {
   return protokoll;
 }
 
-const plan = (revision, selections) => ({ revision, catalog_version:V, selections });
+const plan = (revision, selections, extra) => Object.assign({ revision, catalog_version:V, selections }, extra || {});
+
+// WAGO: das Bild der Steuerung C-1 aus dem Simulator-Store (vier Karten 750-494 an Steckplatz 2-5),
+// an Basisadresse 100 einer Quelle; Antworten je Anfrage aus den Woertern des Stores.
+const wagoStore = require('../vp-palette/test/fixtures/wago-registerbild-store.js');
+const wagoFall = wagoStore.ladeFall('S1');
+const wago = wagoFall.store();
+const WAGO_BASIS = 100;
+const wagoAntworten = (woerter) => ({ [`source:src-sps:${WAGO_BASIS}:96`]:woerter.slice(0, 96),
+  [`source:src-sps:${WAGO_BASIS + 96}:84`]:woerter.slice(96, 180) });
+const wagoBild = { entity_id:'sps-1', basisadresse:WAGO_BASIS, funktionscode:4, wortfolge:'big', kartenzahl:4,
+  controller_kennung:wagoFall.aufbau.controller_kennung,
+  karten:wagoFall.aufbau.karten.map((k) => ({ steckplatz:k.steckplatz, kartentyp:k.kartentyp, variante:k.variante })) };
+const WAGO_BINDUNG = {
+  entities:{ 'sps-1':{ entity_id:'sps-1', entity_type:'anlagensteuerung', edge_source_id:'src-sps', data_source_id:'DQ-W' },
+    'ek-2':{ entity_id:'ek-2', entity_type:'energiekarte', edge_source_id:'src-sps', data_source_id:'DQ-W' } },
+  sources:{ 'src-sps':{ id:'src-sps', communication:'modbus_tcp', connection:{ ip:'10.0.0.20', port:502, unit_id:1 } } },
+};
+const woerterStehen = wago.woerter();
+const woerterFremd = woerterStehen.slice(); woerterFremd[0] = 0x1234;
 const reg = (p) => punkt(p).address.registers;
 
 const deyeLast = 'deye.hybrid_1p.load.power';
@@ -186,6 +205,19 @@ const FAELLE = [
         { point_key:akku, cadence_s:30 }]) },
       { zeit:0, ocpp_ergebnis:{ revision:11, antwort:{ applied:false, reason:'Rejected' } } },
       { zeit:0, tick:true, modbus:{ [`primary:${reg(akku)[0]}:1`]:[45] } },
+    ],
+  },
+  {
+    name:'WAGO: Kartenwerte, Herzschlag steht dreimal, Bild fremd',
+    io:{ binding:WAGO_BINDUNG },
+    schritte:[
+      { zeit:0, apply:plan(12, [{ point_key:'wago.pm494.karte[*].kartenregister_35', cadence_s:60, entity_id:'sps-1' },
+        { point_key:'wago.pm494.karte[1].gueltigkeit', cadence_s:60, entity_id:'ek-2' }], { registerbilder:[wagoBild] }) },
+      { zeit:0, tick:true, modbus:wagoAntworten(woerterStehen) },
+      { zeit:60000, tick:true, modbus:wagoAntworten(woerterStehen) },
+      { zeit:120000, tick:true, modbus:wagoAntworten(woerterStehen) },
+      { zeit:180000, tick:true, modbus:wagoAntworten(woerterStehen) },
+      { zeit:240000, tick:true, modbus:wagoAntworten(woerterFremd) },
     ],
   },
 ];

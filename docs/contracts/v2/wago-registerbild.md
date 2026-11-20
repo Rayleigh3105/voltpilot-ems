@@ -11,9 +11,9 @@ einem gleich gebauten Block pro Karte 750-494/-495, den die Box per Modbus TCP l
 Installateur in das bestehende Programm ein und bleibt Eigentümer (E2, Referenzbaustein IP-3). Gelesen wird
 das Registerbild von der Treiberfamilie `wago.registerbild` (IP-6, IP-7).
 
-**Stand vor dem Pilot.** Nichts hier ist an einer Steuerung belegt. Es gibt keine Hardware und weder einen
-eingebauten Baustein noch einen ausgelieferten Leser. Darum trägt jede Zahl ihre Herkunft (§1). Was am Gerät
-festzustellen ist, steht gesammelt in §9.
+**Stand vor dem Pilot.** Nichts hier ist an einer Steuerung belegt. Leser und Referenzbaustein sind gebaut und
+gegen die Fälle geprüft, aber an keiner Steuerung eingebaut und an keiner Karte gelesen. Darum trägt jede Zahl
+ihre Herkunft (§1). Was am Gerät festzustellen ist, steht gesammelt in §9.
 
 | Datei | Rolle |
 |---|---|
@@ -22,8 +22,11 @@ festzustellen ist, steht gesammelt in §9.
 | [`wago-registerbild.schema.json`](./wago-registerbild.schema.json) | Schema der Vektor-Datei (Teilmenge des UEMS-Schema-Läufers) |
 | `frontend/portal/src/wagoRegisterbild.test.ts` | Prüfer: Schema, lückenloser Aufbau, Herkunft jeder Zahl, Vertrag ⟷ Datei ⟷ Hardwareblatt-Vorlage, Rechenbeispiele, ein unabhängiger Leser über alle Fälle |
 
-**Zwillinge gibt es noch keine.** Wer den Aufbau ändert, ändert Vektor-Datei, Vertrag und Test gemeinsam —
-sobald IP-6/IP-7 gebaut sind, auch deren Leser.
+**Zwillinge:** der Leser der Docker-Box (`edge-app/nodered/measurements/wago-registerbild.js`, IP-6/IP-7), sein
+Go-Zwilling in Edge Light (`edge-app/core/internal/wagobild`, gegen diese Fälle und die Folge-Vektoren
+`wago-vectors.json`) und der Baustein `FB_VP_WagoBild` der CODESYS-Bibliothek (`sps/codesys`), dessen Prüfer
+jeden erzeugbaren Fall schreibt und vom Leser der Box lesen lässt. Wer den Aufbau ändert, ändert Vektor-Datei,
+Vertrag, Test und Zwillinge gemeinsam.
 
 ## 1. Drei Arten von Zahlen
 

@@ -2,6 +2,8 @@ package messwerte
 
 import (
 	"math"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/wagobild"
 	"regexp"
 	"sort"
 	"strconv"
@@ -12,10 +14,8 @@ import (
 // applied atomically: the caller swaps the active plan only when Plan.Applied.
 // Held to edge-app/nodered/measurements/measurement-planner-vectors.json.
 //
-// Edge Light differences, by design: the points of an Erzeuger register image
-// never reach this planner (internal/erzeugerbild judges them), and a point of
-// a WAGO register image is refused as edge_too_old until the box reads that
-// image.
+// Edge Light difference, by design: the points of an Erzeuger register image
+// never reach this planner (internal/erzeugerbild judges them).
 
 // Target keys and the binding vocabulary (measurement-binding.js).
 const (
@@ -45,9 +45,90 @@ type Auswahl struct {
 
 // Konfig is the retained measurement plan.
 type Konfig struct {
-	Revision       *float64  `json:"revision"`
-	CatalogVersion string    `json:"catalog_version"`
-	Selections     []Auswahl `json:"selections"`
+	Revision       *float64              `json:"revision"`
+	CatalogVersion string                `json:"catalog_version"`
+	Selections     []Auswahl             `json:"selections"`
+	Registerbilder []RegisterbildEintrag `json:"registerbilder,omitempty"`
+}
+
+// RegisterbildEintrag is one WAGO register image of a plan
+// (mqtt-measurement-config 2.0 registerbilder): the per-plant parameters and
+// the Soll of the controller's component.
+type RegisterbildEintrag struct {
+	EntityID          string   `json:"entity_id"`
+	Basisadresse      int      `json:"basisadresse"`
+	Funktionscode     int      `json:"funktionscode"`
+	Wortfolge         string   `json:"wortfolge"`
+	Kartenzahl        *float64 `json:"kartenzahl"`
+	ControllerKennung *float64 `json:"controller_kennung"`
+	Karten            []struct {
+		Steckplatz int      `json:"steckplatz"`
+		Kartentyp  int      `json:"kartentyp"`
+		Variante   *float64 `json:"variante"`
+	} `json:"karten"`
+}
+
+// Registerbild is an image's parameters at its target.
+type Registerbild struct {
+	Basisadresse  int           `json:"basisadresse"`
+	Funktionscode int           `json:"funktionscode"`
+	Wortfolge     string        `json:"wortfolge"`
+	Kartenzahl    *int          `json:"kartenzahl"`
+	Soll          wagobild.Soll `json:"soll"`
+}
+
+// parameter is the image's reading parameters.
+func (r Registerbild) parameter() wagobild.Parameter {
+	k := 0
+	if r.Kartenzahl != nil {
+		k = *r.Kartenzahl
+	}
+	return wagobild.Parameter{Basisadresse: r.Basisadresse, Funktionscode: r.Funktionscode, Wortfolge: r.Wortfolge, Kartenzahl: k}
+}
+
+// RegisterbilderJeZiel re-keys the plan's images from the controller's
+// component to the target it is read over; an unresolvable component is
+// dropped, two images on one target are both dropped (no guess).
+func (b Bindung) RegisterbilderJeZiel(liste []RegisterbildEintrag) map[string]Registerbild {
+	out := map[string]Registerbild{}
+	doppelt := map[string]bool{}
+	for _, e := range liste {
+		if e.EntityID == "" {
+			continue
+		}
+		z, why := b.ResolveTarget(Auswahl{EntityID: e.EntityID}, nil)
+		if why != "" {
+			continue
+		}
+		if _, ok := out[z.Key]; ok {
+			doppelt[z.Key] = true
+			continue
+		}
+		var kartenzahl *int // a count that is no integer plans no card (driver_unavailable)
+		if e.Kartenzahl != nil && *e.Kartenzahl == float64(int(*e.Kartenzahl)) {
+			n := int(*e.Kartenzahl)
+			kartenzahl = &n
+		}
+		soll := wagobild.Soll{Kartenzahl: kartenzahl, Karten: []wagobild.SollKarte{}}
+		if k := e.ControllerKennung; k != nil && *k == float64(int64(*k)) {
+			v := int64(*k)
+			soll.ControllerKennung = &v
+		}
+		for _, k := range e.Karten {
+			sk := wagobild.SollKarte{Steckplatz: k.Steckplatz, Kartentyp: k.Kartentyp}
+			if k.Variante != nil && *k.Variante == float64(int(*k.Variante)) {
+				v := int(*k.Variante)
+				sk.Variante = &v
+			}
+			soll.Karten = append(soll.Karten, sk)
+		}
+		out[z.Key] = Registerbild{Basisadresse: e.Basisadresse, Funktionscode: e.Funktionscode, Wortfolge: e.Wortfolge,
+			Kartenzahl: kartenzahl, Soll: soll}
+	}
+	for k := range doppelt {
+		delete(out, k)
+	}
+	return out
 }
 
 // Entitaet is the part of a retained entity config the binding reads.
@@ -129,6 +210,8 @@ type PlanOptionen struct {
 	ByteOrder   string
 	ByteOrders  map[string]string
 	Ocpp        *OcppFaehigkeit
+	// Registerbilder are the WAGO images per target (nil: from the plan).
+	Registerbilder map[string]Registerbild
 }
 
 func (o PlanOptionen) discoveryFor(target string) *Discovery {
@@ -179,6 +262,8 @@ type Block struct {
 	Target        Ziel
 	Points        []string
 	RequestCostMs float64
+	// Funktionscode of a register image's request (3 or 4, a plant parameter).
+	Funktionscode int
 }
 
 // HTTPGruppe is one HTTP request per (target, poll group, cadence).
@@ -202,6 +287,7 @@ type Plan struct {
 	HTTPGroups           []HTTPGruppe
 	OcppConfiguration    map[string]string
 	Metrics              *Metriken
+	Registerbilder       map[string]Registerbild
 }
 
 // geteiltePunkte: point keys that occur more than once and name an entity at
@@ -255,12 +341,25 @@ func LeseSchluessel(target, pointKey string) string {
 	return target + "\x00" + pointKey
 }
 
-func istWagoPunkt(p *Punkt) bool {
-	return p.SourceKind == "wago_registerbild" || p.Family == "wago.pm494" || p.Family == "wago.pm495"
+func istWagoPunkt(p *Punkt) bool { return p.SourceKind == "wago_registerbild" }
+
+var karteRe = regexp.MustCompile(`^wago\.(pm494|pm495)\.karte\[(\d+|\*)]\.`)
+
+// karteIndex is the card of a concrete WAGO point key, -1 for none.
+func karteIndex(key string) int {
+	m := karteRe.FindStringSubmatch(key)
+	if m == nil || m[2] == "*" {
+		return -1
+	}
+	i, _ := strconv.Atoi(m[2])
+	return i
 }
 
 // BuildPlan is buildPlan(): judge every selection, then plan the reads.
 func (k *Katalog) BuildPlan(c Konfig, o PlanOptionen) (Plan, error) {
+	if o.Registerbilder == nil {
+		o.Registerbilder = o.Bindung.RegisterbilderJeZiel(c.Registerbilder)
+	}
 	geteilt := geteiltePunkte(c.Selections)
 	var rejected []Ablehnung
 	if c.CatalogVersion != k.Version {
@@ -328,12 +427,45 @@ func (k *Katalog) BuildPlan(c Konfig, o PlanOptionen) (Plan, error) {
 			abgelehnt("driver_unavailable")
 			continue
 		}
-		if istWagoPunkt(p) {
-			abgelehnt(ReasonTooOld)
-			continue
-		}
 		kand := func(pt *Punkt) Kandidat {
 			return Kandidat{Point: pt, CadenceS: s.CadenceS, RequestedKey: s.PointKey, Target: target, EntityID: s.EntityID}
+		}
+		// A register image without its per-plant parameters has no address at
+		// all; the template expands to exactly the cards of the Soll.
+		if istWagoPunkt(p) {
+			bild, ok := o.Registerbilder[target.Key]
+			if !ok || bild.Kartenzahl == nil || *bild.Kartenzahl < 1 {
+				abgelehnt("driver_unavailable")
+				continue
+			}
+			var indizes []int
+			if strings.Contains(p.PointKey, "[*]") {
+				for i := 0; i < *bild.Kartenzahl; i++ {
+					indizes = append(indizes, i)
+				}
+			} else {
+				indizes = []int{karteIndex(p.PointKey)}
+			}
+			raus := false
+			for _, i := range indizes {
+				if i < 0 || i >= *bild.Kartenzahl {
+					raus = true
+				}
+			}
+			if raus {
+				abgelehnt("driver_unavailable")
+				continue
+			}
+			for _, i := range indizes {
+				concrete, err := k.ResolvePoint(strings.Replace(s.PointKey, "[*]", "["+strconv.Itoa(i)+"]", 1), discovery, nil)
+				if err != nil {
+					return Plan{}, err
+				}
+				if concrete != nil {
+					valid = append(valid, kand(concrete))
+				}
+			}
+			continue
 		}
 		if strings.Contains(p.PointKey, "[*]") && p.Family == "sunspec.model_160" {
 			n := -1
@@ -378,7 +510,20 @@ func (k *Katalog) BuildPlan(c Konfig, o PlanOptionen) (Plan, error) {
 	}
 	lesungen := lesungenJeZiel(accepted)
 	prereq := k.voraussetzungen(lesungen)
-	blocks := groupModbus(append(append([]Kandidat(nil), lesungen...), prereq...), o)
+	var modbus, bild []Kandidat
+	for _, x := range append(append([]Kandidat(nil), lesungen...), prereq...) {
+		if istWagoPunkt(x.Point) {
+			bild = append(bild, x)
+		} else {
+			modbus = append(modbus, x)
+		}
+	}
+	blocks := groupModbus(modbus, o)
+	bildBloecke, err := groupRegisterbild(bild, o)
+	if err != nil {
+		return Plan{}, err
+	}
+	blocks = append(blocks, bildBloecke...)
 
 	var gruppen []HTTPGruppe
 	gruppeVon := map[string]Kandidat{}
@@ -427,7 +572,62 @@ func (k *Katalog) BuildPlan(c Konfig, o PlanOptionen) (Plan, error) {
 	}
 	return Plan{Applied: true, Revision: c.Revision, CatalogVersion: c.CatalogVersion, Accepted: keys,
 		Rejected: rejected, Selections: accepted, DecoderPrerequisites: prereq, ByteOrder: o.ByteOrder,
-		ByteOrders: o.ByteOrders, Blocks: blocks, HTTPGroups: gruppen, OcppConfiguration: changes, Metrics: &m}, nil
+		ByteOrders: o.ByteOrders, Blocks: blocks, HTTPGroups: gruppen, OcppConfiguration: changes, Metrics: &m,
+		Registerbilder: o.Registerbilder}, nil
+}
+
+// groupRegisterbild: ONE poll group per controller and cadence (not per
+// family - a 750-494 and a 750-495 share one image), its requests the
+// contract's plan (at most 120 words, a card block never split).
+func groupRegisterbild(cands []Kandidat, o PlanOptionen) ([]Block, error) {
+	type gruppe struct {
+		key     string
+		target  Ziel
+		cadence float64
+		points  []string
+	}
+	var reihe []string
+	je := map[string]*gruppe{}
+	for _, x := range cands {
+		key := x.Target.Key + ":wago:registerbild:" + jsNumberString(x.CadenceS)
+		g := je[key]
+		if g == nil {
+			g = &gruppe{key: key, target: x.Target, cadence: x.CadenceS}
+			je[key] = g
+			reihe = append(reihe, key)
+		}
+		trigger := x.TriggerKey
+		if trigger == "" {
+			trigger = x.Point.PointKey
+		}
+		found := false
+		for _, p := range g.points {
+			if p == trigger {
+				found = true
+			}
+		}
+		if !found {
+			g.points = append(g.points, trigger)
+		}
+	}
+	var out []Block
+	for _, key := range reihe {
+		g := je[key]
+		bild, ok := o.Registerbilder[g.target.Key]
+		if !ok {
+			continue
+		}
+		anfragen, err := wagobild.PlaneAnfragen(bild.parameter())
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range anfragen {
+			out = append(out, Block{Key: key, Start: a.Start, Count: a.Count, CadenceS: g.cadence, SourceKind: "wago_registerbild",
+				Target: g.target, Points: g.points, RequestCostMs: RequestCostMs("", "wago_registerbild"),
+				Funktionscode: bild.Funktionscode})
+		}
+	}
+	return out, nil
 }
 
 // lesungenJeZiel: a point shared by components is READ once per target, at

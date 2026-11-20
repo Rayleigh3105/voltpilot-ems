@@ -1614,6 +1614,1658 @@
      "ocpp_auftraege": []
     }
    ]
+  },
+  {
+   "name": "WAGO: Kartenwerte, Herzschlag steht dreimal, Bild fremd",
+   "io": {
+    "binding": {
+     "entities": {
+      "sps-1": {
+       "entity_id": "sps-1",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps",
+       "data_source_id": "DQ-W"
+      },
+      "ek-2": {
+       "entity_id": "ek-2",
+       "entity_type": "energiekarte",
+       "edge_source_id": "src-sps",
+       "data_source_id": "DQ-W"
+      }
+     },
+     "sources": {
+      "src-sps": {
+       "id": "src-sps",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "10.0.0.20",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    }
+   },
+   "protokoll": [
+    {
+     "schritt": {
+      "zeit": 0,
+      "apply": {
+       "revision": 12,
+       "catalog_version": "2026.10.21.1",
+       "selections": [
+        {
+         "point_key": "wago.pm494.karte[*].kartenregister_35",
+         "cadence_s": 60,
+         "entity_id": "sps-1"
+        },
+        {
+         "point_key": "wago.pm494.karte[1].gueltigkeit",
+         "cadence_s": 60,
+         "entity_id": "ek-2"
+        }
+       ],
+       "registerbilder": [
+        {
+         "entity_id": "sps-1",
+         "basisadresse": 100,
+         "funktionscode": 4,
+         "wortfolge": "big",
+         "kartenzahl": 4,
+         "controller_kennung": 1,
+         "karten": [
+          {
+           "steckplatz": 2,
+           "kartentyp": 494,
+           "variante": 1
+          },
+          {
+           "steckplatz": 3,
+           "kartentyp": 494,
+           "variante": 1
+          },
+          {
+           "steckplatz": 4,
+           "kartentyp": 494,
+           "variante": 1
+          },
+          {
+           "steckplatz": 5,
+           "kartentyp": 494,
+           "variante": 1
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "ergebnis": {
+      "applied": true,
+      "pending": false
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/config-status",
+       "payload": {
+        "revision": 12,
+        "applied_at": "2026-11-20T08:00:00.000Z",
+        "accepted": [
+         "wago.pm494.karte[*].kartenregister_35",
+         "wago.pm494.karte[1].gueltigkeit"
+        ],
+        "rejected": []
+       },
+       "retained": true
+      }
+     ],
+     "anfragen": [],
+     "belege": [],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 0,
+      "tick": true,
+      "modbus": {
+       "source:src-sps:100:96": [
+        22096,
+        21058,
+        1,
+        0,
+        12,
+        42,
+        4,
+        1731,
+        258,
+        772,
+        0,
+        1,
+        2,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        257,
+        0,
+        0,
+        0,
+        514,
+        0,
+        0,
+        0,
+        771,
+        0,
+        0,
+        0,
+        56,
+        21232,
+        0,
+        0,
+        0,
+        40000,
+        0,
+        38000,
+        65535,
+        35536,
+        0,
+        23000,
+        0,
+        23050,
+        0,
+        22980,
+        0,
+        20000,
+        0,
+        19000,
+        0,
+        15000,
+        0,
+        50000,
+        3,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        9,
+        28613,
+        0,
+        0,
+        0,
+        10000,
+        0,
+        12000,
+        0,
+        11000,
+        0,
+        23010,
+        0,
+        23020,
+        0,
+        23030,
+        0,
+        5000,
+        0,
+        6000,
+        0,
+        5500,
+        0,
+        49990
+       ],
+       "source:src-sps:196:84": [
+        4,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        19,
+        4816,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        50010,
+        5,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        24464,
+        0,
+        120,
+        0,
+        2000,
+        0,
+        2100,
+        0,
+        1900,
+        0,
+        22990,
+        0,
+        23000,
+        0,
+        23010,
+        0,
+        1000,
+        0,
+        1100,
+        0,
+        900,
+        0,
+        50000
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 5
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:00:00.000Z",
+        "samples": [
+         {
+          "point_key": "wago.pm494.karte[0].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[1].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[2].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[3].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[1].gueltigkeit",
+          "raw": 15,
+          "quality": "good",
+          "decoded": 15,
+          "entity_id": "ek-2"
+         }
+        ],
+        "applied_revision": 12
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "source:src-sps:100:96",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      },
+      {
+       "modbus": "source:src-sps:196:84",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "ek-2",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[1].gueltigkeit"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 60000,
+      "tick": true,
+      "modbus": {
+       "source:src-sps:100:96": [
+        22096,
+        21058,
+        1,
+        0,
+        12,
+        42,
+        4,
+        1731,
+        258,
+        772,
+        0,
+        1,
+        2,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        257,
+        0,
+        0,
+        0,
+        514,
+        0,
+        0,
+        0,
+        771,
+        0,
+        0,
+        0,
+        56,
+        21232,
+        0,
+        0,
+        0,
+        40000,
+        0,
+        38000,
+        65535,
+        35536,
+        0,
+        23000,
+        0,
+        23050,
+        0,
+        22980,
+        0,
+        20000,
+        0,
+        19000,
+        0,
+        15000,
+        0,
+        50000,
+        3,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        9,
+        28613,
+        0,
+        0,
+        0,
+        10000,
+        0,
+        12000,
+        0,
+        11000,
+        0,
+        23010,
+        0,
+        23020,
+        0,
+        23030,
+        0,
+        5000,
+        0,
+        6000,
+        0,
+        5500,
+        0,
+        49990
+       ],
+       "source:src-sps:196:84": [
+        4,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        19,
+        4816,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        50010,
+        5,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        24464,
+        0,
+        120,
+        0,
+        2000,
+        0,
+        2100,
+        0,
+        1900,
+        0,
+        22990,
+        0,
+        23000,
+        0,
+        23010,
+        0,
+        1000,
+        0,
+        1100,
+        0,
+        900,
+        0,
+        50000
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 5
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:01:00.000Z",
+        "samples": [
+         {
+          "point_key": "wago.pm494.karte[0].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[1].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[2].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[3].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[1].gueltigkeit",
+          "raw": 15,
+          "quality": "good",
+          "decoded": 15,
+          "entity_id": "ek-2"
+         }
+        ],
+        "applied_revision": 12
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "source:src-sps:100:96",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      },
+      {
+       "modbus": "source:src-sps:196:84",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "ek-2",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[1].gueltigkeit"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 120000,
+      "tick": true,
+      "modbus": {
+       "source:src-sps:100:96": [
+        22096,
+        21058,
+        1,
+        0,
+        12,
+        42,
+        4,
+        1731,
+        258,
+        772,
+        0,
+        1,
+        2,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        257,
+        0,
+        0,
+        0,
+        514,
+        0,
+        0,
+        0,
+        771,
+        0,
+        0,
+        0,
+        56,
+        21232,
+        0,
+        0,
+        0,
+        40000,
+        0,
+        38000,
+        65535,
+        35536,
+        0,
+        23000,
+        0,
+        23050,
+        0,
+        22980,
+        0,
+        20000,
+        0,
+        19000,
+        0,
+        15000,
+        0,
+        50000,
+        3,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        9,
+        28613,
+        0,
+        0,
+        0,
+        10000,
+        0,
+        12000,
+        0,
+        11000,
+        0,
+        23010,
+        0,
+        23020,
+        0,
+        23030,
+        0,
+        5000,
+        0,
+        6000,
+        0,
+        5500,
+        0,
+        49990
+       ],
+       "source:src-sps:196:84": [
+        4,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        19,
+        4816,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        50010,
+        5,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        24464,
+        0,
+        120,
+        0,
+        2000,
+        0,
+        2100,
+        0,
+        1900,
+        0,
+        22990,
+        0,
+        23000,
+        0,
+        23010,
+        0,
+        1000,
+        0,
+        1100,
+        0,
+        900,
+        0,
+        50000
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 5
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:02:00.000Z",
+        "samples": [
+         {
+          "point_key": "wago.pm494.karte[0].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[1].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[2].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[3].kartenregister_35",
+          "raw": 4,
+          "quality": "good",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[1].gueltigkeit",
+          "raw": 15,
+          "quality": "good",
+          "decoded": 15,
+          "entity_id": "ek-2"
+         }
+        ],
+        "applied_revision": 12
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "source:src-sps:100:96",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      },
+      {
+       "modbus": "source:src-sps:196:84",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "ek-2",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[1].gueltigkeit"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 180000,
+      "tick": true,
+      "modbus": {
+       "source:src-sps:100:96": [
+        22096,
+        21058,
+        1,
+        0,
+        12,
+        42,
+        4,
+        1731,
+        258,
+        772,
+        0,
+        1,
+        2,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        257,
+        0,
+        0,
+        0,
+        514,
+        0,
+        0,
+        0,
+        771,
+        0,
+        0,
+        0,
+        56,
+        21232,
+        0,
+        0,
+        0,
+        40000,
+        0,
+        38000,
+        65535,
+        35536,
+        0,
+        23000,
+        0,
+        23050,
+        0,
+        22980,
+        0,
+        20000,
+        0,
+        19000,
+        0,
+        15000,
+        0,
+        50000,
+        3,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        9,
+        28613,
+        0,
+        0,
+        0,
+        10000,
+        0,
+        12000,
+        0,
+        11000,
+        0,
+        23010,
+        0,
+        23020,
+        0,
+        23030,
+        0,
+        5000,
+        0,
+        6000,
+        0,
+        5500,
+        0,
+        49990
+       ],
+       "source:src-sps:196:84": [
+        4,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        19,
+        4816,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        50010,
+        5,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        24464,
+        0,
+        120,
+        0,
+        2000,
+        0,
+        2100,
+        0,
+        1900,
+        0,
+        22990,
+        0,
+        23000,
+        0,
+        23010,
+        0,
+        1000,
+        0,
+        1100,
+        0,
+        900,
+        0,
+        50000
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 5
+     },
+     "veroeffentlicht": [
+      {
+       "topic": "edge/events",
+       "payload": {
+        "art": "frozen_source",
+        "zeitpunkt": "2026-11-20T08:03:00Z",
+        "datenquelle": "DQ-W",
+        "lesungen": 3,
+        "herzschlag": 1731
+       },
+       "retained": false
+      },
+      {
+       "topic": "edge/measurements/samples",
+       "payload": {
+        "catalog_version": "2026.10.21.1",
+        "observed_at": "2026-11-20T08:03:00.000Z",
+        "samples": [
+         {
+          "point_key": "wago.pm494.karte[0].kartenregister_35",
+          "raw": 4,
+          "quality": "stale",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[1].kartenregister_35",
+          "raw": 4,
+          "quality": "stale",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[2].kartenregister_35",
+          "raw": 4,
+          "quality": "stale",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[3].kartenregister_35",
+          "raw": 4,
+          "quality": "stale",
+          "decoded": 4,
+          "entity_id": "sps-1"
+         },
+         {
+          "point_key": "wago.pm494.karte[1].gueltigkeit",
+          "raw": 15,
+          "quality": "stale",
+          "decoded": 15,
+          "entity_id": "ek-2"
+         }
+        ],
+        "applied_revision": 12
+       },
+       "retained": false
+      }
+     ],
+     "anfragen": [
+      {
+       "modbus": "source:src-sps:100:96",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      },
+      {
+       "modbus": "source:src-sps:196:84",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "sps-1",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[*].kartenregister_35"
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "entity_id": "ek-2",
+       "samples": 1,
+       "point_key": "wago.pm494.karte[1].gueltigkeit"
+      }
+     ],
+     "ocpp_auftraege": []
+    },
+    {
+     "schritt": {
+      "zeit": 240000,
+      "tick": true,
+      "modbus": {
+       "source:src-sps:100:96": [
+        4660,
+        21058,
+        1,
+        0,
+        12,
+        42,
+        4,
+        1731,
+        258,
+        772,
+        0,
+        1,
+        2,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        257,
+        0,
+        0,
+        0,
+        514,
+        0,
+        0,
+        0,
+        771,
+        0,
+        0,
+        0,
+        56,
+        21232,
+        0,
+        0,
+        0,
+        40000,
+        0,
+        38000,
+        65535,
+        35536,
+        0,
+        23000,
+        0,
+        23050,
+        0,
+        22980,
+        0,
+        20000,
+        0,
+        19000,
+        0,
+        15000,
+        0,
+        50000,
+        3,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        9,
+        28613,
+        0,
+        0,
+        0,
+        10000,
+        0,
+        12000,
+        0,
+        11000,
+        0,
+        23010,
+        0,
+        23020,
+        0,
+        23030,
+        0,
+        5000,
+        0,
+        6000,
+        0,
+        5500,
+        0,
+        49990
+       ],
+       "source:src-sps:196:84": [
+        4,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        19,
+        4816,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        23000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        50010,
+        5,
+        494,
+        1,
+        15,
+        61440,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        24464,
+        0,
+        120,
+        0,
+        2000,
+        0,
+        2100,
+        0,
+        1900,
+        0,
+        22990,
+        0,
+        23000,
+        0,
+        23010,
+        0,
+        1000,
+        0,
+        1100,
+        0,
+        900,
+        0,
+        50000
+       ]
+      }
+     },
+     "ergebnis": {
+      "samples": 0
+     },
+     "veroeffentlicht": [],
+     "anfragen": [
+      {
+       "modbus": "source:src-sps:100:96",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      },
+      {
+       "modbus": "source:src-sps:196:84",
+       "source_kind": "wago_registerbild",
+       "funktionscode": 4
+      }
+     ],
+     "belege": [
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "requests": 1
+      },
+      {
+       "target": {
+        "key": "source:src-sps",
+        "sourceId": "src-sps",
+        "dataSourceId": "DQ-W"
+       },
+       "failed": true,
+       "error_class": "layout_changed"
+      }
+     ],
+     "ocpp_auftraege": []
+    }
+   ]
   }
  ]
 }

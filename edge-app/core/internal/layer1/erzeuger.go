@@ -16,6 +16,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/modbusprofil"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/modbustcp"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/wagobild"
 )
 
 // The Erzeuger image on Edge Light (concept vp-pfc200-edge-konzept, Stufe 2
@@ -389,8 +390,9 @@ type probeAnfrage struct {
 // register read, or the acknowledgement of a koppel_test.
 type probeAntwort struct {
 	erzeugerbild.ProbeErgebnis
-	Raw       *float64 `json:"raw,omitempty"`
-	Registers []uint16 `json:"registers,omitempty"`
+	Raw       *float64              `json:"raw,omitempty"`
+	Registers []uint16              `json:"registers,omitempty"`
+	WagoKopf  *wagobild.KopfBericht `json:"wago_kopf,omitempty"`
 	// KoppelTest is what a koppel_test step saw and what the controller
 	// acknowledged (koppel.go).
 	KoppelTest *probe.KoppelTest `json:"koppel_test,omitempty"`
@@ -398,10 +400,10 @@ type probeAntwort struct {
 
 // onProbe answers one edge/probe/request, the steps one after another like
 // vp-modbus-probe.js: a plain register read (no `op` on the bus,
-// modbus.go registerProbe) and the op erzeuger_kopf are read here, the op
-// koppel_test runs in the controller's Koppelbild session (koppel.go); any other
-// step (wago_kopf) is refused by name at once instead of letting the core wait
-// for its timeout (edge-light/docs/paritaet.md D).
+// modbus.go registerProbe), the op erzeuger_kopf and the op wago_kopf
+// (wagokopf.go) are read here, the op koppel_test runs in the controller's
+// Koppelbild session (koppel.go); any other step is refused by name at once
+// instead of letting the core wait for its timeout.
 func (r *Runtime) onProbe(ctx context.Context, payload []byte) {
 	var req probeAnfrage
 	if json.Unmarshal(payload, &req) != nil || req.RequestID == "" || len(req.Ops) == 0 || len(req.Ops) > 8 {
@@ -420,13 +422,15 @@ func (r *Runtime) onProbe(ctx context.Context, payload []byte) {
 				ErrorCode: e.ErrorCode, Message: e.Message}, Raw: e.Raw, Registers: e.Registers})
 		case erzeugerbild.OpErzeugerKopf:
 			results = append(results, probeAntwort{ProbeErgebnis: r.kopfProbe(ctx, op.ProbeOp)})
+		case opWagoKopf:
+			results = append(results, r.wagoKopfProbe(ctx, op.ProbeOp))
 		case probe.OpKoppelTest:
 			results = append(results, r.koppelProbe(ctx, op))
 		default:
 			results = append(results, probeAntwort{ProbeErgebnis: erzeugerbild.ProbeErgebnis{ID: op.ID,
 				ErrorCode: erzeugerbild.ProbeNichtGestuetzt,
-				Message: "Edge Light führt diesen Prüfschritt („" + op.Op + "“) noch nicht aus - " +
-					"nur einzelne Register und den Kopf eines Erzeuger-Registerbilds."}})
+				Message: "Edge Light führt diesen Prüfschritt („" + op.Op + "“) noch nicht aus - nur einzelne Register, " +
+					"den Kopf eines Erzeuger- oder WAGO-Registerbilds und den Schalt-Test des Koppelbilds."}})
 		}
 	}
 	raw, _ := json.Marshal(struct {

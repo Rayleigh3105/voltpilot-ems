@@ -162,6 +162,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -259,6 +260,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -415,6 +417,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -589,6 +592,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -720,6 +724,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -770,6 +775,7 @@
      }
     ],
     "blocks": [],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -898,6 +904,7 @@
      }
     ],
     "blocks": [],
+    "registerbilder": {},
     "httpGroups": [
      {
       "key": "primary:goe:api_v2:config:3600",
@@ -1087,6 +1094,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [
      {
@@ -1155,6 +1163,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -1239,6 +1248,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -1376,6 +1386,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -1621,6 +1632,7 @@
       "requestCostMs": 2000
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -2311,6 +2323,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {}
@@ -2371,6 +2384,7 @@
      }
     ],
     "blocks": [],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": [],
     "ocppConfiguration": {
@@ -2452,6 +2466,7 @@
       "requestCostMs": 400
      }
     ],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": []
    }
@@ -2500,6 +2515,7 @@
     },
     "selections": [],
     "blocks": [],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": []
    }
@@ -2542,8 +2558,729 @@
     },
     "selections": [],
     "blocks": [],
+    "registerbilder": {},
     "httpGroups": [],
     "decoderPrerequisites": []
+   }
+  },
+  {
+   "name": "WAGO: Vorlage je Karte, einzelne Karte, Karte ausserhalb, ohne Bild",
+   "config": {
+    "revision": 21,
+    "catalog_version": "2026.10.21.1",
+    "registerbilder": [
+     {
+      "entity_id": "sps-1",
+      "basisadresse": 100,
+      "funktionscode": 4,
+      "wortfolge": "big",
+      "kartenzahl": 4,
+      "controller_kennung": 1,
+      "karten": [
+       {
+        "steckplatz": 2,
+        "kartentyp": 494,
+        "variante": 1
+       },
+       {
+        "steckplatz": 3,
+        "kartentyp": 494,
+        "variante": 1
+       },
+       {
+        "steckplatz": 4,
+        "kartentyp": 495,
+        "variante": 1
+       },
+       {
+        "steckplatz": 5,
+        "kartentyp": 495,
+        "variante": 1
+       }
+      ]
+     }
+    ],
+    "selections": [
+     {
+      "point_key": "wago.pm495.karte[*].power_l1",
+      "cadence_s": 60,
+      "entity_id": "sps-1"
+     },
+     {
+      "point_key": "wago.pm494.karte[1].energy_import_total",
+      "cadence_s": 60,
+      "entity_id": "sps-1"
+     },
+     {
+      "point_key": "wago.pm494.karte[1].kartenregister_35",
+      "cadence_s": 300,
+      "entity_id": "sps-1"
+     },
+     {
+      "point_key": "wago.pm495.karte[7].power_l1",
+      "cadence_s": 60,
+      "entity_id": "sps-1"
+     },
+     {
+      "point_key": "wago.pm495.karte[4].power_l2",
+      "cadence_s": 60,
+      "entity_id": "sps-1"
+     },
+     {
+      "point_key": "wago.pm495.karte[0].power_l2",
+      "cadence_s": 60,
+      "entity_id": "sps-3"
+     },
+     {
+      "point_key": "wago.pm495.karte[0].power_l3",
+      "cadence_s": 60
+     }
+    ]
+   },
+   "options": {
+    "binding": {
+     "entities": {
+      "sps-1": {
+       "entity_id": "sps-1",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps",
+       "data_source_id": "DQ-W"
+      },
+      "sps-2": {
+       "entity_id": "sps-2",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps"
+      },
+      "sps-3": {
+       "entity_id": "sps-3",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps-b"
+      }
+     },
+     "sources": {
+      "src-sps": {
+       "id": "src-sps",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "10.0.0.20",
+        "port": 502,
+        "unit_id": 1
+       }
+      },
+      "src-sps-b": {
+       "id": "src-sps-b",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "10.0.0.21",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    }
+   },
+   "result": {
+    "applied": true,
+    "accepted": [
+     "wago.pm495.karte[*].power_l1",
+     "wago.pm494.karte[1].kartenregister_35"
+    ],
+    "rejected": [
+     {
+      "point_key": "wago.pm494.karte[1].energy_import_total",
+      "reason": "unknown_point"
+     },
+     {
+      "point_key": "wago.pm495.karte[7].power_l1",
+      "reason": "driver_unavailable"
+     },
+     {
+      "point_key": "wago.pm495.karte[4].power_l2",
+      "reason": "driver_unavailable"
+     },
+     {
+      "point_key": "wago.pm495.karte[0].power_l2",
+      "reason": "driver_unavailable"
+     },
+     {
+      "point_key": "wago.pm495.karte[0].power_l3",
+      "reason": "driver_unavailable"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 4.2,
+     "requestsPerMinute": 2.4000000000000004,
+     "dutyPercent": 1.6,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "wago.pm495.karte[*].power_l1",
+      "point_key": "wago.pm495.karte[0].power_l1",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     },
+     {
+      "requested_key": "wago.pm495.karte[*].power_l1",
+      "point_key": "wago.pm495.karte[1].power_l1",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     },
+     {
+      "requested_key": "wago.pm495.karte[*].power_l1",
+      "point_key": "wago.pm495.karte[2].power_l1",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     },
+     {
+      "requested_key": "wago.pm495.karte[*].power_l1",
+      "point_key": "wago.pm495.karte[3].power_l1",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     },
+     {
+      "requested_key": "wago.pm494.karte[1].kartenregister_35",
+      "point_key": "wago.pm494.karte[1].kartenregister_35",
+      "cadence_s": 300,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     }
+    ],
+    "blocks": [
+     {
+      "key": "source:src-sps:wago:registerbild:60",
+      "start": 100,
+      "count": 96,
+      "cadence_s": 60,
+      "source_kind": "wago_registerbild",
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "points": [
+       "wago.pm495.karte[0].power_l1",
+       "wago.pm495.karte[1].power_l1",
+       "wago.pm495.karte[2].power_l1",
+       "wago.pm495.karte[3].power_l1"
+      ],
+      "requestCostMs": 400,
+      "funktionscode": 4
+     },
+     {
+      "key": "source:src-sps:wago:registerbild:60",
+      "start": 196,
+      "count": 84,
+      "cadence_s": 60,
+      "source_kind": "wago_registerbild",
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "points": [
+       "wago.pm495.karte[0].power_l1",
+       "wago.pm495.karte[1].power_l1",
+       "wago.pm495.karte[2].power_l1",
+       "wago.pm495.karte[3].power_l1"
+      ],
+      "requestCostMs": 400,
+      "funktionscode": 4
+     },
+     {
+      "key": "source:src-sps:wago:registerbild:300",
+      "start": 100,
+      "count": 96,
+      "cadence_s": 300,
+      "source_kind": "wago_registerbild",
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "points": [
+       "wago.pm494.karte[1].kartenregister_35"
+      ],
+      "requestCostMs": 400,
+      "funktionscode": 4
+     },
+     {
+      "key": "source:src-sps:wago:registerbild:300",
+      "start": 196,
+      "count": 84,
+      "cadence_s": 300,
+      "source_kind": "wago_registerbild",
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "points": [
+       "wago.pm494.karte[1].kartenregister_35"
+      ],
+      "requestCostMs": 400,
+      "funktionscode": 4
+     }
+    ],
+    "registerbilder": {
+     "source:src-sps": {
+      "basisadresse": 100,
+      "funktionscode": 4,
+      "wortfolge": "big",
+      "kartenzahl": 4,
+      "soll": {
+       "kartenzahl": 4,
+       "controller_kennung": 1,
+       "karten": [
+        {
+         "steckplatz": 2,
+         "kartentyp": 494,
+         "variante": 1
+        },
+        {
+         "steckplatz": 3,
+         "kartentyp": 494,
+         "variante": 1
+        },
+        {
+         "steckplatz": 4,
+         "kartentyp": 495,
+         "variante": 1
+        },
+        {
+         "steckplatz": 5,
+         "kartentyp": 495,
+         "variante": 1
+        }
+       ]
+      }
+     }
+    },
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "WAGO: zwei Bilder auf einem Ziel - keines gilt",
+   "config": {
+    "revision": 22,
+    "catalog_version": "2026.10.21.1",
+    "registerbilder": [
+     {
+      "entity_id": "sps-1",
+      "basisadresse": 100,
+      "funktionscode": 4,
+      "wortfolge": "big",
+      "kartenzahl": 4,
+      "controller_kennung": 1,
+      "karten": [
+       {
+        "steckplatz": 2,
+        "kartentyp": 494,
+        "variante": 1
+       },
+       {
+        "steckplatz": 3,
+        "kartentyp": 494,
+        "variante": 1
+       },
+       {
+        "steckplatz": 4,
+        "kartentyp": 495,
+        "variante": 1
+       },
+       {
+        "steckplatz": 5,
+        "kartentyp": 495,
+        "variante": 1
+       }
+      ]
+     },
+     {
+      "entity_id": "sps-2",
+      "basisadresse": 500,
+      "funktionscode": 4,
+      "wortfolge": "big",
+      "kartenzahl": 4,
+      "controller_kennung": 1,
+      "karten": [
+       {
+        "steckplatz": 2,
+        "kartentyp": 494,
+        "variante": 1
+       },
+       {
+        "steckplatz": 3,
+        "kartentyp": 494,
+        "variante": 1
+       },
+       {
+        "steckplatz": 4,
+        "kartentyp": 495,
+        "variante": 1
+       },
+       {
+        "steckplatz": 5,
+        "kartentyp": 495,
+        "variante": 1
+       }
+      ]
+     }
+    ],
+    "selections": [
+     {
+      "point_key": "wago.pm495.karte[0].power_l1",
+      "cadence_s": 60,
+      "entity_id": "sps-1"
+     }
+    ]
+   },
+   "options": {
+    "binding": {
+     "entities": {
+      "sps-1": {
+       "entity_id": "sps-1",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps",
+       "data_source_id": "DQ-W"
+      },
+      "sps-2": {
+       "entity_id": "sps-2",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps"
+      },
+      "sps-3": {
+       "entity_id": "sps-3",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps-b"
+      }
+     },
+     "sources": {
+      "src-sps": {
+       "id": "src-sps",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "10.0.0.20",
+        "port": 502,
+        "unit_id": 1
+       }
+      },
+      "src-sps-b": {
+       "id": "src-sps-b",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "10.0.0.21",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    }
+   },
+   "result": {
+    "applied": true,
+    "accepted": [],
+    "rejected": [
+     {
+      "point_key": "wago.pm495.karte[0].power_l1",
+      "reason": "driver_unavailable"
+     }
+    ],
+    "metrics": {
+     "samplesPerMinute": 0,
+     "requestsPerMinute": 0,
+     "dutyPercent": 0,
+     "warning": null
+    },
+    "selections": [],
+    "blocks": [],
+    "registerbilder": {},
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
+   }
+  },
+  {
+   "name": "WAGO: fuenf Karten, Bild ohne Kennung und Variante",
+   "config": {
+    "revision": 23,
+    "catalog_version": "2026.10.21.1",
+    "registerbilder": [
+     {
+      "entity_id": "sps-1",
+      "basisadresse": 0,
+      "funktionscode": 3,
+      "wortfolge": "little",
+      "kartenzahl": 5,
+      "karten": [
+       {
+        "steckplatz": 1,
+        "kartentyp": 495
+       },
+       {
+        "steckplatz": 2,
+        "kartentyp": 495
+       },
+       {
+        "steckplatz": 3,
+        "kartentyp": 495
+       },
+       {
+        "steckplatz": 4,
+        "kartentyp": 495
+       },
+       {
+        "steckplatz": 5,
+        "kartentyp": 495
+       }
+      ]
+     }
+    ],
+    "selections": [
+     {
+      "point_key": "wago.pm495.karte[*].energy_import_total",
+      "cadence_s": 60,
+      "entity_id": "sps-1"
+     }
+    ]
+   },
+   "options": {
+    "binding": {
+     "entities": {
+      "sps-1": {
+       "entity_id": "sps-1",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps",
+       "data_source_id": "DQ-W"
+      },
+      "sps-2": {
+       "entity_id": "sps-2",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps"
+      },
+      "sps-3": {
+       "entity_id": "sps-3",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "src-sps-b"
+      }
+     },
+     "sources": {
+      "src-sps": {
+       "id": "src-sps",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "10.0.0.20",
+        "port": 502,
+        "unit_id": 1
+       }
+      },
+      "src-sps-b": {
+       "id": "src-sps-b",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "10.0.0.21",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    }
+   },
+   "result": {
+    "applied": true,
+    "accepted": [
+     "wago.pm495.karte[*].energy_import_total"
+    ],
+    "rejected": [],
+    "metrics": {
+     "samplesPerMinute": 5,
+     "requestsPerMinute": 3,
+     "dutyPercent": 2,
+     "warning": null
+    },
+    "selections": [
+     {
+      "requested_key": "wago.pm495.karte[*].energy_import_total",
+      "point_key": "wago.pm495.karte[0].energy_import_total",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     },
+     {
+      "requested_key": "wago.pm495.karte[*].energy_import_total",
+      "point_key": "wago.pm495.karte[1].energy_import_total",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     },
+     {
+      "requested_key": "wago.pm495.karte[*].energy_import_total",
+      "point_key": "wago.pm495.karte[2].energy_import_total",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     },
+     {
+      "requested_key": "wago.pm495.karte[*].energy_import_total",
+      "point_key": "wago.pm495.karte[3].energy_import_total",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     },
+     {
+      "requested_key": "wago.pm495.karte[*].energy_import_total",
+      "point_key": "wago.pm495.karte[4].energy_import_total",
+      "cadence_s": 60,
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "entity_id": "sps-1"
+     }
+    ],
+    "blocks": [
+     {
+      "key": "source:src-sps:wago:registerbild:60",
+      "start": 0,
+      "count": 96,
+      "cadence_s": 60,
+      "source_kind": "wago_registerbild",
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "points": [
+       "wago.pm495.karte[0].energy_import_total",
+       "wago.pm495.karte[1].energy_import_total",
+       "wago.pm495.karte[2].energy_import_total",
+       "wago.pm495.karte[3].energy_import_total",
+       "wago.pm495.karte[4].energy_import_total"
+      ],
+      "requestCostMs": 400,
+      "funktionscode": 3
+     },
+     {
+      "key": "source:src-sps:wago:registerbild:60",
+      "start": 96,
+      "count": 84,
+      "cadence_s": 60,
+      "source_kind": "wago_registerbild",
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "points": [
+       "wago.pm495.karte[0].energy_import_total",
+       "wago.pm495.karte[1].energy_import_total",
+       "wago.pm495.karte[2].energy_import_total",
+       "wago.pm495.karte[3].energy_import_total",
+       "wago.pm495.karte[4].energy_import_total"
+      ],
+      "requestCostMs": 400,
+      "funktionscode": 3
+     },
+     {
+      "key": "source:src-sps:wago:registerbild:60",
+      "start": 180,
+      "count": 42,
+      "cadence_s": 60,
+      "source_kind": "wago_registerbild",
+      "target": {
+       "key": "source:src-sps",
+       "sourceId": "src-sps",
+       "dataSourceId": "DQ-W"
+      },
+      "points": [
+       "wago.pm495.karte[0].energy_import_total",
+       "wago.pm495.karte[1].energy_import_total",
+       "wago.pm495.karte[2].energy_import_total",
+       "wago.pm495.karte[3].energy_import_total",
+       "wago.pm495.karte[4].energy_import_total"
+      ],
+      "requestCostMs": 400,
+      "funktionscode": 3
+     }
+    ],
+    "registerbilder": {
+     "source:src-sps": {
+      "basisadresse": 0,
+      "funktionscode": 3,
+      "wortfolge": "little",
+      "kartenzahl": 5,
+      "soll": {
+       "kartenzahl": 5,
+       "karten": [
+        {
+         "steckplatz": 1,
+         "kartentyp": 495
+        },
+        {
+         "steckplatz": 2,
+         "kartentyp": 495
+        },
+        {
+         "steckplatz": 3,
+         "kartentyp": 495
+        },
+        {
+         "steckplatz": 4,
+         "kartentyp": 495
+        },
+        {
+         "steckplatz": 5,
+         "kartentyp": 495
+        }
+       ]
+      }
+     }
+    },
+    "httpGroups": [],
+    "decoderPrerequisites": [],
+    "ocppConfiguration": {}
    }
   }
  ]

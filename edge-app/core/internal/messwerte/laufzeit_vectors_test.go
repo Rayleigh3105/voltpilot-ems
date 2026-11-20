@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/wagobild"
 )
 
 func laufzeitVektorenPfad() string {
@@ -49,7 +51,11 @@ func (s *skriptIO) LiesRegister(_ context.Context, a Leseauftrag) ([]uint16, err
 	if a.SourceKind != "" {
 		kind = a.SourceKind
 	}
-	s.anfr = append(s.anfr, map[string]any{"modbus": key, "source_kind": kind})
+	m := map[string]any{"modbus": key, "source_kind": kind}
+	if a.Funktionscode != 0 {
+		m["funktionscode"] = a.Funktionscode
+	}
+	s.anfr = append(s.anfr, m)
 	raw, err := s.antwort(s.modbus, key)
 	if err != nil {
 		return nil, err
@@ -115,6 +121,10 @@ func (s *skriptIO) Status(st Status) {
 
 func (s *skriptIO) Proben(b Probenstapel) {
 	s.pub = append(s.pub, map[string]any{"topic": TopicSamples, "retained": false, "payload": b})
+}
+
+func (s *skriptIO) Ereignis(e wagobild.Ereignis) {
+	s.pub = append(s.pub, map[string]any{"topic": wagobild.EreignisTopic, "retained": false, "payload": e})
 }
 
 func (s *skriptIO) OcppKonfigurieren(revision *float64, values map[string]string) {

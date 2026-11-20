@@ -21,7 +21,7 @@ import st  # noqa: E402
 
 CODESYS = HIER.parent
 AUSGABE = CODESYS / "plcopen"
-STAND = "2026-11-19T00:00:00"
+STAND = "2026-11-20T00:00:00"
 XHTML = "http://www.w3.org/1999/xhtml"
 
 BIBLIOTHEK = sorted((CODESYS / "bibliothek").glob("*.st"))
@@ -30,7 +30,7 @@ GVL = CODESYS / "grundprogramm" / "GVL_VoltPilot.st"
 VORLAGEN = CODESYS / "vorlagen"
 
 DATEIEN = {
-    "VoltPilot_Bibliothek.xml": ("VoltPilot-Bibliothek Erzeuger-Bild und Koppelbild", BIBLIOTHEK),
+    "VoltPilot_Bibliothek.xml": ("VoltPilot-Bibliothek Erzeuger-Bild, Koppelbild und WAGO-Bild", BIBLIOTHEK),
     "VoltPilot_Grundprogramm.xml": ("VoltPilot-Grundprogramm", BIBLIOTHEK + [GVL, CODESYS / "grundprogramm" / "PLC_PRG.st"]),
     "VoltPilot_Probeprojekt.xml": ("VoltPilot-Probeprojekt", BIBLIOTHEK + [GVL, CODESYS / "probeprojekt" / "PLC_PRG.st"]),
     "VoltPilot_Vorlage_PV.xml": ("VoltPilot-Vorlage PV", BIBLIOTHEK + [GVL, VORLAGEN / "pv" / "PLC_PRG.st"]),

@@ -83,13 +83,18 @@ func planAlsVektor(p Plan) map[string]any {
 		pre = append(pre, kand(x, true))
 	}
 	for _, b := range p.Blocks {
-		blocks = append(blocks, map[string]any{"key": b.Key, "start": b.Start, "count": b.Count, "cadence_s": b.CadenceS,
-			"source_kind": b.SourceKind, "target": b.Target, "points": b.Points, "requestCostMs": b.RequestCostMs})
+		m := map[string]any{"key": b.Key, "start": b.Start, "count": b.Count, "cadence_s": b.CadenceS,
+			"source_kind": b.SourceKind, "target": b.Target, "points": b.Points, "requestCostMs": b.RequestCostMs}
+		if b.Funktionscode != 0 {
+			m["funktionscode"] = b.Funktionscode
+		}
+		blocks = append(blocks, m)
 	}
 	for _, g := range p.HTTPGroups {
 		http = append(http, map[string]any{"key": g.Key, "target": g.Target})
 	}
 	out["selections"], out["decoderPrerequisites"], out["blocks"], out["httpGroups"] = sel, pre, blocks, http
+	out["registerbilder"] = p.Registerbilder
 	if p.OcppConfiguration != nil { // JS: undefined when the OCPP points were refused
 		out["ocppConfiguration"] = p.OcppConfiguration
 	}
