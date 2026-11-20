@@ -1,0 +1,3 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+lies schalter run

@@ -30,6 +30,9 @@
 #     die SPS-Laufzeit, und ohne Root-Rechte ginge es ohnehin nicht.
 #   - Der Modbus-Datenspiegel wird mit Port 1502 angezeigt (auf 502 sitzt der
 #     Modbus-Server der SPS); er bleibt ab Werk aus.
+#   - Die Firmware des PFC200 hat gzip und zcat, aber kein gunzip (Befund am
+#     Geraet, Firmware 03.10.08). Die gemeinsamen Funktionen rufen gunzip;
+#     fehlt es, steht dafuer unten eine Funktion mit demselben Namen.
 #   - Kein Loader-Selbstupdate: das Programm bringt nur den Mango-Loader
 #     eingebettet mit. Dieser Loader und das Dienst-Skript aendern sich nur
 #     durch edge-industrie/install.sh.
@@ -45,7 +48,7 @@
 # jeder Aenderung erhoehen; ins Geraet kommt sie nur ueber install.sh.
 # Bewusst NICHT "LOADER_STAND": diese Marke liest das Programm fuer das
 # Loader-Selbstupdate der Mango.
-PFC_LOADER_STAND=2
+PFC_LOADER_STAND=3
 # ABGLEICH_MANGO_STAND: der LOADER_STAND des Mango-Loaders, mit dem diese
 # Fassung zuletzt abgeglichen wurde. Hebt die Mango ihren Stand, schlaegt
 # edge-light/scripts/test.sh fehl, bis die Aenderung hier nachgezogen (oder
@@ -54,6 +57,11 @@ ABGLEICH_MANGO_STAND=2
 
 PATH="${PATH:+$PATH:}/usr/sbin:/usr/bin:/sbin:/bin"
 export PATH
+
+# gunzip gibt es auf dem PFC200 nicht als Programm. Die gemeinsamen Funktionen
+# bleiben wortgleich mit dem Mango-Loader und rufen es weiter; hier wird der
+# Name zu gzip -d.
+command -v gunzip >/dev/null 2>&1 || gunzip() { gzip -d "$@"; }
 
 # Die Ausgabe faengt das Dienst-Skript ein und gibt sie an syslog
 # (logger -t vp-edge-industrie). Von Hand gestartet steht sie im Terminal.

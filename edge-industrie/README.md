@@ -219,7 +219,7 @@ Die Prüfsteine PS-P… sind die des PFC200-Konzepts (Abschnitt 7, „Prüfstein
 
 | Annahme | Was geschieht, wenn sie nicht stimmt | Prüfstein |
 |---|---|---|
-| SSH als root; `su`, `adduser` oder `useradd`, `sha256sum`, `gunzip`, `awk`, `sed`, `logger`, `nice`, `df` sind vorhanden | `install.sh` nennt, was fehlt, und ändert nichts | PS-P3 (Zusatz unten) |
+| SSH als root; `su`, `adduser` oder `useradd`, `sha256sum`, `gzip`, `awk`, `sed`, `logger`, `nice`, `df` sind vorhanden | `install.sh` nennt, was fehlt, und ändert nichts | am Test-PFC200 gelesen (20.11.2026, Firmware 03.10.08(22)): alle da; `gunzip` fehlt dort, `gzip` 1.10 und `zcat` sind da. Installer und Loader packen deshalb mit `gzip -d` aus; beide Proben entfernen `gunzip` im Container |
 | `su -s /bin/sh voltpilot -c ...` wechselt als root ohne Passwort zum Benutzer | `install.sh` prüft es durch einen echten Wechsel und bricht sonst ab | PS-P3 (Zusatz unten) |
 | `get_coupler_details order-number` antwortet mit der Bestellnummer in einer Zeile | die Modellangabe fällt auf `/proc/device-tree/model` zurück; das Programm läuft | PS-P3 |
 | Der Kern kennt `vfpv3`; das Programm ist für ARMv7 mit Gleitkomma-Einheit gebaut (`GOARM=7`) | das Programm startet nicht; der Loader meldet es und versucht es weiter | PS-P3, PS-P6 |
@@ -272,7 +272,7 @@ Zusätze für diesen Stand, im selben Besuch:
 
 ```bash
 # Werkzeuge, die install.sh und der Dienst brauchen (jede Zeile "fehlt: ..." ist ein Befund)
-ssh root@<pfc> 'for w in su adduser useradd sha256sum gunzip awk sed grep cut tr head tail logger nice id chown df wget curl; do command -v $w >/dev/null || echo "fehlt: $w"; done; busybox | head -n 1; ls -l "$(command -v su)"'
+ssh root@<pfc> 'for w in su adduser useradd sha256sum gzip awk sed grep cut tr head tail logger nice id chown df wget curl; do command -v $w >/dev/null || echo "fehlt: $w"; done; busybox | head -n 1; ls -l "$(command -v su)"'
 # Nachladen: kann das Gerät das Portal über HTTPS erreichen
 ssh root@<pfc> 'wget -q -T 20 -O /dev/null https://portal.voltpilot.de/api/v1/edge/trust-set/trust-set.json && echo https_ja'
 # Protokoll: wohin schreibt logger

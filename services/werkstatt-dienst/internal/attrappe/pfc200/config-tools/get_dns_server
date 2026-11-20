@@ -1,0 +1,12 @@
+#!/bin/sh
+# get_dns_server all -> [ "9.9.9.9", "1.1.1.1" ] (leer: [  ])
+. "$(dirname "$0")/attrappe.sh"
+[ "${1:-}" = all ] || exit 3
+liste=""
+if [ -f "$Z/dns" ]; then
+  while read -r a; do
+    [ -n "$a" ] || continue
+    liste="$liste${liste:+, }\"$a\""
+  done <"$Z/dns"
+fi
+printf '[ %s ]' "$liste"

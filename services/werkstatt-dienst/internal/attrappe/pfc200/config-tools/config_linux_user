@@ -1,0 +1,14 @@
+#!/bin/sh
+# config_linux_user user=<u> hash=<Zeile im Format von /etc/shadow>
+. "$(dirname "$0")/attrappe.sh"
+u="$(param user "$@")"
+h="$(param hash "$@")"
+case "$u" in root | admin | user) ;; *) falsch "Invalid user ($u)" ;; esac
+# Die Attrappe nimmt nur den Hash: Ein Passwort als Argument stuende in der
+# Prozessliste des Geraets.
+if hat new-password "$@" || hat confirm-password "$@"; then
+  falsch "die Attrappe nimmt kein Passwort als Argument, nur hash="
+fi
+printf '%s' "$h" | grep -Eq '^\$6\$[./0-9A-Za-z]{1,16}\$[./0-9A-Za-z]{86}$' || falsch "Invalid hash"
+setze "benutzer/$u.hash" "$h"
+merke "user=$u hash=gesetzt"

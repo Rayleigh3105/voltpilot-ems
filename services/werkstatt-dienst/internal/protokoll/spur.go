@@ -6,8 +6,9 @@ import (
 
 // Spur ist, was die Protokolle dieses Dienstes über eine Box wissen: der
 // jüngste Lauf, der ihr ein Passwort gesetzt hat. Nur dann ist ein Passwort
-// auf der Box eines dieser Werkstatt (Schritt passwort belegt), und nur dann
-// kann sie eine halb eingerichtete Box dieser Werkstatt sein.
+// auf der Box eines dieser Werkstatt (Schritt passwort belegt, beim PFC200
+// der Schritt zugaenge), und nur dann kann sie eine halb eingerichtete Box
+// dieser Werkstatt sein.
 type Spur struct {
 	Lauf    string   // Kennung des Laufs
 	Zustand string   // fertig, angehalten oder leer (der Lauf ist nicht beendet)
@@ -16,6 +17,12 @@ type Spur struct {
 	// OpenWrt festhielt (gilt für den ganzen Lauf und übersteht Neustarts).
 	Host string
 	Ref  string // Referenz aus dem Schritt programm; leer, wenn er nicht so weit kam
+	// PasswortGesetzt: Ein Schritt, der Passwörter setzt (passwort, beim
+	// PFC200 zugaenge), ist belegt - oder er ist gescheitert, nachdem er das
+	// verschlüsselte Passwort schon im Beleg hatte. Beim PFC200 hat der
+	// Schritt mehrere Teile; scheitert ein späterer, sind die Passwörter
+	// trotzdem die dieses Laufs.
+	PasswortGesetzt bool
 }
 
 // Hat sagt, ob der Schritt belegt ist.
@@ -53,7 +60,7 @@ func (a *Ablage) SpurDerMAC(mac, ausser string) (Spur, bool, error) {
 			return Spur{}, false, err
 		}
 		s, passt := spurAus(k, es, mac)
-		if passt && s.Hat("passwort") {
+		if passt && s.PasswortGesetzt {
 			return s, true, nil
 		}
 	}
@@ -71,8 +78,17 @@ func spurAus(k string, es []Eintrag, mac string) (Spur, bool) {
 			passt = true
 		}
 		switch e.Art {
+		case SchrittGescheitert:
+			if e.Schritt == "passwort" || e.Schritt == "zugaenge" {
+				if v, ok := e.Beleg.Wert("passwort_age"); ok && strings.TrimSpace(v) != "" {
+					s.PasswortGesetzt = true
+				}
+			}
 		case SchrittBelegt:
 			s.Belegt = append(s.Belegt, e.Schritt)
+			if e.Schritt == "passwort" || e.Schritt == "zugaenge" {
+				s.PasswortGesetzt = true
+			}
 			if e.Schritt == "programm" {
 				if v, ok := e.Beleg.Wert("referenz"); ok {
 					if f := strings.Fields(v); len(f) > 0 {

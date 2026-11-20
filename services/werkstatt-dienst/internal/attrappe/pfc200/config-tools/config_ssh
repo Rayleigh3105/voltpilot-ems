@@ -1,0 +1,39 @@
+#!/bin/sh
+# Wie am Geraet: Aendert sich Root-Zugang, Passwort-Anmeldung oder Port, startet
+# das Werkzeug den SSH-Dienst neu, und der Neustart beendet JEDE Sitzung
+# (start-stop-daemon -K -x dropbear trifft auch die Prozesse der Sitzungen).
+# Wer das Werkzeug aus einer SSH-Sitzung ruft, ohne es von ihr zu loesen,
+# sitzt danach vor einem Geraet ohne SSH-Dienst.
+. "$(dirname "$0")/attrappe.sh"
+neustart=0
+for p in root-access-state password-request-state; do
+  if hat "$p" "$@"; then
+    w="$(param "$p" "$@")"
+    case "$w" in enabled | disabled) ;; *) falsch "Invalid input parameter ($w)" ;; esac
+    if [ "$w" != "$("$(dirname "$0")/get_ssh_config" "$p")" ]; then
+      setze "ssh/$p" "$w"
+      neustart=1
+    fi
+  fi
+done
+if hat port-number "$@"; then
+  w="$(param port-number "$@")"
+  case "$w" in "" | *[!0-9]*) falsch "Invalid input parameter ($w)" ;; esac
+  if [ "$w" != "$("$(dirname "$0")/get_ssh_config" port-number)" ]; then
+    setze ssh/port-number "$w"
+    neustart=1
+  fi
+fi
+if hat state "$@" || hat public-key "$@"; then
+  falsch "die Attrappe kennt state und public-key nicht"
+fi
+merke "$*"
+[ "$neustart" = 1 ] || exit 0
+# Die Go-Attrappe sieht "gestoppt", trennt alle Sitzungen und nimmt keine neue
+# an, bis "gestartet" da ist. Stirbt dieses Skript mit seiner Sitzung, bleibt
+# der SSH-Dienst aus.
+rm -f "$Z/ssh/gestartet"
+setze ssh/gestoppt 1
+sleep 1
+setze ssh/gestartet 1
+rm -f "$Z/ssh/gestoppt"

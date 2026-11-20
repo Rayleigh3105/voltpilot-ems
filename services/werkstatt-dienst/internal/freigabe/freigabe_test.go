@@ -118,3 +118,54 @@ func TestBeispielDateiImRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+const beispielPFC200 = `{
+  "schema": "vp-werkstatt-freigabe.v1",
+  "kennung": "2026-11-pfc200-1",
+  "box_art": "pfc200",
+  "erteilt_von": "Betreiber",
+  "erteilt_am": "2026-11-02T08:00:00+01:00",
+  "gueltig_bis": "2026-11-30T23:59:59+01:00",
+  "obergrenze": 5,
+  "edge_industrie": {
+    "fassung": "edge-industrie-2026.11.1",
+    "quelle": "https://git.tecmaxx.de/mamotec/voltpilot-ems/releases/download/edge-industrie-2026.11.1/",
+    "programm_sha256": "0000000000000000000000000000000000000000000000000000000000000002",
+    "skripte_sha256": "0000000000000000000000000000000000000000000000000000000000000003",
+    "wartung_sha256": "0000000000000000000000000000000000000000000000000000000000000004"
+  }
+}`
+
+// Die Freigabe für den PFC200 nennt die Edge-Industrie-Fassung mit drei
+// Prüfsummen und weder OpenWrt noch Edge Light; die der Mango bleibt, wie sie ist.
+func TestFreigabePFC200(t *testing.T) {
+	f, err := Lies([]byte(beispielPFC200))
+	if err != nil || f.BoxArt != PFC200 || f.EdgeIndustrie.WartungSha256 == "" {
+		t.Fatalf("%+v %v", f, err)
+	}
+	// Geschrieben und wieder gelesen: keine leeren Blöcke der Mango.
+	if strings.Contains(beispielPFC200, "openwrt") {
+		t.Fatal("das Beispiel nennt OpenWrt")
+	}
+	for name, aendern := range map[string]func(string) string{
+		"Fassung der Mango-Linie": func(s string) string {
+			return strings.Replace(s, `"fassung": "edge-industrie-2026.11.1"`, `"fassung": "edge-light-2026.11.1"`, 1)
+		},
+		"ohne Tunnel-Programm": func(s string) string {
+			return strings.Replace(s, `"wartung_sha256": "000`, `"wartung_sha256": "xyz`, 1)
+		},
+		"mit Edge Light": func(s string) string {
+			return strings.Replace(s, `"edge_industrie": {`, `"edge_light": {"fassung": "edge-light-2026.11.1", "quelle": "https://x/", "programm_sha256": "`+strings.Repeat("0", 64)+`", "skripte_sha256": "`+strings.Repeat("0", 64)+`"}, "edge_industrie": {`, 1)
+		},
+		"Quelle ohne https": func(s string) string { return strings.Replace(s, `"quelle": "https://`, `"quelle": "http://`, 1) },
+	} {
+		if _, err := Lies([]byte(aendern(beispielPFC200))); err == nil {
+			t.Errorf("%s: angenommen", name)
+		}
+	}
+	// Eine Freigabe der Mango mit einem Block für den PFC200 gilt nicht.
+	mit := strings.Replace(beispiel, `"edge_light": {`, `"edge_industrie": {"fassung": "edge-industrie-2026.11.1", "quelle": "https://x/", "programm_sha256": "`+strings.Repeat("0", 64)+`", "skripte_sha256": "`+strings.Repeat("0", 64)+`", "wartung_sha256": "`+strings.Repeat("0", 64)+`"}, "edge_light": {`, 1)
+	if _, err := Lies([]byte(mit)); err == nil {
+		t.Error("Freigabe der Mango mit edge_industrie: angenommen")
+	}
+}

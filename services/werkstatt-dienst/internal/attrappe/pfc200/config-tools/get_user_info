@@ -1,0 +1,10 @@
+#!/bin/sh
+# 1: das Passwort ist noch das ab Werk (Vergleich der Hashes, wie am Geraet).
+. "$(dirname "$0")/attrappe.sh"
+case "${1:-}" in
+  --is-default-pwd | --is-default-pwd-linux) ;;
+  *) falsch "Missing input parameter" ;;
+esac
+u="${2:-}"
+[ -f "$Z/benutzer/$u.hash" ] || falsch "Invalid parameter"
+if [ "$(cat "$Z/benutzer/$u.hash")" = "$(cat "$Z/benutzer/$u.werk")" ]; then echo 1; else echo 0; fi

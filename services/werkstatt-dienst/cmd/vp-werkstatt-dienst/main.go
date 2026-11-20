@@ -45,6 +45,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/passwort"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/pfc200"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/portal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/wartung"
@@ -170,6 +171,16 @@ func pruefeKonfig() error {
 	} else {
 		fmt.Println("ok: Freigabe lesbar")
 	}
+	if !k.PFC200.An {
+		fmt.Println("PFC200: aus (VP_WERKSTATT_GERAETE=mango,pfc200 schaltet ihn dazu)")
+	} else {
+		fmt.Printf("ok: PFC200 unter %s, Anlagennetz %s, Zeitserver %v\n", pfc200.FesteAdresse, k.LanNetz, k.PFC200.Zeitserver)
+		if _, err := (freigabe.Datei{Pfad: k.PFC200.FreigabeDatei}).Aktuell(); err != nil {
+			fmt.Printf("Freigabe für den PFC200: %v\n", err)
+		} else {
+			fmt.Println("ok: Freigabe für den PFC200 lesbar")
+		}
+	}
 	return nil
 }
 
@@ -199,12 +210,13 @@ func werkbankEinmal(log *slog.Logger) error {
 // apiZugang: mit der API (V1) liest der Dienst die Freigabe dort und holt
 // Codes, schließt Probe-Fenster und schreibt Abnahmen über DASSELBE
 // Dienstkonto; ohne sie gilt die Datei (V1a) und es gibt kein Portal.
-func apiZugang(k konfig.Konfig) (freigabe.Quelle, mango.Portal) {
+func apiZugang(k konfig.Konfig) (mangoFreigaben, pfcFreigaben freigabe.Quelle, ptl mango.Portal) {
 	if k.APIURL == "" {
-		return freigabe.Datei{Pfad: k.FreigabeDatei}, nil
+		return freigabe.Datei{Pfad: k.FreigabeDatei}, freigabe.Datei{Pfad: k.PFC200.FreigabeDatei}, nil
 	}
 	konto := &apikonto.Konto{TokenURL: k.TokenURL, ClientID: k.ClientID, Secret: k.ClientSecret}
-	return freigabe.API{URL: k.APIURL, BoxArt: freigabe.Mango, Token: konto}, portal.Client{URL: k.APIURL, Token: konto}
+	return freigabe.API{URL: k.APIURL, BoxArt: freigabe.Mango, Token: konto}, freigabe.API{URL: k.APIURL, BoxArt: freigabe.PFC200, Token: konto},
+		portal.Client{URL: k.APIURL, Token: konto}
 }
 
 func dienstLaufen(log *slog.Logger) error {
@@ -235,7 +247,7 @@ func dienstLaufen(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	freigaben, ptl := apiZugang(k)
+	freigaben, pfcFreigaben, ptl := apiZugang(k)
 	var melder dienst.Melder
 	if c, ok := ptl.(portal.Client); ok {
 		melder = c
@@ -275,6 +287,36 @@ func dienstLaufen(log *slog.Logger) error {
 	if gh != nil {
 		mk.Gehaeuse = gh
 	}
+	// Der PFC200 (Edge Industrie), wenn eingeschaltet: dieselbe Brücke,
+	// dieselben Zugänge zum Portal, eigene Schritte.
+	var pk *pfc200.Konfig
+	if k.PFC200.An {
+		pk = &pfc200.Konfig{
+			Werkbank:   wb,
+			Fassungen:  mk.Fassungen,
+			Arbeit:     k.Arbeit,
+			LanNetz:    k.LanNetz,
+			LanBruecke: k.LanBruecke,
+			DNS:        k.DNS,
+			Zeitserver: k.PFC200.Zeitserver,
+			Notfall:    k.PFC200.Notfall,
+			Empfaenger: empf,
+			WartungPub: k.WartungPub,
+			WartungEP:  k.WartungEndpunkt,
+			BoxNetz:    k.BoxNetz,
+			PortalURL:  k.PortalURL,
+			Spuren:     ablage,
+			Zeiten:     pfc200.VorgabeZeiten,
+			Log:        log.With("logger", "pfc200"),
+		}
+		if ptl != nil {
+			pk.Portal = ptl
+		}
+		if probe != nil {
+			pk.Probe = probe
+		}
+		log.Info("PFC200 eingeschaltet", "adresse", pfc200.FesteAdresse.String(), "anlagennetz", k.LanNetz.String())
+	}
 	var fl *fernlauf.Dienst
 	if c, ok := ptl.(portal.Client); ok {
 		fa, err := protokoll.NeueAblage(k.Daten + "/fernlaeufe")
@@ -302,6 +344,9 @@ func dienstLaufen(log *slog.Logger) error {
 		Takt:      k.Takt,
 		Mango:     mk,
 		Fernlauf:  fl,
+
+		PFC200:          pk,
+		FreigabenPFC200: pfcFreigaben,
 	}, reg)
 	d.SchliesseOffene()
 

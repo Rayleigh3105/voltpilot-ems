@@ -85,8 +85,51 @@ type Konfig struct {
 
 	Werkbank werkbank.Konfig
 
+	// PFC200: Der Dienst richtet auch WAGO PFC200 ein (Edge Industrie). Aus
+	// ist die Vorgabe: Dann sieht er unter ihrer Adresse 192.168.1.17 nicht
+	// nach, und die Brücke leitet nicht dorthin.
+	PFC200 PFC200
+
 	// Die Druckdatei des Gehäuses je Box (P10); Bau leer heißt: aus.
 	Gehaeuse Gehaeuse
+}
+
+// PFC200 ist, was der Dienst zusätzlich für den WAGO PFC200 braucht.
+type PFC200 struct {
+	An            bool
+	FreigabeDatei string   // Freigabe für den PFC200, wenn sie nicht aus der API kommt
+	Zeitserver    []string // für den Zeitabgleich des Geräts (bleibt nach dem Lauf an)
+	// Notfall ist der Notfall-Schlüssel für den PFC200 (authorized_keys-Zeile):
+	// der eigene aus VP_WERKSTATT_NOTFALL_PUB_PFC200, sonst der allgemeine.
+	// Der SSH-Dienst des PFC200 nimmt nur RSA und ECDSA.
+	Notfall string
+}
+
+var zeitserverMuster = regexp.MustCompile(`^[0-9a-zA-Z][-0-9a-zA-Z.]{0,252}$`)
+
+func (k *Konfig) pfc200(env Umgebung, add func(error)) {
+	p := PFC200{FreigabeDatei: wert(env, "VP_WERKSTATT_FREIGABE_PFC200", "/etc/vp-werkstatt/freigabe/freigabe-pfc200.json")}
+	for _, g := range strings.Split(wert(env, "VP_WERKSTATT_GERAETE", "mango"), ",") {
+		switch strings.TrimSpace(g) {
+		case "mango", "":
+		case "pfc200":
+			p.An = true
+		default:
+			add(fmt.Errorf("VP_WERKSTATT_GERAETE %q: mango oder mango,pfc200", g))
+		}
+	}
+	for _, z := range strings.Split(wert(env, "VP_WERKSTATT_ZEITSERVER", "ptbtime1.ptb.de,ptbtime2.ptb.de,ptbtime3.ptb.de"), ",") {
+		z = strings.TrimSpace(z)
+		if !zeitserverMuster.MatchString(z) {
+			add(fmt.Errorf("VP_WERKSTATT_ZEITSERVER: %q ist kein Name eines Zeitservers", z))
+			continue
+		}
+		p.Zeitserver = append(p.Zeitserver, z)
+	}
+	if len(p.Zeitserver) > 4 {
+		add(errors.New("VP_WERKSTATT_ZEITSERVER: höchstens vier (mehr kennt der PFC200 nicht)"))
+	}
+	k.PFC200 = p
 }
 
 // Gehaeuse sagt, wie der Dienst die Druckdatei des Gehäuses baut.
@@ -253,6 +296,7 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 	}
 
 	k.gehaeuse(env, add)
+	k.pfc200(env, add)
 
 	w := werkbank.Konfig{
 		Adresse:            env("VP_WERKBANK_ADRESSE"),
@@ -271,7 +315,7 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 	w.SSHQuellen, err = netze(wert(env, "VP_WERKBANK_SSH_QUELLEN", "192.168.178.241/32,192.168.178.242/32,192.168.178.243/32"))
 	add(err)
 	if k.LanNetz.IsValid() {
-		w.WerkstattAdressen, w.Ziele = werkstattNetz(k.LanNetz)
+		w.WerkstattAdressen, w.Ziele = werkstattNetz(k.LanNetz, k.PFC200.An)
 	}
 	if mitSchluesseln {
 		dir := wert(env, "VP_WERKSTATT_GEHEIM", "/etc/vp-werkstatt/geheim")
@@ -306,6 +350,24 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 		} else {
 			add(errors.New("VP_WERKSTATT_NOTFALL_PUB fehlt (öffentlicher Notfall-Schlüssel)"))
 		}
+		k.PFC200.Notfall = w.Notfall
+		if p := env("VP_WERKSTATT_NOTFALL_PUB_PFC200"); p != "" {
+			b, err := os.ReadFile(p)
+			if err != nil {
+				add(fmt.Errorf("VP_WERKSTATT_NOTFALL_PUB_PFC200: %v", err))
+			} else if _, _, _, _, err := ssh.ParseAuthorizedKey(b); err != nil {
+				add(fmt.Errorf("VP_WERKSTATT_NOTFALL_PUB_PFC200 %s: kein öffentlicher Schlüssel: %v", p, err))
+			} else {
+				k.PFC200.Notfall = strings.TrimSpace(string(b))
+			}
+		}
+		if k.PFC200.An && k.PFC200.Notfall != "" {
+			// Hier scheitern, nicht erst am ersten Gerät: Mit einem Schlüssel, den
+			// der PFC200 nicht annimmt, hielte jeder Lauf im ersten Schritt an.
+			if pk, _, _, _, err := ssh.ParseAuthorizedKey([]byte(k.PFC200.Notfall)); err == nil && pk.Type() != ssh.KeyAlgoRSA && !strings.HasPrefix(pk.Type(), "ecdsa-sha2-") {
+				add(fmt.Errorf("der Notfall-Schlüssel ist von der Art %s; der SSH-Dienst des PFC200 nimmt nur RSA und ECDSA: einen eigenen in VP_WERKSTATT_NOTFALL_PUB_PFC200 nennen", pk.Type()))
+			}
+		}
 	}
 	k.Werkbank = w
 	if len(fehler) > 0 {
@@ -329,7 +391,10 @@ func lanBrueckeAdresse(lan netip.Prefix) netip.Addr {
 	return netip.AddrFrom4(b)
 }
 
-func werkstattNetz(lan netip.Prefix) ([]netip.Prefix, []netip.AddrPort) {
+// Mit dem PFC200 dazu: seine feste Adresse 192.168.1.17 (Port 22; sie liegt
+// im Netz, das die Brücke schon hat) und im LAN der Port 502, an dem der Lauf
+// belegt, dass Modbus der Steuerung von außen zu ist.
+func werkstattNetz(lan netip.Prefix, pfc200 bool) ([]netip.Prefix, []netip.AddrPort) {
 	box := lan.Addr()
 	bruecke := lanBrueckeAdresse(lan)
 	adressen := []netip.Prefix{
@@ -342,6 +407,9 @@ func werkstattNetz(lan netip.Prefix) ([]netip.Prefix, []netip.AddrPort) {
 		netip.AddrPortFrom(werks, 22), netip.AddrPortFrom(werks, 80),
 		netip.AddrPortFrom(openwrt, 22), netip.AddrPortFrom(openwrt, 80),
 		netip.AddrPortFrom(box, 22), netip.AddrPortFrom(box, 8484),
+	}
+	if pfc200 {
+		ziele = append(ziele, netip.AddrPortFrom(netip.MustParseAddr("192.168.1.17"), 22), netip.AddrPortFrom(box, 502))
 	}
 	return adressen, ziele
 }

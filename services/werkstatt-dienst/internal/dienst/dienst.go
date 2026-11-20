@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/box"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fernlauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
@@ -30,6 +31,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/pfc200"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/portal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/werkbank"
@@ -50,6 +52,12 @@ type Ansicht struct {
 	Zeit     time.Time       `json:"zeit"`
 	Werkbank WerkbankAnsicht `json:"werkbank"`
 	Freigabe FreigabeAnsicht `json:"freigabe"`
+	// FreigabePFC200 ist die Freigabe für den WAGO PFC200 (additiv); fehlt,
+	// solange der Dienst keine PFC200 einrichtet. Freigabe bleibt die der Mango.
+	FreigabePFC200 *FreigabeAnsicht `json:"freigabe_pfc200,omitempty"`
+	// AnschlussGeraet nennt das Gerät am Werkstatt-Anschluss, sobald der
+	// Dienst es an seiner Adresse erkennt (additiv): mango oder pfc200.
+	AnschlussGeraet string `json:"anschluss_geraet,omitempty"`
 	// Anschluss sagt in Alltagsworten, was am Werkstatt-Anschluss steckt.
 	Anschluss string `json:"anschluss,omitempty"`
 	// AnschlussFall ist der Code dazu (internal/faelle), solange kein Lauf
@@ -131,6 +139,11 @@ type Dienst struct {
 	// Mango: Konfiguration der Läufe an der Box; nil heißt: keine Läufe
 	// (nur Brücke und Freigabe).
 	Mango *mango.Konfig
+	// PFC200: Konfiguration der Läufe am WAGO PFC200 (Edge Industrie) und
+	// die Quelle seiner Freigabe; nil heißt: Der Dienst richtet keine PFC200
+	// ein und sieht unter ihrer Adresse nicht nach.
+	PFC200          *pfc200.Konfig
+	FreigabenPFC200 freigabe.Quelle
 	// Melder meldet die Ansicht jeden Takt an die Portal-API (V1, die
 	// Werkstatt-Bildschirme); nil heißt: nur die eigene Anzeige.
 	Melder       Melder
@@ -153,6 +166,7 @@ type Dienst struct {
 	laeuft                       atomic.Bool
 	beendet                      atomic.Bool
 	letzterGrund, letzteFreigabe string
+	letzteFreigabePFC            string
 
 	mBereit, mAlter, mKabel, mGeraete, mFreigabe, mWartet metriken.Messwert
 	mEinrichten                                           metriken.Zaehler
@@ -160,7 +174,13 @@ type Dienst struct {
 
 type aktiverLauf struct {
 	l *lauf.Lauf
-	m *mango.Lauf
+	m geraeteLauf
+}
+
+// geraeteLauf ist der Lauf an einem Gerät (mango.Lauf, pfc200.Lauf).
+type geraeteLauf interface {
+	MAC() string
+	Schliesse()
 }
 
 // Neu legt den Dienst an und meldet seine Metriken an.
@@ -182,7 +202,7 @@ func Neu(d *Dienst, reg *metriken.Register) *Dienst {
 	d.mWartet.Setze(0)
 	d.gesperrt = map[string]bool{}
 	d.ansicht.Werkbank.Adresse = d.Adresse
-	d.letzterGrund, d.letzteFreigabe = "\x00", "\x00" // der erste Stand wird immer geloggt
+	d.letzterGrund, d.letzteFreigabe, d.letzteFreigabePFC = "\x00", "\x00", "\x00" // der erste Stand wird immer geloggt
 	return d
 }
 
@@ -228,8 +248,14 @@ func (d *Dienst) Eingabe(ctx context.Context, name, wert string) error {
 		return errors.New("es läuft kein Lauf")
 	}
 	switch {
-	case name == "tunnel_adresse" && d.Mango != nil:
-		if _, err := mango.PruefeTunnelAdresse(wert, d.Mango.BoxNetz); err != nil {
+	case name == "tunnel_adresse" && (d.Mango != nil || d.PFC200 != nil):
+		boxNetz := netip.Prefix{}
+		if d.Mango != nil {
+			boxNetz = d.Mango.BoxNetz
+		} else {
+			boxNetz = d.PFC200.BoxNetz
+		}
+		if _, err := mango.PruefeTunnelAdresse(wert, boxNetz); err != nil {
 			return err
 		}
 	case name == "probe":
@@ -379,6 +405,26 @@ type kandidat struct {
 	mac     string
 	adresse netip.Addr
 	seit    time.Time
+	// geraet: mango oder pfc200 (freigabe.Mango, freigabe.PFC200); einstieg:
+	// wo sein Lauf beginnt (mango.Einstieg, pfc200.Einstieg).
+	geraet   string
+	einstieg string
+}
+
+// name ist das Gerät in Alltagsworten.
+func (k kandidat) name() string {
+	if k.geraet == freigabe.PFC200 {
+		return "PFC200"
+	}
+	return "Mango"
+}
+
+// wort ist das Fürwort dazu (die Mango, der PFC200).
+func (k kandidat) wort() string {
+	if k.geraet == freigabe.PFC200 {
+		return "er"
+	}
+	return "sie"
 }
 
 // runeAnschluss sieht nach, was am Werkstatt-Anschluss steckt, und beginnt
@@ -390,20 +436,26 @@ type kandidat struct {
 // 113810-d74e, 115040-8287). Bis dahin beginnt kein Lauf und nichts wird gesperrt.
 func (d *Dienst) runeAnschluss(ctx context.Context, jetzt time.Time) {
 	d.mu.Lock()
-	k, einstieg, ok := d.anschlussKandidat(jetzt)
+	k, ok := d.anschlussKandidat(jetzt)
 	d.mu.Unlock()
 	if !ok {
 		return
 	}
 	// Nimmt die Box SSH an? Außerhalb der Sperre: Das kann dauern.
+	var weg box.Weg
+	if k.geraet == freigabe.PFC200 {
+		weg = d.PFC200.Werkbank
+	} else {
+		weg = d.Mango.Werkbank
+	}
 	pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	conn, err := d.Mango.Werkbank.Dial(pctx, netip.AddrPortFrom(k.adresse, 22))
+	conn, err := weg.Dial(pctx, netip.AddrPortFrom(k.adresse, 22))
 	cancel()
 	if err == nil {
 		_ = conn.Close()
 	}
 	werk := ""
-	if err != nil && einstieg == mango.AbWerk && !brueckeWeg(err) {
+	if err != nil && k.geraet == freigabe.Mango && k.einstieg == string(mango.AbWerk) && !brueckeWeg(err) {
 		// Ab GL 4.3.30 bleibt SSH bis zur Ersteinrichtung zu. Antwortet die
 		// Web-Schnittstelle, ist die Mango fertig gestartet: Der Lauf richtet
 		// sie selbst ein, ohne die Startfrist abzuwarten.
@@ -424,13 +476,13 @@ func (d *Dienst) runeAnschluss(ctx context.Context, jetzt time.Time) {
 		return
 	}
 	if err != nil && jetzt.Sub(k.seit) < StartFrist {
-		d.amAnschluss(faelle.Startet, "Mango erkannt unter "+k.adresse.String()+"; sie startet noch ("+geheim.Schwaerze(err.Error())+"). Nicht abziehen.")
+		d.amAnschluss(faelle.Startet, k.name()+" erkannt unter "+k.adresse.String()+"; "+k.wort()+" startet noch ("+geheim.Schwaerze(err.Error())+"). Nicht abziehen.")
 		return
 	}
 	if werk != "" {
 		d.Log.Info("Werksfirmware ohne SSH, Web-Schnittstelle antwortet: Lauf beginnt", "mac", k.mac, "werksfassung", werk)
 	}
-	d.beginneLauf(jetzt, k, einstieg)
+	d.beginneLauf(jetzt, k)
 }
 
 // brueckeWeg: Der Weg zur Brücke ist weg, nicht die Box.
@@ -440,21 +492,23 @@ func brueckeWeg(err error) bool {
 
 // anschlussKandidat entscheidet unter der Sperre, ob am Anschluss eine Box
 // steht, deren Lauf beginnen darf (ok), und mit welchem Einstieg.
-func (d *Dienst) anschlussKandidat(jetzt time.Time) (kandidat, mango.Einstieg, bool) {
-	if d.Mango == nil || d.Laeufer == nil {
-		return kandidat{}, "", false
+func (d *Dienst) anschlussKandidat(jetzt time.Time) (kandidat, bool) {
+	if (d.Mango == nil && d.PFC200 == nil) || d.Laeufer == nil {
+		return kandidat{}, false
 	}
+	d.ansicht.AnschlussGeraet = ""
 	d.unterspannung = d.ansicht.Werkbank.Status != nil && d.ansicht.Werkbank.Status.Unterspannung()
 	if d.aktiv != nil {
+		d.ansicht.AnschlussGeraet = d.aktiv.l.Stand().BoxArt
 		d.amAnschluss("", "Ein Lauf arbeitet an der Box. Nicht abziehen.")
-		return kandidat{}, "", false
+		return kandidat{}, false
 	}
 	vorher := d.kandidat
 	d.kandidat = nil
 	w := d.ansicht.Werkbank
 	if !w.Bereit || w.Status == nil {
 		d.amAnschluss(faelle.BrueckeNichtBereit, "Die Brücke ist nicht bereit.")
-		return kandidat{}, "", false
+		return kandidat{}, false
 	}
 	s := *w.Status
 	da := map[string]bool{}
@@ -470,56 +524,84 @@ func (d *Dienst) anschlussKandidat(jetzt time.Time) (kandidat, mango.Einstieg, b
 	}
 	if !s.Werkstatt.Kabel {
 		d.amAnschluss(faelle.KeinKabel, "Kein Kabel am Werkstatt-Anschluss.")
-		return kandidat{}, "", false
+		return kandidat{}, false
 	}
 	if len(s.Antworten) == 0 {
-		d.amAnschluss(faelle.KeineBox, "Am orangen Kabel steckt keine Box (oder sie startet noch).")
-		return kandidat{}, "", false
+		text := "Am orangen Kabel steckt keine Box (oder sie startet noch)."
+		if d.PFC200 != nil {
+			text += " Ein PFC200 ab Werk antwortet erst nach dem Handgriff „feste Adresse“: " + pfc200.FesteAdresseHandgriff
+		}
+		d.amAnschluss(faelle.KeineBox, text)
+		return kandidat{}, false
 	}
 	e, err := mango.Einzeln(s)
 	if err != nil {
 		d.amAnschluss(faelle.ZweiGeraete, geheim.Schwaerze(err.Error()))
-		return kandidat{}, "", false
+		return kandidat{}, false
+	}
+	k := kandidat{mac: e.MAC, adresse: e.Adresse, seit: jetzt, geraet: freigabe.Mango}
+	eingerichtet := func() (kandidat, bool) {
+		d.amAnschluss(faelle.Eingerichtet, "Unter "+e.Adresse.String()+" steckt eine eingerichtete Box. Der Dienst fasst sie nicht an: abziehen.")
+		return kandidat{}, false
+	}
+	// Welches Gerät das ist, sagt seine Adresse; im LAN-Netz, das Mango und
+	// PFC200 teilen, die Herkunft der MAC.
+	bekannt := true
+	switch {
+	case d.PFC200 != nil && e.Adresse == pfc200.FesteAdresse:
+		k.geraet, k.einstieg = freigabe.PFC200, string(pfc200.AbWerk)
+	case d.Mango != nil && e.Adresse == mango.WerksAdresse:
+		k.einstieg = string(mango.AbWerk)
+	case d.Mango != nil && e.Adresse == mango.OpenWrtAdresse:
+		k.einstieg = string(mango.AbOpenWrt)
+	case d.PFC200 != nil && e.Adresse == d.PFC200.LanNetz.Addr() && pfc200.IstWago(e.MAC):
+		k.geraet, k.einstieg = freigabe.PFC200, string(pfc200.HalbImLan)
+	case d.Mango != nil && e.Adresse == d.Mango.LanNetz.Addr():
+		k.einstieg = string(mango.HalbImLan)
+	default:
+		bekannt = false
+	}
+	if bekannt {
+		d.ansicht.AnschlussGeraet = k.geraet
 	}
 	if d.gesperrt[e.MAC] {
 		d.amAnschluss(faelle.Gesperrt, "Die Box "+e.MAC+" hatte schon ihren Lauf. Abziehen; dann die nächste Box einstecken.")
-		return kandidat{}, "", false
+		return kandidat{}, false
 	}
-	var einstieg mango.Einstieg
-	switch e.Adresse {
-	case mango.WerksAdresse:
-		einstieg = mango.AbWerk
-	case mango.OpenWrtAdresse:
-		einstieg = mango.AbOpenWrt
-	default:
+	if !bekannt {
+		return eingerichtet()
+	}
+	if k.einstieg == string(mango.HalbImLan) {
 		// Unter dem LAN-Netz ist eine Box eingerichtet. Nur wenn ein Lauf
 		// dieser Werkstatt ihr ein Passwort gesetzt und sie nicht übergeben
 		// hat, prüft ein Lauf (ohne Anmeldung), ob sie zurückgesetzt werden darf.
-		if e.Adresse != d.Mango.LanNetz.Addr() || d.Ablage == nil {
-			d.amAnschluss(faelle.Eingerichtet, "Unter "+e.Adresse.String()+" steckt eine eingerichtete Box. Der Dienst fasst sie nicht an: abziehen.")
-			return kandidat{}, "", false
+		if d.Ablage == nil {
+			return eingerichtet()
 		}
 		sp, ok, err := d.Ablage.SpurDerMAC(e.MAC, "")
 		if err != nil || !ok || sp.Fertig() {
-			d.amAnschluss(faelle.Eingerichtet, "Unter "+e.Adresse.String()+" steckt eine eingerichtete Box. Der Dienst fasst sie nicht an: abziehen.")
-			return kandidat{}, "", false
+			return eingerichtet()
 		}
-		einstieg = mango.HalbImLan
 	}
 	f := d.ansicht.Freigabe
-	if !f.Laufend || f.Freigabe == nil {
-		d.amAnschluss(faelle.NichtFreigegeben, "Mango erkannt, aber die Werkstatt ist nicht freigegeben: "+f.Grund)
-		return kandidat{}, "", false
+	if k.geraet == freigabe.PFC200 {
+		f = FreigabeAnsicht{Grund: "für den PFC200 gibt es keine Freigabe"}
+		if d.ansicht.FreigabePFC200 != nil {
+			f = *d.ansicht.FreigabePFC200
+		}
 	}
-	k := kandidat{mac: e.MAC, adresse: e.Adresse, seit: jetzt}
+	if !f.Laufend || f.Freigabe == nil {
+		d.amAnschluss(faelle.NichtFreigegeben, k.name()+" erkannt, aber die Werkstatt ist nicht freigegeben: "+f.Grund)
+		return kandidat{}, false
+	}
 	if vorher != nil && vorher.mac == k.mac && vorher.adresse == k.adresse {
 		k.seit = vorher.seit
 		d.kandidat = &k
-		return k, einstieg, true
+		return k, true
 	}
 	d.kandidat = &k
-	d.amAnschluss(faelle.Startet, "Mango erkannt unter "+e.Adresse.String()+"; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen.")
-	return kandidat{}, "", false
+	d.amAnschluss(faelle.Startet, k.name()+" erkannt unter "+e.Adresse.String()+"; der Dienst wartet, bis "+k.wort()+" fertig gestartet ist. Nicht abziehen.")
+	return kandidat{}, false
 }
 
 // amAnschluss setzt Satz und Fall am Anschluss. Meldet die Brücke
@@ -530,47 +612,87 @@ func (d *Dienst) amAnschluss(fall, text string) {
 		fall = faelle.BrueckeUnterspannung
 		text += " Die Brücke meldet Unterspannung: die Mango an ein eigenes USB-Netzteil."
 	}
-	d.ansicht.Anschluss, d.ansicht.AnschlussFall, d.ansicht.AnschlussLoesung = text, fall, faelle.Zu(fall)
+	// Die Lösung nennt das Gerät, das am Kabel erkannt ist; solange keines
+	// erkannt ist und der Dienst auch PFC200 einrichtet, beide (mit dem
+	// Handgriff „feste Adresse“: Ein PFC200 ab Werk antwortet sonst gar nicht).
+	loesung := faelle.AmAnschluss(fall, d.PFC200 != nil)
+	if d.ansicht.AnschlussGeraet == freigabe.PFC200 {
+		loesung = faelle.ZuFuer(freigabe.PFC200, fall)
+	} else if d.ansicht.AnschlussGeraet == freigabe.Mango {
+		loesung = faelle.Zu(fall)
+	}
+	d.ansicht.Anschluss, d.ansicht.AnschlussFall, d.ansicht.AnschlussLoesung = text, fall, loesung
 }
 
 // beginneLauf beginnt den Lauf einer Box (unter der Sperre).
-func (d *Dienst) beginneLauf(jetzt time.Time, k kandidat, einstieg mango.Einstieg) {
+func (d *Dienst) beginneLauf(jetzt time.Time, k kandidat) {
 	d.kandidat = nil
-	f := d.ansicht.Freigabe
-	l := lauf.Neu(jetzt, f.Freigabe.Kennung, freigabe.Mango)
-	ml, err := mango.NeuerLauf(*d.Mango, *f.Freigabe, l.Kennung())
+	var (
+		l        *lauf.Lauf
+		gl       geraeteLauf
+		schritte []lauf.Schritt
+		angaben  map[string]string
+		err      error
+	)
+	if k.geraet == freigabe.PFC200 {
+		fr := d.ansicht.FreigabePFC200.Freigabe
+		l = lauf.Neu(jetzt, fr.Kennung, freigabe.PFC200)
+		var pl *pfc200.Lauf
+		if pl, err = pfc200.NeuerLauf(*d.PFC200, *fr, l.Kennung()); err == nil {
+			gl, schritte = pl, pl.Schritte(pfc200.Einstieg(k.einstieg))
+		}
+		i := fr.EdgeIndustrie
+		angaben = map[string]string{
+			"einstieg":       k.einstieg,
+			"mac":            k.mac,
+			"adresse":        k.adresse.String(),
+			"edge_industrie": i.Fassung + ", Programm sha256 " + i.ProgrammSha256 + ", Skripte sha256 " + i.SkripteSha256 + ", Tunnel-Programm sha256 " + i.WartungSha256,
+			"lan_netz":       d.PFC200.LanNetz.String(),
+			"bauart":         pfc200.Bauart,
+		}
+	} else {
+		fr := d.ansicht.Freigabe.Freigabe
+		l = lauf.Neu(jetzt, fr.Kennung, freigabe.Mango)
+		var ml *mango.Lauf
+		if ml, err = mango.NeuerLauf(*d.Mango, *fr, l.Kennung()); err == nil {
+			gl, schritte = ml, ml.Schritte(mango.Einstieg(k.einstieg))
+		}
+		angaben = map[string]string{
+			"einstieg":   k.einstieg,
+			"mac":        k.mac,
+			"adresse":    k.adresse.String(),
+			"openwrt":    fr.OpenWrt.Fassung + " " + fr.OpenWrt.Datei + " sha256 " + fr.OpenWrt.Sha256,
+			"edge_light": fr.EdgeLight.Fassung + ", Programm sha256 " + fr.EdgeLight.ProgrammSha256 + ", Skripte sha256 " + fr.EdgeLight.SkripteSha256,
+			"lan_netz":   d.Mango.LanNetz.String(),
+			"bauart":     d.Mango.Bauart,
+		}
+	}
 	if err != nil {
 		d.amAnschluss(faelle.SchrittGescheitert, "Lauf nicht begonnen: "+geheim.Schwaerze(err.Error()))
 		d.Log.Error("Lauf nicht begonnen", "fehler", err)
 		return
 	}
-	fr := f.Freigabe
-	angaben := map[string]string{
-		"einstieg":   string(einstieg),
-		"mac":        k.mac,
-		"adresse":    k.adresse.String(),
-		"openwrt":    fr.OpenWrt.Fassung + " " + fr.OpenWrt.Datei + " sha256 " + fr.OpenWrt.Sha256,
-		"edge_light": fr.EdgeLight.Fassung + ", Programm sha256 " + fr.EdgeLight.ProgrammSha256 + ", Skripte sha256 " + fr.EdgeLight.SkripteSha256,
-		"lan_netz":   d.Mango.LanNetz.String(),
-		"bauart":     d.Mango.Bauart,
-	}
-	d.aktiv = &aktiverLauf{l: l, m: ml}
+	d.aktiv = &aktiverLauf{l: l, m: gl}
 	d.gesperrt[k.mac] = true
+	d.ansicht.AnschlussGeraet = k.geraet
 	d.amAnschluss("", "Ein Lauf arbeitet an der Box. Nicht abziehen.")
 	ctx := d.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	go func() {
-		d.Laeufer.Fahre(ctx, l, angaben, ml.Schritte(einstieg))
-		mac := ml.MAC()
-		ml.Schliesse()
+		d.Laeufer.Fahre(ctx, l, angaben, schritte)
+		mac := gl.MAC()
+		gl.Schliesse()
 		if mac == "" {
 			mac = k.mac
 		}
 		d.mu.Lock()
 		d.aktiv, d.letzter, d.letzterMAC = nil, l, mac
+		// Ein PFC200 zeigt im Anlagennetz eine andere MAC als unter der
+		// festen Adresse: beide gelten als „hatte ihren Lauf“.
 		d.gesperrt[mac] = true
+		d.gesperrt[k.mac] = true
 		d.mu.Unlock()
 	}()
 }
@@ -656,7 +778,21 @@ func (d *Dienst) werkbankStand(jetzt time.Time, s *werkbank.Status, fassung stri
 }
 
 func (d *Dienst) runeFreigabe(jetzt time.Time) {
-	f, err := d.Freigaben.Aktuell()
+	a := d.liesFreigabe(jetzt, d.Freigaben, &d.letzteFreigabe, "")
+	d.mFreigabe.Wahr(a.Laufend)
+	var p *FreigabeAnsicht
+	if d.PFC200 != nil && d.FreigabenPFC200 != nil {
+		pa := d.liesFreigabe(jetzt, d.FreigabenPFC200, &d.letzteFreigabePFC, " für den PFC200")
+		p = &pa
+	}
+	d.mu.Lock()
+	d.ansicht.Freigabe, d.ansicht.FreigabePFC200 = a, p
+	d.mu.Unlock()
+}
+
+// liesFreigabe liest die Freigabe einer Quelle und loggt, wenn sich ihr Stand ändert.
+func (d *Dienst) liesFreigabe(jetzt time.Time, quelle freigabe.Quelle, letzte *string, wofuer string) FreigabeAnsicht {
+	f, err := quelle.Aktuell()
 	a := FreigabeAnsicht{}
 	if err == nil {
 		a.Freigabe = &f
@@ -669,26 +805,25 @@ func (d *Dienst) runeFreigabe(jetzt time.Time) {
 	if err != nil {
 		a.Grund = geheim.Schwaerze(err.Error())
 	}
-	d.mFreigabe.Wahr(a.Laufend)
-	d.mu.Lock()
-	d.ansicht.Freigabe = a
-	d.mu.Unlock()
 	merk := a.Grund
 	if a.Freigabe != nil {
 		merk = a.Freigabe.Kennung + "|" + a.Grund
 	}
-	if merk != d.letzteFreigabe {
+	if merk != *letzte {
 		var keine freigabe.Keine
 		switch {
+		case a.Laufend && a.Freigabe.BoxArt == freigabe.PFC200:
+			d.Log.Info("Freigabe läuft"+wofuer, "freigabe", a.Freigabe.Kennung, "bis", a.Freigabe.GueltigBis.Format(time.RFC3339), "edge_industrie", a.Freigabe.EdgeIndustrie.Fassung)
 		case a.Laufend:
-			d.Log.Info("Freigabe läuft", "freigabe", a.Freigabe.Kennung, "bis", a.Freigabe.GueltigBis.Format(time.RFC3339), "openwrt", a.Freigabe.OpenWrt.Fassung, "edge_light", a.Freigabe.EdgeLight.Fassung)
+			d.Log.Info("Freigabe läuft"+wofuer, "freigabe", a.Freigabe.Kennung, "bis", a.Freigabe.GueltigBis.Format(time.RFC3339), "openwrt", a.Freigabe.OpenWrt.Fassung, "edge_light", a.Freigabe.EdgeLight.Fassung)
 		case errors.As(err, &keine):
-			d.Log.Info("Keine laufende Freigabe", "grund", a.Grund)
+			d.Log.Info("Keine laufende Freigabe"+wofuer, "grund", a.Grund)
 		default:
-			d.Log.Error("Freigabe nicht lesbar", "fehler", err)
+			d.Log.Error("Freigabe"+wofuer+" nicht lesbar", "fehler", err)
 		}
-		d.letzteFreigabe = merk
+		*letzte = merk
 	}
+	return a
 }
 
 func letzte(s string, n int) string {

@@ -11,6 +11,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/box"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/halb"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 )
@@ -51,38 +52,7 @@ func Startlader(datei string) string {
 //   - hat sie schon eine Referenz, sagt das Portal: nicht abgenommen und nicht
 //     gekoppelt. Ohne Portal oder ohne Antwort: nein (unbekannt ist nicht nein).
 func (k Konfig) HalbEigene(ctx context.Context, mac, host, ausser string) (sp protokoll.Spur, nein, fall string) {
-	if k.Spuren == nil {
-		return sp, "der Dienst hat keine Protokolle, in denen er die Box suchen könnte", faelle.NichtNachweisbar
-	}
-	sp, ok, err := k.Spuren.SpurDerMAC(mac, ausser)
-	switch {
-	case err != nil:
-		return sp, "Protokolle nicht lesbar: " + err.Error(), faelle.NichtNachweisbar
-	case !ok:
-		return sp, "kein Lauf dieser Werkstatt hat der Box " + mac + " ein Passwort gesetzt: ein fremdes Passwort", faelle.PasswortFremd
-	case sp.Fertig():
-		return sp, "der Lauf " + sp.Lauf + " hat sie fertig eingerichtet und übergeben", faelle.BoxInGebrauch
-	case host == "" || sp.Host == "" || host != sp.Host:
-		return sp, fmt.Sprintf("ihr Host-Schlüssel (%s) ist nicht der aus dem Lauf %s (%s): nicht nachweislich dieselbe Box", orNone(host), sp.Lauf, orNone(sp.Host)), faelle.NichtNachweisbar
-	}
-	if sp.Ref == "" {
-		return sp, "", ""
-	}
-	if k.Portal == nil {
-		return sp, "ohne Portal lässt sich nicht prüfen, ob " + sp.Ref + " abgenommen oder gekoppelt ist", faelle.NichtNachweisbar
-	}
-	pctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	st, err := k.Portal.BoxStandLesen(pctx, sp.Ref)
-	switch {
-	case err != nil:
-		return sp, "das Portal sagt nicht, ob " + sp.Ref + " abgenommen oder gekoppelt ist: " + geheim.Schwaerze(err.Error()), faelle.NichtNachweisbar
-	case st.Abgenommen:
-		return sp, sp.Ref + " ist im Portal abgenommen", faelle.BoxInGebrauch
-	case st.Gekoppelt:
-		return sp, sp.Ref + " ist im Portal gekoppelt", faelle.BoxInGebrauch
-	}
-	return sp, "", ""
+	return halb.Eigene(ctx, k.Spuren, k.Portal, mac, host, ausser)
 }
 
 // halbGrund ist der Grund für den Handgriff Zurücksetzen an einer eigenen Box.

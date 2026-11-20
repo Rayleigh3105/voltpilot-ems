@@ -1,0 +1,28 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+if [ "${1:-}" = update ]; then
+  [ "$(lies ntp/state disabled)" = enabled ] || falsch "ntp client disabled"
+  # Der Abgleich gelingt, wenn das Geraet ins Netz kommt: dann geht die Uhr richtig.
+  [ -f "$Z/internet" ] && [ "$(cat "$Z/internet")" != ja ] && falsch "no time server reachable"
+  setze uhr/versatz 0
+  merke update
+  exit 0
+fi
+if hat state "$@"; then
+  w="$(param state "$@")"
+  case "$w" in enabled | disabled) ;; *) falsch "State ($w) invalid. Must be enabled or disabled" ;; esac
+  setze ntp/state "$w"
+fi
+for n in 1 2 3 4; do
+  if hat "time-server-$n" "$@"; then
+    w="$(param "time-server-$n" "$@")"
+    [ -z "$w" ] || printf '%s' "$w" | grep -Eq '^[-0-9a-zA-Z.]+$' || falsch "Invalid parameter value, NTP_SERVER_$n = $w"
+    setze "ntp/time-server-$n" "$w"
+  fi
+done
+if hat update-time "$@"; then
+  w="$(param update-time "$@")"
+  [ "$w" -ge 15 ] 2>/dev/null || falsch "Update time invalid (minimum 15 sec)"
+  setze ntp/update-time "$w"
+fi
+merke "$*"

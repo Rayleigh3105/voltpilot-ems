@@ -79,10 +79,12 @@ func wenn(v, format string) string {
 // zeilen ist die feste Liste: je Schritt, welche Angaben in der Zeile stehen.
 // Nur die hier genannten Namen werden gelesen; ein Schritt ohne Eintrag zeigt
 // „belegt“. Nie gelesen: passwort_age, passwd, code, tunnel_schluessel,
-// techniker_schluessel, abgewiesen, install, einrichten, box_log_*, sysupgrade.
+// techniker_schluessel, lauf_schluessel, abgewiesen, install, einrichten,
+// box_log_*, sysupgrade.
 var zeilen = map[string]func(protokoll.Beleg) string{
 	"erkennen": func(b protokoll.Beleg) string {
 		return teile(wert(b, "modell"), wenn(wert(b, "gl_firmware"), "GL-Firmware %"), wenn(wert(b, "openwrt"), "OpenWrt %"),
+			wenn(wert(b, "firmware"), "Firmware %"), wenn(wert(b, "werkspasswoerter"), "Werkspasswörter: %"),
 			wenn(wert(b, "root_passwort"), "root-Passwort: %"), wenn(wert(b, "referenz_vorher"), "war %"))
 	},
 	"fassungen": func(b protokoll.Beleg) string {
@@ -103,10 +105,23 @@ var zeilen = map[string]func(protokoll.Beleg) string{
 		return teile(wenn(wert(b, "dauer_bis_openwrt"), "OpenWrt meldet sich nach %"), wenn(wert(b, "mac"), "MAC %"))
 	},
 	"internet": func(b protokoll.Beleg) string {
-		if strings.Contains(wert(b, "internet"), "erreichbar") {
-			return "downloads.openwrt.org erreichbar (befristet)"
+		if !strings.Contains(wert(b, "internet"), "erreichbar") {
+			return ""
 		}
-		return ""
+		if wert(b, "uhr") != "" {
+			// PFC200: Die Uhr steht ab Werk in der Vergangenheit.
+			return teile("Portal erreichbar (befristet)", "Uhr gestellt", wenn(wert(b, "zeitabgleich"), "Zeitabgleich %"))
+		}
+		return "downloads.openwrt.org erreichbar (befristet)"
+	},
+	"zugaenge": func(b protokoll.Beleg) string {
+		if !ja(b, "werkspasswort", "abgewiesen") {
+			return ""
+		}
+		return teile("drei Passwörter gesetzt, nur verschlüsselt abgelegt", "Werkspasswörter abgewiesen", wenn(wert(b, "passwort_anmeldung"), "Anmeldung mit Passwort %"))
+	},
+	"netze": func(b protokoll.Beleg) string {
+		return teile(wenn(wert(b, "kundennetz"), "X1 %"), wenn(wert(b, "anlagennetz"), "X2 %"), wenn(wert(b, "firewall"), "Firewall %"))
 	},
 	"passwort": func(b protokoll.Beleg) string {
 		if ja(b, "ohne_passwort", "abgewiesen") {
@@ -147,7 +162,7 @@ var zeilen = map[string]func(protokoll.Beleg) string{
 		return wenn(wert(b, "lan_netz"), "LAN-Netz % · Neustart angestoßen")
 	},
 	"neustart": func(b protokoll.Beleg) string {
-		return teile(wenn(wert(b, "dauer_bis_antwort"), "wieder da nach %"), "Host-Schlüssel unverändert")
+		return teile(wenn(wert(b, "dauer_bis_antwort"), "wieder da nach %"), "Host-Schlüssel unverändert", wenn(wert(b, "schalter"), "Schalter auf %"))
 	},
 	"probe": func(b protokoll.Beleg) string {
 		if a := wert(b, "anmeldung"); a != "" {
@@ -199,7 +214,10 @@ func Zeile(schritt string, b protokoll.Beleg) string {
 
 // vorherAus liest aus dem Beleg des Schritts erkennen (auch eines
 // gescheiterten), was vorher auf der Box war; nil, wenn er nichts sagt.
-func vorherAus(b protokoll.Beleg, fall string) *Vorher {
+func vorherAus(boxArt string, b protokoll.Beleg, fall string) *Vorher {
+	if boxArt == faelle.GeraetPFC200 {
+		return vorherPFC200(b, fall)
+	}
 	edge := "kein VoltPilot"
 	if fall == faelle.SchonEdgeLight {
 		edge = "Edge Light, ohne Lauf dieser Werkstatt"
@@ -220,6 +238,32 @@ func vorherAus(b protokoll.Beleg, fall string) *Vorher {
 		v = &Vorher{System: "OpenWrt mit Passwort dieser Werkstatt", EdgeLight: e, Ersetzt: fall == faelle.HalbEigene}
 	case fall == faelle.PasswortFremd || fall == faelle.NichtNachweisbar || fall == faelle.BoxInGebrauch:
 		v = &Vorher{System: "OpenWrt mit Passwort", EdgeLight: "unbekannt"}
+	default:
+		return nil
+	}
+	v.System, v.EdgeLight = geheim.Schwaerze(v.System), geheim.Schwaerze(v.EdgeLight)
+	return v
+}
+
+// vorherPFC200: dasselbe für den PFC200. Das Feld edge_light nennt hier, was
+// von VoltPilot vorher auf dem Gerät war (Edge Industrie).
+func vorherPFC200(b protokoll.Beleg, fall string) *Vorher {
+	edge := "kein VoltPilot"
+	if fall == faelle.PFCSchonEingerichtet {
+		edge = "Edge Industrie, ohne Lauf dieser Werkstatt"
+	}
+	var v *Vorher
+	switch fw := wert(b, "firmware"); {
+	case fw != "":
+		v = &Vorher{System: teile(wert(b, "modell"), "Firmware "+fw), EdgeLight: edge}
+	case wert(b, "lauf_vorher") != "":
+		e := "halb eingerichtet (Lauf " + wert(b, "lauf_vorher") + ")"
+		if r := wert(b, "referenz_vorher"); r != "" {
+			e = r + ", halb eingerichtet (Lauf " + wert(b, "lauf_vorher") + ")"
+		}
+		v = &Vorher{System: "PFC200 mit Zugängen dieser Werkstatt", EdgeLight: e, Ersetzt: fall == faelle.PFCPasswort}
+	case fall == faelle.PasswortFremd || fall == faelle.NichtNachweisbar || fall == faelle.BoxInGebrauch:
+		v = &Vorher{System: "PFC200, Werkspasswort abgewiesen", EdgeLight: "unbekannt"}
 	default:
 		return nil
 	}

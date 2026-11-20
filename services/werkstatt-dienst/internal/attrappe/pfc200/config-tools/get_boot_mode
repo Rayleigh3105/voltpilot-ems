@@ -1,0 +1,4 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+[ "${1:-}" = --force_internal_boot ] || exit 3
+lies boot/intern disabled

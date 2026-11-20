@@ -1,0 +1,10 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+n=1
+case "${1:-}" in number=*) n="${1#number=}"; shift ;; esac
+case "${1:-}" in
+  state) lies "gw/$n.state" disabled ;;
+  value) lies "gw/$n.value" - ;;
+  metric) echo 20 ;;
+  *) exit 3 ;;
+esac

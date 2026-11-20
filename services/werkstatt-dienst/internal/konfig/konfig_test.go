@@ -242,3 +242,33 @@ func TestGehaeuse(t *testing.T) {
 		}
 	}
 }
+
+// Der PFC200 ist aus, bis VP_WERKSTATT_GERAETE ihn nennt. Dann kommen seine
+// feste Adresse und der Modbus-Port des Anlagennetzes zu den Zielen der Brücke.
+func TestPFC200(t *testing.T) {
+	k, err := Lies(umgebung(map[string]string{"VP_WERKBANK_ADRESSE": "192.0.2.50"}), false)
+	if err != nil || k.PFC200.An {
+		t.Fatalf("%v %+v", err, k.PFC200)
+	}
+	k, err = Lies(umgebung(map[string]string{"VP_WERKBANK_ADRESSE": "192.0.2.50", "VP_WERKSTATT_GERAETE": "mango, pfc200"}), false)
+	if err != nil || !k.PFC200.An || k.PFC200.FreigabeDatei != "/etc/vp-werkstatt/freigabe/freigabe-pfc200.json" || len(k.PFC200.Zeitserver) != 3 {
+		t.Fatalf("%v %+v", err, k.PFC200)
+	}
+	var ziele []string
+	for _, z := range k.Werkbank.Ziele {
+		ziele = append(ziele, z.String())
+	}
+	if strings.Join(ziele, " ") != "192.168.8.1:22 192.168.8.1:80 192.168.1.1:22 192.168.1.1:80 10.213.0.1:22 10.213.0.1:8484 192.168.1.17:22 10.213.0.1:502" {
+		t.Fatalf("%v", ziele)
+	}
+	for name, env := range map[string]map[string]string{
+		"unbekanntes Gerät": {"VP_WERKSTATT_GERAETE": "mango,pi"},
+		"Zeitserver":        {"VP_WERKSTATT_ZEITSERVER": "zeit server"},
+		"fünf Zeitserver":   {"VP_WERKSTATT_ZEITSERVER": "a.de,b.de,c.de,d.de,e.de"},
+	} {
+		env["VP_WERKBANK_ADRESSE"] = "192.0.2.50"
+		if _, err := Lies(umgebung(env), false); err == nil {
+			t.Errorf("%s: angenommen", name)
+		}
+	}
+}

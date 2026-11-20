@@ -72,8 +72,10 @@ type Stand struct {
 	Handgriff string    `json:"handgriff,omitempty"`
 	WartetAuf string    `json:"wartet_auf,omitempty"`
 	Hinweis   string    `json:"hinweis,omitempty"`
-	// Fall und Loesung nur bei angehalten: der Code aus internal/faelle und
-	// was der Mensch tun kann (docs/contracts/werkstatt-ansicht-v1.md).
+	// Fall und Loesung: der Code aus internal/faelle und was der Mensch tun
+	// kann (docs/contracts/werkstatt-ansicht-v1.md). Bei angehalten; und
+	// solange ein Schritt auf einen Handgriff wartet, nach dem er von selbst
+	// weitermacht (zustand wartet, Kontext.WarteBis).
 	Fall    string          `json:"fall,omitempty"`
 	Loesung *faelle.Loesung `json:"loesung,omitempty"`
 	// Für die Lauf-Seite (additiv in werkstatt-ansicht-v1): seit wann der
@@ -215,6 +217,43 @@ func (k *Kontext) Warte(ctx context.Context, name, hinweis string) (string, erro
 	}
 }
 
+// WarteBis stellt den Lauf auf „wartet“ und zeigt einen Fall mit seiner
+// Lösung: ein Handgriff am Gerät, nach dem der Schritt von selbst weitermacht
+// (etwa der Betriebsartenschalter des PFC200). Im Takt fragt er fertig, bis
+// es true meldet; ein Fehler von fertig beendet das Warten mit diesem Fehler.
+// Anders als bei Warte gibt es keine Eingabe: Der Dienst sieht selbst nach.
+func (k *Kontext) WarteBis(ctx context.Context, name, fall, hinweis string, takt time.Duration, fertig func(context.Context) (bool, error)) error {
+	k.Lauf.aendere(func(s *Stand) {
+		s.Zustand, s.WartetAuf, s.Hinweis = Wartet, name, hinweis
+		s.Fall, s.Loesung = fall, faelle.ZuFuer(s.BoxArt, fall)
+	})
+	defer k.Lauf.aendere(func(s *Stand) {
+		s.Zustand, s.WartetAuf, s.Hinweis = Laeuft, "", ""
+		s.Fall, s.Loesung = "", nil
+	})
+	if err := k.ablage.Schreibe(protokoll.Eintrag{Lauf: k.Lauf.Kennung(), Art: protokoll.Wartet, Schritt: k.schritt, Grund: hinweis, Angaben: map[string]string{"auf": name, "fall": fall}}); err != nil {
+		return err
+	}
+	k.Log.Info("Lauf wartet auf einen Handgriff", "auf", name, "fall", fall)
+	if takt <= 0 {
+		takt = 3 * time.Second
+	}
+	for {
+		ok, err := fertig(ctx)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(takt):
+		}
+	}
+}
+
 // Laeufer führt Läufe aus.
 type Laeufer struct {
 	Ablage *protokoll.Ablage
@@ -307,9 +346,9 @@ func (r *Laeufer) schritt(ctx context.Context, l *Lauf, log *slog.Logger, st Sch
 			fall = faelle.Einordnen(st.Kennung, grund)
 		}
 		l.aendere(func(s *Stand) {
-			s.Fall, s.Loesung = fall, faelle.Zu(fall)
+			s.Fall, s.Loesung = fall, faelle.ZuFuer(s.BoxArt, fall)
 			if st.Kennung == "erkennen" {
-				s.Vorher = vorherAus(beleg, fall)
+				s.Vorher = vorherAus(s.BoxArt, beleg, fall)
 			}
 		})
 		e := protokoll.Eintrag{Zeit: r.Jetzt().UTC(), Lauf: l.Kennung(), Art: protokoll.SchrittGescheitert, Schritt: st.Kennung, Grund: grund, Beleg: beleg, DauerSek: dauer.Seconds(),
@@ -331,7 +370,7 @@ func (r *Laeufer) schritt(ctx context.Context, l *Lauf, log *slog.Logger, st Sch
 		s.Erledigt = append(s.Erledigt, st.Kennung)
 		s.Belege = append(s.Belege, SchrittBeleg{Schritt: st.Kennung, DauerS: math.Round(dauer.Seconds()*10) / 10, Zeile: Zeile(st.Kennung, beleg)})
 		if st.Kennung == "erkennen" {
-			s.Vorher = vorherAus(beleg, "")
+			s.Vorher = vorherAus(s.BoxArt, beleg, "")
 		}
 	})
 	log.Info("Schritt belegt", "dauer_s", fmt.Sprintf("%.1f", dauer.Seconds()))
@@ -357,7 +396,7 @@ func (r *Laeufer) beende(l *Lauf, log *slog.Logger, z Zustand, schritt, grund, h
 			s.Schritt, s.Titel = "", ""
 		}
 		if z == Angehalten && s.Fall == "" {
-			s.Fall, s.Loesung = faelle.SchrittGescheitert, faelle.Zu(faelle.SchrittGescheitert)
+			s.Fall, s.Loesung = faelle.SchrittGescheitert, faelle.ZuFuer(s.BoxArt, faelle.SchrittGescheitert)
 		}
 		s.NochmalMoeglich = z == Angehalten && faelle.Nochmal(s.Fall)
 	})

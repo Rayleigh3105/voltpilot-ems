@@ -78,6 +78,39 @@ dafür. Ein anderer Schlüssel braucht einen Code für einen Tausch, solange die
 gekoppelte Box gibt es keinen Code. Boxen, die nie eingelöst haben, verhalten sich wie bisher. Auf dem Weg der
 Zertifikatsanfrage prüft die API jetzt auch das Prüfzeichen einer erzeugten Kennung.
 
+## WAGO PFC200 (Edge Industrie) an der Werkbank
+
+Der Werkstatt-Dienst richtet neben der Mango auch einen WAGO PFC200 750-8212 ein, als Box „Edge Industrie“.
+Schritte, Belege und Einstellungen stehen im [README des Dienstes](../services/werkstatt-dienst/README.md#ein-lauf-am-wago-pfc200-edge-industrie); hier steht, was ein Mensch dafür tut und was der Lauf nicht tut.
+
+**Stand.**
+Der Dienst kann den Lauf (ausgeschaltet, bis `VP_WERKSTATT_GERAETE=mango,pfc200` gesetzt ist), mit einer Freigabe als Datei.
+Die Freigabe aus dem Portal, die Abnahme mit der Prüfliste des PFC200 und die Bildschirme im Portal fehlen noch.
+
+**Handgriffe am Gerät.**
+
+| Wann | Handgriff |
+|---|---|
+| immer, vor dem Lauf | Endklemme anstecken, das orange Kabel in die Buchse **X2**, Strom an. Dann die feste Adresse: Betriebsartenschalter auf **STOP**, Reset-Taster (RST) länger als 8 Sekunden halten, bis SYS orange blinkt, Schalter zurück auf **RUN**. Das Gerät hat dann vorübergehend 192.168.1.17, bis zum nächsten Neustart |
+| der Lauf wartet mit `pfc_schalter_stop` | Schalter auf RUN; der Lauf macht von selbst weiter |
+| der Lauf wartet mit `pfc_kabel_x1` | Kabel in X2; der Lauf macht von selbst weiter |
+| `pfc_passwort` (nur für ein Gerät, das diese Werkstatt begonnen und nicht fertig gemacht hat) | Werksreset: Reset-Taster halten, Schalter auf RESET, bis SYS abwechselnd rot und grün blinkt; danach wieder die feste Adresse |
+| `pfc_docker_an` | Docker in der Web-Oberfläche des Geräts ausschalten, Kabel kurz ab |
+
+Antwortet am Kabel niemand, zeigt die Ansicht des Dienstes den Handgriff „feste Adresse“ immer: Ein PFC200 ab Werk wartet auf DHCP und hat sonst keine Adresse.
+Den Werksreset nennt der Dienst nie für ein fremdes Gerät; er löscht das SPS-Programm.
+
+**Was der Lauf nicht tut.**
+Kein Schritt für die SPS: kein Programm laden, starten oder prüfen, keine Koppelprobe; die Laufzeit (CODESYS), ihre Einstellungen und ihr Modbus-Server bleiben unberührt.
+Die Firmware prüft und ändert er nicht; ihr Stand steht als Angabe im Beleg und an der Abnahme.
+Fremde Container beendet er nicht.
+
+**CODESYS nach dem Lauf.**
+Die Entwicklungsumgebung erreicht das Gerät nur an der Buchse X2 (Anlagennetz, Vorgabe 10.213.0.1); zum Kundennetz an X1 sind Entwicklungsumgebung, Web-Oberfläche und SSH zu.
+Das Passwort von `admin` steht mit denen von `root` und `user` nur verschlüsselt an der Abnahme, für den age-Schlüssel „Box-Passwörter“, an keiner Route; du entschlüsselst es selbst (`age -d -i <Schlüssel>`).
+
+Der Satz zum Versand (Entscheid 5c) gilt für den PFC200 genauso.
+
 ## Neue Software durch den Tunnel (Box ohne Kundenkonto)
 
 Eine Edge-Light-Box, die die Werkstatt verlassen hat, aber noch auf ihr Kundenkonto wartet, bekommt neue Software

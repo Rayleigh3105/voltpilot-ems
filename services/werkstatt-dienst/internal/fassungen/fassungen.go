@@ -12,6 +12,14 @@
 //	vp-edge-light-linux-<bauart>   das Programm (wie edge-light/dist/)
 //	edge-light-openwrt.tar.gz      edge-light/openwrt/ als openwrt/… (install.sh,
 //	                               service-tunnel.sh, files/)
+//
+// Release-Anhänge einer Edge-Industrie-Fassung (WAGO PFC200) unter
+// edge_industrie.quelle:
+//
+//	vp-edge-industrie-linux-arm    das Programm (wie edge-industrie/dist/)
+//	edge-industrie-skripte.tar.gz  edge-industrie/ als edge-industrie/… (install.sh,
+//	                               wartung.sh, files/)
+//	vp-wartung-linux-arm           das Tunnel-Programm (edge-industrie/wartung)
 package fassungen
 
 import (
@@ -41,6 +49,15 @@ const (
 	ProgrammPraefix = "vp-edge-light-linux-"
 )
 
+// Namen der Release-Anhänge für den PFC200 (Edge Industrie).
+const (
+	IndustrieSkripteDatei = "edge-industrie-skripte.tar.gz"
+	IndustrieProgramm     = "vp-edge-industrie-linux-arm"
+	WartungProgramm       = "vp-wartung-linux-arm"
+	// IndustrieWurzel ist das Verzeichnis im Skriptstand des PFC200.
+	IndustrieWurzel = "edge-industrie"
+)
+
 // Grenzen für das Laden.
 const (
 	MaxAbbild   = 32 << 20
@@ -61,6 +78,16 @@ func Dateien(f freigabe.Freigabe, bauart string) (abbild, programm, skripte Date
 	abbild = Datei{Name: f.OpenWrt.Datei, URL: verbinde(f.OpenWrt.Quelle, f.OpenWrt.Datei), Sha256: f.OpenWrt.Sha256, Max: MaxAbbild}
 	programm = Datei{Name: ProgrammPraefix + bauart, URL: verbinde(f.EdgeLight.Quelle, ProgrammPraefix+bauart), Sha256: f.EdgeLight.ProgrammSha256, Max: MaxProgramm}
 	skripte = Datei{Name: SkripteDatei, URL: verbinde(f.EdgeLight.Quelle, SkripteDatei), Sha256: f.EdgeLight.SkripteSha256, Max: MaxSkripte}
+	return
+}
+
+// DateienPFC200 gibt die Dateien einer Freigabe für den PFC200 zurück: das
+// Programm, den Skriptstand und das Tunnel-Programm.
+func DateienPFC200(f freigabe.Freigabe) (programm, skripte, wartung Datei) {
+	i := f.EdgeIndustrie
+	programm = Datei{Name: IndustrieProgramm, URL: verbinde(i.Quelle, IndustrieProgramm), Sha256: i.ProgrammSha256, Max: MaxProgramm}
+	skripte = Datei{Name: IndustrieSkripteDatei, URL: verbinde(i.Quelle, IndustrieSkripteDatei), Sha256: i.SkripteSha256, Max: MaxSkripte}
+	wartung = Datei{Name: WartungProgramm, URL: verbinde(i.Quelle, WartungProgramm), Sha256: i.WartungSha256, Max: MaxProgramm}
 	return
 }
 
@@ -168,10 +195,22 @@ func summeVon(p string) (string, int64, error) {
 // Summe gibt die Prüfsumme einer Datei zurück.
 func Summe(p string) (string, error) { s, _, err := summeVon(p); return s, err }
 
-// Auspacken packt den Skriptstand nach dir aus (dir/openwrt/…). Nur
+// Auspacken packt den Skriptstand der Mango nach dir aus (dir/openwrt/…). Nur
 // gewöhnliche Dateien und Verzeichnisse unter openwrt/, keine Pfade nach
 // außen, keine Verweise.
 func Auspacken(tarGz, dir string) error {
+	return auspacken(tarGz, dir, "openwrt", "install.sh", "service-tunnel.sh")
+}
+
+// AuspackenPFC200 packt den Skriptstand des PFC200 nach dir aus
+// (dir/edge-industrie/…), mit denselben Regeln.
+func AuspackenPFC200(tarGz, dir string) error {
+	return auspacken(tarGz, dir, IndustrieWurzel, "install.sh", "wartung.sh", "files/etc/init.d/vp-wartung")
+}
+
+// auspacken packt einen Skriptstand aus, dessen Dateien alle unter wurzel/
+// liegen, und verlangt die Dateien pflicht.
+func auspacken(tarGz, dir, wurzel string, pflicht ...string) error {
 	f, err := os.Open(tarGz)
 	if err != nil {
 		return err
@@ -195,8 +234,8 @@ func Auspacken(tarGz, dir string) error {
 		if name == "." {
 			continue
 		}
-		if path.IsAbs(name) || name == ".." || strings.HasPrefix(name, "../") || !(name == "openwrt" || strings.HasPrefix(name, "openwrt/")) {
-			return fmt.Errorf("Skriptstand: %q liegt nicht unter openwrt/", h.Name)
+		if path.IsAbs(name) || name == ".." || strings.HasPrefix(name, "../") || !(name == wurzel || strings.HasPrefix(name, wurzel+"/")) {
+			return fmt.Errorf("Skriptstand: %q liegt nicht unter %s/", h.Name, wurzel)
 		}
 		ziel := filepath.Join(dir, filepath.FromSlash(name))
 		switch h.Typeflag {
@@ -231,9 +270,9 @@ func Auspacken(tarGz, dir string) error {
 			return fmt.Errorf("Skriptstand: %q ist keine gewöhnliche Datei", h.Name)
 		}
 	}
-	for _, p := range []string{"openwrt/install.sh", "openwrt/service-tunnel.sh"} {
-		if _, err := os.Stat(filepath.Join(dir, p)); err != nil {
-			return fmt.Errorf("Skriptstand ohne %s", p)
+	for _, p := range pflicht {
+		if _, err := os.Stat(filepath.Join(dir, wurzel, filepath.FromSlash(p))); err != nil {
+			return fmt.Errorf("Skriptstand ohne %s/%s", wurzel, p)
 		}
 	}
 	return nil

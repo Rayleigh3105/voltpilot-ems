@@ -60,3 +60,35 @@ func TestNurAnhaengenUndSchwaerzen(t *testing.T) {
 		t.Fatal("Leer")
 	}
 }
+
+// Die Spur einer Box zählt ein Passwort als gesetzt, wenn der Schritt belegt
+// ist - oder wenn er scheiterte, nachdem das verschlüsselte Passwort schon im
+// Beleg stand (PFC200: der Schritt zugaenge hat mehrere Teile). Ein Schritt,
+// der vorher scheiterte, hat nichts gesetzt.
+func TestSpurKenntGesetztePasswoerter(t *testing.T) {
+	a, err := NeueAblage(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	schreibe := func(lauf, mac string, es ...Eintrag) {
+		t.Helper()
+		alle := append([]Eintrag{{Art: LaufBegonnen, Angaben: map[string]string{"mac": mac}}}, es...)
+		for _, e := range alle {
+			e.Lauf = lauf
+			if err := a.Schreibe(e); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	erkannt := Eintrag{Art: SchrittBelegt, Schritt: "erkennen", Beleg: Beleg{}.Mit("host_schluessel", "ecdsa-sha2-nistp521 SHA256:abc")}
+	schreibe("2026-11-20-100000-aaaa", "00:30:de:00:00:01", erkannt, Eintrag{Art: SchrittBelegt, Schritt: "zugaenge", Beleg: Beleg{}.Mit("passwort_age", "x")})
+	schreibe("2026-11-20-100100-bbbb", "00:30:de:00:00:02", erkannt, Eintrag{Art: SchrittGescheitert, Schritt: "zugaenge", Beleg: Beleg{}.Mit("passwort_age", "x")})
+	schreibe("2026-11-20-100200-cccc", "00:30:de:00:00:03", erkannt, Eintrag{Art: SchrittGescheitert, Schritt: "zugaenge", Beleg: Beleg{}.Mit("lauf_schluessel", "y")})
+	schreibe("2026-11-20-100300-dddd", "94:83:c4:00:00:04", erkannt, Eintrag{Art: SchrittBelegt, Schritt: "passwort", Beleg: Beleg{}.Mit("passwort_age", "x")})
+	for mac, soll := range map[string]bool{"00:30:de:00:00:01": true, "00:30:de:00:00:02": true, "00:30:de:00:00:03": false, "94:83:c4:00:00:04": true} {
+		sp, ok, err := a.SpurDerMAC(mac, "")
+		if err != nil || ok != soll || (ok && (sp.Host != "SHA256:abc" || !sp.PasswortGesetzt)) {
+			t.Errorf("%s: gefunden %v (%+v, %v), erwartet %v", mac, ok, sp, err, soll)
+		}
+	}
+}

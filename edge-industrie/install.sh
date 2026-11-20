@@ -165,7 +165,7 @@ echo "--- pruefe $TARGET"
 # shellcheck disable=SC2029 # bewusst lokal expandiert: die Pfade kommen von hier
 pruefung="$(box_ssh "$TARGET" "
   [ \"\$(id -u)\" = 0 ] || echo 'FEHLT: Anmeldung als root'
-  for w in su sha256sum gunzip awk sed grep cut tr head tail logger nice id chown df; do
+  for w in su sha256sum gzip awk sed grep cut tr head tail logger nice id chown df; do
     command -v \$w >/dev/null 2>&1 || echo \"FEHLT: \$w\"
   done
   if ! id -u $BENUTZER >/dev/null 2>&1; then
@@ -270,7 +270,7 @@ fi
 # shellcheck disable=SC2029
 box_ssh "$TARGET" "$(als "cat > $LOCAL_DIR/$NAME.gz.part")" <"$tmp/$NAME.gz"
 # shellcheck disable=SC2029
-remote_sum="$(box_ssh "$TARGET" "gunzip -c $LOCAL_DIR/$NAME.gz.part | sha256sum" | awk '{print $1}')"
+remote_sum="$(box_ssh "$TARGET" "gzip -dc $LOCAL_DIR/$NAME.gz.part | sha256sum" | awk '{print $1}')"
 if [ "$remote_sum" != "$SUM" ]; then
   # shellcheck disable=SC2029
   box_ssh "$TARGET" "rm -f $LOCAL_DIR/$NAME.gz.part"

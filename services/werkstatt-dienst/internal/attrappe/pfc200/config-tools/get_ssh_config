@@ -1,0 +1,10 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+case "${1:-}" in
+  state) lies ssh/state enabled ;;
+  root-access-state) lies ssh/root-access-state enabled ;;
+  password-request-state) lies ssh/password-request-state enabled ;;
+  port-number) lies ssh/port-number 22 ;;
+  "") ;;
+  *) exit 3 ;;
+esac

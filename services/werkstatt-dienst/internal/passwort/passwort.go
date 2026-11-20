@@ -66,13 +66,40 @@ func Empfaenger(s string) (age.Recipient, error) {
 // Verschluessle gibt das Passwort für den Empfänger verschlüsselt zurück
 // (ASCII-Hülle, entschlüsseln mit "age -d -i <schlüssel>").
 func Verschluessle(pw geheim.Geheim, r age.Recipient) (string, error) {
+	return verschluessle(pw.Offenbaren()+"\n", r)
+}
+
+// Zugang ist ein Benutzer eines Geräts mit seinem Passwort.
+type Zugang struct {
+	Benutzer string
+	Passwort geheim.Geheim
+}
+
+// VerschluessleZugaenge gibt mehrere Zugänge eines Geräts als EINEN
+// verschlüsselten Text zurück (PFC200: root, admin, user). Entschlüsselt steht
+// je Zugang eine Zeile "benutzer: passwort" da, in der gegebenen Reihenfolge.
+func VerschluessleZugaenge(zugaenge []Zugang, r age.Recipient) (string, error) {
+	var t strings.Builder
+	for _, z := range zugaenge {
+		if z.Benutzer == "" || strings.ContainsAny(z.Benutzer, ": \n") || z.Passwort.Leer() {
+			return "", fmt.Errorf("Zugang %q: Benutzer und Passwort sind Pflicht", z.Benutzer)
+		}
+		t.WriteString(z.Benutzer + ": " + z.Passwort.Offenbaren() + "\n")
+	}
+	if t.Len() == 0 {
+		return "", fmt.Errorf("kein Zugang")
+	}
+	return verschluessle(t.String(), r)
+}
+
+func verschluessle(text string, r age.Recipient) (string, error) {
 	var out bytes.Buffer
 	aw := armor.NewWriter(&out)
 	w, err := age.Encrypt(aw, r)
 	if err != nil {
 		return "", err
 	}
-	if _, err := w.Write([]byte(pw.Offenbaren() + "\n")); err != nil {
+	if _, err := w.Write([]byte(text)); err != nil {
 		return "", err
 	}
 	if err := w.Close(); err != nil {

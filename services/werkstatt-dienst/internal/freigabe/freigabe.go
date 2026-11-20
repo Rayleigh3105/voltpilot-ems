@@ -29,10 +29,13 @@ import (
 // Schema der Datei.
 const Schema = "vp-werkstatt-freigabe.v1"
 
-// BoxArt, für die eine Freigabe gilt. V1a kennt nur die Mango.
+// BoxArt, für die eine Freigabe gilt: das Gerät an der Werkbank. Die Mango
+// (Edge Light) und der WAGO PFC200 (Edge Industrie) haben je ihre eigene
+// Freigabe, weil Ablauf und Fassungen je Gerät verschieden sind.
 const (
-	Mango = "mango"
-	Pi    = "pi"
+	Mango  = "mango"
+	PFC200 = "pfc200"
+	Pi     = "pi"
 )
 
 // MaxDauer begrenzt, wie lange eine Freigabe laufen darf.
@@ -48,8 +51,13 @@ type Freigabe struct {
 	GueltigBis time.Time  `json:"gueltig_bis"`
 	BeendetAm  *time.Time `json:"beendet_am,omitempty"`
 	Obergrenze int        `json:"obergrenze"`
-	OpenWrt    Abbild     `json:"openwrt"`
-	EdgeLight  Programm   `json:"edge_light"`
+	// Mango: OpenWrt-Abbild und Edge-Light-Fassung. Bei einer Freigabe für
+	// den PFC200 fehlen beide.
+	OpenWrt   Abbild   `json:"openwrt,omitzero"`
+	EdgeLight Programm `json:"edge_light,omitzero"`
+	// PFC200: die Edge-Industrie-Fassung. Bei einer Freigabe für die Mango
+	// fehlt sie.
+	EdgeIndustrie Industrie `json:"edge_industrie,omitzero"`
 	// Kein LAN-Netz: Auf welches Netz eine Box kommt, ist Konfiguration des
 	// Dienstes (VP_WERKSTATT_LAN_NETZ), weil die Brücke darin eine Adresse
 	// braucht. Eine Freigabe mit lan_netz scheitert am unbekannten Feld.
@@ -73,12 +81,26 @@ type Programm struct {
 	SkripteSha256  string `json:"skripte_sha256"`
 }
 
+// Industrie ist die Edge-Industrie-Fassung der Freigabe für den PFC200: das
+// Programm (linux/arm), der Skriptstand (install.sh, wartung.sh und ihre
+// Dateien) und das Tunnel-Programm vp-wartung aus demselben Release-Tag. Ein
+// OpenWrt-Abbild gibt es nicht: Die Firmware des PFC200 fasst der Dienst nicht
+// an.
+type Industrie struct {
+	Fassung        string `json:"fassung"`
+	Quelle         string `json:"quelle"`
+	ProgrammSha256 string `json:"programm_sha256"`
+	SkripteSha256  string `json:"skripte_sha256"`
+	WartungSha256  string `json:"wartung_sha256"`
+}
+
 var (
-	kennungMuster   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{2,40}$`)
-	sha256Muster    = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	dateiMuster     = regexp.MustCompile(`^[A-Za-z0-9._-]+-sysupgrade\.bin$`)
-	openwrtMuster   = regexp.MustCompile(`^[0-9]{2}\.[0-9]{2}\.[0-9]+$`)
-	edgeLightMuster = regexp.MustCompile(`^edge-light-[0-9]{4}\.[0-9]{2}\.[0-9]+$`)
+	kennungMuster       = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{2,40}$`)
+	sha256Muster        = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	dateiMuster         = regexp.MustCompile(`^[A-Za-z0-9._-]+-sysupgrade\.bin$`)
+	openwrtMuster       = regexp.MustCompile(`^[0-9]{2}\.[0-9]{2}\.[0-9]+$`)
+	edgeLightMuster     = regexp.MustCompile(`^edge-light-[0-9]{4}\.[0-9]{2}\.[0-9]+$`)
+	edgeIndustrieMuster = regexp.MustCompile(`^edge-industrie-[0-9]{4}\.[0-9]{2}\.[0-9]+$`)
 )
 
 // Lies prüft eine Freigabe aus JSON. Unbekannte Felder sind ein Fehler: ein
@@ -109,11 +131,11 @@ func (f Freigabe) pruefe() error {
 		add("kennung %q: 3 bis 41 Zeichen aus a-z, 0-9 und -", f.Kennung)
 	}
 	switch f.BoxArt {
-	case Mango:
+	case Mango, PFC200:
 	case Pi:
 		add("box_art pi: der Raspberry Pi kommt erst mit V2")
 	default:
-		add("box_art %q: erlaubt ist %q", f.BoxArt, Mango)
+		add("box_art %q: erlaubt sind %q und %q", f.BoxArt, Mango, PFC200)
 	}
 	if strings.TrimSpace(f.ErteiltVon) == "" {
 		add("erteilt_von fehlt")
@@ -131,6 +153,22 @@ func (f Freigabe) pruefe() error {
 	if f.Obergrenze < 1 || f.Obergrenze > 200 {
 		add("obergrenze %d: 1 bis 200", f.Obergrenze)
 	}
+	if f.BoxArt == PFC200 {
+		f.pruefePFC200(add)
+	} else {
+		f.pruefeMango(add)
+	}
+	if f.BeendetAm != nil && f.BeendetAm.Before(f.ErteiltAm) {
+		add("beendet_am liegt vor erteilt_am")
+	}
+	if len(fehler) > 0 {
+		return fmt.Errorf("Freigabe ungültig: %s", strings.Join(fehler, "; "))
+	}
+	return nil
+}
+
+// pruefeMango: OpenWrt-Abbild und Edge-Light-Fassung, keine Edge-Industrie-Fassung.
+func (f Freigabe) pruefeMango(add func(string, ...any)) {
 	if !openwrtMuster.MatchString(f.OpenWrt.Fassung) {
 		add("openwrt.fassung %q: Form 25.12.5", f.OpenWrt.Fassung)
 	}
@@ -157,13 +195,32 @@ func (f Freigabe) pruefe() error {
 	if !sha256Muster.MatchString(f.EdgeLight.SkripteSha256) {
 		add("edge_light.skripte_sha256: 64 Zeichen 0-9a-f")
 	}
-	if f.BeendetAm != nil && f.BeendetAm.Before(f.ErteiltAm) {
-		add("beendet_am liegt vor erteilt_am")
+	if f.EdgeIndustrie != (Industrie{}) {
+		add("edge_industrie gehört nur in eine Freigabe für den PFC200")
 	}
-	if len(fehler) > 0 {
-		return fmt.Errorf("Freigabe ungültig: %s", strings.Join(fehler, "; "))
+}
+
+// pruefePFC200: die Edge-Industrie-Fassung, kein OpenWrt und kein Edge Light.
+func (f Freigabe) pruefePFC200(add func(string, ...any)) {
+	if f.OpenWrt != (Abbild{}) || f.EdgeLight != (Programm{}) {
+		add("openwrt und edge_light gehören nur in eine Freigabe für die Mango")
 	}
-	return nil
+	i := f.EdgeIndustrie
+	if !edgeIndustrieMuster.MatchString(i.Fassung) {
+		add("edge_industrie.fassung %q: Form edge-industrie-JJJJ.MM.N", i.Fassung)
+	}
+	if err := httpsQuelle(i.Quelle); err != nil {
+		add("edge_industrie.quelle: %v", err)
+	}
+	if !sha256Muster.MatchString(i.ProgrammSha256) {
+		add("edge_industrie.programm_sha256: 64 Zeichen 0-9a-f")
+	}
+	if !sha256Muster.MatchString(i.SkripteSha256) {
+		add("edge_industrie.skripte_sha256: 64 Zeichen 0-9a-f")
+	}
+	if !sha256Muster.MatchString(i.WartungSha256) {
+		add("edge_industrie.wartung_sha256: 64 Zeichen 0-9a-f")
+	}
 }
 
 func httpsQuelle(s string) error {

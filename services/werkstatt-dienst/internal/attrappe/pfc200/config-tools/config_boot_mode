@@ -1,0 +1,6 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+[ "${1:-}" = --force_internal_boot ] || exit 3
+case "${2:-}" in enabled | disabled) ;; *) exit 3 ;; esac
+setze boot/intern "$2"
+merke "$*"

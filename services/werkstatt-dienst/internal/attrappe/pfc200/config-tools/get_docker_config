@@ -1,0 +1,7 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+case "${1:-}" in
+  install-status) lies docker/install "not installed" ;;
+  activation-status) lies docker/aktiv inactive ;;
+  *) exit 3 ;;
+esac

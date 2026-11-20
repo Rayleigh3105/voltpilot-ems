@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -66,6 +67,16 @@ type manifestForm struct {
 // genau ihr Programm fuer die Bauart beschreibt, und dass die Signaturdatei
 // dazu gehoert.
 func PruefeManifest(manifest, signatur []byte, fassung, bauart, programmSha string) (Stand, error) {
+	return PruefeManifestFuer(manifest, signatur, fassung, bauart, programmSha, "light")
+}
+
+// BackendsPFC200 sind die Update-Linien, die ein Manifest für den PFC200
+// nennen darf: Edge Industrie (eigene Release-Linie edge-industrie-JJJJ.MM.N).
+var BackendsPFC200 = []string{"industrie"}
+
+// PruefeManifestFuer ist PruefeManifest für ein Manifest, das genau eine der
+// genannten Update-Linien trägt.
+func PruefeManifestFuer(manifest, signatur []byte, fassung, bauart, programmSha string, backends ...string) (Stand, error) {
 	var m manifestForm
 	if err := json.Unmarshal(manifest, &m); err != nil {
 		return Stand{}, fmt.Errorf("release.json ist kein gueltiges JSON: %w", err)
@@ -76,8 +87,11 @@ func PruefeManifest(manifest, signatur []byte, fassung, bauart, programmSha stri
 	if m.ReleaseSeq < 1 {
 		return Stand{}, errors.New("release.json traegt keine release_seq")
 	}
-	if len(m.Compat.Backends) != 1 || m.Compat.Backends[0] != "light" {
-		return Stand{}, fmt.Errorf("release.json gilt nicht fuer Edge Light (Backends %v)", m.Compat.Backends)
+	if len(m.Compat.Backends) != 1 || !slices.Contains(backends, m.Compat.Backends[0]) {
+		if len(backends) == 1 && backends[0] == "light" {
+			return Stand{}, fmt.Errorf("release.json gilt nicht fuer Edge Light (Backends %v)", m.Compat.Backends)
+		}
+		return Stand{}, fmt.Errorf("release.json gilt nicht fuer diese Box (Backends %v, erwartet eines von %v)", m.Compat.Backends, backends)
 	}
 	plattform := "linux/" + bauart
 	gefunden := ""

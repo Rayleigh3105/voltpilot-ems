@@ -1,0 +1,106 @@
+#!/bin/sh
+# network_config --bridge-config|--ip-config|--interface-status --get [-f json]
+# network_config --bridge-config|--ip-config --set '<json>' [--dryrun]
+# network_config --fix-ip
+#
+# Zustand: netz/bruecken (JSON, eine Zeile), netz/ip.<bruecke> ("quelle
+# adresse maske"), netz/fest (die voruebergehende Adresse 192.168.1.17 an br0,
+# bis zum Neustart), netz/kabel (die Buchse mit dem Kabel der Werkbank).
+. "$(dirname "$0")/attrappe.sh"
+was=""
+tun=""
+wert=""
+probe=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --bridge-config | --ip-config | --interface-status | --fix-ip) was="$1" ;;
+    --get | --get-current) tun=get ;;
+    --set)
+      tun=set
+      wert="${2:-}"
+      shift
+      ;;
+    -f | --format)
+      [ "${2:-}" = json ] || falsch "die Attrappe kennt nur -f json"
+      shift
+      ;;
+    --dryrun) probe=1 ;;
+    *) falsch "unknown option $1" ;;
+  esac
+  shift
+done
+bruecken() { lies netz/bruecken '{"br0":["X1","X2"]}'; }
+# bruecke_von <buchse> - die Bruecke, in der die Buchse steckt
+bruecke_von() {
+  bruecken | tr -d ' ' | awk '{ gsub(/\],/, "]\n"); print }' | sed -n "s/.*\"\(br[0-3]\)\":\[[^]]*\"$1\".*/\1/p" | head -n 1
+}
+namen() { bruecken | tr -d ' ' | grep -o '"br[0-3]"' | tr -d '"'; }
+case "$was:$tun" in
+  --bridge-config:get) bruecken ;;
+  --bridge-config:set)
+    j="$(printf '%s' "$wert" | tr -d ' \n')"
+    printf '%s' "$j" | grep -Eq '^\{"br[0-3]":\[("X[12]"(,"X[12]")?)?\](,"br[0-3]":\[("X[12]"(,"X[12]")?)?\])*\}$' || falsch "Invalid bridge configuration"
+    for x in X1 X2; do
+      [ "$(printf '%s' "$j" | grep -o "\"$x\"" | grep -c .)" = 1 ] || falsch "Invalid bridge configuration: port $x"
+    done
+    [ "$probe" = 1 ] && exit 0
+    setze netz/bruecken "$j"
+    merke "--bridge-config --set $j"
+    ;;
+  --ip-config:get)
+    aus=""
+    for b in $(namen); do
+      # shellcheck disable=SC2046
+      set -- $(lies "netz/ip.$b" "dhcp - -")
+      if [ "$b" = br0 ] && [ -f "$Z/netz/fest" ]; then
+        e='{"bcast":"192.168.1.255","ipaddr":"192.168.1.17","netmask":"255.255.255.0","source":"fixip"}'
+      elif [ "$1" = static ]; then
+        e="{\"bcast\":\"${2%.*}.255\",\"ipaddr\":\"$2\",\"netmask\":\"$3\",\"source\":\"static\"}"
+      else
+        e="{\"bcast\":\"0.0.0.0\",\"ipaddr\":\"0.0.0.0\",\"netmask\":\"0.0.0.0\",\"source\":\"$1\"}"
+      fi
+      aus="$aus${aus:+,}\"$b\":$e"
+    done
+    printf '{%s}' "$aus"
+    ;;
+  --ip-config:set)
+    j="$(printf '%s' "$wert" | tr -d ' \n')"
+    printf '%s' "$j" | grep -Eq '^\{"br[0-3]":\{[^{}]*\}(,"br[0-3]":\{[^{}]*\})*\}$' || falsch "Invalid ip configuration"
+    printf '%s\n' "$j" | awk '{ gsub(/\},"br/, "}\n\"br"); print }' | sed 's/^{"br/"br/' | while read -r zeile; do
+      b="$(printf '%s' "$zeile" | sed -n 's/^"\(br[0-3]\)":.*/\1/p')"
+      namen | grep -qx "$b" || falsch "Invalid ip configuration: no bridge $b"
+      feld() { printf '%s' "$zeile" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
+      q="$(feld source)"
+      a="$(feld ipaddr)"
+      m="$(feld netmask)"
+      case "$q" in
+        static)
+          ip4 "$a" || falsch "Invalid ip configuration: ipaddr"
+          [ "$m" = 255.255.255.0 ] || falsch "die Attrappe kennt nur die Maske 255.255.255.0"
+          ;;
+        dhcp | bootp) a=- m=- ;;
+        *) falsch "Invalid ip configuration: source" ;;
+      esac
+      [ "$probe" = 1 ] && continue
+      setze "netz/ip.$b" "$q $a $m"
+      # Eine eigene Einstellung fuer br0 loest die voruebergehende Adresse ab.
+      [ "$b" = br0 ] && rm -f "$Z/netz/fest"
+      :
+    done || exit 3
+    [ "$probe" = 1 ] && exit 0
+    merke "--ip-config --set $j"
+    ;;
+  --interface-status:get)
+    k="$(lies netz/kabel X2)"
+    eins='"link":"down"'
+    zwei='"link":"down"'
+    [ "$k" = X1 ] && eins='"duplex":"full","link":"up"'
+    [ "$k" = X2 ] && zwei='"duplex":"full","link":"up"'
+    [ "$k" = beide ] && eins='"duplex":"full","link":"up"' && zwei='"duplex":"full","link":"up"'
+    printf '[{"device":"X1",%s,"mac":"00:30:DE:43:B8:7C","maclearning":"on","state":"up"},{"device":"X2",%s,"mac":"00:30:DE:43:B8:7D","maclearning":"on","state":"up"}]' "$eins" "$zwei"
+    ;;
+  --fix-ip:)
+    setze netz/fest 1
+    ;;
+  *) falsch "missing or unknown operation" ;;
+esac

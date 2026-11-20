@@ -117,6 +117,8 @@ geraet() { # geraet <name> <tmpfs-optionen>
   docker create --name "$1" --platform "$PLATTFORM" --network none --tmpfs "/tmp:$2" "$BILD" /bin/init >/dev/null
   docker cp "$ARBEIT/etc/." "$1:/etc/" >/dev/null
   docker start "$1" >/dev/null
+  # Wie am Geraet (Firmware 03.10.08): gzip und zcat, aber kein gunzip.
+  docker exec "$1" rm -f /bin/gunzip
   i=0
   until docker exec "$1" sh -c '[ -S /dev/log ]' 2>/dev/null || [ "$i" -ge 30 ]; do i=$((i + 1)); sleep 1; done
 }
@@ -130,6 +132,7 @@ schritt "Aufbau: BusyBox-Linux fuer ARMv7 mit BusyBox-Init, ohne Netz"
 geraet "$C" "rw,exec,size=256m"
 pruefe "BusyBox-Init ist PID 1, syslogd laeuft" 'tr "\000" " " </proc/1/cmdline | grep -q init && [ -S /dev/log ]'
 pruefe "ARMv7 ($(x 'uname -m'))" '[ "$(uname -m)" = armv7l ]'
+pruefe "kein gunzip, wie am Geraet (Installer und Loader nehmen gzip -d)" '! command -v gunzip && command -v gzip'
 pruefe "Ersatz get_coupler_details nennt 750-8212" '[ "$(/etc/config-tools/get_coupler_details order-number)" = 750-8212 ]'
 
 schritt "0. Fassung und Manifest (Werkzeug vp-ota)"
@@ -247,7 +250,7 @@ pruefe "kein Prozess des Programms oder des Loaders laeuft als root" \
 pruefe "nice 10 und oom_score_adj 800" 'k="$(cat /var/run/vp-edge-industrie.kind)"; [ "$(awk "{print \$19}" /proc/$k/stat)" = 10 ] && [ "$(cat /proc/$k/oom_score_adj)" = 800 ]'
 pruefe "RAM-Verzeichnis gehoert voltpilot (0700)" "$(eigner /tmp/vp-edge-industrie 'voltpilot 700')"
 protokoll >"$ARBEIT/log.1"
-grep -q 'Loader PFC Stand 2' "$ARBEIT/log.1" && ok "syslog: der Loader meldet seinen Stand" || falsch "syslog: der Loader meldet seinen Stand"
+grep -q "Loader PFC Stand $(sed -n 's/^PFC_LOADER_STAND=\([0-9][0-9]*\)$/\1/p' "$QUELLE/home/voltpilot/libexec/boot.sh") " "$ARBEIT/log.1" && ok "syslog: der Loader meldet seinen Stand" || falsch "syslog: der Loader meldet seinen Stand"
 grep -q 'lokale Kopie entpackt' "$ARBEIT/log.1" && ok "syslog: bestaetigte Fassung aus dem Flash entpackt" || falsch "syslog: bestaetigte Fassung aus dem Flash entpackt"
 if grep -q '"msg":"device detected","model":"WAGO 750-8212","arch":"arm"}' "$ARBEIT/log.1"; then
   ok "das Programm erkennt sein Geraet: WAGO 750-8212, arm"

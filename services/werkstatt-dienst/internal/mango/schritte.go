@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -690,12 +691,18 @@ func (l *Lauf) vertrauensSet(ctx context.Context) (string, error) {
 // eingespielte Fassung als bestaetigter Stand (aus dem signierten Manifest).
 // Leer = bereit; sonst der Grund.
 func updateBereit(h health, st *fassungen.Stand) string {
+	return UpdateBereitFuer(h, st, "light")
+}
+
+// UpdateBereitFuer ist UpdateBereit für eine Box, die eine der genannten
+// Update-Linien melden darf (PFC200: industrie).
+func UpdateBereitFuer(h Health, st *fassungen.Stand, backends ...string) string {
 	u := h.Update
 	switch {
 	case u == nil:
 		return "das Programm meldet keinen Update-Block (/health ota_update) - Fassung vor K5"
-	case u.Backend != "light":
-		return "die Box meldet Backend " + orNone(u.Backend) + " statt light"
+	case !slices.Contains(backends, u.Backend):
+		return "die Box meldet Backend " + orNone(u.Backend) + " statt " + strings.Join(backends, " oder ") + ""
 	case u.Trust == nil || len(u.Trust.TrustSetKeyIDs) == 0 || u.Trust.TrustSetError != "":
 		grund := "kein geprueftes Vertrauens-Set"
 		if u.Trust != nil && u.Trust.TrustSetError != "" {

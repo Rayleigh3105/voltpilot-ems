@@ -78,6 +78,55 @@ baut sie, dazu `sha256sums`). Mit der API nennt das Portal die Prüfsummen aus d
 | `vp-edge-light-linux-<bauart>` | das Programm, wie `edge-light/dist/` (`mipsle` für die Mango) | `programm_sha256` | `artifacts[]` (`binary`, `linux/<bauart>`, `sha256`) |
 | `edge-light-openwrt.tar.gz` | `edge-light/openwrt/` als `openwrt/…` (`install.sh`, `service-tunnel.sh`, `files/`) | `skripte_sha256` | `skripte.sha256` |
 
+## Ein Lauf am WAGO PFC200 (Edge Industrie)
+
+Ausgeschaltet, bis `VP_WERKSTATT_GERAETE=mango,pfc200` gesetzt ist.
+Dann sieht der Dienst auch unter 192.168.1.17 nach; dort steht ein PFC200 750-8212 nach dem Handgriff „feste Adresse“ (Betriebsartenschalter auf STOP, Reset-Taster länger als 8 s, Schalter zurück auf RUN).
+Das orange Kabel steckt in der Buchse **X2**.
+Paket `internal/pfc200`, die Texte für Menschen an einer Stelle in `internal/pfc200/texte.go` und `internal/faelle`.
+
+| Schritt | Was | Beleg |
+|---|---|---|
+| `erkennen` | genau ein Gerät von WAGO unter 192.168.1.17, Anmeldung mit dem Werkspasswort; hier ändert sich nichts. Hält an bei: anderer Bestellnummer, schon eingerichtet, Docker läuft, Notfall-Schlüssel der falschen Art. Wartet (von selbst weiter) auf: Kabel in X2, Schalter auf RUN | MAC, Bestellnummer, Firmware (nur Angabe), Seriennummer, Host-Schlüssel |
+| `fassungen` | Programm, Skriptstand und Tunnel-Programm nach Prüfsumme, signiertes Manifest geprüft, bevor das Gerät angefasst wird | Prüfsummen, Herkunft |
+| `internet` | Weg und Namen über die Brücke (befristet), Uhr nach der des Dienstes gestellt (ab Werk steht sie Jahre zurück, jede TLS-Verbindung scheiterte), Zeitabgleich ein | Portal erreichbar mit geprüftem Zertifikat, Uhr vorher und nachher |
+| `zugaenge` | ein Schlüssel nur für diesen Lauf; drei Zufallspasswörter für `root`, `admin`, `user`: erst verschlüsselt, dann als Hash gesetzt; Anmeldung mit Passwort aus | jedes Werkspasswort an SSH abgewiesen, das Gerät meldet „nicht mehr ab Werk“, `passwort_age` |
+| `notfall` | der Notfall-Schlüssel als einziger dauerhafter (daneben bis zum Ende der Lauf-Schlüssel) | Fingerabdruck |
+| `programm` | `install.sh` des Release-Stands, Dienst starten | Prüfsumme auf dem Gerät bestätigt, `/health` mit Referenz und Fassung, update-bereit |
+| `tunnel_schluessel`, `einloesen`, `tunnel` | wie bei der Mango, mit `wartung.sh` und dem Programm `vp-wartung` | Handshake, Port 2222 lauscht an keiner Netzbuchse, Abholer mit gültiger Antwort |
+| `netze` | Buchsen trennen: X1 Kundennetz per DHCP, X2 Anlagennetz (`VP_WERKSTATT_LAN_NETZ`); Firewall ein; Start nur vom internen Speicher | Netze je Buchse; am Kundennetz kein Dienst des Geräts offen, am Anlagennetz nur `ssh`, `https`, `codesysr`; dazu Web-App 8484 und OCPP 8887; Weiterleitung aus; Modbus 502 von außen zu |
+| `neustart` | Neustart, danach unter der Adresse des Anlagennetzes | derselbe Host-Schlüssel, dieselbe Referenz, Dienste laufen, Tunnel frisch, Schalter auf RUN |
+| `probe` | Anmeldung durch den Tunnel, Fenster schließen, neuer Versuch | Host-Schlüssel auf zwei Wegen gleich, Ereignisliste der Box |
+| `internet_weg` | Weg über die Brücke heraus; zuletzt der Lauf-Schlüssel | genau ein dauerhafter Schlüssel, der Lauf-Schlüssel wird abgewiesen |
+| `uebergabe` | Abnahme mit je einem Beleg je Prüfung, Firmware und Seriennummer als Angaben | Kennung der Abnahme |
+
+Was der Lauf am PFC200 nie anfasst: die SPS-Laufzeit (CODESYS), ihre Einstellungen, ihr Programm, ihren Modbus-Server; die Firmware; fremde Container (läuft Docker, hält er an).
+Einen Schritt für SPS, Koppelprobe oder Firmware gibt es nicht.
+
+Drei Stellen sind so gebaut, dass der Lauf sich nicht aussperrt:
+
+- **SSH-Dienst.** Das Werkzeug `config_ssh` der Firmware startet den SSH-Dienst neu und beendet dabei jede Sitzung. Der Dienst ruft es losgelöst von seiner Sitzung auf und meldet sich danach mit dem Lauf-Schlüssel neu an.
+- **Netze.** Trennen und Adresse laufen als ein Befehl auf dem Gerät. Bestätigt der Dienst die neue Adresse nicht innerhalb der Frist, stellt das Gerät sich selbst zurück (beide Buchsen in einer Brücke, feste Adresse 192.168.1.17).
+- **Firewall.** Nach dem Einschalten muss eine **neue** Anmeldung gelingen; sonst schaltet das Gerät die Firewall selbst wieder aus.
+
+Die Passwörter stehen als **ein** verschlüsselter Text im Beleg `passwort_age` und an der Abnahme: entschlüsselt je Zugang eine Zeile `benutzer: passwort`.
+Das von `admin` brauchst du für CODESYS und die Web-Oberfläche des Geräts; du entschlüsselst es selbst mit dem Schlüssel „Box-Passwörter“, es steht an keiner Route.
+
+Release-Anhänge einer Edge-Industrie-Fassung (Linie `edge-industrie-JJJJ.MM.N`), die die Freigabe für den PFC200 nennt (`box_art` `pfc200`, Feld `edge_industrie`):
+
+| Anhang | Inhalt | Prüfsumme in der Freigabe |
+|---|---|---|
+| `vp-edge-industrie-linux-arm` | das Programm, wie `edge-industrie/dist/` | `programm_sha256`, im signierten Manifest unter `artifacts[]` |
+| `edge-industrie-skripte.tar.gz` | `edge-industrie/` als `edge-industrie/…` (`install.sh`, `wartung.sh`, `files/`) | `skripte_sha256` |
+| `vp-wartung-linux-arm` | das Tunnel-Programm | `wartung_sha256` |
+
+Die beiden letzten hängt der Release-Lauf noch nicht an; das und die Freigabe aus dem Portal kommen mit dem nächsten Schritt (API, Gerät `pfc200`).
+Bis dahin läuft ein PFC200 nur mit einer Freigabe-Datei (`VP_WERKSTATT_FREIGABE_PFC200`) und von Hand bereitgelegten Dateien in der Ablage (`<daten>/fassungen/<sha256>`).
+
+Getestet gegen die Attrappe „PFC200 ab Werk“ (`internal/attrappe/pfc200.go`): Sie führt jeden Befehl des Dienstes mit einem echten `sh` aus, gegen Nachbauten der Werkzeuge der WAGO-Firmware (`internal/attrappe/pfc200/config-tools`, gebaut nach den Hilfetexten und Skripten eines 750-8212 mit Firmware 03.10.08(22), dort nur gelesen).
+Nicht an einem echten Gerät gelaufen: alles ab `zugaenge`, weil es das Gerät ändert.
+Die echten Skripte `install.sh` und `wartung.sh` prüfen `edge-industrie/test/install-probe.sh` und `wartung-probe.sh` im BusyBox-Container.
+
 ## Was der Dienst nie tut
 
 - das Netz absuchen: Die Brücke fragt nur nach den festen Box-Adressen ihres Werkstatt-Anschlusses (192.168.8.1,
@@ -113,6 +162,10 @@ Aus der Umgebung (ConfigMap `werkstatt-dienst-konfig`), Schlüssel aus Dateien (
 | `VP_WARTUNG_BOX_NETZ` | `10.10.16.0/20` | aus diesem Netz kommt die Tunnel-Adresse |
 | `VP_WERKSTATT_DNS` | `9.9.9.9,1.1.1.1` | DNS für das Werkstatt-Internet der Box (öffentlich) |
 | `VP_WERKSTATT_EDGE_BAUART` | `mipsle` | Bauart des Programms (Mango) |
+| `VP_WERKSTATT_GERAETE` | `mango` | `mango,pfc200`: Der Dienst richtet auch WAGO PFC200 ein. Die Brücke bekommt dann zwei Ziele mehr (192.168.1.17:22, LAN:502) und damit eine neue Fassung; der Dienst spielt sie selbst auf |
+| `VP_WERKSTATT_FREIGABE_PFC200` | `/etc/vp-werkstatt/freigabe/freigabe-pfc200.json` | die Freigabe für den PFC200 als Datei (ohne API) |
+| `VP_WERKSTATT_NOTFALL_PUB_PFC200` | `VP_WERKSTATT_NOTFALL_PUB` | Notfall-Schlüssel für den PFC200 (Datei). Der SSH-Dienst des PFC200 nimmt nur RSA und ECDSA; ist der allgemeine Schlüssel Ed25519, startet der Dienst mit eingeschaltetem PFC200 nicht, bis hier ein passender steht |
+| `VP_WERKSTATT_ZEITSERVER` | `ptbtime1.ptb.de,ptbtime2.ptb.de,ptbtime3.ptb.de` | Zeitserver, die der Lauf im PFC200 einträgt (höchstens vier); der Zeitabgleich bleibt nach dem Lauf an |
 | `VP_WERKSTATT_STEUERUNG` | `/tmp/vp-werkstatt-dienst.sock` | Unix-Socket für Eingaben (`vp-werkstatt-dienst eingabe`) |
 | `VP_WERKSTATT_ARBEIT` | `/tmp/vp-werkstatt` | Arbeitsverzeichnis der Läufe (Skriptstand, Durchreiche) |
 | `VP_WERKSTATT_GEHEIM` | `/etc/vp-werkstatt/geheim` | Verzeichnis mit `werkbank-status`, `werkbank-weiterleitung`, `werkbank-pflege` (Pflicht), `werkbank-einrichten` (nur fürs erste Einrichten) und `download-token` (optional: Lese-Token für die Release-Anhänge auf git.tecmaxx.de) |

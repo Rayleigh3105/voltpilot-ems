@@ -28,7 +28,7 @@ Die drei Schlüssel des Dienstes, jeder für eine Aufgabe (erzwungen in `authori
 | Schlüssel | darf | darf nicht |
 |---|---|---|
 | Status | nur `vp-werkbank-status` (über sudo) | keine Shell, keine Weiterleitung |
-| Weiterleitung | Verbindungen zu 192.168.8.1:22/80, 192.168.1.1:22/80, 10.213.0.1:22/8484 | keine Shell, kein anderes Ziel |
+| Weiterleitung | Verbindungen zu 192.168.8.1:22/80, 192.168.1.1:22/80, 10.213.0.1:22/8484; richtet der Dienst auch WAGO PFC200 ein (`VP_WERKSTATT_GERAETE=mango,pfc200`), dazu 192.168.1.17:22 (feste Adresse des PFC200) und 10.213.0.1:502 (nur für den Beleg „Modbus von außen zu“) | keine Shell, kein anderes Ziel |
 | Pflege | nur `einrichten <sha256>` mit dem Paket auf der Standardeingabe | sonst nichts |
 
 Dazu der Notfall-Schlüssel mit einer Shell als `werkstatt` (ohne sudo außer den zwei Befehlen).

@@ -92,12 +92,12 @@ func TestVorherAusErkennen(t *testing.T) {
 		{protokoll.Beleg{}.Mit("lauf_vorher", "2026-11-04-162800-ab12").Mit("referenz_vorher", "edge-pmzasg2"), faelle.HalbEigene,
 			"OpenWrt mit Passwort dieser Werkstatt", "edge-pmzasg2, halb eingerichtet (Lauf 2026-11-04-162800-ab12)", true},
 	} {
-		v := vorherAus(f.b, f.fall)
+		v := vorherAus("mango", f.b, f.fall)
 		if v == nil || v.System != f.system || v.EdgeLight != f.edge || v.Ersetzt != f.ers {
 			t.Fatalf("%v %s: %+v", f.b, f.fall, v)
 		}
 	}
-	if v := vorherAus(protokoll.Beleg{}.Mit("mac", "x"), faelle.BrueckeWeg); v != nil {
+	if v := vorherAus("mango", protokoll.Beleg{}.Mit("mac", "x"), faelle.BrueckeWeg); v != nil {
 		t.Fatalf("%+v", v)
 	}
 }

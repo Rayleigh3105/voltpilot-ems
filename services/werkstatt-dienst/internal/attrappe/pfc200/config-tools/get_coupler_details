@@ -1,0 +1,4 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+[ "${1:-}" = order-number ] || exit 3
+lies artikel 750-8212

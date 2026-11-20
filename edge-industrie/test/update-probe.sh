@@ -203,6 +203,8 @@ printf '::sysinit:/bin/true\n' >"$ARBEIT/etc/inittab"
 docker create --name "$C" --platform "$PLATTFORM" --network none "$BILD" /bin/init >/dev/null
 docker cp "$ARBEIT/etc/inittab" "$C:/etc/inittab" >/dev/null
 docker start "$C" >/dev/null
+# Wie am Geraet (Firmware 03.10.08): gzip und zcat, aber kein gunzip.
+r 'rm -f /bin/gunzip'
 r 'adduser -D -H -h /home/voltpilot -s /bin/false voltpilot
    mkdir -p /home/voltpilot/libexec /probe/bin /probe/srv /probe/proc && chown -R voltpilot /probe'
 docker exec -i "$C" sh -c "cat >$LADER && chmod 0755 $LADER" <"$LOADER"
@@ -221,6 +223,7 @@ EOF
 chmod +x /probe/bin/wget'
 pruef "ARMv7, der Loader gehoert root, die Probe laeuft als voltpilot" '[ "$(uname -m)" = armv7l ] && [ "$(stat -c %U '"$LADER"')" = root ] && [ "$(id -un)" = voltpilot ]'
 pruef "kein jsonfilter, kein uci (der Loader braucht sie nicht)" '! command -v jsonfilter && ! command -v uci'
+pruef "kein gunzip, wie am Geraet (der Loader packt mit gzip -d aus)" '! command -v gunzip && command -v gzip'
 
 schritt "0. Start: Umgebung des Programms, einzeilige Pruefsumme, Speicher"
 frisch
@@ -273,7 +276,7 @@ lauf
 warte "zurueck: Probestart gescheitert" "grep -q '^zurueck 43 z-2 Probestart gescheitert: Programm startet nicht' $FEST/versuche"
 warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-industrie-2026.11.1 GESTARTET" /probe/lauf.out'
 pruef "keine Marke start (nie zur Probe gestartet)" "! grep -q '^start' $FEST/versuche"
-pruef "der Flash ist unveraendert" "[ \"\$(sha256sum $LD/$N.gz | cut -d' ' -f1)\" = \"\$(sed -n 2p $LD/$N.sha256 | cut -d' ' -f1)\" ] && gunzip -c $LD/$N.gz | grep -q $ALT"
+pruef "der Flash ist unveraendert" "[ \"\$(sha256sum $LD/$N.gz | cut -d' ' -f1)\" = \"\$(sed -n 2p $LD/$N.sha256 | cut -d' ' -f1)\" ] && gzip -dc $LD/$N.gz | grep -q $ALT"
 stopp
 frisch
 kandidat fassung 44 z-3

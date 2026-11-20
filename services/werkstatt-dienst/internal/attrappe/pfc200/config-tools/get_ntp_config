@@ -1,0 +1,9 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+case "${1:-}" in
+  state) lies ntp/state disabled ;;
+  active-state) if [ "$(lies ntp/state disabled)" = enabled ]; then echo active; else echo inactive; fi ;;
+  update-time) lies ntp/update-time 600 ;;
+  time-server-[1-4]) lies "ntp/$1" "" ;;
+  *) exit 3 ;;
+esac

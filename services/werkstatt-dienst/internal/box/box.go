@@ -75,6 +75,13 @@ func VerbindeMitSchluessel(ctx context.Context, weg Weg, ziel netip.AddrPort, sc
 
 // VerbindeMit meldet sich als root mit den angegebenen Verfahren an.
 func VerbindeMit(ctx context.Context, weg Weg, ziel netip.AddrPort, auth []ssh.AuthMethod, regel HostRegel, zeit time.Duration) (*Verbindung, error) {
+	return VerbindeAls(ctx, weg, ziel, "root", auth, regel, zeit)
+}
+
+// VerbindeAls meldet sich als der genannte Benutzer an. Der Dienst arbeitet
+// immer als root; ein anderer Benutzer dient nur dem Beleg, dass dessen
+// Werkspasswort nicht mehr gilt (PFC200: admin, user).
+func VerbindeAls(ctx context.Context, weg Weg, ziel netip.AddrPort, benutzer string, auth []ssh.AuthMethod, regel HostRegel, zeit time.Duration) (*Verbindung, error) {
 	if zeit <= 0 {
 		zeit = 20 * time.Second
 	}
@@ -86,7 +93,7 @@ func VerbindeMit(ctx context.Context, weg Weg, ziel netip.AddrPort, auth []ssh.A
 	}
 	var host ssh.PublicKey
 	cfg := &ssh.ClientConfig{
-		User: "root",
+		User: benutzer,
 		Auth: auth,
 		HostKeyCallback: func(_ string, _ net.Addr, k ssh.PublicKey) error {
 			host = k

@@ -51,6 +51,11 @@ type Abnahme struct {
 	Belege         map[string]string `json:"belege"`
 	PasswortAge    string            `json:"passwortAge"`
 	Notiz          string            `json:"notiz,omitempty"`
+	// Geraet und Angaben nennt nur ein Lauf am PFC200 (additiv): das Gerät
+	// (pfc200) und, was nur Angabe ist und keine Prüfung - Bestellnummer,
+	// Stand der Firmware, Seriennummer.
+	Geraet  string            `json:"geraet,omitempty"`
+	Angaben map[string]string `json:"angaben,omitempty"`
 }
 
 // Angenommen ist die Antwort auf eine Abnahme.

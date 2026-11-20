@@ -1,0 +1,20 @@
+#!/bin/sh
+# config_default_gateway [number=1|2] state=enabled|disabled value=<ip> metric=<n>
+. "$(dirname "$0")/attrappe.sh"
+n=1
+hat number "$@" && n="$(param number "$@")"
+case "$n" in 1 | 2) ;; *) falsch "Illegal or missing default gateway number" ;; esac
+for a in "$@"; do
+  case "$a" in number=* | state=* | value=* | metric=*) ;; *) falsch "Invalid parameter ($a)" ;; esac
+done
+if hat state "$@"; then
+  w="$(param state "$@")"
+  case "$w" in enabled | disabled) ;; *) falsch "Missing default gateway state value" ;; esac
+  setze "gw/$n.state" "$w"
+fi
+if hat value "$@"; then
+  w="$(param value "$@")"
+  ip4 "$w" || falsch "Missing default gateway ip address"
+  setze "gw/$n.value" "$w"
+fi
+merke "$*"

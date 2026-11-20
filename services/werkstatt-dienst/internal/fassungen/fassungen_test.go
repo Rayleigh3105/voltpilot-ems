@@ -148,3 +148,30 @@ func TestEchterSkriptstand(t *testing.T) {
 		}
 	}
 }
+
+// Der Skriptstand des PFC200 liegt unter edge-industrie/ und braucht
+// install.sh, wartung.sh und das Dienst-Skript des Tunnels; der der Mango
+// gilt dafür nicht.
+func TestAuspackenPFC200(t *testing.T) {
+	voll := map[string]string{"edge-industrie/install.sh": "#!/bin/sh\n", "edge-industrie/wartung.sh": "#!/bin/sh\n", "edge-industrie/files/etc/init.d/vp-wartung": "#!/bin/sh\n"}
+	dir := t.TempDir()
+	if err := AuspackenPFC200(targz(t, voll, tar.TypeReg), dir); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(filepath.Join(dir, "edge-industrie/wartung.sh")); err != nil || st.Mode().Perm()&0o100 == 0 {
+		t.Fatal("wartung.sh fehlt oder nicht ausführbar")
+	}
+	for name, p := range map[string]string{
+		"Skriptstand der Mango": targz(t, map[string]string{"openwrt/install.sh": "", "openwrt/service-tunnel.sh": ""}, tar.TypeReg),
+		"ohne wartung.sh":       targz(t, map[string]string{"edge-industrie/install.sh": "", "edge-industrie/files/etc/init.d/vp-wartung": ""}, tar.TypeReg),
+		"ohne Dienst-Skript":    targz(t, map[string]string{"edge-industrie/install.sh": "", "edge-industrie/wartung.sh": ""}, tar.TypeReg),
+		"nach außen":            targz(t, map[string]string{"edge-industrie/install.sh": "", "edge-industrie/wartung.sh": "", "edge-industrie/files/etc/init.d/vp-wartung": "", "../x": "x"}, tar.TypeReg),
+	} {
+		if err := AuspackenPFC200(p, t.TempDir()); err == nil {
+			t.Errorf("%s: angenommen", name)
+		}
+	}
+	if err := Auspacken(targz(t, voll, tar.TypeReg), t.TempDir()); err == nil {
+		t.Error("der Skriptstand des PFC200 gilt als der der Mango")
+	}
+}

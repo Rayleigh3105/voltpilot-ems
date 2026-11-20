@@ -1,0 +1,20 @@
+#!/bin/sh
+# Wie am Geraet: add verweigert einen doppelten Eintrag und mehr als drei;
+# delete nach Name ist ohne Treffer kein Fehler.
+. "$(dirname "$0")/attrappe.sh"
+name="$(param dns-server-name "$@")"
+mkdir -p "$Z"
+[ -f "$Z/dns" ] || : >"$Z/dns"
+if hat add "$@"; then
+  ip4 "$name" || falsch "Invalid DNS server IP"
+  grep -qx "$name" "$Z/dns" && falsch "Duplicate DNS server IP"
+  [ "$(grep -c . "$Z/dns")" -lt 3 ] || falsch "The number of manually assignable DNS servers is limited to 3."
+  echo "$name" >>"$Z/dns"
+elif hat delete "$@"; then
+  [ -n "$name" ] || falsch "At least DNS server index or DNS server IP address have to be given."
+  grep -vx "$name" "$Z/dns" >"$Z/dns.neu" || true
+  mv -f "$Z/dns.neu" "$Z/dns"
+else
+  falsch "die Attrappe kennt nur add und delete"
+fi
+merke "$*"

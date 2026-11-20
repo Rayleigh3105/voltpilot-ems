@@ -1,0 +1,23 @@
+#!/bin/sh
+. "$(dirname "$0")/attrappe.sh"
+schild() {
+  if [ -f "$Z/typenschild" ]; then
+    cat "$Z/typenschild"
+  else
+    cat <<TXT
+MAC=00:30:DE:43:B8:7B
+PSN=750-8206
+WAGONRSTR=WAGO
+SYSDESC=WAGO $(lies artikel 750-8212) PFC200 G2 2ETH RS
+ORDER=$(lies artikel 750-8212)
+MARKING=PFC
+DESCR=WAGO $(lies artikel 750-8212) PFC200 G2 2ETH RS
+UII=37SUN31564010260372744+0000000000017544
+TXT
+  fi
+}
+case "${1:-}" in
+  -a) schild ;;
+  -n) schild | grep "^${2:?}=" ;;
+  *) exit 3 ;;
+esac

@@ -1,0 +1,119 @@
+#!/bin/sh
+# firewall firewall --is-enabled | --enable | --disable
+# firewall <dienst> --set-if on|off <schnittstelle> [--apply up|down]
+# firewall iptables --add-filter <zehn Angaben> [--apply] | --get-xml
+# firewall services --get-ifs-status json
+#
+# Schnittstellen wie am Geraet (Firmware 03.10.08): Die Einstellungen fuehren
+# sie als br0, br1, br2, br3, WAN, VPN (/etc/firewall/params_gen.xml, so ruft
+# sie auch das Menue des Geraets). Die Ausgaben --get-ifs-status und --get-xml
+# sind die "alte Form" und nennen br0 und br1 dort X1 und X2. Beim Setzen
+# nimmt die Attrappe beide Namen.
+. "$(dirname "$0")/attrappe.sh"
+DIENSTE="bacnet bootp codesysr codesysw dhcpd dnp3 dns ftp ftps http https iec60870_5_104 iec61850_mms iocheck modbus_tcp modbus_udp opcua profinet snmp snmps ssh tftp"
+SCHNITTSTELLEN="VPN WAN br0 br1 br2 br3"
+# kanon <name> - X1/X2 der alten Form sind br0/br1
+kanon() { case "$1" in X1) echo br0 ;; X2) echo br1 ;; *) echo "$1" ;; esac; }
+# alt <name> - der Name in der alten Form der Ausgaben
+alt() { case "$1" in br0) echo X1 ;; br1) echo X2 ;; *) echo "$1" ;; esac; }
+# ab_werk <dienst> <schnittstelle> - der Stand ab Werk (am Test-Geraet gelesen)
+ab_werk() {
+  case "$2" in
+    WAN) echo off ;;
+    *)
+      case "$1" in
+        bootp | dhcpd | dnp3 | dns | iec60870_5_104 | iec61850_mms | profinet)
+          if [ "$2" = VPN ]; then echo off; else case "$1" in bootp | iec60870_5_104 | iec61850_mms | profinet) echo off ;; *) echo on ;; esac; fi
+          ;;
+        *) echo on ;;
+      esac
+      ;;
+  esac
+}
+stand() { lies "fw/dienst/$1/$2" "$(ab_werk "$1" "$2")"; }
+kennt() { for _x in $2; do [ "$_x" = "$1" ] && return 0; done; return 1; }
+conf="${1:-}"
+[ -n "$conf" ] || exit 3
+shift
+case "$conf" in
+  firewall)
+    case "${1:-}" in
+      --is-enabled) printf '%s' "$(lies fw/an disabled)" ;;
+      --enable)
+        setze fw/an enabled
+        merke "firewall --enable"
+        ;;
+      --disable)
+        setze fw/an disabled
+        merke "firewall --disable"
+        ;;
+      *) falsch "unknown command" ;;
+    esac
+    ;;
+  iptables)
+    case "${1:-}" in
+      --add-filter)
+        shift
+        [ "$#" -ge 10 ] || falsch "--add-filter: STATE INTERFACE PROTOCOL SRC-IP SRC-MASK SRC-PORT DEST-IP DEST-MASK DEST-PORT POLICY"
+        case "$1" in on | off) ;; *) falsch "STATE" ;; esac
+        i="$(kanon "$2")"
+        [ "$i" = - ] || kennt "$i" "$SCHNITTSTELLEN" || falsch "INTERFACE $2"
+        case "$3" in tcp | udp | tcpudp) ;; *) falsch "PROTOCOL $3" ;; esac
+        case "$9" in - | *[!0-9]*) falsch "DEST-PORT $9" ;; esac
+        case "${10}" in accept | drop) ;; *) falsch "POLICY ${10}" ;; esac
+        mkdir -p "$Z/fw"
+        echo "$1 $i $3 $4 $5 $6 $7 $8 $9 ${10}" >>"$Z/fw/filter"
+        merke "iptables --add-filter $1 $i $3 $4 $5 $6 $7 $8 $9 ${10}"
+        ;;
+      --set-forward)
+        case "${2:-}" in on | off) ;; *) falsch "STATE" ;; esac
+        setze fw/weiterleitung "$2"
+        merke "iptables --set-forward $2"
+        ;;
+      --get-xml)
+        echo '<?xml version="1.0" encoding="utf-8"?>'
+        echo '<firewall xmlns="http://www.wago.com/security/firewall">'
+        echo '  <ipv4>'
+        echo "    <forward state=\"$(lies fw/weiterleitung off)\"><fw/><snat/><dnat/></forward>"
+        echo '    <input>'
+        echo '      <open/>'
+        echo '      <filter>'
+        if [ -f "$Z/fw/filter" ]; then
+          while read -r s i p _ _ _ _ _ dp po; do
+            echo "        <rule state=\"$s\" if=\"$(alt "$i")\" proto=\"$p\" dst_port=\"$dp\" policy=\"$po\"/>"
+          done <"$Z/fw/filter"
+        fi
+        echo '      </filter>'
+        echo '    </input>'
+        echo '  </ipv4>'
+        echo '</firewall>'
+        ;;
+      *) falsch "unknown command" ;;
+    esac
+    ;;
+  services)
+    [ "${1:-}" = --get-ifs-status ] && [ "${2:-}" = json ] || falsch "unknown command"
+    printf '{"interfaces":{'
+    e=""
+    for i in $SCHNITTSTELLEN; do
+      printf '%s"%s":{"services":{' "$e" "$(alt "$i")"
+      t=""
+      for d in $DIENSTE; do
+        printf '%s"%s":{"state":"%s"}' "$t" "$d" "$(stand "$d" "$i")"
+        t=","
+      done
+      printf '}}'
+      e=","
+    done
+    printf '}}\n'
+    ;;
+  *)
+    kennt "$conf" "$DIENSTE" || falsch "unknown configuration $conf"
+    [ "${1:-}" = --set-if ] || falsch "unknown command"
+    case "${2:-}" in on | off) ;; *) falsch "STATE" ;; esac
+    i="$(kanon "${3:-}")"
+    kennt "$i" "$SCHNITTSTELLEN" || falsch "INTERFACE ${3:-}"
+    setze "fw/dienst/$conf/$i" "$2"
+    merke "$conf --set-if $2 $i"
+    ;;
+esac

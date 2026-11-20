@@ -26,6 +26,10 @@ Vektor: [`werkstatt-ansicht-v1.example.json`](werkstatt-ansicht-v1.example.json)
 | `werkbank.status.strom` | Versorgung der Brücke (`vp-werkbank-status.v1`, additiv): `unterspannung_jetzt`, `unterspannung_seit_start` (fehlen, wenn der Pi es nicht meldet), `quelle` (`vcgencmd` oder `keine`) |
 | `gehaeuse` | additiv (vp-mango-3mf-pro-box, automatisch nachholen): Liste der Box-Druckdateien, die im Portal noch nicht liegen - `referenz`, `zustand` (`wartet`, `baut`, `fertig`, `fehler`), `grund` (nur bei `fehler`), `bestellt` (Zeit). Fehlt ohne Gehäuse-Bau; leer, solange jede offene Box fertig und hochgeladen ist. Grundlage für die Werkstatt-Box-Seite: „Druckdatei wird erstellt …“ bzw. bei `fehler` ein ruhiger Satz mit „Erneut erstellen“ (`POST …/admin/werkstatt/boxen/{ref}/gehaeuse/neu`) |
 | `fernlauf` | additiv ([Fernlauf](werkstatt-fernlauf-v1.md), vp-update-vor-zuordnung S1): `bereit` (der Dienst kann Fernläufe durch den Wartungstunnel: API, Techniker-Zugang, Portal für das Vertrauens-Set), sonst `grund`; `wartend` (Aufträge in seiner Schlange), `aktiv` (`auftrag`, `box`, `schritt`, `seit`) und `letzter` (`auftrag`, `box`, `ergebnis`, `ende`). Fehlt ohne API. Die API bietet den Knopf nur, wenn ein frischer Stand `bereit` meldet; fehlt das Feld, ist der Dienst älter als der Fernlauf |
+| `freigabe_pfc200` | additiv (PFC200 Stufe 3): die Freigabe für den WAGO PFC200, Form wie `freigabe`; in ihr `freigabe.box_art` = `pfc200` und `freigabe.edge_industrie` (`fassung`, `quelle`, `programm_sha256`, `skripte_sha256`, `wartung_sha256`) statt `openwrt` und `edge_light`. Fehlt, solange der Dienst keine PFC200 einrichtet. `freigabe` bleibt die der Mango |
+| `anschluss_geraet` | additiv: `mango` oder `pfc200`, sobald der Dienst das Gerät am Anschluss an seiner Adresse erkennt (192.168.1.17 ist der PFC200 nach dem Handgriff „feste Adresse“); fehlt, solange niemand antwortet. `anschluss_loesung` nennt dann dieses Gerät |
+| `lauf.box_art` | `mango` oder, additiv, `pfc200`. Die Schritte eines Laufs am PFC200: `erkennen`, `fassungen`, `internet`, `zugaenge`, `notfall`, `programm`, `tunnel_schluessel`, `einloesen` (ohne API `tunnel_adresse`), `tunnel`, `netze`, `neustart`, `probe`, `internet_weg`, `uebergabe`. Einen Schritt für SPS oder Firmware gibt es nicht |
+| `lauf.fall` bei `wartet` | additiv: Wartet ein Lauf auf einen Handgriff am Gerät, nach dem er von selbst weitermacht, stehen `fall` und `loesung` schon bei `zustand` = `wartet` da (`wartet_auf` nennt, worauf: `schalter_run`, `kabel_x2`). Eine Eingabe gibt es dafür nicht; der Dienst sieht selbst nach. Danach sind `fall` und `loesung` wieder leer |
 
 Fehlt `lauf`, gab es seit dem Start des Dienstes keinen.
 
@@ -90,3 +94,21 @@ Technik.
 | `nicht_update_bereit` | Entscheid 5c: keine Abnahme | – | nein | ja |
 | `dienst_neu_gestartet` | der Dienst startete mitten im Lauf neu (nur im Protokoll, `SchliesseOffene`) | Kabel kurz ab | ja | nein |
 | `schritt_gescheitert` | jeder andere Fehler | Kabel kurz ab, beim zweiten Mal zur Seite | ja | nein |
+
+**Fälle eines Laufs am PFC200** (`lauf.fall`, additiv).
+Die Codes oben gelten auch für den PFC200; ihre Lösung nennt dann den PFC200 statt der Mango (`faelle.ZuFuer`).
+Dazu kommen:
+
+| Code | wann | Handgriff | selbst | zur Seite |
+|---|---|---|---|---|
+| `pfc_schalter_stop` | der Betriebsartenschalter steht nicht auf RUN (nach dem Handgriff „feste Adresse“ steht er oft noch auf STOP); der Lauf wartet (`zustand` = `wartet`) | Schalter auf RUN | ja | nein |
+| `pfc_kabel_x1` | das Kabel der Werkbank steckt nicht in der Buchse X2; nach dem Trennen der Buchsen wäre das Gerät sonst weg; der Lauf wartet | Kabel in X2 | ja | nein |
+| `pfc_passwort` | das Werkspasswort wird abgewiesen, und ein Lauf dieser Werkstatt setzte die Zugänge und übergab das Gerät nicht; derselbe Host-Schlüssel; im Portal nicht abgenommen, nicht gekoppelt (dieselbe Sicherheitslinie wie `halb_eigene`) | Werksreset (Reset halten, Schalter auf RESET, bis SYS rot und grün blinkt), dann „feste Adresse“ | ja | nein |
+| `pfc_docker_an` | auf dem Gerät läuft Docker; der Dienst beendet keine fremden Container | Docker in der Web-Oberfläche des Geräts ausschalten, Kabel kurz ab | ja | nein |
+| `pfc_falsches_geraet` | kein Gerät von WAGO unter 192.168.1.17 oder nicht die Bestellnummer 750-8212 | – | nein | ja |
+| `pfc_schon_eingerichtet` | auf dem Gerät liegt schon ein Dienst von VoltPilot, ohne Lauf dieser Werkstatt | – | nein | ja |
+| `pfc_notfall_schluessel` | der Notfall-Schlüssel des Dienstes ist von einer Art, die der SSH-Dienst des PFC200 nicht annimmt (er nimmt nur RSA und ECDSA); am Gerät ist nichts geändert | – | nein | ja |
+
+Am PFC200 heißt `passwort_fremd`: Das Werkspasswort wird abgewiesen oder ein Passwort ist nicht mehr das ab Werk, ohne Lauf dieser Werkstatt.
+Den Werksreset nennt der Dienst dann nie: Er löscht das SPS-Programm auf dem Gerät.
+Antwortet am Kabel niemand (`keine_box`) und richtet der Dienst auch PFC200 ein, nennt `anschluss_loesung` immer den Handgriff „feste Adresse“ (Betriebsartenschalter auf STOP, Reset-Taster länger als 8 s, Schalter zurück auf RUN): Ein PFC200 ab Werk hat ohne ihn keine Adresse.
