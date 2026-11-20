@@ -115,6 +115,41 @@ class ReleaseManifestVectorsTest {
                 "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a", 31744));
     }
 
+    private static String vektor(String name) throws Exception {
+        for (JsonNode c : MAPPER.readTree(CONTRACTS.resolve("ota-release-manifest-vectors.json").toFile()).get("faelle")) {
+            if (name.equals(c.get("name").asText())) {
+                return MAPPER.writeValueAsString(c.get("manifest"));
+            }
+        }
+        throw new IllegalStateException("kein Vektor " + name);
+    }
+
+    @Test
+    @DisplayName("ein Edge-Industrie-Release nennt seinen Skriptstand und das Tunnel-Programm für die Werkstatt")
+    void anEdgeIndustrieReleaseCarriesTheWerkstattFiles() throws Exception {
+        String raw = vektor("industrie-release-mit-skriptstand-und-tunnel-programm-auf-industrie-box");
+        ReleaseManifest m = ReleaseManifest.readStrict(raw);
+        assertThat(m.backends()).containsExactly(ReleaseManifest.BACKEND_INDUSTRIE);
+        assertThat(m.skripte()).contains(new ReleaseManifest.Skripte(ReleaseManifest.INDUSTRIE_SKRIPTE_DATEI,
+                "5".repeat(64), 20480));
+        assertThat(m.wartung()).contains(new ReleaseManifest.Wartung(ReleaseManifest.WARTUNG_DATEI,
+                "6".repeat(64), 7340032));
+        // Kein Bestandteil des Updates: das Programm der Box bleibt der einzige.
+        assertThat(m.programs()).hasSize(1);
+
+        // Der Skriptstand der Mango gilt für Edge Industrie nicht, und umgekehrt; tolerant gelesen fehlt er nur.
+        String mango = vektor("industrie-release-mit-skriptstand-auf-industrie-box");
+        assertThat(ReleaseManifest.read(mango).skripte()).isEmpty();
+        assertThatThrownBy(() -> ReleaseManifest.readStrict(mango))
+                .isInstanceOf(ReleaseManifest.InvalidManifestException.class).hasMessageContaining("skripte");
+        String light = vektor("light-release-mit-tunnel-programm-auf-light-box");
+        assertThat(ReleaseManifest.read(light).wartung()).isEmpty();
+        assertThatThrownBy(() -> ReleaseManifest.readStrict(light))
+                .isInstanceOf(ReleaseManifest.InvalidManifestException.class).hasMessageContaining("wartung");
+        String kaputt = vektor("industrie-tunnel-programm-ohne-pruefsumme-auf-industrie-box");
+        assertThat(ReleaseManifest.read(kaputt).wartung()).isEmpty();
+    }
+
     @Test
     @DisplayName("ein unvollständiger Skriptstand fehlt nur (tolerant wie die Box), erzeugt wird er nie")
     void anIncompleteSkriptstandIsOnlyMissing() throws Exception {

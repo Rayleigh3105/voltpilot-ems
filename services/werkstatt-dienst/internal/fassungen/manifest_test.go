@@ -55,12 +55,41 @@ func TestPruefeManifest(t *testing.T) {
 func TestPruefeManifestPFC200(t *testing.T) {
 	sha := strings.Repeat("a", 64)
 	_, sig := attrappe.Manifest("edge-industrie-2026.11.1", 77, sha)
-	m := attrappe.ManifestPFC200("edge-industrie-2026.11.1", 77, sha, "industrie")
+	sk, wa := strings.Repeat("b", 64), strings.Repeat("c", 64)
+	m := attrappe.ManifestPFC200("edge-industrie-2026.11.1", 77, sha, "industrie", sk, wa)
 	st, err := fassungen.PruefeManifestFuer(m, sig, "edge-industrie-2026.11.1", "arm", sha, fassungen.BackendsPFC200...)
 	if err != nil || st.ReleaseSeq != 77 {
 		t.Fatalf("%+v %v", st, err)
 	}
-	light := attrappe.ManifestPFC200("edge-industrie-2026.11.1", 77, sha, "light")
+	// Skriptstand und Tunnel-Programm müssen im Manifest stehen und zur Freigabe passen.
+	if st, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, sk, wa); err != nil || st.ReleaseSeq != 77 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	for name, f := range map[string]func() error{
+		"anderer Skriptstand": func() error {
+			_, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, strings.Repeat("d", 64), wa)
+			return err
+		},
+		"anderes Tunnel-Programm": func() error {
+			_, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, sk, strings.Repeat("d", 64))
+			return err
+		},
+		"Manifest ohne Tunnel-Programm": func() error {
+			ohne := attrappe.ManifestPFC200("edge-industrie-2026.11.1", 77, sha, "industrie", sk, "")
+			_, err := fassungen.PruefeManifestPFC200(ohne, sig, "edge-industrie-2026.11.1", sha, sk, wa)
+			return err
+		},
+		"Manifest ohne Skriptstand": func() error {
+			ohne := attrappe.ManifestPFC200("edge-industrie-2026.11.1", 77, sha, "industrie", "", wa)
+			_, err := fassungen.PruefeManifestPFC200(ohne, sig, "edge-industrie-2026.11.1", sha, sk, wa)
+			return err
+		},
+	} {
+		if err := f(); err == nil {
+			t.Errorf("%s: angenommen", name)
+		}
+	}
+	light := attrappe.ManifestPFC200("edge-industrie-2026.11.1", 77, sha, "light", sk, wa)
 	if _, err := fassungen.PruefeManifestFuer(light, sig, "edge-industrie-2026.11.1", "arm", sha, fassungen.BackendsPFC200...); err == nil {
 		t.Error("ein Manifest der Linie light gilt für den PFC200")
 	}

@@ -22,6 +22,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/passwort"
 )
 
@@ -238,11 +239,22 @@ func SkripteTarGzPFC200(t testing.TB) []byte {
 }
 
 // ManifestPFC200 ist ein Manifest wie [Manifest], für linux/arm und die
-// genannte Update-Linie.
-func ManifestPFC200(fassung string, seq int64, programmSha, backend string) []byte {
+// genannte Update-Linie, mit Skriptstand und Tunnel-Programm (leere
+// Prüfsumme: das Feld fehlt, wie bei einer Fassung vor diesen Feldern).
+func ManifestPFC200(fassung string, seq int64, programmSha, backend, skripteSha, wartungSha string) []byte {
 	m, _ := Manifest(fassung, seq, programmSha)
 	s := strings.Replace(string(m), `"linux/mipsle"`, `"linux/arm"`, 1)
 	s = strings.Replace(s, `"light"`, `"`+backend+`"`, 1)
+	zusatz := ""
+	if skripteSha != "" {
+		zusatz += `,
+  "skripte": {"name": "` + fassungen.IndustrieSkripteDatei + `", "sha256": "` + skripteSha + `", "size": 1}`
+	}
+	if wartungSha != "" {
+		zusatz += `,
+  "wartung": {"name": "` + fassungen.WartungProgramm + `", "sha256": "` + wartungSha + `", "size": 1}`
+	}
+	s = strings.Replace(s, `"signing_key_id": "rel-2026-a"`, `"signing_key_id": "rel-2026-a"`+zusatz, 1)
 	return []byte(s)
 }
 

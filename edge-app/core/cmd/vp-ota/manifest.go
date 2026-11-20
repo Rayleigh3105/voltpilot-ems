@@ -36,7 +36,9 @@ func cmdManifest(args []string) error {
 	fs.Var(&binaries, "binary",
 		"name:GOOS/GOARCH=programm[,programm.gz] (Edge Light, je Architektur einmal; ohne ,… gilt programm.gz)")
 	skripte := fs.String("skripte", "",
-		"Edge Light: der Skriptstand edge-light-openwrt.tar.gz; Pruefsumme und Groesse kommen signiert ins Manifest (fuer die Werkstatt)")
+		"Edge Light und Edge Industrie: der Skriptstand (edge-light-openwrt.tar.gz bzw. edge-industrie-skripte.tar.gz); Pruefsumme und Groesse kommen signiert ins Manifest (fuer die Werkstatt)")
+	wartung := fs.String("wartung", "",
+		"Edge Industrie: das Tunnel-Programm vp-wartung-linux-arm; Pruefsumme und Groesse kommen signiert ins Manifest (fuer die Werkstatt, kein Bestandteil des Updates)")
 	var backends stringList
 	fs.Var(&backends, "backend", "Apply-Backend, fuer das dieses Release gilt (Vorgabe: compose, mit --binary light, unter edge-industrie-JJJJ.MM.N industrie)")
 	fs.Usage = func() {
@@ -146,8 +148,8 @@ Skriptstand; das Backend folgt dem Namen:
 	}
 
 	if *skripte != "" {
-		if len(binaries) == 0 {
-			return errors.New("--skripte gehoert zu einem Edge-Light-Release (--binary)")
+		if len(binaries) == 0 || otaverify.SkripteDateiFuer(*release) == "" {
+			return errors.New("--skripte gehoert zu einem Edge-Light- oder Edge-Industrie-Release (--binary)")
 		}
 		daten, err := os.ReadFile(*skripte)
 		if err != nil {
@@ -157,7 +159,20 @@ Skriptstand; das Backend folgt dem Namen:
 			return fmt.Errorf("--skripte: %s ist kein gzip: %w", *skripte, err)
 		}
 		h := sha256.Sum256(daten)
-		m.Skripte = &otaverify.Skripte{Name: otaverify.SkripteDatei, SHA256: hex.EncodeToString(h[:]), Size: int64(len(daten))}
+		m.Skripte = &otaverify.Skripte{Name: otaverify.SkripteDateiFuer(*release), SHA256: hex.EncodeToString(h[:]), Size: int64(len(daten))}
+	}
+	if *wartung != "" {
+		daten, err := os.ReadFile(*wartung)
+		if err != nil {
+			return fmt.Errorf("--wartung: %w", err)
+		}
+		// Ein Programm fuer Linux (ELF): eine leere oder falsche Datei kaeme
+		// sonst signiert ins Manifest.
+		if len(daten) < 4 || string(daten[:4]) != "\x7fELF" {
+			return fmt.Errorf("--wartung: %s ist kein Programm (ELF)", *wartung)
+		}
+		h := sha256.Sum256(daten)
+		m.Wartung = &otaverify.Wartung{Name: otaverify.WartungDatei, SHA256: hex.EncodeToString(h[:]), Size: int64(len(daten))}
 	}
 
 	raw, err := marshalDoc(m)

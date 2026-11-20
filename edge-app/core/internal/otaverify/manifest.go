@@ -93,11 +93,12 @@ const LightReleasePrefix = "edge-light-"
 // ein (edge-industrie-JJJJ.MM.N).
 const IndustrieReleasePrefix = "edge-industrie-"
 
-// binaerLinien sind die Linien mit Programmen statt Containern: ihr Praefix
-// und das EINE Backend, fuer das ein Release dieser Linie gilt.
-var binaerLinien = []struct{ praefix, backend, name string }{
-	{LightReleasePrefix, BackendLight, "Edge-Light"},
-	{IndustrieReleasePrefix, BackendIndustrie, "Edge-Industrie"},
+// binaerLinien sind die Linien mit Programmen statt Containern: ihr Praefix,
+// das EINE Backend, fuer das ein Release dieser Linie gilt, und der Name
+// ihres Skriptstands am Release.
+var binaerLinien = []struct{ praefix, backend, name, skripte string }{
+	{LightReleasePrefix, BackendLight, "Edge-Light", SkripteDatei},
+	{IndustrieReleasePrefix, BackendIndustrie, "Edge-Industrie", IndustrieSkripteDatei},
 }
 
 // appliedTypes sagt, welche Artefakt-Typen ein Apply-Backend ANWENDET. Ein
@@ -173,16 +174,48 @@ type Manifest struct {
 	// kommt (vp-werkstatt-immer-neueste). Additiv: schema_version bleibt 1.0,
 	// ein aelterer Stand ignoriert das Feld.
 	Skripte *Skripte `json:"skripte,omitempty"`
+	// Wartung ist das Tunnel-Programm vp-wartung eines Edge-Industrie-Release
+	// (edge-industrie/wartung, linux/arm): Der Werkstatt-Dienst legt es beim
+	// Einrichten eines WAGO PFC200 auf das Geraet. Es ist KEIN Bestandteil des
+	// Updates und darum kein Eintrag in Artifacts (ein unbekannter Bestandteil
+	// liesse Boxen das ganze Release zurueckstellen); die Box wendet es nicht
+	// an. Es steht hier, damit seine Pruefsumme signiert ist. Additiv wie
+	// Skripte: ein aelterer Stand ignoriert das Feld.
+	Wartung *Wartung `json:"wartung,omitempty"`
 }
 
-// SkripteDatei ist der Name des Skriptstands am Release.
-const SkripteDatei = "edge-light-openwrt.tar.gz"
+// Namen der Dateien am Release, die nur die Werkstatt braucht: der
+// Skriptstand je Linie und das Tunnel-Programm von Edge Industrie.
+const (
+	SkripteDatei          = "edge-light-openwrt.tar.gz"
+	IndustrieSkripteDatei = "edge-industrie-skripte.tar.gz"
+	WartungDatei          = "vp-wartung-linux-arm"
+)
 
-// Skripte beschreibt den Skriptstand eines Edge-Light-Release.
+// Skripte beschreibt den Skriptstand eines Edge-Light- oder
+// Edge-Industrie-Release.
 type Skripte struct {
 	Name   string `json:"name"`
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
+}
+
+// Wartung beschreibt das Tunnel-Programm eines Edge-Industrie-Release.
+type Wartung struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
+// SkripteDateiFuer nennt den Namen des Skriptstands fuer ein Release; "" fuer
+// ein Release ohne Skriptstand (die Docker-Box).
+func SkripteDateiFuer(release string) string {
+	for _, l := range binaerLinien {
+		if strings.HasPrefix(release, l.praefix) {
+			return l.skripte
+		}
+	}
+	return ""
 }
 
 // Artifact ist EIN Bestandteil des Releases, typisiert.
@@ -458,7 +491,6 @@ func ParseManifestStrict(raw []byte) (*Manifest, error) {
 }
 
 func (m *Manifest) checkProduced() error {
-	light := strings.HasPrefix(m.Release, LightReleasePrefix)
 	linie := -1
 	for i, l := range binaerLinien {
 		if strings.HasPrefix(m.Release, l.praefix) {
@@ -482,17 +514,32 @@ func (m *Manifest) checkProduced() error {
 		}
 	}
 	if m.Skripte != nil {
-		if !light {
-			return fmt.Errorf("skripte: einen Skriptstand traegt nur ein Edge-Light-Release (%sJJJJ.MM.N)", LightReleasePrefix)
+		if linie < 0 {
+			return fmt.Errorf("skripte: einen Skriptstand traegt nur ein Edge-Light- oder Edge-Industrie-Release (%sJJJJ.MM.N, %sJJJJ.MM.N)",
+				LightReleasePrefix, IndustrieReleasePrefix)
 		}
-		if m.Skripte.Name != SkripteDatei {
-			return fmt.Errorf("skripte.name: '%s' statt '%s'", m.Skripte.Name, SkripteDatei)
+		if soll := binaerLinien[linie].skripte; m.Skripte.Name != soll {
+			return fmt.Errorf("skripte.name: '%s' statt '%s'", m.Skripte.Name, soll)
 		}
 		if !sha256Re.MatchString(m.Skripte.SHA256) {
 			return errors.New("skripte.sha256: 64 Zeichen 0-9a-f")
 		}
 		if m.Skripte.Size <= 0 {
 			return errors.New("skripte.size: groesser als 0")
+		}
+	}
+	if m.Wartung != nil {
+		if !strings.HasPrefix(m.Release, IndustrieReleasePrefix) {
+			return fmt.Errorf("wartung: das Tunnel-Programm traegt nur ein Edge-Industrie-Release (%sJJJJ.MM.N)", IndustrieReleasePrefix)
+		}
+		if m.Wartung.Name != WartungDatei {
+			return fmt.Errorf("wartung.name: '%s' statt '%s'", m.Wartung.Name, WartungDatei)
+		}
+		if !sha256Re.MatchString(m.Wartung.SHA256) {
+			return errors.New("wartung.sha256: 64 Zeichen 0-9a-f")
+		}
+		if m.Wartung.Size <= 0 {
+			return errors.New("wartung.size: groesser als 0")
 		}
 	}
 	for i, a := range m.Artifacts {

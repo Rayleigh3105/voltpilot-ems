@@ -96,16 +96,41 @@ public final class ReleaseManifest {
             long gzSize) {
     }
 
-    /** Der Name des Skriptstands am Release (Go: {@code otaverify.SkripteDatei}). */
+    /** Der Name des Skriptstands am Edge-Light-Release (Go: {@code otaverify.SkripteDatei}). */
     public static final String SKRIPTE_DATEI = "edge-light-openwrt.tar.gz";
+    /** Der Name des Skriptstands am Edge-Industrie-Release (Go: {@code otaverify.IndustrieSkripteDatei}). */
+    public static final String INDUSTRIE_SKRIPTE_DATEI = "edge-industrie-skripte.tar.gz";
+    /** Der Name des Tunnel-Programms am Edge-Industrie-Release (Go: {@code otaverify.WartungDatei}). */
+    public static final String WARTUNG_DATEI = "vp-wartung-linux-arm";
 
     /**
-     * Der Skriptstand eines Edge-Light-Release ({@code skripte}, additiv): das
-     * Archiv aus {@code edge-light/openwrt}, das der Werkstatt-Dienst beim
-     * Einrichten auflegt. Die Box wendet ihn nicht an; die Werkstatt nimmt seine
-     * Prüfsumme von hier, damit sie signiert ist.
+     * Der Skriptstand eines Edge-Light- oder Edge-Industrie-Release
+     * ({@code skripte}, additiv): das Archiv der Install- und Tunnel-Skripte,
+     * das der Werkstatt-Dienst beim Einrichten auflegt. Die Box wendet ihn
+     * nicht an; die Werkstatt nimmt seine Prüfsumme von hier, damit sie
+     * signiert ist.
      */
     public record Skripte(String name, String sha256, long size) {
+    }
+
+    /**
+     * Das Tunnel-Programm eines Edge-Industrie-Release ({@code wartung},
+     * additiv): {@code vp-wartung} für den WAGO PFC200, das der
+     * Werkstatt-Dienst beim Einrichten auflegt. Kein Bestandteil des Updates;
+     * die Werkstatt nimmt seine Prüfsumme von hier, damit sie signiert ist.
+     */
+    public record Wartung(String name, String sha256, long size) {
+    }
+
+    /** Der Name des Skriptstands für ein Release; {@code null} für eines ohne (die Docker-Box). */
+    public static String skripteDateiFuer(String release) {
+        if (release == null) {
+            return null;
+        }
+        if (release.startsWith(LIGHT_RELEASE_PREFIX)) {
+            return SKRIPTE_DATEI;
+        }
+        return release.startsWith(INDUSTRIE_RELEASE_PREFIX) ? INDUSTRIE_SKRIPTE_DATEI : null;
     }
 
     /** Ein Manifest, das nicht die Form des Vertrags hat - mit deutschem Grund. */
@@ -121,15 +146,17 @@ public final class ReleaseManifest {
     private final List<Artifact> artifacts;
     private final List<Program> programs;
     private final Skripte skripte;
+    private final Wartung wartung;
 
     private ReleaseManifest(String release, long releaseSeq, List<String> backends,
-            List<Artifact> artifacts, List<Program> programs, Skripte skripte) {
+            List<Artifact> artifacts, List<Program> programs, Skripte skripte, Wartung wartung) {
         this.release = release;
         this.releaseSeq = releaseSeq;
         this.backends = List.copyOf(backends);
         this.artifacts = List.copyOf(artifacts);
         this.programs = List.copyOf(programs);
         this.skripte = skripte;
+        this.wartung = wartung;
     }
 
     /**
@@ -139,6 +166,14 @@ public final class ReleaseManifest {
      */
     public Optional<Skripte> skripte() {
         return Optional.ofNullable(skripte);
+    }
+
+    /**
+     * Das Tunnel-Programm, wenn das Manifest ein gültiges trägt (nur
+     * Edge Industrie). Tolerant wie {@link #skripte}.
+     */
+    public Optional<Wartung> wartung() {
+        return Optional.ofNullable(wartung);
     }
 
     public String release() {
@@ -280,21 +315,40 @@ public final class ReleaseManifest {
         List<Program> programs = new ArrayList<>();
         List<Artifact> artifacts = readArtifacts(m.get("artifacts"), programs);
         List<String> backends = readBackends(m.get("compat"));
-        return new ReleaseManifest(release, seq, backends, artifacts, programs, readSkripte(m.get("skripte")));
+        Skripte skripte = readSkripte(m.get("skripte"), skripteDateiFuer(release));
+        Wartung wartung = release.startsWith(INDUSTRIE_RELEASE_PREFIX) ? readWartung(m.get("wartung")) : null;
+        return new ReleaseManifest(release, seq, backends, artifacts, programs, skripte, wartung);
     }
 
-    /** {@code skripte}, wenn vollständig und gültig; sonst {@code null} (siehe {@link #skripte}). */
-    private static Skripte readSkripte(JsonNode n) {
+    /**
+     * {@code skripte}, wenn vollständig, gültig und mit dem Namen dieser Linie
+     * ({@code erwartet}); sonst {@code null} (siehe {@link #skripte}).
+     */
+    private static Skripte readSkripte(JsonNode n, String erwartet) {
+        if (n == null || !n.isObject() || erwartet == null) {
+            return null;
+        }
+        String name = n.path("name").asText("");
+        String sha = n.path("sha256").asText("");
+        long size = n.path("size").canConvertToLong() ? n.path("size").asLong() : 0;
+        if (!erwartet.equals(name) || !SHA256.matcher(sha).matches() || size <= 0) {
+            return null;
+        }
+        return new Skripte(name, sha, size);
+    }
+
+    /** {@code wartung}, wenn vollständig und gültig; sonst {@code null} (siehe {@link #wartung}). */
+    private static Wartung readWartung(JsonNode n) {
         if (n == null || !n.isObject()) {
             return null;
         }
         String name = n.path("name").asText("");
         String sha = n.path("sha256").asText("");
         long size = n.path("size").canConvertToLong() ? n.path("size").asLong() : 0;
-        if (!SKRIPTE_DATEI.equals(name) || !SHA256.matcher(sha).matches() || size <= 0) {
+        if (!WARTUNG_DATEI.equals(name) || !SHA256.matcher(sha).matches() || size <= 0) {
             return null;
         }
-        return new Skripte(name, sha, size);
+        return new Wartung(name, sha, size);
     }
 
     /**
@@ -342,12 +396,23 @@ public final class ReleaseManifest {
         }
         JsonNode skripte = root.get("skripte");
         if (skripte != null && !skripte.isNull()) {
-            if (!light) {
-                throw new InvalidManifestException("skripte: einen Skriptstand traegt nur ein Edge-Light-Release "
-                        + "(edge-light-JJJJ.MM.N)");
+            if (!light && !industrie) {
+                throw new InvalidManifestException("skripte: einen Skriptstand traegt nur ein Edge-Light- oder "
+                        + "Edge-Industrie-Release (edge-light-JJJJ.MM.N, edge-industrie-JJJJ.MM.N)");
             }
             if (m.skripte == null) {
-                throw new InvalidManifestException("skripte: name " + SKRIPTE_DATEI
+                throw new InvalidManifestException("skripte: name " + skripteDateiFuer(m.release)
+                        + ", sha256 aus 64 Zeichen 0-9a-f und size groesser als 0");
+            }
+        }
+        JsonNode wartung = root.get("wartung");
+        if (wartung != null && !wartung.isNull()) {
+            if (!industrie) {
+                throw new InvalidManifestException("wartung: das Tunnel-Programm traegt nur ein "
+                        + "Edge-Industrie-Release (edge-industrie-JJJJ.MM.N)");
+            }
+            if (m.wartung == null) {
+                throw new InvalidManifestException("wartung: name " + WARTUNG_DATEI
                         + ", sha256 aus 64 Zeichen 0-9a-f und size groesser als 0");
             }
         }

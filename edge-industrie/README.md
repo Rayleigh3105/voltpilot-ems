@@ -26,7 +26,8 @@ edge-industrie/
 ├── scripts/
 │   ├── build.sh                           baut dist/vp-edge-industrie-linux-arm (cmd/vp-edge-industrie)
 │   ├── build-wartung.sh                   baut dist/vp-wartung-linux-arm
-│   ├── release.sh                         eine Fassung edge-industrie-JJJJ.MM.N: Programm, .gz, sha256sums
+│   ├── release.sh                         eine Fassung edge-industrie-JJJJ.MM.N: Programm, .gz, Skriptstand, Tunnel-Programm, sha256sums
+│   ├── skripte-paket.py                   der Skriptstand als edge-industrie-skripte.tar.gz (wiederholbar, für die Werkstatt)
 │   └── loader-abgleich.sh                 Loader wortgleich mit dem Mango-Loader (läuft in edge-light/scripts/test.sh)
 └── test/
     ├── install-probe.sh                   install.sh, Dienst und Loader gegen BusyBox-Linux für ARMv7 im Container
@@ -156,6 +157,8 @@ Ob 8484, 8887, 1883 und 1502 am Gerät wirklich frei sind, zeigt PS-P5.
 Dasselbe Protokoll wie Edge Light ([Updates](../edge-light/docs/boot-und-updates.md)): Das Programm prüft Manifest und Signatur, lädt die Fassung in den RAM, der Loader tauscht beim nächsten Start, die neue Fassung läuft zehn Minuten zur Probe und wird behalten oder zurückgenommen.
 Edge Industrie hat eine eigene Release-Linie `edge-industrie-JJJJ.MM.N` (Lauf `.forgejo/workflows/edge-industrie-release.yaml`, Bau `scripts/release.sh`).
 Jede Fassung trägt genau ein Programm `vp-edge-industrie:linux/arm`, angehängt als `vp-edge-industrie-linux-arm` samt `.gz`; ihr Manifest gilt nur für das Backend `industrie`.
+Dazu hängt der Lauf an, was der Werkstatt-Dienst beim Einrichten eines Geräts auflegt: den Skriptstand `edge-industrie-skripte.tar.gz` (`install.sh`, `wartung.sh`, `files/`; `scripts/skripte-paket.py`) und das Tunnel-Programm `vp-wartung-linux-arm`.
+Ihre Prüfsummen stehen signiert im Manifest, als eigene Felder `skripte` und `wartung` und nie als Bestandteil des Updates: Ein unbekannter Bestandteil ließe Boxen die ganze Fassung zurückstellen.
 Die Box meldet sich als `industrie` und bekommt nur Fassungen dieser Linie; ein Edge-Light- oder Docker-Release stellt sie zurück, und das Portal bietet es ihr gar nicht erst an.
 Signiert und registriert wird erst mit der Repo-Variable `EDGE_INDUSTRIE_SIGNIEREN=true`.
 Für `install.sh` liegt das Programm als `edge-industrie/dist/vp-edge-industrie-linux-arm`; auf dem Gerät heißt es `vp-edge-industrie`.

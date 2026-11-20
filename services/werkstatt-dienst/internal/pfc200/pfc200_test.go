@@ -65,6 +65,10 @@ type aufbau struct {
 	log    *bytes.Buffer
 	// ohneManifest: das Release trägt kein release.json.
 	ohneManifest bool
+	// manifestStatt ersetzt das Manifest des Release (mit seiner Signatur).
+	manifestStatt, signaturStatt                 []byte
+	manifestOhneTunnel, signaturOhneTunnel       []byte
+	manifestAnderesTunnel, signaturAnderesTunnel []byte
 }
 
 func summe(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
@@ -99,9 +103,13 @@ func neu(t *testing.T) *aufbau {
 	programm := []byte("\x7fELF vp-edge-industrie attrappe")
 	tunnel := []byte("\x7fELF vp-wartung attrappe")
 	skripte := attrappe.SkripteTarGzPFC200(t)
-	manifest := attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie")
+	manifest := attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie", summe(skripte), summe(tunnel))
 	wurzel := attrappe.NeueSignierteWurzel(t)
 	signatur := wurzel.SigniereManifest(t, manifest)
+	a.manifestOhneTunnel = attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie", summe(skripte), "")
+	a.signaturOhneTunnel = wurzel.SigniereManifest(t, a.manifestOhneTunnel)
+	a.manifestAnderesTunnel = attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie", summe(skripte), strings.Repeat("0", 64))
+	a.signaturAnderesTunnel = wurzel.SigniereManifest(t, a.manifestAnderesTunnel)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/edge/trust-set/trust-set.json":
@@ -109,12 +117,16 @@ func neu(t *testing.T) *aufbau {
 		case "/api/v1/edge/trust-set/trust-set.json.sig":
 			_, _ = w.Write(wurzel.TrustSetSig)
 		case "/edge/release.json", "/edge/release.json.sig":
+			m, s := manifest, signatur
+			if a.manifestStatt != nil {
+				m, s = a.manifestStatt, a.signaturStatt
+			}
 			if a.ohneManifest {
 				http.NotFound(w, r)
 			} else if strings.HasSuffix(r.URL.Path, ".sig") {
-				_, _ = w.Write(signatur)
+				_, _ = w.Write(s)
 			} else {
-				_, _ = w.Write(manifest)
+				_, _ = w.Write(m)
 			}
 		case "/edge/" + fassungen.IndustrieProgramm:
 			_, _ = w.Write(programm)
@@ -621,18 +633,50 @@ func TestKeinInternetHaeltVorDenZugaengenAn(t *testing.T) {
 	}
 }
 
-// Eine nicht signierte Fassung: Der Lauf richtet ein, gibt aber keine Abnahme
-// (Entscheid 5c).
-func TestNichtSignierteFassungBekommtKeineAbnahme(t *testing.T) {
+// Eine nicht signierte Fassung richtet der Dienst auf einem PFC200 gar nicht
+// erst ein: Der Lauf hält an, bevor sich am Gerät etwas ändert.
+func TestNichtSignierteFassungWirdNichtEingerichtet(t *testing.T) {
 	a := neu(t)
 	a.ohneManifest = true
+	s := a.halt(t, "fassungen", faelle.FassungNichtBereit)
+	if !strings.Contains(s.Grund, "nicht signiert") {
+		t.Fatalf("Grund %q", s.Grund)
+	}
+	a.unveraendert(t)
+}
+
+// Das Gerät meldet nach dem Einspielen nicht den bestätigten Stand der
+// Fassung: eingerichtet, aber keine Abnahme (Entscheid 5c).
+func TestNichtUpdateBereitBekommtKeineAbnahme(t *testing.T) {
+	a := neu(t)
 	ptl := &falschesPortal{}
 	a.k.Portal = ptl
+	a.k.Probe = &falscheProbe{p: a.p, host: a.p.Host()}
 	a.p.Anmelden = func(string, string, string) (string, int) { return strings.ReplaceAll(antwortEinloesung, "\n", ""), 0 }
 	a.p.BestaetigterStand = 0
 	s := a.halt(t, "uebergabe", faelle.NichtUpdateBereit)
-	if len(ptl.abnahmen) != 0 || !strings.Contains(s.Grund, "nicht signiert") {
+	if len(ptl.abnahmen) != 0 || !strings.Contains(s.Grund, "nicht update-bereit") {
 		t.Fatalf("Abnahmen %d, Grund %q", len(ptl.abnahmen), s.Grund)
+	}
+}
+
+// Das Tunnel-Programm läuft als root und öffnet den Fernzugang: Seine
+// Prüfsumme muss im SIGNIERTEN Manifest stehen und zur Freigabe passen, sonst
+// hält der Lauf an, bevor irgendetwas auf das Gerät geht.
+func TestTunnelProgrammNurAusDemSigniertenManifest(t *testing.T) {
+	for name, waehle := range map[string]func(a *aufbau){
+		"Manifest ohne Tunnel-Programm":        func(a *aufbau) { a.manifestStatt, a.signaturStatt = a.manifestOhneTunnel, a.signaturOhneTunnel },
+		"Manifest mit anderem Tunnel-Programm": func(a *aufbau) { a.manifestStatt, a.signaturStatt = a.manifestAnderesTunnel, a.signaturAnderesTunnel },
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := neu(t)
+			waehle(a)
+			s := a.halt(t, "fassungen", faelle.FassungNichtBereit)
+			if !strings.Contains(s.Grund, "Tunnel-Programm") {
+				t.Fatalf("Grund %q", s.Grund)
+			}
+			a.unveraendert(t)
+		})
 	}
 }
 

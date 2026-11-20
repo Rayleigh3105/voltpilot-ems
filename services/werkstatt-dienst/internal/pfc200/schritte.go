@@ -316,21 +316,21 @@ func (l *Lauf) fassungenHolen(ctx context.Context, _ *lauf.Kontext) (protokoll.B
 }
 
 // manifestHolen lädt das signierte Manifest der Fassung und bindet es an die
-// Freigabe: genau diese Fassung, genau dieses Programm für linux/arm. Fehlt
-// es, ist die Fassung nicht signiert: Der Lauf geht weiter, das Gerät wird
-// aber nicht update-bereit und bekommt keine Abnahme. Widerspricht es der
-// Freigabe oder stimmt seine Signaturkette nicht, hält der Schritt an; das
-// Gerät ist dann noch unverändert.
+// Freigabe: genau diese Fassung, genau dieses Programm für linux/arm, genau
+// dieser Skriptstand, genau dieses Tunnel-Programm. Anders als bei der Mango
+// gibt es für den PFC200 keinen Lauf mit einer nicht signierten Fassung: Das
+// Tunnel-Programm läuft als root und öffnet den Fernzugang, und ein Gerät,
+// das ohne Abnahme bliebe, käme nur mit einem Werksreset zurück. Fehlt das
+// Manifest, widerspricht es der Freigabe oder stimmt seine Signaturkette
+// nicht, hält der Schritt an; das Gerät ist dann noch unverändert.
 func (l *Lauf) manifestHolen(ctx context.Context, b protokoll.Beleg) (protokoll.Beleg, error) {
 	f := l.freigabe.EdgeIndustrie
 	m, sig, err := l.k.Fassungen.HoleManifest(ctx, f.Quelle, f.Fassung)
 	if errors.Is(err, fassungen.ErrNichtSigniert) {
-		l.nichtBereit = "die Fassung " + f.Fassung + " ist nicht signiert (kein release.json am Release)"
-		return b.Mit("manifest", "keins - "+l.nichtBereit), nil
+		return b.Mit("manifest", "keins"), fmt.Errorf("die Fassung %s ist nicht signiert (kein release.json am Release): Die Werkstatt richtet einen PFC200 nur mit einer signierten Fassung ein", f.Fassung)
 	}
 	if err != nil {
-		l.nichtBereit = "das Manifest der Fassung ist nicht erreichbar (" + err.Error() + ")"
-		return b.Mit("manifest", "keins - "+l.nichtBereit), nil
+		return b.Mit("manifest", "keins"), fmt.Errorf("das Manifest der Fassung %s ist nicht erreichbar: %w", f.Fassung, err)
 	}
 	trustSet, trustSetSig, err := l.k.Fassungen.HoleVertrauensSet(ctx, l.k.portalURL())
 	if err != nil {
@@ -339,7 +339,7 @@ func (l *Lauf) manifestHolen(ctx context.Context, b protokoll.Beleg) (protokoll.
 	if _, err := l.k.Fassungen.PruefeSignatur(trustSet, trustSetSig, m, sig); err != nil {
 		return b, fmt.Errorf("Signatur des Release-Manifests nicht gültig: %w", err)
 	}
-	st, err := fassungen.PruefeManifestFuer(m, sig, f.Fassung, Bauart, f.ProgrammSha256, fassungen.BackendsPFC200...)
+	st, err := fassungen.PruefeManifestPFC200(m, sig, f.Fassung, f.ProgrammSha256, f.SkripteSha256, f.WartungSha256)
 	if err != nil {
 		return b, err
 	}
