@@ -2,6 +2,7 @@ package com.voltpilot.api.ueberwachung;
 
 import com.voltpilot.api.erzeuger.AnlagensteuerungService;
 import com.voltpilot.api.erzeuger.ErzeugerRegisterbild;
+import com.voltpilot.api.erzeuger.Koppelbild;
 import com.voltpilot.api.erzeuger.Programmstand;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -299,6 +300,104 @@ final class ErzeugerAlarme {
                         + ", erwartet ist " + soll + ".", v.gemessenAm())
                 : new Urteil(Programmstand.AKTUELL, "Die Anlagensteuerung fährt den Programmstand " + v.istText()
                         + ", erwartet ist " + soll + " - der Stand ist aktuell.", v.gemessenAm());
+    }
+
+    // ------------------------------------------------------------------ Koppelbild (PFC200 Stufe 4)
+
+    /**
+     * Der jüngste Stand des Koppelbilds einer Steuerung, wie die Box ihn im Herzschlag meldete ({@code null} = nie), und
+     * wie viele ihrer Stellplätze gerade freigegeben sind. Nur ein Stand, der höchstens
+     * {@link AnlagensteuerungService#AKTUELL_BIS_S} alt ist, zählt: schweigt die Box, ist alles unbekannt.
+     */
+    record Koppel(Koppelbild.Stand stand, Instant empfangenAt, int freigegeben, Instant jetzt) {
+
+        boolean aktuell() {
+            return stand != null && empfangenAt != null
+                    && !empfangenAt.isBefore(jetzt.minusSeconds(AnlagensteuerungService.AKTUELL_BIS_S));
+        }
+    }
+
+    /**
+     * „Steuerung nimmt Wünsche nicht an“: mindestens ein Stellplatz ist freigegeben, und die Steuerung nimmt die
+     * Telegramme der Box nicht an - die Lage sagt, die Box schreibt nicht (fremde Steuerung, Quittung nicht lesbar,
+     * Programm steht, keine Antwort, keine Kennung), oder die SPS verwirft das Telegramm (Signatur, Fassung, Wortfolge,
+     * Siegel, Kennung, Kopf). Ohne Freigabe gibt es nichts anzunehmen.
+     */
+    static Urteil koppelAnnahme(Koppel k) {
+        if (k.freigegeben() == 0) {
+            return new Urteil("keine_freigabe", "An dieser Steuerung ist kein Stellplatz freigegeben.", k.empfangenAt());
+        }
+        if (!k.aktuell()) {
+            return Urteil.UNBEKANNT;
+        }
+        Koppelbild.Stand s = k.stand();
+        String grund = Koppelbild.NIMMT_NICHT_AN_LAGEN.contains(s.lage()) ? lageText(s)
+                : s.kopfUrteil() != null && Koppelbild.NIMMT_NICHT_AN_KOPF.contains(s.kopfUrteil())
+                        ? kopfText(s.kopfUrteil()) : null;
+        if (grund != null) {
+            return new Urteil("nimmt_nicht_an", "Die Steuerung nimmt die Wünsche der Box nicht an: " + grund + ".",
+                    k.empfangenAt());
+        }
+        return new Urteil("nimmt_an", "Die Steuerung nimmt die Wünsche der Box an.", k.empfangenAt());
+    }
+
+    /**
+     * „Bibliothek veraltet“: die Steuerung meldet eine ältere Fassung des Koppelbild-Bausteins als
+     * {@link Programmstand#KOPPEL_BIBLIOTHEK}. Ohne aktuellen Stand oder ohne gelesene Fassung unbekannt.
+     */
+    static Urteil koppelBibliothek(Koppel k) {
+        if (!k.aktuell()) {
+            return Urteil.UNBEKANNT;
+        }
+        Integer ist = Koppelbild.bibliothek(k.stand().bibliothek());
+        if (ist == null) {
+            return Urteil.UNBEKANNT;
+        }
+        String soll = Koppelbild.bibliothekText(Programmstand.KOPPEL_BIBLIOTHEK);
+        return ist < Programmstand.KOPPEL_BIBLIOTHEK
+                ? new Urteil(Programmstand.AELTER, "Die Steuerung fährt die VoltPilot-Bibliothek " + k.stand().bibliothek()
+                        + ", erwartet ist " + soll + ".", k.empfangenAt())
+                : new Urteil(Programmstand.AKTUELL, "Die Steuerung fährt die VoltPilot-Bibliothek "
+                        + k.stand().bibliothek() + ", erwartet ist " + soll + " - die Fassung ist aktuell.",
+                        k.empfangenAt());
+    }
+
+    /**
+     * „Zweiter Schreiber“: die Box hat einen zweiten Schreiber am Koppelbild erkannt (Lage {@code zweiter_schreiber})
+     * und schreibt nicht mehr. „Einer“ nur, wenn die Box gerade schreiben darf und es beobachten kann; liest sie die
+     * Quittung nicht oder steht das Programm, ist es unbekannt.
+     */
+    static Urteil koppelSchreiber(Koppel k) {
+        if (!k.aktuell()) {
+            return Urteil.UNBEKANNT;
+        }
+        return switch (k.stand().lage()) {
+            case "zweiter_schreiber" -> new Urteil("zweiter_schreiber", "Ein zweites Programm schreibt Wünsche an die "
+                    + "Steuerung; die Box hat ihr Schreiben eingestellt, bis es 60 Sekunden ruhig ist.", k.empfangenAt());
+            case "bereit", "gesperrt", "sps_neustart" -> new Urteil("einer", "Nur die Box schreibt Wünsche an die "
+                    + "Steuerung.", k.empfangenAt());
+            default -> Urteil.UNBEKANNT;
+        };
+    }
+
+    private static String lageText(Koppelbild.Stand s) {
+        return switch (s.lage()) {
+            case "steuerung_fremd" -> "unter der Adresse antwortet eine andere Steuerung als eingetragen";
+            case "nicht_lesbar" -> "signatur_fremd".equals(s.grund()) ? "die Steuerung hat kein Koppelbild"
+                    : "die Box kann die Quittung der Steuerung nicht lesen";
+            case "sps_steht" -> "das Programm der Steuerung steht";
+            case "keine_antwort" -> "die Steuerung antwortet der Box nicht";
+            case "ohne_soll" -> "für die Steuerung ist keine Steuerungskennung eingetragen";
+            default -> s.lage();
+        };
+    }
+
+    private static String kopfText(String kopfUrteil) {
+        return switch (kopfUrteil) {
+            case "steuerung_fremd" -> "die Steuerung erkennt sich in den Wünschen nicht wieder (Kennung)";
+            case "version_fremd" -> "die Steuerung kennt die Fassung der Wünsche nicht";
+            default -> "die Steuerung verwirft die Wünsche als ungültig";
+        };
     }
 
     // ------------------------------------------------------------------ Hilfen

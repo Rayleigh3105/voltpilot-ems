@@ -469,6 +469,11 @@ voltpilot:
       enabled: ${VOLTPILOT_FLOWS_ACTIVATION_ENABLED:false}
     compiler:
       base-url: ${VOLTPILOT_FLOWS_COMPILER_BASE_URL:http://flowc:8099}
+  # PFC200 Stufe 4 (docs/contracts/v2/koppelbild.md §15): the heartbeat block `koppel`
+  # (Koppelbild of an Anlagensteuerung on an Edge Light box) has its own listener -
+  # production default ON, Surefire turns it off and its tests call handle() directly.
+  koppelbild:
+    mqtt-listener-enabled: ${VOLTPILOT_KOPPELBILD_MQTT_LISTENER_ENABLED:true}
   # Steuerlogik Stufe 2 (docs/contracts/v2/steuerlogik.md): `dienst.base-url` is
   # the logic service beside the api (edge-app/core/cmd/vp-logik-dienst, compose
   # service "logik-dienst") that reads, checks and packs a logic - the api never

@@ -58,6 +58,13 @@ describe('Steuerung › Geräte: wer steuert (EZ-10 (1))', () => {
     );
   });
 
+  it('mit freigegebenen Stellplätzen (PFC200 Stufe 4) liest VoltPilot nicht mehr nur; die Steuerung entscheidet', () => {
+    expect(steuerSatz(goreNv(), werteJe(goreWerte()), 2)).toBe(
+      'Gesteuert wird diese Anlage vom Netzbetreiber N-ERGIE Netz GmbH. VoltPilot schickt der Steuerung Wünsche an 2 '
+        + 'freigegebenen Stellplätzen; sie entscheidet selbst.',
+    );
+  });
+
   it('ohne Stammdaten und ohne Werte: kein erfundener Name', () => {
     expect(steuerSatz(null, werteJe(null))).toBe('VoltPilot liest diese Anlage nur. Gesteuert wird sie vom Netzbetreiber.');
   });

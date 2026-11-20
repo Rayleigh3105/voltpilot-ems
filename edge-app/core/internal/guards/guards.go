@@ -83,6 +83,11 @@ const (
 	// measured surplus minus the reserve, never while importing; the MiSpeL
 	// MP-45 stage name, open vocabulary in edge-desired.schema.json).
 	StageStrictExclusivity = "guard:strict_exclusivity"
+
+	// StageStellplatzBand names the band of a Stellplatz of an
+	// Anlagensteuerung (koppelbild.md §15): the controller's own offer, the
+	// only guard the box adds before the controller decides itself.
+	StageStellplatzBand = "guard:stellplatz_band"
 )
 
 // NetzladenReserveKw is R of the Netzladen-Sperre (captain decision EN-1 A,

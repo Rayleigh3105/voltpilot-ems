@@ -9409,6 +9409,112 @@ export interface NetzVermarktungAendern {
   einspeisemanagement_prozent: number | null;
 }
 
+// ---- Koppelbild einer Anlagensteuerung (PFC200 Stufe 4, Vertrag `docs/contracts/v2/koppelbild.md` §15) ----
+// Werte in den ganzen Einheiten des Bilds je Art (W, 0,1 %, 0/1, 1..8, 0,1 °C); „nicht gelesen“ ist null, nie 0.
+// Wörter und Ableitungen stehen in `koppelbildStellplaetze.ts`.
+
+/** Was ein Stellplatz anbietet; `gruende` sind die Bit-Namen aus `a_bits` ohne `bereit` (z. B. `grund_vorrang`). */
+export interface KoppelbildAngebot {
+  art: string;
+  ziel: string;
+  nr: number;
+  min: number;
+  max: number;
+  bereit: boolean;
+  gruende: string[];
+}
+
+/** Der Wunsch der Box; `folge` ist ihre eigene Folge (W). */
+export interface KoppelbildWunsch {
+  art: string;
+  wert: number;
+  grund: string;
+  folge: number;
+}
+
+export type KoppelbildFreigabeGrund = 'kein_test' | 'test_nicht_angenommen' | 'kommando_belegt' | 'angebot_fehlt' | 'box_kann_nicht';
+
+export interface KoppelbildFreigabe {
+  status: 'offen' | 'getestet' | 'freigegeben' | 'verfallen';
+  freigegeben_at: string | null;
+  freigegeben_von: string | null;
+  /**
+   * Der letzte bestandene Beleg (`urteil` angenommen, begrenzt oder überstimmt) oder null. Er kann zu einer früheren
+   * Form des Angebots gehören - ob er noch zählt, sagt `status`.
+   */
+  test: { wert: number; urteil: string; wirksam: number | null; at: string } | null;
+  /** Nur bei `verfallen`: der Grund als Wort (`angebot_geaendert`). */
+  verfallen_grund: string | null;
+}
+
+export interface KoppelbildStellplatz {
+  platz: number;
+  angebot: KoppelbildAngebot | null;
+  wunsch: KoppelbildWunsch | null;
+  /** Der Wunsch stammt aus einem Schalt-Test. */
+  test: boolean;
+  /** `q_urteil` der Steuerung; null = nicht gelesen. */
+  urteil: string | null;
+  /** Echo der Steuerung (`q_folge`): auf welchen Wunsch sich das Urteil bezieht; null = unbekannt. */
+  folge: number | null;
+  /** Was die Anlage für dieses Ziel gerade anwendet; null = unbekannt, nie 0. */
+  wirksam: number | null;
+  /** Das Kommando des Schiedsrichters (`limit_kw`, …); null ohne gültiges Angebot und ohne Freigabe-Zeile. */
+  kommando: string | null;
+  freigabe: KoppelbildFreigabe;
+  freigabe_moeglich: boolean;
+  freigabe_grund: KoppelbildFreigabeGrund | null;
+}
+
+export interface KoppelbildStand {
+  empfangen_at: string;
+  /** false = der Stand ist alt; nie als aktuell zeigen. */
+  aktuell: boolean;
+  lage: string;
+  grund: string | null;
+  /** Die letzte lesbare Lesung; ohne sie sind Kopf und Stellplätze null. */
+  gelesen_at: string | null;
+  bibliothek: string | null;
+  bibliothek_soll: string;
+  bibliothek_veraltet: boolean | null;
+  kopf_urteil: string | null;
+  rest_s: number | null;
+  fernsteuerung_frei: boolean | null;
+  edge_lebt: boolean | null;
+  hand_ort: boolean | null;
+  angenommen_zaehler: number | null;
+  abgelehnt_zaehler: number | null;
+}
+
+/** `GET /api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/koppelbild`. */
+export interface Koppelbild {
+  /** Kann die zuständige Box ein Koppelbild (Fähigkeit `koppelbild`)? */
+  unterstuetzt: boolean;
+  stand: KoppelbildStand | null;
+  stellplaetze: KoppelbildStellplatz[];
+}
+
+/** Antwort des Schalt-Tests eines Stellplatzes; `koppel_test` null = die Box hat nicht (rechtzeitig) geantwortet. */
+export interface KoppelTestAntwort {
+  /** Der Beleg ist gespeichert: die Box schrieb, und die Steuerung quittierte genau diesen Testwunsch. */
+  ok: boolean;
+  koppel_test: {
+    lage: string;
+    grund?: string;
+    kopf_urteil?: string;
+    angebot?: KoppelbildAngebot;
+    geschrieben?: boolean;
+    folge?: number;
+    urteil?: string;
+    wirksam?: number;
+  } | null;
+  satz: string;
+  /** Warum der Test ohne Quittung endete (z. B. `timeout`); sonst null. */
+  error_code: string | null;
+  /** Der Beleg des Tests ist gespeichert - Grundlage der Freigabe. */
+  beleg_gespeichert: boolean;
+}
+
 /**
  * Die Kurven des Bilds über ein Fenster der Historie (UEMS EZ-10); ein Eimer ohne Wert fehlt, nie 0. Seit GE-3
  * steht je Einheit auch der Zählerstand Erzeugung `t_e` da (Einheit kWh) — die Energie heute der Einheiten-Seite.

@@ -121,6 +121,13 @@
       "meaning": "Der Kern der Box kennt die Ergänzungen der Sprache, in die sich eine Steuerart (die generierte Verbraucherregel) und der Heizstab-Regler übersetzen: die Quelle site.surplus, das Signal power eines Geräts, den Verlauf eines Zählers (changes, oldest_change) und den Ausgang must_run (Pflicht vor dem Fahrplan wie die Pflichtregel); er ist der Kern, den die Gleichheitstests gegen verbraucherregel-vectors.json und heizstab-regler-vectors.json halten (steuerlogik.md, Zusammenführen, dritter Teil). Erst dann liefert die Cloud diese Übersetzungen aus, nach dem Schalter der Anlage; eine ältere Box quittierte eine Logik mit diesen Wörtern als nicht lesbar.",
       "advertised": true,
       "evidence": "edge-app/core/internal/logikdienst/steuerart/gleichheit_test.go"
+    },
+    {
+      "name": "koppelbild",
+      "meaning": "Die Box führt das VoltPilot-Koppelbild v1 einer Anlagensteuerung (koppelbild.md §15): sie liest die Quittung und schreibt das Telegramm in der Sitzung ihres Erzeuger-Bilds, nimmt die freigegebenen Stellplätze der Anlagensteuerung als Fähigkeiten (actuate mit platz), beantwortet die Probe-Art koppel_test und meldet den Herzschlag-Block koppel. Erst dann schickt die Cloud Stellplatz-Fähigkeiten und Schalt-Tests an diese Box (PFC200 Stufe 4).",
+      "advertised": true,
+      "box_arten": ["edge_light"],
+      "evidence": "edge-app/core/internal/layer1/koppel_test.go"
     }
   ],
   "cases": [

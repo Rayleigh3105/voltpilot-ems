@@ -536,12 +536,17 @@ export interface AlarmVorlage {
   /** Die Bedingung in einem Satz, wie das Blatt „Überwachen“ sie spricht. */
   satz: string;
   /** Wann der Vorschlag ausgeschaltet beginnt - der Grund steht dabei. */
-  ausWenn?: 'kein_dv' | 'keine_fernwirktechnik';
+  ausWenn?: 'kein_dv' | 'keine_fernwirktechnik' | 'ohne_stellplatz';
 }
 
 const AUS_WENN: Record<string, AlarmVorlage['ausWenn']> = {
   'erzeuger.fernsteuerung_nicht_bereit': 'kein_dv',
   'erzeuger.fernwirk_verbindung_weg': 'keine_fernwirktechnik',
+  // PFC200 Stufe 4: die Koppelbild-Vorlagen gelten erst mit einem freigegebenen Stellplatz - beim Verbinden gibt
+  // es noch keinen, darum beginnen sie aus und lassen sich wählen.
+  'erzeuger.koppel_nimmt_nicht_an': 'ohne_stellplatz',
+  'erzeuger.bibliothek_veraltet': 'ohne_stellplatz',
+  'erzeuger.zweiter_schreiber': 'ohne_stellplatz',
 };
 
 export const ERZEUGER_ALARM_VORLAGEN: readonly AlarmVorlage[] = WERTE_KATALOG.flatMap((e) =>
@@ -562,6 +567,9 @@ export function alarmVorschlag(v: AlarmVorlage, netz: NetzEntwurf): { an: boolea
   }
   if (v.ausWenn === 'keine_fernwirktechnik' && netz.einspeisemanagement !== 'fernwirk') {
     return { an: false, grund: 'kein Einspeisemanagement über Fernwirktechnik' };
+  }
+  if (v.ausWenn === 'ohne_stellplatz') {
+    return { an: false, grund: 'noch kein Stellplatz der Steuerung freigegeben' };
   }
   return { an: true, grund: null };
 }

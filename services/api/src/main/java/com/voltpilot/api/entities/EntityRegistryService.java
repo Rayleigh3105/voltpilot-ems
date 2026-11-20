@@ -1351,6 +1351,14 @@ public class EntityRegistryService {
                 d.put("edge_source_id", an.edgeSourceId());
                 d.set("driver", an.driver().deepCopy());
             }
+            // PFC200 Stufe 4: je freigegebenem Stellplatz eine Fähigkeit actuate mit platz, und die Steuerung
+            // fällt ohne gewährtes Kommando auf ihre eigenen Werte zurück (release). Ohne Stellplatz bleibt die
+            // Nutzlast byte-gleich (nur messen).
+            if (an != null && an.actuate() != null && !an.actuate().isEmpty()
+                    && d.get("capabilities") instanceof ObjectNode caps && d.get("guards") instanceof ObjectNode g) {
+                caps.set("actuate", an.actuate().deepCopy());
+                g.putObject("failsafe").put("behavior", "release");
+            }
             EntityRegistryRepository.ConsumerIoBinding io = ioBindings.get(row.id());
             if (io != null && !d.has("driver")) {
                 d.set("driver", ioChannelDriver(io));

@@ -9,6 +9,9 @@ import type {
   AnlagensteuerungVerlauf,
   AnlagensteuerungWert,
   AnlagensteuerungWerte,
+  Koppelbild,
+  KoppelbildStand,
+  KoppelbildStellplatz,
   NetzVermarktung,
   UemsGeraet,
 } from '../api';
@@ -308,6 +311,90 @@ export function goreVerlauf(): AnlagensteuerungVerlauf {
       kurve('erzeuger.te[1].t_p_ist_w', 1, 'W', [41000, 52800]),
       kurve('erzeuger.te[1].t_p_soll_w', 1, 'W', []),
       kurve('erzeuger.nb.n_p_prozent', null, '%', [100, 60]),
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Koppelbild (PFC200 Stufe 4): Büttner mit einer Steuerung, die Wünsche annimmt
+// ---------------------------------------------------------------------------
+
+/** Ein aktueller Stand: die Steuerung nimmt an, die Frist läuft noch 58 s, Bibliothek 1.0. */
+export function koppelStand(anders: Partial<KoppelbildStand> = {}): KoppelbildStand {
+  return {
+    empfangen_at: vor(4),
+    aktuell: true,
+    lage: 'bereit',
+    grund: null,
+    gelesen_at: vor(4),
+    bibliothek: '1.0',
+    bibliothek_soll: '1.0',
+    bibliothek_veraltet: false,
+    kopf_urteil: 'angenommen',
+    rest_s: 58,
+    fernsteuerung_frei: true,
+    edge_lebt: true,
+    hand_ort: false,
+    angenommen_zaehler: 97,
+    abgelehnt_zaehler: 0,
+    ...anders,
+  };
+}
+
+/** Ein Stellplatz ohne Wunsch, Freigabe offen; `anders` überschreibt. */
+export function koppelPlatz(platz: number, anders: Partial<KoppelbildStellplatz> = {}): KoppelbildStellplatz {
+  return {
+    platz,
+    angebot: null,
+    wunsch: null,
+    test: false,
+    urteil: 'kein_wunsch',
+    folge: 0,
+    wirksam: null,
+    kommando: null,
+    freigabe: { status: 'offen', freigegeben_at: null, freigegeben_von: null, test: null, verfallen_grund: null },
+    freigabe_moeglich: false,
+    freigabe_grund: 'kein_test',
+    ...anders,
+  };
+}
+
+/**
+ * Drei Stellplätze: 1 begrenzt die ganze Erzeugung (freigegeben, Wunsch aus dem Fahrplan angenommen), 2 ist die
+ * Lampe am Gerät (Ein und Aus, ohne Wunsch, noch nicht getestet), 3 stellt Speicher 1 (in Wartung, nicht bereit).
+ */
+export function koppelbildBuettner(): Koppelbild {
+  return {
+    unterstuetzt: true,
+    stand: koppelStand(),
+    stellplaetze: [
+      koppelPlatz(1, {
+        angebot: { art: 'limit_w', ziel: 'erzeugung_gesamt', nr: 0, min: 0, max: 265000, bereit: true, gruende: [] },
+        wunsch: { art: 'limit_w', wert: 159000, grund: 'markt', folge: 7 },
+        urteil: 'angenommen',
+        folge: 7,
+        wirksam: 159000,
+        kommando: 'limit_kw',
+        freigabe: {
+          status: 'freigegeben',
+          freigegeben_at: vor(3600),
+          freigegeben_von: null,
+          test: { wert: 200000, urteil: 'angenommen', wirksam: 200000, at: vor(3700) },
+          verfallen_grund: null,
+        },
+        freigabe_moeglich: false,
+        freigabe_grund: null,
+      }),
+      koppelPlatz(2, {
+        angebot: { art: 'on_off', ziel: 'probe', nr: 0, min: 0, max: 1, bereit: true, gruende: [] },
+        kommando: 'on_off',
+      }),
+      koppelPlatz(3, {
+        angebot: {
+          art: 'setpoint_w', ziel: 'speicher', nr: 1, min: -50000, max: 50000, bereit: false, gruende: ['grund_wartung'],
+        },
+        kommando: 'setpoint_kw',
+      }),
     ],
   };
 }

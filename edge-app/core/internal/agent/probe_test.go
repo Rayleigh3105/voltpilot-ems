@@ -813,3 +813,40 @@ func TestErzeugerKopfVerdictIsMadeInTheCore(t *testing.T) {
 		t.Fatalf("Antwort ohne Kopf = %+v", got)
 	}
 }
+
+// PFC200 Stufe 4: the Schalt-Test of a Stellplatz goes down the bus by name
+// with its fields; Layer 1's acknowledgement comes back unchanged.
+func TestKoppelTestFixtureGoesToLayer1(t *testing.T) {
+	oldWindow := probeWindow
+	probeWindow = 100 * 365 * 24 * time.Hour
+	t.Cleanup(func() { probeWindow = oldWindow })
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..",
+		"docs", "contracts", "examples", "mqtt-probe.valid.koppel-test.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	box := startProbeBox(t)
+	seen := make(chan probeBusRequest, 1)
+	wahr, folge, wirksam := true, 3, int64(200000)
+	probeStub(t, box.addr, seen, func(req probeBusRequest) []probeBusResult {
+		return []probeBusResult{{ID: req.Ops[0].ID, OK: true, KoppelTest: &probe.KoppelTest{Lage: "bereit",
+			Geschrieben: &wahr, Folge: &folge, Urteil: "angenommen", Wirksam: &wirksam}}}
+	})
+	box.a.onProbeRequest(raw)
+	req := <-seen
+	op := req.Ops[0]
+	if len(req.Ops) != 1 || op.Op != probe.OpKoppelTest || op.Host != "127.0.0.1" || op.Port != 502 ||
+		op.SteuerungID == nil || *op.SteuerungID != 1042 || op.Platz == nil || *op.Platz != 1 || op.Art != "limit_w" ||
+		op.Wert == nil || *op.Wert != 200000 || op.TTLSeconds == nil || *op.TTLSeconds != 30 {
+		t.Fatalf("bus op = %+v", req.Ops)
+	}
+	res := box.answer(t)
+	if res == nil || len(res.Results) != 1 || !res.Results[0].OK || res.Results[0].KoppelTest == nil ||
+		res.Results[0].KoppelTest.Urteil != "angenommen" || res.Results[0].Raw != nil {
+		t.Fatalf("Ergebnis = %+v", res)
+	}
+	got := koppelTestResult(probe.Op{ID: "x"}, probeBusResult{ID: "x", OK: true})
+	if got.OK || got.ErrorCode != probe.ErrInvalidResponse {
+		t.Fatalf("Antwort ohne Block = %+v", got)
+	}
+}

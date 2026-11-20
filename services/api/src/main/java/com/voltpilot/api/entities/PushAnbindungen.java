@@ -1,5 +1,6 @@
 package com.voltpilot.api.entities;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
 import java.util.UUID;
@@ -16,9 +17,22 @@ public interface PushAnbindungen {
      * Die Anbindung einer Entität im Push an diese Box. {@code driver == null} heißt: diese Box versteht die
      * Anbindung nicht — die Entität reist dann ohne Pin und ohne Treiber, genau wie vor EZ-21.
      */
-    record Anbindung(String edgeSourceId, ObjectNode driver) {
+    record Anbindung(String edgeSourceId, ObjectNode driver, ArrayNode actuate) {
+        public Anbindung(String edgeSourceId, ObjectNode driver) {
+            this(edgeSourceId, driver, null);
+        }
+
         public static Anbindung keine() {
             return new Anbindung(null, null);
+        }
+
+        /**
+         * Dieselbe Anbindung mit den Fähigkeiten {@code actuate} der freigegebenen Stellplätze einer Anlagensteuerung
+         * (PFC200 Stufe 4, Koppelbild §15) - nur an eine Box, die {@code koppelbild} meldet. {@code null} oder leer:
+         * die Entität bleibt, wie sie gespeichert ist (nur messen).
+         */
+        public Anbindung mitStellplaetzen(ArrayNode stellplaetze) {
+            return new Anbindung(edgeSourceId, driver, stellplaetze);
         }
     }
 

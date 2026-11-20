@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_result",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "f1c0e7a2b9d44810",
+  "answered_at": "2026-11-19T21:30:02Z",
+  "results": [
+    {
+      "id": "stellplatz-1",
+      "ok": true,
+      "koppel_test": {
+        "lage": "bereit",
+        "kopf_urteil": "angenommen",
+        "angebot": {"art": "limit_w", "ziel": "erzeugung_gesamt", "nr": 0, "min": 0, "max": 265000, "bits": ["bereit"]},
+        "geschrieben": true,
+        "folge": 3,
+        "urteil": "angenommen",
+        "wirksam": 200000
+      }
+    }
+  ]
+}

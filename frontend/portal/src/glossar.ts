@@ -978,6 +978,18 @@ export const ANLAGEN_CHECK_WIE_ERWARTET = 'liefert wie erwartet';
 export const ANLAGEN_CHECK_SPEICHER_BILANZ = 'Speicher-Bilanz';
 export const ANLAGEN_CHECK_VOLLZYKLEN = 'Vollzyklen';
 
+/**
+ * **Stellplätze** einer Anlagensteuerung mit Koppelbild (PFC200 Stufe 4): je Stellplatz drei getrennte Zeilen und der
+ * Schalt-Test vor der Freigabe. Wörter der Zeilen in `koppelStellplaetze.ts`. Glossar: `docs/fachmodell/glossar.md` ›
+ * Stellplatz, Quittung der Steuerung, Schalt-Test.
+ */
+export const KOPPEL_STELLPLATZ = 'Stellplatz';
+export const KOPPEL_STELLPLAETZE = 'Stellplätze';
+export const KOPPEL_WUNSCH = 'Wunsch der Box';
+export const KOPPEL_QUITTUNG = 'Quittung der Steuerung';
+export const KOPPEL_WIRKSAM = 'Wirksam laut Steuerung';
+export const KOPPEL_SCHALT_TEST = 'Schalt-Test';
+
 /** Der Zwischenstand im Schritt „Anschluss“: der Weg ist gespeichert, das Gerät entsteht erst am Ende. */
 export function anschlussGespeichert(kennzeichen: string, abschluss: string): string {
   return `${UEMS_ANSCHLUSS} gespeichert (Kennung ${kennzeichen}). Das Gerät entsteht erst mit „${abschluss}“.`;

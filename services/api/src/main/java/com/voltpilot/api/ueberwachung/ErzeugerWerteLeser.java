@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.erzeuger.AnlagensteuerungRepository;
 import com.voltpilot.api.erzeuger.AnlagensteuerungRepository.Jungster;
 import com.voltpilot.api.erzeuger.AnlagensteuerungRepository.Steuerung;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.erzeuger.ErzeugerRegisterbild;
+import com.voltpilot.api.erzeuger.Koppelbild;
+import com.voltpilot.api.erzeuger.KoppelbildRepository;
 import com.voltpilot.api.erzeuger.Programmstand;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.GeraetRepository.Teil;
@@ -37,18 +40,26 @@ public class ErzeugerWerteLeser implements WerteLeser {
     static final String FELD_ABSCHALTUNG = "abschaltung";
     static final String FELD_FERNWIRK = "fernwirk";
     static final String FELD_PROGRAMMSTAND = "programmstand";
+    static final String FELD_KOPPEL_ANNAHME = "koppel_annahme";
+    static final String FELD_KOPPEL_BIBLIOTHEK = "koppel_bibliothek";
+    static final String FELD_KOPPEL_SCHREIBER = "koppel_schreiber";
 
     /** Die Zustände, die bei mehreren Steuerungen an einer Anlage den Ausschlag geben (der Ziel-Zustand der Vorlage). */
     private static final Map<String, String> SCHLECHT = Map.of(FELD_DATENLAGE, "veraltet", FELD_FOLGEN, "folgt_nicht",
-            FELD_ABSCHALTUNG, "abgeschaltet", FELD_FERNWIRK, "getrennt", FELD_PROGRAMMSTAND, Programmstand.AELTER);
+            FELD_ABSCHALTUNG, "abgeschaltet", FELD_FERNWIRK, "getrennt", FELD_PROGRAMMSTAND, Programmstand.AELTER,
+            FELD_KOPPEL_ANNAHME, "nimmt_nicht_an", FELD_KOPPEL_BIBLIOTHEK, Programmstand.AELTER,
+            FELD_KOPPEL_SCHREIBER, "zweiter_schreiber");
 
     static final double VORGABE_TOLERANZ_PROZENT = 5;
     static final double VORGABE_TOLERANZ_KW = 5;
 
     private final AnlagensteuerungRepository steuerungen;
+    private final KoppelbildRepository koppelbild;
+    private final ObjectMapper json = new ObjectMapper();
 
-    public ErzeugerWerteLeser(AnlagensteuerungRepository steuerungen) {
+    public ErzeugerWerteLeser(AnlagensteuerungRepository steuerungen, KoppelbildRepository koppelbild) {
         this.steuerungen = steuerungen;
+        this.koppelbild = koppelbild;
     }
 
     /** Ob eine Vorlage je Einheit statt je Anlage ausgewertet wird. */
@@ -102,9 +113,13 @@ public class ErzeugerWerteLeser implements WerteLeser {
         List<Steuerung> alle = steuerungen.steuerungen(bezug.id());
         List<ErzeugerAlarme.Urteil> urteile = new ArrayList<>();
         for (Steuerung s : alle) {
-            ErzeugerAlarme.Urteil u = FELD_PROGRAMMSTAND.equals(feld)
-                    ? ErzeugerAlarme.programmstand(bild(s, jetzt), programmstandSoll(s.geraetId()))
-                    : urteil(feld, bild(s, jetzt), bedingung);
+            ErzeugerAlarme.Urteil u = switch (feld) {
+                case FELD_PROGRAMMSTAND -> ErzeugerAlarme.programmstand(bild(s, jetzt), programmstandSoll(s.geraetId()));
+                case FELD_KOPPEL_ANNAHME -> ErzeugerAlarme.koppelAnnahme(koppel(s, jetzt));
+                case FELD_KOPPEL_BIBLIOTHEK -> ErzeugerAlarme.koppelBibliothek(koppel(s, jetzt));
+                case FELD_KOPPEL_SCHREIBER -> ErzeugerAlarme.koppelSchreiber(koppel(s, jetzt));
+                default -> urteil(feld, bild(s, jetzt), bedingung);
+            };
             urteile.add(alle.size() > 1 && u.bekannt() ? benannt(s, u) : u);
         }
         return lesung(zusammen(feld, urteile));
@@ -158,6 +173,24 @@ public class ErzeugerWerteLeser implements WerteLeser {
             werte.put(j.pointKey(), new ErzeugerAlarme.Wert(j.zahl(), j.zeit(), j.qualitaet()));
         }
         return new ErzeugerAlarme.Bild(werte, teAnzahl, jetzt);
+    }
+
+    /**
+     * Der jüngste Koppelbild-Stand der Steuerung (Herzschlag-Block {@code koppel}, PFC200 Stufe 4) und die Zahl ihrer
+     * freigegebenen Stellplätze - nie Messpunkte: das Koppelbild ist Anzeige der Box.
+     */
+    private ErzeugerAlarme.Koppel koppel(Steuerung s, Instant jetzt) {
+        var zeile = koppelbild.juengsterStand(s.entityId()).orElse(null);
+        Koppelbild.Stand stand = null;
+        if (zeile != null) {
+            try {
+                stand = Koppelbild.stand(json.readTree(zeile.json()));
+            } catch (Exception e) {
+                stand = null;
+            }
+        }
+        return new ErzeugerAlarme.Koppel(stand, zeile == null ? null : zeile.empfangenAt(),
+                koppelbild.aktiveAnzahl(s.geraetId()), jetzt);
     }
 
     /** Der Soll der laufenden Fassung (EZ-16); null = der Stand der Bibliothek. */

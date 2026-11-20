@@ -121,6 +121,12 @@ läuft), `erzeuger_vorgabe_luecke` („n weitere Wechsel während einer Datenlü
   die Box keinen Wechselrichter meldet und kein Speicher daran hängt — der Aufbau zeigt dann nur die Steuerung.
   Die Komponenten bleiben (Energiefluss, Cockpit), ebenso ihre UEMS-Geräte `zaehler`/`sonstiges`
   (`AnlagensteuerungAnlegewegDbTest`).
+- **Stellplätze (PFC200 Stufe 4):** Abschnitt an der Karte und in der Karte „Gerät“ (`components/KoppelStellplaetze.tsx`,
+  Wörter `koppelStellplaetze.ts`, Dialog `KoppelStellplatzDialog.tsx` nachgeladen). Je Stellplatz Wunsch der Box,
+  Quittung der Steuerung und „Wirksam laut Steuerung“ getrennt; ohne Lesung „unbekannt“, nie 0.
+  Mit freigegebenem Stellplatz sagt der Satz der Karte nicht mehr „liest nur“ (`steuerSatz`, dritter Parameter).
+  Freigabe und Rücknahme antworten mit dem frischen Koppelbild, die Seite übernimmt es ohne zweiten Abruf.
+  Bühne: `e2e/anlagensteuerung.html?koppel=1`.
 - **Strom & Geld** (`NetzVermarktungFormen.tsx`): beide PUT ersetzen alles — jedes Formular schickt das Übrige
   unverändert mit.
 - **Verlauf › Messwerte:** `GET …/anlagensteuerungen/{geraetId}/verlauf` (Rohwerte, Frist 90 Tage, Eimer der
@@ -252,6 +258,24 @@ Art“, je Einheit/Monat), Detail `VorgabeDetail.tsx`, Routen und CSV in `erzeug
   gemeinsam); davor zeigt `MesswerteSection` die Karte „Ereignisse“ unter „Keine Messwerte“.
 - ⚠ **Einstiegs-Bündel:** die Vorgaben-Routen liegen in `erzeugerVorgabenApi.ts` (lazy); die Kachel „Wer hat heute
   geregelt?“ abonniert `…/heute` über das Erzeuger-Stück (`erzeuger.ts` `heuteAbonnieren`).
+
+## Koppelbild (PFC200 Stufe 4)
+
+Die Box schreibt Wünsche in das Koppelbild der Steuerung, die SPS entscheidet ([Vertrag](../../contracts/v2/koppelbild.md) §15).
+Code: `erzeuger/Koppelbild` (rein: Wörter, Form, Fähigkeit), `KoppelbildRepository`, `KoppelbildService`, `KoppelbildStandListener`, Routen in `web/KoppelbildController`.
+Migration `V20261119223000`: `koppelbild_stand` (Block `koppel` je Box und Steuerung, Anzeige) und `koppelbild_freigabe` (Versuch, Beleg und Freigabe je Steuerung und Stellplatz), RLS + FORCE + Standortzaun, beide in `KundeDatenBestand`, der Stand auch in `BoxDatenBestand`.
+
+- **Routen:** `GET /api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/koppelbild`, `POST /api/v1/geraete/{id}/koppelbild/stellplaetze/{platz}/test` (`schalttest.durchfuehren`), `POST|DELETE …/{platz}/freigabe` (`freigabe.erteilen`), Ziel jeweils das Gerät.
+- **Test:** eine Probe `koppel_test` (`ProbeService.koppelTest`, 20 s Wartezeit: der Agent der Box gibt nach 15 s selbst auf) mit Adresse der Datenquelle, `steuerung_kennung` der Fassung und Art des jetzigen Angebots; ein Wert außerhalb des Bands ist 400, nie geklemmt.
+- **Freigabe:** nur mit bestandenem Test (angenommen, begrenzt, überstimmt) für genau die Form des Angebots und bestätigter Wirkung; je Kommando ein Stellplatz (409, Teilindex `uq_koppelbild_freigabe_kommando`).
+- **Push:** `AnlagensteuerungQuelle.fuerBox` hängt je freigegebenem Stellplatz eine Fähigkeit `actuate` mit `platz` und `ziel` an (Band in kW, %, °C, Betriebsart-Wörter) und setzt `failsafe: release` - nur an eine Box mit `koppelbild`, die die Datenquelle der Steuerung gerade liest.
+  Die Box gibt die Erzeugungsgrenze des Fahrplans nur an `limit_kw` mit `ziel` `erzeugung_gesamt`.
+- **Alarme:** `erzeuger.koppel_nimmt_nicht_an`, `erzeuger.bibliothek_veraltet` (Soll `Programmstand.KOPPEL_BIBLIOTHEK`, mit jeder Bibliotheksfassung anheben), `erzeuger.zweiter_schreiber`; der Leser liest den gespeicherten Stand, nie Messpunkte.
+- ⚠ **Freigabe fällt mit der Form:** meldet ein lesbarer Stand ein anderes oder kein Angebot auf dem Stellplatz, widerruft der Listener sie (`angebot_geaendert`) und stellt den Push zu; ein unlesbarer Stand oder eine fremde Steuerung ändert nichts.
+- ⚠ **Byte-gleich ohne Freigabe:** ohne freigegebenen Stellplatz trägt die Anlagensteuerung im Push nur, was gespeichert ist (`actuate: []`, `measure-only`).
+- ⚠ **Nach Rücknahme oder Wegfall neu testen:** ein Beleg gilt nur, wenn er jünger ist als der letzte Widerruf.
+- ⚠ **Schalter:** `voltpilot.koppelbild.mqtt-listener-enabled` (Produktion an über `application.yml`, Surefire aus; Tests rufen `handle`).
+- Die Koppelbild-Vorlagen beginnen im Anlege-Schritt „Steuerung verbinden“ aus (`ausWenn: ohne_stellplatz`): beim Verbinden gibt es noch keinen Stellplatz.
 
 ## Nachfolger
 

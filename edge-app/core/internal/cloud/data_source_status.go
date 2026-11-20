@@ -1,6 +1,8 @@
 package cloud
 
 import (
+	"encoding/json"
+
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 )
@@ -16,6 +18,9 @@ type StatusExtension struct {
 	GemeinsameSteuerung *GemeinsameSteuerung
 	// Logik: nil = no Steuerlogik runs along (no block).
 	Logik *LogikSummary
+	// Koppel: the Koppelbild status of the plant controllers (koppelbild.md
+	// §15), as Layer 1 published it; nil = no block.
+	Koppel json.RawMessage
 }
 
 // BuiltSupports advertises only capabilities implemented by this runtime bundle.
@@ -122,6 +127,13 @@ type StatusExtension struct {
 // image reader and the plant-controller binding are both box types' since
 // Edge Light reads the image with the Go twin (internal/erzeugerbild, wired in
 // layer1/erzeuger.go - PFC200 concept Stufe 2).
+//
+// koppelbild (PFC200 Stufe 4, koppelbild.md §15): Layer 1 reads the
+// acknowledgement and writes the telegram of a controller's Koppelbild in the
+// session of its Erzeuger image, takes the Anlagensteuerung's released
+// Stellplätze as capabilities, answers the probe op koppel_test and reports
+// the heartbeat block koppel (layer1/koppel.go). Only Edge Light has Layer 1;
+// the Docker box never reports it.
 func BuiltSupports(boxArt string) []string {
 	out := []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
 		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe"}
@@ -129,8 +141,12 @@ func BuiltSupports(boxArt string) []string {
 		out = append(out, "measurement_config_per_component")
 	}
 	out = append(out, "erzeuger_registerbild", "anlagensteuerung_quelle")
-	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
+	out = append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
 		"modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten")
+	if boxArt == geraetesuche.BoxArtEdgeLight {
+		out = append(out, "koppelbild")
+	}
+	return out
 }
 
 // UpdateBackend is the apply backend a box type reports in update.backend and

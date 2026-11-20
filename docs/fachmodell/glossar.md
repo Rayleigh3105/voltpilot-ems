@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 70 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 73 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -103,6 +103,9 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Speicher-Bilanz · Vollzyklen](#speicher-bilanz--vollzyklen) — Sicht Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-7 = A (14.11.2026)
 - [Grundlast (Privatkunde) · typische Nacht · Hauslast](#grundlast-privatkunde--typische-nacht--hauslast) — Sicht Betrieb · Nachtrag Bedienkonzept Privatkunde vp-privatkunde-bedienkonzept §5, Entscheide BK-1/BK-2/BK-3 = A (14.11.2026)
 - [Abrechnung prüfen](#abrechnung-prüfen) — Sicht Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, Variante A, Entscheide BK-8/BK-9/BK-10 = A (14.11.2026)
+- [Stellplatz](#stellplatz) — Sicht Betrieb · Nachtrag PFC200 Stufe 4 „Wünschen“, Vertrag Koppelbild v1 §15 (20.11.2026)
+- [Quittung der Steuerung](#quittung-der-steuerung) — Sicht Betrieb · Nachtrag PFC200 Stufe 4 „Wünschen“, Vertrag Koppelbild v1 §5/§7 (20.11.2026)
+- [Schalt-Test](#schalt-test) — Sicht Betrieb · Nachtrag Einheitsmodell Stufe 4 und PFC200 Stufe 4 (20.11.2026)
 
 ## Kundenbereich
 
@@ -1735,3 +1738,45 @@ Wörter der Fläche: „Zeitraum“ ist der fünfte Abschnitt der Zeitleiste im 
 **Heute im Code.** Route `GET /api/v1/sites/{id}/abrechnung` und Prüfungen `…/abrechnung/pruefung(en)` (services/api/src/main/java/com/voltpilot/api/web/AbrechnungController.java), freier Zeitraum `/history?from=&to=` (`history/Zeitraum.java`), Tabelle `abrechnung_pruefung` (MIG/V20261114150000__abrechnung_pruefung.sql); Wörter `ABRECHNUNG_PRUEFEN` (PORTAL/glossar.ts), Regeln PORTAL/abrechnungPruefen.ts, Karte PORTAL/components/energie/AbrechnungKarte.tsx.
 
 **Abgrenzung.** Nicht die Ablesung einer Messstelle (UEMS, an Messstelle und Recht `ablesung.erfassen` gebunden); nicht die Erlöse (bewertet, mit Geld); nicht der Abrechnungszeitraum einer Überwachung.
+
+## Stellplatz
+
+*Sicht: Betrieb · Nachtrag PFC200 Stufe 4 „Wünschen“, Vertrag Koppelbild v1 §15 (20.11.2026)*
+
+**Eine von acht festen Stellen im Koppelbild einer Anlagensteuerung, an der die Steuerung anbietet, was die Box ihr wünschen darf: Art, Ziel und Band.**
+
+Das Anlagenprogramm der Steuerung erklärt jeden Stellplatz selbst (Angebot): eine Art (Obergrenze der Leistung, Obergrenze in Prozent, Sollwert der Leistung, Ein und Aus, Betriebsart, Sollwert der Temperatur), ein Ziel (ganze Erzeugung, Einheit n, Speicher n, Verbraucher n, Netzbezug, Einspeisung, Lampe am Gerät) und ein Band, dazu ob er gerade bereit ist und warum nicht. Je Stellplatz stehen drei Zeilen getrennt: „Wunsch der Box“ (mit Grund: Fahrplan, Netz, Regel, Handeingriff, Schalt-Test), „Quittung der Steuerung“ und „Wirksam laut Steuerung“; ohne Wunsch und ohne wirksamen Wert heißt es bei einer Grenze „niemand begrenzt“, nie 0. Wünsche schickt die Box einem Stellplatz erst nach einem bestandenen Schalt-Test und der Freigabe; je Art ist höchstens ein Stellplatz einer Steuerung freigegeben. Ändert das Anlagenprogramm Art, Ziel oder Band, fällt die Freigabe.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Stellplatz 1 der Steuerung am Biogas-BHKW: Obergrenze der Leistung · ganze Erzeugung · 0,0 bis 265,0 kW · bereit; Wunsch der Box 159,0 kW · Fahrplan; Quittung der Steuerung angenommen; wirksam 159,0 kW.
+
+**Heute im Code.** Vertrag `docs/contracts/v2/koppelbild.md` §15; Route `GET /api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/koppelbild`; Abschnitt „Stellplätze“ an der Karte unter Steuerung › Geräte und auf der Geräteseite (PORTAL/components/KoppelStellplaetze.tsx), Wörter PORTAL/koppelStellplaetze.ts, Konstanten `KOPPEL_STELLPLATZ`, `KOPPEL_WUNSCH`, `KOPPEL_WIRKSAM` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht der Steckplatz (eine Energiekarte im Controller); nicht die Viertelstunde eines Fahrplans; nicht der Schreibwert eines Modbus-Geräts (den schreibt die Box selbst, einen Stellplatz bedient die Steuerung).
+
+## Quittung der Steuerung
+
+*Sicht: Betrieb · Nachtrag PFC200 Stufe 4 „Wünschen“, Vertrag Koppelbild v1 §5/§7 (20.11.2026)*
+
+**Was die Steuerung zu einem Wunsch der Box sagt: angenommen, begrenzt, überstimmt, Art passt nicht, Wert ungültig, nicht bereit (mit Grund), abgelaufen oder kein Wunsch.**
+
+Ein Wunsch ist nie ein Befehl: die Steuerung entscheidet und quittiert jeden Wunsch zu seiner Folge. „Begrenzt“ heißt, sie hat ihn auf ihr Band gesetzt; „überstimmt“, eine Stelle mit Vorrang (Netzbetreiber, Direktvermarkter, Schutz) bestimmt; „abgelaufen“, die Frist des Wunschs ist vorbei und die Anlage fährt mit eigenen Werten. Gehört die Quittung zu einem früheren Wunsch, sagt die Zeile das. Die Quittung ist nicht die Wirkung: was die Anlage anwendet, steht getrennt als „Wirksam laut Steuerung“, und ob die Anlage folgt, sieht nur ein Mensch vor Ort oder die Messung.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Wunsch der Box 300,0 kW · Fahrplan; Quittung der Steuerung „auf das Band begrenzt“; wirksam 265,0 kW.
+
+**Heute im Code.** Vokabular `q_urteil` im Vertrag `docs/contracts/v2/koppelbild.md` §7; Wörter PORTAL/koppelStellplaetze.ts (`urteilText`), Konstante `KOPPEL_QUITTUNG` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht die gemessene Wirkung (Lese-Bild der Anlage); nicht die Antwort eines Registers beim Schreiben; nicht der angenommene Auftrag der Box.
+
+## Schalt-Test
+
+*Sicht: Betrieb · Nachtrag Einheitsmodell Stufe 4 und PFC200 Stufe 4 (20.11.2026)*
+
+**Der begrenzte Test vor einer Freigabe: VoltPilot stellt ein Gerät oder einen Stellplatz einmal kurz, ein Mensch sieht vor Ort nach, ob das Richtige geschieht.**
+
+Am Stellplatz einer Anlagensteuerung schreibt die Box 30 Sekunden lang einen Testwert aus dem Band (Grund „Schalt-Test“); danach gilt wieder, was der Fahrplan wünscht. Das Portal zeigt die Quittung der Steuerung und den wirksamen Wert und trennt „Steuerung hat angenommen“ ausdrücklich von der Wirkung an der Anlage. Erst mit dem Haken „Ich habe die Wirkung an der Anlage gesehen“ gibt es die Freigabe. Am selbstgebauten Modbus-Gerät schaltet der Schalt-Test das Gerät einmal begrenzt, mit automatischem Aus der Box.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Stellplatz 1, Testwert 200,0 kW: die Steuerung hat angenommen, wirksam 200,0 kW; der Installateur sieht die Leistung der Anlage sinken und gibt frei.
+
+**Heute im Code.** Probe-Art `koppel_test` (`docs/contracts/mqtt-probe.schema.json`), Route `POST /api/v1/geraete/{geraetId}/koppelbild/stellplaetze/{platz}/test`, Dialog PORTAL/components/KoppelStellplatzDialog.tsx; am Modbus-Gerät PORTAL/components/SchaltFreigabeDrawer.tsx. Konstante `KOPPEL_SCHALT_TEST` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht die Freigabe selbst (der zweite, bewusste Schritt danach); nicht der Verbindungstest (der liest nur).

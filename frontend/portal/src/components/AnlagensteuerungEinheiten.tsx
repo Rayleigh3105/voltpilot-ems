@@ -4,7 +4,7 @@
  * Zustand, dazu Netzpunkt (berechnet bzw. „—“ ohne Messung, EW-16 C) und Datenstand; den Programmstand zeigt EZ-16
  * an derselben Karte. Die Werte liest die Route `…/anlagensteuerungen/{geraetId}/werte` (EZ-6); ohne sie stehen
  * die Stammdaten allein. Seit GE-3 führt jede Einheit auf ihre eigene Seite `as-<Entität>~te-<n>` — die Box-Referenz
- * und die Entität stehen schon in der Adresse dieser Seite.
+ * und die Entität stehen schon in der Adresse dieser Seite. Darunter die Stellplätze des Koppelbilds (PFC200 Stufe 4).
  */
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { Erzeugungseinheit } from '../api';
@@ -13,6 +13,7 @@ import { einheitHref } from '../erzeugungseinheit';
 import { anlagensteuerungIdOf } from '../geraetAdresse';
 import type { Zeile } from '../geraetEinstellungen';
 import { parseRoute } from '../nav';
+import { KoppelStellplaetze } from './KoppelStellplaetze';
 import { useAnlagensteuerungWerte } from '../useAnlagensteuerung';
 
 export function AnlagensteuerungEinheiten({
@@ -38,6 +39,13 @@ export function AnlagensteuerungEinheiten({
       <Zeilen zeilen={einheitenZeilen(einheiten, werte)} hrefs={hrefs} testId="geraet-einheiten" />
       <h4 className="vp-gh-unter">Anlage</h4>
       <Zeilen zeilen={anlage} testId="geraet-anlagensteuerung" />
+      <KoppelStellplaetze
+        siteId={siteId}
+        geraetId={geraetId}
+        ebene="geraet"
+        einheitHref={(teNr) => (hier ? einheitHref(siteId, hier.ref, hier.entityId, teNr) : null)}
+        jetzt={now}
+      />
     </>
   );
 }

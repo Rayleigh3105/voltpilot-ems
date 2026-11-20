@@ -92,6 +92,13 @@ type ActuateCap struct {
 	// commands when nothing else does - a bool for on_off, °C for setpoint_c, a
 	// declared mode for mode. Absent = this command has no rest value.
 	Rest json.RawMessage `json:"rest,omitempty"`
+	// Platz is the Stellplatz (1..8) of an Anlagensteuerung's Koppelbild this
+	// capability writes to (koppelbild.md §15). Absent on every other device.
+	Platz int `json:"platz,omitempty"`
+	// Ziel is the target of that Stellplatz (koppelbild.md §7, e.g.
+	// erzeugung_gesamt); the timetable's PV limit goes only to a limit_kw
+	// Stellplatz on the whole generation.
+	Ziel string `json:"ziel,omitempty"`
 }
 
 // Capabilities of one entity. A measure-only entity has no Actuate list.
@@ -574,6 +581,11 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 			stages = append(stages, guards.ClampStage{Stage: stage, Before: before, After: after})
 		}
 	}
+	if e.Type == TypeAnlagensteuerung {
+		// The controller decides itself (koppelbild.md §15): the box only keeps
+		// each wish inside the band its Stellplatz offers, no other guard.
+		return e.clampStellplaetze(c, noteLimit), stages
+	}
 	switch e.category() {
 	case catStorage:
 		if c.SetpointKw != nil && e.allows(CmdSetpointKw) {
@@ -695,6 +707,11 @@ func (e Entity) category() string {
 		// Guard-safe: with no actuate capability the capability gate (allows)
 		// refuses every command whatever the category says.
 		return catConsumer
+	case TypeAnlagensteuerung:
+		// Pinned to what it always was: its Stellplatz capabilities are wishes
+		// to a controller that decides itself, never a consumer, producer or
+		// storage the box regulates (clampStellplaetze is its whole chain).
+		return catMeasureOnly
 	case TypeSubMeter:
 		// Pinned like house-load and for the same reason: a sub-meter declares
 		// no actuate capability, so the inference below would call it a METER
@@ -717,6 +734,61 @@ func (e Entity) category() string {
 		return catProducer
 	}
 	return catConsumer
+}
+
+// clampStellplaetze keeps each command of an Anlagensteuerung inside the band
+// of its Stellplatz capability; a command without a complete band (where the
+// kind has one) or outside the declared modes is dropped. on_off has no band.
+func (e Entity) clampStellplaetze(c Commands, note func(stage string, before, after float64)) Commands {
+	out := Commands{}
+	band := func(cmd string, v *float64) *float64 {
+		if v == nil || math.IsNaN(*v) || math.IsInf(*v, 0) {
+			return nil
+		}
+		for _, cap := range e.Capabilities.Actuate {
+			if cap.Command != cmd {
+				continue
+			}
+			if cap.Min == nil || cap.Max == nil || *cap.Min > *cap.Max {
+				return nil
+			}
+			x := math.Min(math.Max(*v, *cap.Min), *cap.Max)
+			note(guards.StageStellplatzBand, *v, x)
+			return &x
+		}
+		return nil
+	}
+	out.SetpointKw = band(CmdSetpointKw, c.SetpointKw)
+	out.LimitKw = band(CmdLimitKw, c.LimitKw)
+	out.LimitPct = band(CmdLimitPct, c.LimitPct)
+	if c.SetpointC != nil {
+		if v, ok := e.setpointCBand(*c.SetpointC); ok {
+			note(guards.StageStellplatzBand, *c.SetpointC, v)
+			out.SetpointC = &v
+		}
+	}
+	if c.OnOff != nil && e.allows(CmdOnOff) {
+		v := *c.OnOff
+		out.OnOff = &v
+	}
+	if c.Mode != "" && e.allows(CmdMode) && e.modeDeclared(c.Mode) {
+		out.Mode = c.Mode
+	}
+	return out
+}
+
+// StellplatzZiel is the target of the Stellplatz behind a command of an
+// Anlagensteuerung ("" without one).
+func (e Entity) StellplatzZiel(command string) string {
+	if e.Type != TypeAnlagensteuerung {
+		return ""
+	}
+	for _, cap := range e.Capabilities.Actuate {
+		if cap.Command == command && cap.Platz > 0 {
+			return cap.Ziel
+		}
+	}
+	return ""
 }
 
 // capMax returns the declared upper bound of an actuate capability, or nil.

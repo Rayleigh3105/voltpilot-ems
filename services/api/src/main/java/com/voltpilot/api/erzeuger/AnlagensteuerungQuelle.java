@@ -1,6 +1,7 @@
 package com.voltpilot.api.erzeuger;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.PushAnbindungen;
@@ -107,6 +108,14 @@ public class AnlagensteuerungQuelle implements PushAnbindungen {
         this.beendete = beendete;
     }
 
+    /** PFC200 Stufe 4: die freigegebenen Stellplätze des Koppelbilds; ohne Spring (Tests mit {@code new …}) keine. */
+    private KoppelbildRepository koppelbild;
+
+    @Autowired(required = false)
+    void setKoppelbild(KoppelbildRepository koppelbild) {
+        this.koppelbild = koppelbild;
+    }
+
     // ------------------------------------------------------------ die Regel
 
     /**
@@ -174,6 +183,9 @@ public class AnlagensteuerungQuelle implements PushAnbindungen {
         List<AnlagensteuerungRepository.Transport> steuerungen = repo.transporte(siteId);
         if (steuerungen.isEmpty()) return Map.of();
         boolean kann = box != null && faehigkeiten.kann(box, FAEHIGKEIT);
+        // PFC200 Stufe 4: die freigegebenen Stellplätze nur an eine Box, die das Koppelbild führt.
+        Map<UUID, List<KoppelbildRepository.Freigabe>> stellplaetze = koppelbild != null && box != null
+                && faehigkeiten.kann(box, Koppelbild.FAEHIGKEIT) ? koppelbild.aktiveJeKomponente(siteId) : Map.of();
         Map<UUID, Anbindung> out = new LinkedHashMap<>();
         for (AnlagensteuerungRepository.Transport s : steuerungen) {
             Optional<Transport> t = kann ? transport(s.protokoll(), s.adresse(), s.unitId()) : Optional.empty();
@@ -182,8 +194,17 @@ public class AnlagensteuerungQuelle implements PushAnbindungen {
                         + "kein Treiber im Push", s.entityId(), s.kennzeichen(), s.protokoll(), s.adresse(),
                         s.unitId());
             }
-            out.put(s.entityId(), t.map(x -> new Anbindung(kennung(x), treiber(json, x, s.kennzeichen())))
-                    .orElseGet(Anbindung::keine));
+            Anbindung an = t.map(x -> new Anbindung(kennung(x), treiber(json, x, s.kennzeichen())))
+                    .orElseGet(Anbindung::keine);
+            // Die Stellplätze schreibt nur die Box, die die Datenquelle der Steuerung gerade liest.
+            List<KoppelbildRepository.Freigabe> frei = box != null && box.equals(s.box()) ? stellplaetze.get(s.entityId())
+                    : null;
+            if (frei != null && !frei.isEmpty()) {
+                ArrayNode caps = json.createArrayNode();
+                frei.forEach(f -> caps.add(Koppelbild.faehigkeit(json, f.platz(), f.form())));
+                an = an.mitStellplaetzen(caps);
+            }
+            out.put(s.entityId(), an);
         }
         return out;
     }

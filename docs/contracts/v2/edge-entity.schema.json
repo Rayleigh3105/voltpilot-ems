@@ -124,6 +124,17 @@
                 "exclusiveMinimum": 0,
                 "description": "Steuerlogik K2, command setpoint_c only: the device's step; the granted value is rounded onto min + n * step (halves up) before the band clamp."
               },
+              "platz": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8,
+                "description": "Anlagensteuerung only (koppelbild.md §15): the Stellplatz of the Koppelbild this released capability writes to. The box clamps the command into [min, max] (stage guard:stellplatz_band) and writes it, converted into the picture's whole units, as the wish of that Stellplatz; the controller decides itself."
+              },
+              "ziel": {
+                "type": "string",
+                "pattern": "^[a-z_]{1,32}$",
+                "description": "Anlagensteuerung only, with platz: the target of that Stellplatz (koppelbild.md §7, e.g. erzeugung_gesamt, speicher, einspeisung). The timetable's PV limit goes only to a limit_kw Stellplatz on erzeugung_gesamt."
+              },
               "rest": {
                 "description": "Steuerlogik K2: the device's rest value (Ruhewert) - a boolean for on_off, °C for setpoint_c (inside [min, max]), a declared mode for mode. The failsafe 'rest' commands it when nothing else does, and a holder that leaves this command out gets it too.",
                 "type": ["boolean", "number", "string"]

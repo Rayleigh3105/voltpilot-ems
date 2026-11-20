@@ -211,6 +211,7 @@ describe('Alarm-Vorschlag (Vorlagen aus EZ-11/EZ-11b)', () => {
     expect(ERZEUGER_ALARM_VORLAGEN.map((v) => v.wertart)).toEqual([
       'erzeuger.fernsteuerung_nicht_bereit', 'erzeuger.daten_veraltet', 'erzeuger.anlage_folgt_nicht',
       'erzeuger.netzbetreiber_abgeschaltet', 'erzeuger.fernwirk_verbindung_weg', 'erzeuger.programmstand_veraltet',
+      'erzeuger.koppel_nimmt_nicht_an', 'erzeuger.bibliothek_veraltet', 'erzeuger.zweiter_schreiber',
     ]);
     expect(ERZEUGER_ALARM_VORLAGEN.map((v) => v.vorlage)).toEqual(ERZEUGER_ALARM_VORLAGEN.map((v) =>
       WERTE_KATALOG.find((e) => e.wertart === v.wertart)?.vorlage));
@@ -222,6 +223,16 @@ describe('Alarm-Vorschlag (Vorlagen aus EZ-11/EZ-11b)', () => {
     const an = (n: typeof netz) => ERZEUGER_ALARM_VORLAGEN.filter((v) => alarmVorschlag(v, n).an).map((v) => v.name);
     expect(an(netz)).toEqual(['Daten veraltet', 'Anlage folgt nicht', 'Netzbetreiber hat abgeschaltet', 'Programmstand veraltet']);
     expect(an({ ...netz, kanal: 'relais_ma', einspeisemanagement: 'fernwirk' })).toHaveLength(6);
+  });
+
+  it('lässt die Koppelbild-Vorlagen aus, solange kein Stellplatz freigegeben ist (PFC200 Stufe 4)', () => {
+    const netz = { ...netzAusKopf(BUETTNER, NV_LEER), kanal: 'relais_ma' as const, einspeisemanagement: 'fernwirk' as const };
+    for (const w of ['erzeuger.koppel_nimmt_nicht_an', 'erzeuger.bibliothek_veraltet', 'erzeuger.zweiter_schreiber']) {
+      const v = ERZEUGER_ALARM_VORLAGEN.find((x) => x.wertart === w)!;
+      expect(alarmVorschlag(v, netz)).toEqual({ an: false, grund: 'noch kein Stellplatz der Steuerung freigegeben' });
+    }
+    expect(ERZEUGER_ALARM_VORLAGEN.find((x) => x.wertart === 'erzeuger.zweiter_schreiber')!.satz)
+      .toBe('Sag mir Bescheid, wenn ein zweites Programm länger als 1 Minute Wünsche an die Steuerung schreibt. · Warnung');
   });
 
   it('legt die Regel an der Anlage an wie das Blatt „Überwachen“, gemeldet an die Rolle Kundenadministrator', () => {

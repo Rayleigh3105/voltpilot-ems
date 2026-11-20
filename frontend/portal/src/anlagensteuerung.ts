@@ -233,12 +233,15 @@ export function hatDirektvermarkter(nv: NetzVermarktung | null | undefined, je: 
 }
 
 /** „VoltPilot liest diese Anlage nur. Gesteuert wird sie vom Netzbetreiber … und vom Direktvermarkter …“ */
-export function steuerSatz(nv: NetzVermarktung | null | undefined, je: WerteJe): string {
+export function steuerSatz(nv: NetzVermarktung | null | undefined, je: WerteJe, freigegebeneStellplaetze = 0): string {
   const nb = netzbetreiberName(nv);
   const dv = direktvermarkterName(nv);
   const vomNb = nb ? `vom Netzbetreiber ${nb}` : 'vom Netzbetreiber';
   const vomDv = hatDirektvermarkter(nv, je) ? (dv ? ` und vom Direktvermarkter ${dv}` : ' und vom Direktvermarkter') : '';
-  return `VoltPilot liest diese Anlage nur. Gesteuert wird sie ${vomNb}${vomDv}.`;
+  if (freigegebeneStellplaetze === 0) return `VoltPilot liest diese Anlage nur. Gesteuert wird sie ${vomNb}${vomDv}.`;
+  // PFC200 Stufe 4: mit freigegebenem Stellplatz wünscht die Box - entscheiden tut weiter die Steuerung.
+  const plaetze = freigegebeneStellplaetze === 1 ? 'einem freigegebenen Stellplatz' : `${freigegebeneStellplaetze} freigegebenen Stellplätzen`;
+  return `Gesteuert wird diese Anlage ${vomNb}${vomDv}. VoltPilot schickt der Steuerung Wünsche an ${plaetze}; sie entscheidet selbst.`;
 }
 
 // ---------------------------------------------------------------------------

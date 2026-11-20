@@ -44,8 +44,8 @@ else
 fi
 
 echo "--- 2.+3. Go-Zwillinge und Schicht 1 (mit Race-Detector)"
-go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/einmalschreiben/... ./internal/messwerte/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
-go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/einmalschreiben/... ./internal/messwerte/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/...
+go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/koppelbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/einmalschreiben/... ./internal/messwerte/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
+go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/koppelbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/einmalschreiben/... ./internal/messwerte/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/...
 # Das Update im Programm (Konzept vp-edge-light-update, K3): laden, pruefen,
 # Probe - und die Lader-Pflege des bestaetigten Programms (Loader-Selbstupdate).
 go_run CGO_ENABLED=1 -- test -count=1 -race -run 'EdgeLight' ./internal/agent/
@@ -53,8 +53,12 @@ go_run CGO_ENABLED=1 -- test -count=1 -race -run 'EdgeLight' ./internal/agent/
 # Klima, Heizung, Kaelte (K2/K3): das eigene Modbus-Geraet mit Schreibwerten liest
 # und schreibt der Core selbst, gegen ein gestelltes Geraet.
 go_run CGO_ENABLED=1 -- test -count=1 -race -run 'Steuerlogik|LogikQuelle|LogikBefehle|ModbusGeraet|KlimaLogik|KuehlraumLogik' ./internal/agent/
+# Koppelbild (PFC200 Stufe 4): Herzschlag-Block, Fahrplan-Grenze an den Stellplatz,
+# Schalt-Test ueber Schicht 1; die Stellplatz-Faehigkeiten am Schiedsrichter.
+go_run CGO_ENABLED=1 -- test -count=1 -race -run 'KoppelStatus|FahrplanGrenze|KoppelTest' ./internal/agent/ ./internal/probe/
+go_run CGO_ENABLED=1 -- test -count=1 -race -run 'Stellplaetze' ./internal/entities/
 
-echo "--- 4. SPS-Bibliothek (CODESYS) gegen die Vertragsvektoren des Erzeuger-Bilds"
+echo "--- 4. SPS-Bibliothek (CODESYS) gegen die Vertragsvektoren des Erzeuger-Bilds und des Koppelbilds"
 if command -v python3 >/dev/null 2>&1; then
   python3 "$REPO_ROOT/sps/codesys/pruefer/pruefe.py"
 else

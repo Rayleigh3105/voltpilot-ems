@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten"]` (Docker-Box; Edge Light ohne `measurement_config_per_component`, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten"]` (Docker-Box; Edge Light ohne `measurement_config_per_component` und mit `koppelbild`, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -148,6 +148,9 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   `logikdienst/heizstabregler/gleichheit_test.go`). Beide Box-Arten melden es. Die Cloud liefert diese Übersetzungen
   nur an eine Box mit diesem Wort aus, nach dem Schalter der Anlage; ohne es bleiben Steuerart und Heizstab-Regler auf
   dem alten Weg.
+- `koppelbild` (PFC200 Stufe 4, 19.11.2026): die Box führt das [Koppelbild](koppelbild.md) einer Anlagensteuerung.
+  Layer 1 liest die Quittung und schreibt das Telegramm in der Sitzung des Erzeuger-Bilds derselben Steuerung, nimmt die freigegebenen Stellplätze als Fähigkeiten (`actuate` mit `platz`), beantwortet die Probe-Art `koppel_test` und meldet den Herzschlag-Block `koppel` (Beleg `layer1/koppel_test.go`).
+  Nur Edge Light meldet es (`box_arten: ["edge_light"]`); die Cloud schickt Stellplatz-Fähigkeiten und Schalt-Tests nur an eine Box mit diesem Wort.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).
@@ -179,6 +182,7 @@ der Palette.
 `erzeuger_registerbild` und `anlagensteuerung_quelle` melden seit Stufe 2 des PFC200-Konzepts beide Box-Arten: Edge Light
 liest das Erzeuger-Bild mit dem Go-Zwilling (`internal/erzeugerbild`, verdrahtet in `internal/layer1/erzeuger.go`), der gegen
 die Vertrags-Vektoren und die aus der Palette erzeugten `erzeuger-laufzeit-vectors.json` geprüft ist.
+`koppelbild` meldet nur Edge Light (`box_arten: ["edge_light"]`): das Koppelbild läuft in Layer 1, die Docker-Box hat keines.
 Auf Edge Light kommen Erzeuger-Punkte im zusammengelegten Plan an; zwei Anlagensteuerungen an einer Edge Light teilen sich
 die Punktnamen und werden dort ohne `entity_id` gesendet, die Box lehnt sie dann benannt ab (`driver_unavailable`), statt sie
 einer Steuerung zuzuordnen.

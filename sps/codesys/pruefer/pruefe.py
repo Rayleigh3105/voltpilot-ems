@@ -1,4 +1,5 @@
-"""Pruefer der VoltPilot-Bibliothek fuer CODESYS gegen die Vertragsvektoren des Erzeuger-Bilds.
+"""Pruefer der VoltPilot-Bibliothek fuer CODESYS gegen die Vertragsvektoren des Erzeuger-Bilds
+und des Koppelbilds.
 
     python3 sps/codesys/pruefer/pruefe.py            # alles pruefen, Bericht, Exit 1 bei Fehler
     python3 sps/codesys/pruefer/pruefe.py --schreibe # dazu erwartung.json und plcopen/*.xml neu schreiben
@@ -15,6 +16,15 @@ Was er prueft, jeweils am Structured Text der Bibliothek (st.py fuehrt ihn aus):
 5. Probeprojekt: das Bild ist lesbar, und probeprojekt/erwartung.json ist, was die Box lesen muss.
 6. Ungedeckt und unbekannt: das Typ-Maximum, nie 0.
 7. plcopen/*.xml ist aus denselben Quellen erzeugt und aktuell.
+
+Koppelbild (FB_VP_Koppelbild, koppelbild-vectors.json):
+
+8. Vertragsfaelle: jeder Schritt jedes Falls - Halteregister setzen, ein Aufruf des Bausteins - ergibt
+   genau die 116 Woerter der Quittung und die Ausgaenge (Urteile, zugelassene Werte, Frist, edge_lebt).
+9. Frist und edge_lebt ueber den Ueberlauf von TIME() nach 49 Tagen; Pruefwert ueber VP_KoppelSetzeU32.
+10. Grundprogramm: Probe-Stellplatz 8 schaltet die Lampe und laesst sie nach der Frist los.
+11. Vorlagen PV und BHKW nehmen den Wunsch an, Vorrang bleibt im Anlagenprogramm, nach der Frist
+    faehrt die Anlage allein.
 """
 
 from __future__ import annotations
@@ -27,6 +37,7 @@ from pathlib import Path
 HIER = Path(__file__).resolve().parent
 sys.path.insert(0, str(HIER))
 
+import koppel  # noqa: E402
 import st  # noqa: E402
 import vertrag  # noqa: E402
 
@@ -34,6 +45,7 @@ CODESYS = HIER.parent
 BIBLIOTHEK = sorted((CODESYS / "bibliothek").glob("*.st"))
 GVL = CODESYS / "grundprogramm" / "GVL_VoltPilot.st"
 ERWARTUNG = CODESYS / "probeprojekt" / "erwartung.json"
+VORLAGEN = CODESYS / "vorlagen"
 
 
 def projekt(programm: Path | None = None) -> st.Projekt:
@@ -164,6 +176,255 @@ def pruefe_lesung(b: Bericht, name: str, fall: dict, lesung: list[int], erwartun
         b.ok(f"{name}: dieselben Woerter, gelesen wie erwartet")
 
 
+# ---------------------------------------------------------------- Koppelbild
+
+GRUENDE = {"grund_stoerung": "xGrundStoerung", "grund_hand_ort": "xGrundHandOrt", "grund_wartung": "xGrundWartung",
+           "grund_vorrang": "xGrundVorrang", "grund_sonstiger": "xGrundSonstiger"}
+
+
+def gvl(p: st.Projekt, name: str):
+    return p.globale["GVL_VoltPilot"][name]
+
+
+def koppel_aufruf(p: st.Projekt, inst: st.FbInstanz, e: dict):
+    """Ein Aufruf von FB_VP_Koppelbild mit den Eingaengen e einer Vektor-Stufe, auf die globalen Abbilder."""
+    w = inst.werte
+    w["udiSteuerungId"] = e["steuerung_id"]
+    w["xFernsteuerungFrei"] = e["fernsteuerung_frei"]
+    w["xHandOrt"] = e["hand_ort"]
+    w["uiBibliothek"] = e["bibliothek"]
+    w["tHoechsteFrist"] = e["hoechste_frist_s"] * 1000
+    for n in range(1, 9):
+        a = e["angebot"].get(str(n))
+        felder = {}
+        if a and a["art"] != "keiner":
+            felder = {"uiArt": koppel.ART[a["art"]], "uiZiel": koppel.ZIEL[a["ziel"]], "uiNr": a["nr"],
+                      "diMin": a["min"], "diMax": a["max"], "xBereit": a["bereit"]}
+            felder.update({GRUENDE[g]: True for g in a["gruende"]})
+        w["aAngebot"].werte[n - 1] = struktur(p, "ST_VP_Angebot", felder)
+        r = e["rueck"].get(str(n), {})
+        w["aRueckmeldung"].werte[n - 1] = struktur(p, "ST_VP_Rueckmeldung", {
+            "diWirksam": r.get("wirksam", 0), "xWirksamBekannt": "wirksam" in r, "xUeberstimmt": r.get("ueberstimmt", False)})
+    w["aWunschRegister"] = gvl(p, "aKoppelWunsch")
+    w["aQuittungRegister"] = gvl(p, "aKoppelQuittung")
+    p.lauf(inst.pou, w)
+
+
+def koppel_ausgang(inst: st.FbInstanz) -> dict:
+    w = inst.werte
+    wunsch = []
+    for x in w["aWunsch"].werte:
+        gilt = x["xGilt"]
+        wunsch.append({"gilt": gilt, "wert": x["diWert"] if gilt else None,
+                       "grund": koppel.GRUND_NAME.get(x["uiGrund"], x["uiGrund"]) if gilt else None,
+                       "urteil": koppel.Q_URTEIL[x["uiUrteil"]]})
+    return {"kopf_urteil": koppel.KOPF_URTEIL[w["uiKopfUrteil"]], "rest_s": w["uiRestS"], "edge_lebt": w["xEdgeLebt"],
+            "wunsch": wunsch}
+
+
+def pruefe_koppel_faelle(b: Bericht):
+    for f, schritte in koppel.faelle():
+        name = f["name"].split()[0]
+        p = projekt()
+        inst = p.neue_instanz(p.pous["FB_VP_Koppelbild"])
+        a = f["sps_anfang"]
+        inst.werte.update(uiHerzschlag=a["herzschlag"], uiAngenommen=a["angenommen_zaehler"],
+                          uiAbgelehnt=a["abgelehnt_zaehler"])
+        halte = gvl(p, "aKoppelWunsch")
+        abweichung = []
+        geprueft = 0
+        for k, (s, e) in enumerate(schritte, 1):
+            wo = f"Schritt {k} (t={s['t_ms']})"
+            if s.get("nur_lesen"):
+                continue
+            if s.get("sps_neustart"):
+                inst = p.neue_instanz(p.pous["FB_VP_Koppelbild"])
+                halte.werte[:] = [0] * 64
+            if "w" in s:
+                halte.werte[:] = s["w"]["woerter"]
+            if s.get("sps_steht"):
+                if list(gvl(p, "aKoppelQuittung").werte) != s["q_woerter"]:
+                    abweichung.append(f"{wo}: das Abbild steht nicht")
+                continue
+            p.uhr_ms = s["t_ms"]
+            try:
+                koppel_aufruf(p, inst, e)
+            except st.StFehler as fehler:
+                abweichung.append(f"{wo}: Ausfuehrung: {fehler}")
+                break
+            geprueft += 1
+            q = list(gvl(p, "aKoppelQuittung").werte)
+            if q != s["q_woerter"]:
+                i = next(i for i, (x, y) in enumerate(zip(q, s["q_woerter"])) if x != y)
+                abweichung.append(f"{wo}: Quittung Wort {1000 + i}: {q[i]:#06x} statt {s['q_woerter'][i]:#06x}")
+            aus = koppel_ausgang(inst)
+            if aus != s["erwartet_sps"]:
+                abweichung.append(f"{wo}: Ausgaenge {aus} statt {s['erwartet_sps']}")
+        if abweichung:
+            b.nein(f"Koppelbild {name}: " + "; ".join(abweichung[:4]))
+        else:
+            b.ok(f"Koppelbild {name}: {geprueft} Aufrufe, dieselbe Quittung und dieselben Ausgaenge")
+
+
+def pruefe_koppel_ueberlauf(b: Bericht):
+    """Frist und edge_lebt rechnen mit Dauern: der Ueberlauf von TIME() nach 49 Tagen schadet nicht."""
+    p = projekt()
+    inst = p.neue_instanz(p.pous["FB_VP_Koppelbild"])
+    e = {"steuerung_id": 7, "fernsteuerung_frei": True, "hand_ort": False, "bibliothek": 0x0100, "hoechste_frist_s": 60,
+         "angebot": {"1": {"art": "limit_w", "ziel": "erzeugung_gesamt", "nr": 0, "min": 0, "max": 100000,
+                           "bereit": True, "gruende": []}}, "rueck": {}}
+    halte = gvl(p, "aKoppelWunsch")
+    t0 = 0xFFFFF000
+
+    def zur(t: int):
+        p.uhr_ms = t & 0xFFFFFFFF
+        koppel_aufruf(p, inst, e)
+        return koppel_ausgang(inst)
+
+    zur(t0)
+    halte.werte[:] = koppel.telegramm(0x1234, 1, 7, plaetze={1: ("limit_w", 50000, "markt", 1)})
+    zur(t0 + 0x800)
+    mitte = zur(t0 + 0x800 + 30000)
+    still = zur(t0 + 0x800 + 20000 + 15000)
+    ende = zur(t0 + 0x800 + 60000)
+    spaeter = zur(t0 + 0x800 + 2 ** 32 + 1000)
+    if (mitte["rest_s"], mitte["wunsch"][0]["gilt"]) != (30, True):
+        b.nein(f"Frist ueber den Ueberlauf von TIME(): {mitte}")
+    elif still["edge_lebt"] or ende["rest_s"] != 0 or ende["wunsch"][0]["urteil"] != "abgelaufen":
+        b.nein(f"Ablauf ueber den Ueberlauf von TIME(): {still} {ende}")
+    elif spaeter["edge_lebt"] or spaeter["wunsch"][0]["gilt"]:
+        b.nein(f"49 Tage spaeter lebt die Edge wieder auf: {spaeter}")
+    else:
+        b.ok("Koppelbild: Frist und edge_lebt ueber den Ueberlauf von TIME(); nach 49 Tagen kein Wiederaufleben")
+
+
+def pruefe_koppel_pruefwert(b: Bericht):
+    text = (CODESYS / "bibliothek" / "FB_VP_Koppelbild.st").read_text(encoding="utf-8")
+    ohne = re.sub(r"\(\*.*?\*\)", "", text, flags=re.S)
+    if re.search(r"aQuittungRegister\s*\[\s*[23]\s*\]\s*:=", ohne):
+        b.nein("der Pruefwert der Quittung steht als Konstante statt ueber VP_KoppelSetzeU32")
+    elif not re.search(r"VP_KoppelSetzeU32\([^;]*uiAdresse\s*:=\s*2\s*,\s*udiWert\s*:=\s*16#01020304", ohne):
+        b.nein("der Pruefwert 16#01020304 der Quittung geht nicht ueber VP_KoppelSetzeU32 an Adresse 2")
+    else:
+        b.ok("Koppelbild: Pruefwert der Quittung ueber VP_KoppelSetzeU32 (Vertrag §1)")
+
+
+def q_platz(q: list[int], n: int, versatz: int) -> int:
+    return q[20 + (n - 1) * 12 + versatz]
+
+
+def pruefe_koppel_grundprogramm(b: Bericht):
+    p = projekt(CODESYS / "grundprogramm" / "PLC_PRG.st")
+    p.uhr_ms = 0
+    p.zyklus()
+    q = list(gvl(p, "aKoppelQuittung").werte)
+    angebot = (q_platz(q, 8, 0), q_platz(q, 8, 1), q[5], q[8], q[9])
+    halte = gvl(p, "aKoppelWunsch")
+    halte.werte[:] = koppel.telegramm(0x1111, 3, 0, frist_s=20, e_bits=("steuerung_frei", "probe"),
+                                      plaetze={8: ("on_off", 1, "test", 1)})
+    p.uhr_ms = 1000
+    p.zyklus()
+    an = gvl(p, "xProbeLampe")
+    p.uhr_ms = 20999
+    p.zyklus()
+    noch = gvl(p, "xProbeLampe")
+    p.uhr_ms = 21000
+    p.zyklus()
+    aus = gvl(p, "xProbeLampe")
+    q = list(gvl(p, "aKoppelQuittung").werte)
+    if angebot != (koppel.ART["on_off"], koppel.ZIEL["probe"], 1, 0, 0):
+        b.nein(f"Grundprogramm: Angebot {angebot} statt on_off/probe auf Stellplatz 8, Steuerung 0")
+    elif (an, noch, aus) != (True, True, False) or koppel.Q_URTEIL[q_platz(q, 8, 8)] != "abgelaufen":
+        b.nein(f"Grundprogramm: Lampe {an}, {noch}, {aus} statt an, an, aus nach der Frist")
+    else:
+        b.ok("Grundprogramm: Probe-Stellplatz 8 schaltet die Lampe und laesst sie nach 20 s Frist los (K20)")
+
+
+def pruefe_vorlagen(b: Bericht):
+    # PV: drei Wechselrichter je 125 kW, Steuerung 1
+    p = projekt(VORLAGEN / "pv" / "PLC_PRG.st")
+    prg = p.programm("PLC_PRG")
+    for n in (1, 2, 3):
+        prg.werte["auiNennKw"].werte[n - 1] = 125
+    halte = gvl(p, "aKoppelWunsch")
+
+    def zyklus(t: int):
+        p.uhr_ms = t
+        p.zyklus()
+        return list(prg.werte["audiSollW"].werte[:3]), list(gvl(p, "aKoppelQuittung").werte)
+
+    soll0, _ = zyklus(0)
+    halte.werte[:] = koppel.telegramm(0x2001, 1, 1, plaetze={1: ("limit_w", 159000, "markt", 1)})
+    soll1, _ = zyklus(1000)
+    _, q1 = zyklus(1100)
+    prg.werte["xNbVorgabe"] = True
+    prg.werte["uiNbZehntelProzent"] = 400
+    soll2, _ = zyklus(2000)
+    _, q2 = zyklus(2100)
+    bild = list(gvl(p, "aErzeugerBild").werte)
+    prg.werte["xNbVorgabe"] = False
+    soll3, q3 = zyklus(61000)
+    prg.werte["xHandOrt"] = True
+    halte.werte[:] = koppel.telegramm(0x2001, 2, 1, plaetze={1: ("limit_w", 100000, "markt", 2)})
+    soll4, _ = zyklus(62000)
+    _, q4 = zyklus(62100)
+    fehler = []
+    if soll0 != [125000] * 3:
+        fehler.append(f"ohne Wunsch {soll0}")
+    if soll1 != [53000] * 3 or koppel.Q_URTEIL[q_platz(q1, 1, 8)] != "angenommen":
+        fehler.append(f"Wunsch 159 kW: {soll1}, {koppel.Q_URTEIL[q_platz(q1, 1, 8)]}")
+    if soll2 != [50000] * 3 or koppel.Q_URTEIL[q_platz(q2, 1, 8)] != "ueberstimmt" or bild[34] != 1:
+        fehler.append(f"Netzbetreiber 40 %: {soll2}, {koppel.Q_URTEIL[q_platz(q2, 1, 8)]}, quelle_p {bild[34]}")
+    if soll3 != [125000] * 3 or koppel.Q_URTEIL[q_platz(q3, 1, 8)] != "abgelaufen":
+        fehler.append(f"nach der Frist: {soll3}, {koppel.Q_URTEIL[q_platz(q3, 1, 8)]}")
+    if soll4 != [125000] * 3 or koppel.Q_URTEIL[q_platz(q4, 1, 8)] != "nicht_bereit":
+        fehler.append(f"Hand: {soll4}, {koppel.Q_URTEIL[q_platz(q4, 1, 8)]}")
+    if fehler:
+        b.nein("Vorlage PV: " + "; ".join(fehler))
+    else:
+        b.ok("Vorlage PV: Wunsch begrenzt, Netzbetreiber ueberstimmt, nach der Frist und bei Hand eigene Werte")
+
+    # BHKW: Motoren 66 und 33 kW, Steuerung 2
+    p = projekt(VORLAGEN / "bhkw" / "PLC_PRG.st")
+    prg = p.programm("PLC_PRG")
+    prg.werte["auiNennKw"].werte[0] = 66
+    prg.werte["auiNennKw"].werte[1] = 33
+    halte = gvl(p, "aKoppelWunsch")
+
+    def bhkw(t: int):
+        p.uhr_ms = t
+        p.zyklus()
+        return list(prg.werte["axMotorEin"].werte[:2]), list(prg.werte["audiSollW"].werte[:2]), \
+            list(gvl(p, "aKoppelQuittung").werte)
+
+    ein0, soll0, _ = bhkw(0)
+    halte.werte[:] = koppel.telegramm(0x3001, 1, 2, plaetze={1: ("limit_w", 50000, "markt", 1),
+                                                              2: ("on_off", 0, "regel", 1)})
+    ein1, soll1, _ = bhkw(1000)
+    _, _, q1 = bhkw(1100)
+    prg.werte["xDvAbruf"] = True
+    prg.werte["udiDvSollW"] = 99000
+    ein2, soll2, _ = bhkw(2000)
+    _, _, q2 = bhkw(2100)
+    prg.werte["xDvAbruf"] = False
+    ein3, soll3, _ = bhkw(61000)
+    fehler = []
+    if (ein0, soll0) != ([True, True], [66000, 33000]):
+        fehler.append(f"ohne Wunsch {ein0} {soll0}")
+    if (ein1, soll1) != ([False, True], [0, 33000]) or koppel.Q_URTEIL[q_platz(q1, 2, 8)] != "angenommen" \
+            or koppel.Q_URTEIL[q_platz(q1, 1, 8)] != "angenommen":
+        fehler.append(f"Motor 1 aus, 50 kW: {ein1} {soll1}")
+    if ein2 != [True, True] or koppel.Q_URTEIL[q_platz(q2, 2, 8)] != "ueberstimmt" \
+            or koppel.Q_URTEIL[q_platz(q2, 1, 8)] != "angenommen" or soll2 != [33333, 16666]:
+        fehler.append(f"Abruf des Direktvermarkters: {ein2} {soll2} {koppel.Q_URTEIL[q_platz(q2, 2, 8)]}")
+    if (ein3, soll3) != ([True, True], [66000, 33000]):
+        fehler.append(f"nach der Frist {ein3} {soll3}")
+    if fehler:
+        b.nein("Vorlage BHKW: " + "; ".join(fehler))
+    else:
+        b.ok("Vorlage BHKW: Grenze und Motor 1 aus auf Wunsch, Direktvermarkter geht vor, nach der Frist eigene Werte")
+
+
 def pruefe_herzschlag(b: Bericht):
     p = projekt()
     leer = {"udiSteuerungId": 1, "uiProgrammstand": 2611, "uiAnlagenart": 1, "uiTeAnzahl": 1,
@@ -282,6 +543,9 @@ def probe_erwartung() -> dict:
         "woerter": {"0..67": bild[0:68], "140..219": bild[140:220]},
         "gelesen": gelesen,
         "namen": vertrag.namen(bild, gelesen["kopf"]),
+        "koppelbild": {"_comment": "Quittung beim Programmstart (Eingangsregister 1000..1115, Funktionscode 4): Stellplatz 1 "
+                                   "limit_w auf die ganze Erzeugung, Stellplatz 8 die Lampe; kopf_urteil keins",
+                       "1000..1115": list(gvl(p, "aKoppelQuittung").werte)},
     }
 
 
@@ -306,19 +570,21 @@ def pruefe_plcopen(b: Bericht, schreibe: bool):
     if plcopen.main(["--pruefe"]) != 0:
         b.nein("plcopen/*.xml ist veraltet - pruefe.py --schreibe (oder plcopen.py) ausfuehren und committen")
     else:
-        b.ok("PLCopen XML (Bibliothek, Grundprogramm, Probeprojekt) aus denselben .st-Quellen, aktuell")
+        b.ok("PLCopen XML (Bibliothek, Grundprogramm, Probeprojekt, Vorlagen PV und BHKW) aus denselben .st-Quellen, aktuell")
 
 
 def main(argv: list[str]) -> int:
     b = Bericht()
     for pruefung in (pruefe_vertragsfaelle, pruefe_herzschlag, pruefe_unbekannt, pruefe_pruefwert,
                      pruefe_grundprogramm, lambda x: pruefe_probeprojekt(x, "--schreibe" in argv),
+                     pruefe_koppel_faelle, pruefe_koppel_ueberlauf, pruefe_koppel_pruefwert,
+                     pruefe_koppel_grundprogramm, pruefe_vorlagen,
                      lambda x: pruefe_plcopen(x, "--schreibe" in argv)):
         try:
             pruefung(b)
         except Exception as fehler:  # noqa: BLE001 - jede Pruefung scheitert fuer sich, mit Grund
             b.nein(f"{getattr(pruefung, '__name__', 'Probeprojekt')}: {type(fehler).__name__}: {fehler}")
-    print("VoltPilot-Bibliothek (CODESYS) gegen die Vertragsvektoren des Erzeuger-Bilds:")
+    print("VoltPilot-Bibliothek (CODESYS) gegen die Vertragsvektoren des Erzeuger-Bilds und des Koppelbilds:")
     print("\n".join(b.zeilen))
     if b.fehler:
         print(f"{len(b.fehler)} Fehler")

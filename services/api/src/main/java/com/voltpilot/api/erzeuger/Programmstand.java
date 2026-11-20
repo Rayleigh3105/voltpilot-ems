@@ -26,6 +26,14 @@ public final class Programmstand {
      */
     public static final int BIBLIOTHEK = 2610;
 
+    /**
+     * Die Fassung des Bausteins {@code FB_VP_Koppelbild} der VoltPilot-Bibliothek (PFC200 Stufe 4,
+     * {@code docs/contracts/v2/koppelbild.md} Quittung Wort 1007, 0xHHNN), die eine Anlage heute fahren soll. Wie
+     * {@link #BIBLIOTHEK} mit jeder freigegebenen Fassung der Bibliothek anheben, im selben Pull Request wie ihr
+     * Vermerk; ältere Fassungen meldet der Alarm „Bibliothek veraltet“.
+     */
+    public static final int KOPPEL_BIBLIOTHEK = 0x0100;
+
     /** Die Ungültig-Marke des Kopf-Registers (Katalog {@code ungueltig}). */
     static final int UNGUELTIG = 0xFFFF;
 
