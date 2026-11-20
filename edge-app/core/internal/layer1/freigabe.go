@@ -18,12 +18,12 @@ import "sync/atomic"
 // The normal record is a bench session: the captain runs the Go build at the
 // bench against the real device and the entry's Beleg names that session. The
 // captain can also release a family without a bench session, as he did for
-// Deye hybrid_3p (remote, tou) and Fronius fronius_sunspec (abregelung) on
-// 20.11.2026, resting the Beleg on the equality with the Node-RED executor's
-// behaviour instead (the shared vectors of PR #1965 and PR #1967). Such a
-// Beleg says so honestly, by name; the bench steps from those PRs stay
-// recommended before the family's first field deployment, they are just not
-// a precondition any more.
+// Deye hybrid_3p and hybrid_1p (remote, tou) and Fronius fronius_sunspec
+// (abregelung) on 20.11.2026, resting the Beleg on the equality with the
+// Node-RED executor's behaviour instead (the shared vectors of PR #1965 and
+// PR #1967). Such a Beleg says so honestly, by name; the bench steps from
+// those PRs stay recommended before the family's first field deployment,
+// they are just not a precondition any more.
 //
 // A build with the tag `pruefstand` (pruefstand.go) opens the gate for every
 // family regardless of this table, for the bench session itself; a release
@@ -45,6 +45,10 @@ var freigaben = []Freigabe{
 		"gestützt auf die Gleichheit mit dem Node-RED-Verhalten (gemeinsame Vektoren, PR #1965)"},
 	{Familie: "fronius_sunspec", Pfad: "abregelung", Beleg: "Freigabe durch den Captain am 20.11.2026 ohne Prüfstand, " +
 		"gestützt auf die Gleichheit mit dem Node-RED-Verhalten (gemeinsame Vektoren, PR #1967)"},
+	{Familie: "hybrid_1p", Pfad: "remote", Beleg: "Freigabe durch den Captain am 20.11.2026 ohne Prüfstand, " +
+		"gestützt auf die Gleichheit mit dem Node-RED-Verhalten (gemeinsame Vektoren, PR #1965)"},
+	{Familie: "hybrid_1p", Pfad: "tou", Beleg: "Freigabe durch den Captain am 20.11.2026 ohne Prüfstand, " +
+		"gestützt auf die Gleichheit mit dem Node-RED-Verhalten (gemeinsame Vektoren, PR #1965)"},
 }
 
 // pruefstandBuild is true only in a build with the tag `pruefstand`.
