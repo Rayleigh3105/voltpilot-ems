@@ -250,6 +250,48 @@ func TestManifestBuildsASignedEdgeLightRelease(t *testing.T) {
 	}
 }
 
+// Ein Edge-Industrie-Release (WAGO PFC200): das Backend industrie folgt dem
+// Namen edge-industrie-JJJJ.MM.N; die Kette verifiziert nur auf industrie,
+// Edge Light und die Docker-Box wenden es nicht an.
+func TestManifestBuildsASignedEdgeIndustrieRelease(t *testing.T) {
+	dir := ceremony(t)
+	p := func(n string) string { return filepath.Join(dir, n) }
+	arm := writeProgram(t, dir, "vp-edge-industrie-linux-arm", []byte("armv7-programm"))
+	must(t, cmdManifest([]string{
+		"--release", "edge-industrie-2026.11.1", "--seq", "15", "--commit", "3bf8c038a1b2",
+		"--binary", "vp-edge-industrie:linux/arm=" + arm,
+		"--state-schema", "3", "--key-id", "rel-2026-a", "--out", p("industrie.json"),
+	}))
+	raw, _ := os.ReadFile(p("industrie.json"))
+	m, err := otaverify.ParseManifestStrict(raw)
+	if err != nil {
+		t.Fatalf("erzeugtes Edge-Industrie-Manifest ist nicht streng gueltig: %v", err)
+	}
+	if len(m.Compat.Backends) != 1 || m.Compat.Backends[0] != otaverify.BackendIndustrie {
+		t.Fatalf("Backend = %v, erwartet [industrie]", m.Compat.Backends)
+	}
+	must(t, cmdSign([]string{"--key", p("rel-2026-a.key"), "--domain", "release", "--in", p("industrie.json")}))
+	must(t, cmdVerify([]string{
+		"--root", p("root-2026-a.pub"), "--trust-set", p("trust-set.json"), "--manifest", p("industrie.json"),
+		"--backend", "industrie",
+	}))
+	for _, b := range []string{"light", "compose"} {
+		if err := cmdVerify([]string{
+			"--root", p("root-2026-a.pub"), "--trust-set", p("trust-set.json"), "--manifest", p("industrie.json"),
+			"--backend", b,
+		}); err == nil {
+			t.Fatalf("das Backend %s haette das Edge-Industrie-Release angewandt", b)
+		}
+	}
+	if err := cmdManifest([]string{
+		"--release", "edge-industrie-2026.11.1", "--seq", "15", "--commit", "3bf8c038a1b2",
+		"--binary", "vp-edge-industrie:linux/arm=" + arm, "--backend", "light",
+		"--state-schema", "3", "--key-id", "rel-2026-a", "--out", p("falsch.json"),
+	}); err == nil {
+		t.Error("ein Edge-Industrie-Release mit Backend light wurde erzeugt")
+	}
+}
+
 // Der Skriptstand (edge-light/openwrt) reist signiert im Manifest: die
 // Werkstatt nimmt seine Pruefsumme von dort statt aus einer unsignierten Liste
 // (vp-werkstatt-immer-neueste). Die Box wendet ihn nicht an - das Manifest

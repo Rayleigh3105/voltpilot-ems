@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { EdgeReleaseSeite, EdgeUpdates, EdgeUpdatesRelease, FleetRow, UpdateFakten } from './adminEdgeUpdates';
 import {
   KEIN_FILTER, anzufragen, aufgaben, boxFakten, boxZeile, boxZeilen, ersteBox, filterBoxen, filterZahlen, gruppen,
-  kurzeVersion, lage, linienKarten, mb, plattformen, releaseInhalt, stufe1Hinweis, tracker, uhr, verlaufSicht,
+  kurzeVersion, lage, linieDerBox, linienKarten, mb, plattformen, releaseInhalt, stufe1Hinweis, tracker, uhr, verlaufSicht,
   verteilGruppen, verteiltSicht, vorauswahl, wann, zuletztBestaetigt, type Satz,
 } from './geraeteUpdates';
 import type { EdgeEignung, VerlaufEintrag } from './adminEdgeUpdates';
@@ -38,7 +38,7 @@ const fakten = (o: {
 });
 
 let n = 0;
-function box(name: string, linie: 'docker' | 'light', o: Partial<FleetRow>): FleetRow {
+function box(name: string, linie: 'docker' | 'light' | 'industrie', o: Partial<FleetRow>): FleetRow {
   n += 1;
   return {
     deviceId: `d${n}-${name}`, label: `edge-${name.toLowerCase().replace(/[^a-z]/g, '').slice(0, 7)}`,
@@ -65,6 +65,29 @@ function lightRuhig(): FleetRow[] {
 const daten = (fleet: FleetRow[], releases = Object.values(R)): EdgeUpdates => ({
   fleet, releases, rollouts: [], journal: [],
   kpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
+});
+
+describe('Edge Industrie: eine dritte Linie neben Edge Light', () => {
+  const i110: EdgeUpdatesRelease = { releaseSeq: 62, version: 'edge-industrie-2026.11.0', boxArt: 'industrie',
+    signed: true, signingKeyId: 'rel-2026-a', createdAt: '2026-11-06T09:00:00Z', targetCommit: null, notes: null,
+    runningOnDevices: 1 };
+  const fleet = [
+    box('Herzogau', 'docker', { ...aktuell(R.d107) }),
+    box('Zuhause', 'light', { ...aktuell(R.l114) }),
+    box('Halle Nord', 'industrie', { ...aktuell(i110) }),
+  ];
+  const d = daten(fleet, [R.d107, R.l114, i110]);
+
+  it('je Linie eine Karte, gemessen an ihrem eigenen neuesten Release', () => {
+    const karten = linienKarten(d, NOW);
+    expect(karten.map((k) => k.boxArt)).toEqual(['docker', 'light', 'industrie']);
+    const industrie = karten[2];
+    expect(industrie.neu?.release.version).toBe('edge-industrie-2026.11.0');
+    expect(industrie.releases).toBe(1);
+    expect(karten[1].neu?.release.version).toBe('edge-light-2026.11.4');
+    expect(linieDerBox(fleet[2])).toBe('industrie');
+    expect(kurzeVersion('edge-industrie-2026.11.4')).toBe('11.4');
+  });
 });
 
 describe('Alles gut', () => {
@@ -356,6 +379,10 @@ describe('Stufe 1 (Stand vom 05.11.)', () => {
   it('Filter: Linie, Status, Suche - und Gruppen je Linie', () => {
     const zeilen = boxZeilen(d, NOW);
     expect(zeilen.slice(0, 2).map((z) => z.name)).toEqual(['Pilot Dirolf', 'Zuhause']);
+    // Ohne Edge-Industrie-Box kein Knopf „Edge Industrie" (eine Sackgasse); mit einer erscheint er.
+    const mitIndustrie = boxZeilen(daten([...d.fleet, box('Halle Nord', 'industrie', {})]), NOW);
+    expect(filterZahlen(mitIndustrie, 'alle').linien.map((l) => [l.label, l.n]))
+      .toContainEqual(['Edge Industrie', 1]);
     expect(filterZahlen(zeilen, 'alle')).toEqual({
       linien: [{ wert: 'alle', label: 'Alle', n: 4 }, { wert: 'docker', label: 'Docker-Box', n: 1 }, { wert: 'light', label: 'Edge Light', n: 3 }],
       status: [{ wert: 'braucht', label: 'Braucht dich', n: 2 }, { wert: 'aelter', label: 'Älter', n: 1 }, { wert: 'offline', label: 'Offline', n: 0 }],

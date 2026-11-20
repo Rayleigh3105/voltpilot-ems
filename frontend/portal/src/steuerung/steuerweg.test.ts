@@ -44,6 +44,12 @@ describe('Der Schalter der Anlage', () => {
     expect(w.pille.wort).toBe('neuer Weg');
   });
 
+  it('Edge Industrie trägt denselben Kern: auch dort nur der neue Weg', () => {
+    const w = wegAnsicht(antwort('kern', [regel('kern')], { boxArt: 'industrie' }));
+    expect(w.knoepfe).toEqual([]);
+    expect(w.pille.wort).toBe('neuer Weg');
+  });
+
   it('zeigt sich nur mit Regeln oder wenn der Schalter schon an ist', () => {
     expect(sichtbar(null)).toBe(false);
     expect(sichtbar(antwort('alt', []))).toBe(false);

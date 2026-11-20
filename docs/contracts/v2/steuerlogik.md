@@ -381,7 +381,7 @@ Wird eine Regel bei `mitlauf` oder `kern` eingeschaltet oder geändert, folgt ih
 | Route unter `/api/v1/sites/{siteId}/steuerlogik/steuerweg` | Recht | Was |
 |---|---|---|
 | `GET` | lesend wie die Steuerung | Modus, Box-Art, was die Box kann, je eingeschaltete Regel `weg` (`alt`, `mitlauf`, `kern`, `aus`), Gründe und der Vergleich der Box, die letzten Schritte; `darf` |
-| `POST /mitlauf`, `POST /uebernehmen`, `POST /zurueck` | `logik.bearbeiten` | den Schalter stellen; 409 mit Grund (`erst_mitlaufen`, `schon_an`, `edge_light`, `box_ohne_regeln`, `box_ohne_scharf`) |
+| `POST /mitlauf`, `POST /uebernehmen`, `POST /zurueck` | `logik.bearbeiten` | den Schalter stellen; 409 mit Grund (`erst_mitlaufen`, `schon_an`, `edge_light`, `edge_industrie`, `box_ohne_regeln`, `box_ohne_scharf`) |
 
 Im Portal: „Wie Ihre Regeln laufen“ im Reiter „Regeln“ (`steuerung/SteuerwegAbschnitt.tsx`, Wörter aus `steuerung/steuerweg.ts`; Bühne `e2e/steuerweg.html`).
 API: `SteuerwegApiTest`, `FlowActivationServiceTest`; Ende zu Ende je Box-Art: `edge-light/test/regel-kern-probe.sh` (Docker-Box mit einem gestellten Node-RED: Mitlauf, Übernehmen, Hysterese, Zurück; Edge Light: die Regel schaltet einen gestellten Shelly).
@@ -444,7 +444,7 @@ Die Verbraucherregel wechselt in einem Satz (Flow raus und Übersetzung rein ode
 **Aktuell bleiben**: vor jedem Satz (`RegelnImKern.vorDemSatz`) und jedem Registry-Push (`HeizstabImKern.angleichen`) vergleicht die API je Quelle den Fingerabdruck (`herkunft_stand`: der generierte Flow mit seiner Fassung; Block und Stufen des Heizstabs) und übersetzt neu, was sich geändert hat; eine Steuerart, die neu dazukommt, folgt im Zustand der Gruppe.
 Lässt sich eine geänderte Quelle nicht übersetzen (Dienst nicht erreichbar, nicht mehr übersetzbar), legt die API die Übersetzung still, und der alte Weg führt.
 
-**Die Box** braucht `steuerlogik_steuerarten` ([supports](edge-supports.md)); ohne das Wort bleibt die Gruppe auf dem alten Weg (Edge Light lehnt den Schritt mit `edge_light` ab, die Docker-Box bewegt nur die Regeln).
+**Die Box** braucht `steuerlogik_steuerarten` ([supports](edge-supports.md)); ohne das Wort bleibt die Gruppe auf dem alten Weg (Edge Light lehnt den Schritt mit `edge_light` ab, Edge Industrie mit `edge_industrie`, die Docker-Box bewegt nur die Regeln).
 
 | Route unter `/api/v1/sites/{siteId}/steuerlogik/steuerweg` | Was sich ändert |
 |---|---|

@@ -50,6 +50,7 @@ public class PreisZuleitung {
     public static final String GRUND_KEINE_ZONE = "keine_zone";
     public static final String GRUND_KEINE_BOX = "keine_box";
     public static final String GRUND_EDGE_LIGHT = "edge_light";
+    public static final String GRUND_EDGE_INDUSTRIE = "edge_industrie";
 
     /**
      * Ob die Anlage gespeist wird; {@code grund} ist genau dann gesetzt, wenn
@@ -101,9 +102,9 @@ public class PreisZuleitung {
         if (lead.box() == null) {
             return Stand.gesperrt(GRUND_KEINE_BOX);
         }
-        if (BoxArt.LIGHT.equals(updateStatus.boxArt(lead.box()))
-                && !faehigkeiten.kann(lead.box(), REGELN_IM_KERN)) {
-            return Stand.gesperrt(GRUND_EDGE_LIGHT);
+        String art = updateStatus.boxArt(lead.box());
+        if (BoxArt.istGoKern(art) && !faehigkeiten.kann(lead.box(), REGELN_IM_KERN)) {
+            return Stand.gesperrt(BoxArt.INDUSTRIE.equals(art) ? GRUND_EDGE_INDUSTRIE : GRUND_EDGE_LIGHT);
         }
         return Stand.aktiv(lead.box());
     }

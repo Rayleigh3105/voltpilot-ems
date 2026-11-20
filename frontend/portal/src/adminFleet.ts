@@ -199,8 +199,8 @@ export function sourceHealth(counts: AdminFleetSources | null): SourceHealth | n
 }
 
 /** Die Linie eines Register-Eintrags; ohne Angabe (älterer Server) Docker wie dort. */
-function releaseLinie(r: AdminFleetRelease): 'docker' | 'light' {
-  return r.boxArt === 'light' ? 'light' : 'docker';
+function releaseLinie(r: AdminFleetRelease): 'docker' | 'light' | 'industrie' {
+  return r.boxArt === 'light' || r.boxArt === 'industrie' ? r.boxArt : 'docker';
 }
 
 /**
@@ -213,7 +213,7 @@ function releaseLinie(r: AdminFleetRelease): 'docker' | 'light' {
  */
 export function sollRelease(
   releases: AdminFleetRelease[],
-  linie?: 'docker' | 'light',
+  linie?: 'docker' | 'light' | 'industrie',
 ): AdminFleetRelease | null {
   let newest: AdminFleetRelease | null = null;
   for (const r of releases) {
@@ -309,7 +309,7 @@ export function edgeStand(
   // Gemessen wird an der EIGENEN Linie (S0): die Box-Art der Box, sonst die
   // Linie des Releases, das ihr Stempel trägt (dieselbe Regel wie
   // `EdgeStandVerdict` in der API).
-  const art = boxArt === 'docker' || boxArt === 'light' ? boxArt : null;
+  const art = boxArt === 'docker' || boxArt === 'light' || boxArt === 'industrie' ? boxArt : null;
   const getragen = releases.find((r) => releaseIsRunning(r.version, ist));
   const linie = art ?? (getragen ? releaseLinie(getragen) : null);
   if (!linie) {
@@ -333,7 +333,7 @@ export function edgeStand(
       text: ist,
       tone: 'off',
       outdated: false,
-      title: `Für ${linie === 'light' ? 'Edge Light' : 'die Docker-Box'} ist noch kein Release `
+      title: `Für ${linie === 'light' ? 'Edge Light' : linie === 'industrie' ? 'Edge Industrie' : 'die Docker-Box'} ist noch kein Release `
         + 'registriert - ohne Maßstab wird kein Stand als veraltet bewertet.',
     };
   }

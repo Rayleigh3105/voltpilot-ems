@@ -7272,21 +7272,23 @@ paths:
         vanish from the page in the very moment it completed. Platform-admin
         only; there is deliberately NO customer-facing surface for updates.
         BOX KIND: every release and every fleet row carries `boxArt` (`docker` |
-        `light`, derived once in `ota.BoxArt`). A device reporting backend
-        `light` - or, during the transition, a stamp starting `edge-light-` - is
-        Edge Light; a fleet row with nothing to go by is `null` (unknown, never
-        silently Docker). A release is Docker unless its signed manifest lists
-        `light` in `compat.backends` or its name starts `edge-light-`.
+        `light` | `industrie`, derived once in `ota.BoxArt`). A device reporting
+        backend `light` - or, during the transition, a stamp starting
+        `edge-light-` - is Edge Light; backend `industrie` or a stamp starting
+        `edge-industrie-` is Edge Industrie (WAGO PFC200); a fleet row with
+        nothing to go by is `null` (unknown, never silently Docker). A release
+        is Docker unless its signed manifest lists `light` or `industrie` in
+        `compat.backends` or its name starts `edge-light-` or `edge-industrie-`.
         LINES (Geräte & Updates S0, additive): `lines` carries, per software
-        line (`docker` first, then `light`; a line without release and without
+        line (`docker` first, then `light`, then `industrie`; a line without release and without
         box is left out), `newestRelease`/`newestReleaseSeq` of THAT line (the
         newest SIGNED one; an unsigned register entry is never "newest") and
         `devices`/`known`/`upToDate` counted with the customer judgement
         (`ota.EdgeStandVerdict`) - a Docker box is never measured against an
         Edge Light release. The `kpi` fields keep their old meaning (newest
-        release over both lines) for older portals. An Edge Light release is
-        refused (409) for an Edge Light box without crossed trust (root AND
-        verified trust set reported, Stufe 1).
+        release over all lines) for older portals. An Edge Light or Edge
+        Industrie release is refused (409) for a box of its line without
+        crossed trust (root AND verified trust set reported, Stufe 1).
         FIRST CONNECT (Erstverbindung S3, additive): each fleet row carries
         `automatik` - the last word of the first-connect automation besides the
         assignment itself (`erstverbindung_aktuell` | `_gesperrt` | `_aus` |
@@ -7390,14 +7392,14 @@ paths:
       description: >
         On the first report of a newly connected, update-capable box the
         platform assigns the highest assignable release of its line itself
-        (signed, matching box kind, Edge Light programs complete), with actor
+        (signed, matching box kind, Edge Light / Edge Industrie programs complete), with actor
         `erstverbindung` in the journal. This switch holds it per line or for
         all boxes, without a deploy; default on (no row = on). `eintraege`
         names who last changed each area and when. Platform-admin only.
       responses:
         "200":
           description: >
-            `{alle, docker, light, eintraege: [{bereich, an, geaendertVon,
+            `{alle, docker, light, industrie, eintraege: [{bereich, an, geaendertVon,
             geaendertAm}]}`.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -7406,7 +7408,7 @@ paths:
       tags: [admin]
       summary: Turn the first-connect automation on or off for one area.
       description: >
-        `bereich` is `alle`, `docker` or `light`. Every change appends
+        `bereich` is `alle`, `docker`, `light` or `industrie`. Every change appends
         `erstverbindung_schalter` with the admin as actor to the rollout
         journal; setting the current value again changes nothing. Boxes the
         automation already decided keep their decision. Platform-admin only.
@@ -7414,7 +7416,7 @@ paths:
         - name: bereich
           in: path
           required: true
-          schema: { type: string, enum: [alle, docker, light] }
+          schema: { type: string, enum: [alle, docker, light, industrie] }
       requestBody:
         required: true
         content:
@@ -27860,10 +27862,11 @@ components:
         boxArt:
           type: string
           nullable: true
-          enum: [docker, light, null]
+          enum: [docker, light, industrie, null]
           description: >
             The line of the box behind `edge`/`update` (`ota.BoxArt`, additive
-            since Geräte & Updates S0; null = unknown, never silently Docker).
+            since Geräte & Updates S0; null = unknown, never silently Docker;
+            `industrie` = Edge Industrie on the WAGO PFC200).
             The software stand is judged against the newest release of this
             line. Each entry of `boxes` carries the same field for its own box.
     AdminFleetSources:
@@ -27925,10 +27928,10 @@ components:
         monotonic integer, never a string or SHA comparison (decision D5).
       properties:
         releaseSeq: { type: integer, format: int64 }
-        version: { type: string, description: "The release tag edge-YYYY.MM.N or edge-light-YYYY.MM.N." }
+        version: { type: string, description: "The release tag edge-YYYY.MM.N, edge-light-YYYY.MM.N or edge-industrie-YYYY.MM.N." }
         boxArt:
           type: string
-          enum: [docker, light]
+          enum: [docker, light, industrie]
           description: >
             The line of the release (`ota.BoxArt`, additive since Geräte &
             Updates S0). A box is measured against the newest release of ITS line.
@@ -29982,7 +29985,7 @@ components:
               type: string
               nullable: true
               description: Sperr-Grund, genau dann gesetzt, wenn aktiv=false.
-              enum: [kein_dynamischer_tarif, keine_zone, keine_box, edge_light]
+              enum: [kein_dynamischer_tarif, keine_zone, keine_box, edge_light, edge_industrie]
     PricePoint:
       type: object
       properties:

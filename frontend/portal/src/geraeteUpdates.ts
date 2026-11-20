@@ -22,7 +22,7 @@ import { NBSP, fmtRelative, seitDauer } from './format';
 /** Ein Satz mit Versionen in Festbreitenschrift. */
 export type Satz = (string | { mono: string })[];
 
-export const LINIEN: BoxArt[] = ['docker', 'light'];
+export const LINIEN: BoxArt[] = ['docker', 'light', 'industrie'];
 
 const LINIE_INFO: Record<BoxArt, { name: string; icon: 'layers' | 'cpu'; muster: Satz }> = {
   docker: {
@@ -32,6 +32,10 @@ const LINIE_INFO: Record<BoxArt, { name: string; icon: 'layers' | 'cpu'; muster:
   light: {
     name: 'Edge Light', icon: 'cpu',
     muster: ['Releases ', { mono: 'edge-light-JJJJ.MM.N' }, ' · ein Programm je Gerät'],
+  },
+  industrie: {
+    name: 'Edge Industrie', icon: 'cpu',
+    muster: ['Releases ', { mono: 'edge-industrie-JJJJ.MM.N' }, ' · ein Programm für den WAGO PFC200'],
   },
 };
 
@@ -78,7 +82,7 @@ export function segmentArt(stand: string | null | undefined): SegmentArt {
 
 /** Die Linie einer Box: aus der API (`linie`), sonst aus der gemeldeten Box-Art. */
 export function linieDerBox(row: FleetRow): BoxArt | null {
-  if (row.linie !== undefined) return row.linie === 'docker' || row.linie === 'light' ? row.linie : null;
+  if (row.linie !== undefined) return deviceBoxArt(row.linie);
   return deviceBoxArt(row.boxArt);
 }
 
@@ -148,7 +152,7 @@ export function anfrageOffen(f: UpdateFakten | null | undefined): boolean {
 
 /** Das Release einer Anfrage, kurz („11.4" statt „edge-light-2026.11.4") - nur wo der Satz es braucht. */
 export function kurzeVersion(version: string): string {
-  const m = /^edge(?:-light)?-\d{4}\.(\d+\.\d+)$/.exec(version);
+  const m = /^edge(?:-light|-industrie)?-\d{4}\.(\d+\.\d+)$/.exec(version);
   return m ? m[1] : version;
 }
 
@@ -423,13 +427,15 @@ export interface FilterZahlen {
 
 /**
  * Die Knöpfe der Filterleiste mit Zahl. Die Linien zählen über alle Boxen,
- * der Status innerhalb der gewählten Linie. „Box-Art unbekannt" und „Update
- * läuft" erscheinen nur, wenn es sie gibt - ein leerer Knopf wäre eine Sackgasse.
+ * der Status innerhalb der gewählten Linie. „Box-Art unbekannt", „Edge
+ * Industrie" (die junge Linie) und „Update läuft" erscheinen nur, wenn es sie
+ * gibt - ein leerer Knopf wäre eine Sackgasse.
  */
 export function filterZahlen(zeilen: BoxZeile[], linie: LinienFilter): FilterZahlen {
   const linien: FilterZahlen['linien'] = [
     { wert: 'alle', label: 'Alle', n: zeilen.length },
-    ...LINIEN.map((l) => ({ wert: l as LinienFilter, label: BOX_ART_LABELS[l], n: zeilen.filter((z) => z.linie === l).length })),
+    ...LINIEN.map((l) => ({ wert: l as LinienFilter, label: BOX_ART_LABELS[l], n: zeilen.filter((z) => z.linie === l).length }))
+      .filter((l) => l.wert !== 'industrie' || l.n > 0),
   ];
   const unbekannt = zeilen.filter((z) => z.linie == null).length;
   if (unbekannt > 0) linien.push({ wert: 'unbekannt', label: BOX_ART_UNBEKANNT, n: unbekannt });
@@ -1041,6 +1047,7 @@ export function lage(data: Pick<EdgeUpdates, 'fleet'>, now: Date): Lage {
       const bestaetigt = angefragt.filter((r) => r.fakten?.bestaetigt.stand === 'ja').length;
       const art = linieDerBox(lauf[0]);
       const wer = art === 'light' ? (angefragt.length === 1 ? 'Edge-Light-Box' : 'Edge-Light-Boxen')
+        : art === 'industrie' ? (angefragt.length === 1 ? 'Edge-Industrie-Box' : 'Edge-Industrie-Boxen')
         : art === 'docker' ? (angefragt.length === 1 ? 'Docker-Box' : 'Docker-Boxen')
           : (angefragt.length === 1 ? 'Box' : 'Boxen');
       return {
@@ -1103,7 +1110,7 @@ export interface VerlaufZeile { wann: string; ton: VerlaufTon; titel: Satz; text
  */
 function standText(stamp: string | null): string | null {
   if (!stamp) return null;
-  const m = /^(edge(?:-light)?-\d{4}\.\d{2}\.\d+)-[0-9a-f]{12}$/.exec(stamp.trim());
+  const m = /^(edge(?:-light|-industrie)?-\d{4}\.\d{2}\.\d+)-[0-9a-f]{12}$/.exec(stamp.trim());
   return m ? m[1] : versionDisplay(stamp)?.tag ?? stamp;
 }
 
@@ -1234,12 +1241,12 @@ export interface InhaltZeile { teil: Satz; geraet: string; groesse: string; port
 
 /**
  * Was ein Release enthält, je Teil: Docker die Bilder (für PC und Raspberry Pi
- * aus der Registry), Edge Light je Programm mit Gerät, Größe und ob es fertig
+ * aus der Registry), Edge Light und Edge Industrie je Programm mit Gerät, Größe und ob es fertig
  * geprüft im Portal liegt. Die letzte Zeile nennt, was NIE über das Portal
  * kommt (Board Abschnitt 6).
  */
 export function releaseInhalt(seite: EdgeReleaseSeite): InhaltZeile[] {
-  const art = releaseBoxArt({ boxArt: seite.boxArt === 'light' ? 'light' : 'docker' });
+  const art = releaseBoxArt({ boxArt: deviceBoxArt(seite.boxArt) ?? 'docker' });
   const zeilen: InhaltZeile[] = seite.inhalt.map((t): InhaltZeile => {
     if (art === 'docker' || !t.arch) {
       return { teil: ['Bild ', { mono: t.name }], geraet: 'PC und Raspberry Pi', groesse: '–', portal: { ton: 'off', text: 'aus der Registry' } };
@@ -1257,7 +1264,8 @@ export function releaseInhalt(seite: EdgeReleaseSeite): InhaltZeile[] {
     };
   });
   zeilen.push({
-    teil: [art === 'light' ? 'Loader, Dienst, Tunnel-Skripte' : 'Updater und Betriebssystem'],
+    teil: [art === 'light' ? 'Loader, Dienst, Tunnel-Skripte'
+      : art === 'industrie' ? 'Loader und Dienst (edge-industrie/install.sh)' : 'Updater und Betriebssystem'],
     geraet: '–', groesse: 'nicht im Update', portal: { ton: 'off', text: 'nur Werkstatt' },
   });
   return zeilen;

@@ -180,7 +180,7 @@ public class SteuerartService {
                 || heizstabMitAusgangsmenge(row)) {
             return false;
         }
-        return BoxArt.LIGHT.equals(updateStatus.boxArt(row.deviceId()))
+        return BoxArt.istGoKern(updateStatus.boxArt(row.deviceId()))
                 && !faehigkeiten.kann(row.deviceId(), FAEHIGKEIT_VERBRAUCHERREGELN);
     }
 

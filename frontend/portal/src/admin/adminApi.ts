@@ -525,6 +525,7 @@ export interface ErstverbindungSchalterStand {
   alle: boolean;
   docker: boolean;
   light: boolean;
+  industrie: boolean;
   eintraege: { bereich: string; an: boolean; geaendertVon: string; geaendertAm: string }[];
 }
 
@@ -956,7 +957,7 @@ export const adminApi = {
   /** Erstverbindung: der Schalter der Automatik beim ersten Verbinden (ab Werk an). */
   erstverbindungSchalter: () => request<ErstverbindungSchalterStand>('/api/v1/admin/edge-updates/erstverbindung'),
   /** Je Linie (`light`, `docker`) oder für `alle` an- oder abschalten; die Änderung steht im Journal. */
-  erstverbindungSchalten: (bereich: 'alle' | 'light' | 'docker', an: boolean) =>
+  erstverbindungSchalten: (bereich: 'alle' | 'light' | 'industrie' | 'docker', an: boolean) =>
     request<ErstverbindungSchalterStand>(`/api/v1/admin/edge-updates/erstverbindung/${bereich}`, {
       method: 'POST',
       body: JSON.stringify({ an }),

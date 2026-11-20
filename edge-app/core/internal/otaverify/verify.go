@@ -81,7 +81,8 @@ type Input struct {
 	ManifestSig []byte
 
 	// Backend ist das Apply-Backend DIESES Geraets ("compose" auf der
-	// Docker-Box, "light" auf Edge Light) - zugleich seine Box-Art.
+	// Docker-Box, "light" auf Edge Light, "industrie" auf Edge Industrie) -
+	// zugleich seine Box-Art.
 	Backend string
 
 	// RunningVersion ist die eingestempelte Build-Version (agent.Version).

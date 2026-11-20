@@ -13,7 +13,7 @@ import java.time.Instant;
  * update-fähigen Box ({@link BoxArt#sperrgrund} ohne Grund) weist die Plattform
  * ihr die neueste zuweisbare Fassung ihrer Linie zu - welche das ist, sagt die
  * gemeinsame Regel {@link RolloutService#neuesteFassung} (signiert, höchste
- * {@code release_seq}, bei Edge Light alle Programme geprüft im Portal; ob schon
+ * {@code release_seq}, bei Edge Light und Edge Industrie alle Programme geprüft im Portal; ob schon
  * eine andere Box sie bestätigt hat, spielt keine Rolle, E2 = B), dieselbe, nach
  * der die Werkstatt aufspielt. Die Regel hier bekommt ihr Ergebnis als
  * {@link Neueste} und bleibt rein.
@@ -74,7 +74,7 @@ public final class Erstverbindung {
     public static final String GRUND_KEINE_FASSUNG =
             "Für diese Linie liegt keine signierte Fassung im Register.";
     public static final String GRUND_ART_UNBEKANNT =
-            "Die Box hat noch nicht gemeldet, ob sie eine Docker-Box oder Edge Light ist.";
+            "Die Box hat noch nicht gemeldet, ob sie eine Docker-Box, Edge Light oder Edge Industrie ist.";
     public static final String GRUND_FENSTER =
             "Die erste Stunde nach der ersten Meldung ist verstrichen, bevor zugewiesen werden konnte.";
     public static final String GRUND_FERNLAUF =
@@ -145,9 +145,9 @@ public final class Erstverbindung {
     }
 
     /** Der Schalter des Betriebs; ohne Eintrag an. */
-    public record Schalter(boolean alle, boolean docker, boolean light) {
+    public record Schalter(boolean alle, boolean docker, boolean light, boolean industrie) {
 
-        public static final Schalter AN = new Schalter(true, true, true);
+        public static final Schalter AN = new Schalter(true, true, true, true);
 
         /** Ist die Automatik für diese Linie an? {@code null} = Linie unbekannt, nur der globale. */
         public boolean an(String linie) {
@@ -159,6 +159,9 @@ public final class Erstverbindung {
             }
             if (BoxArt.LIGHT.equals(linie)) {
                 return light;
+            }
+            if (BoxArt.INDUSTRIE.equals(linie)) {
+                return industrie;
             }
             return true;
         }
@@ -218,6 +221,9 @@ public final class Erstverbindung {
         }
         if (BoxArt.LIGHT.equals(linie)) {
             return "Edge Light";
+        }
+        if (BoxArt.INDUSTRIE.equals(linie)) {
+            return "Edge Industrie";
         }
         return "Boxen unbekannter Art";
     }

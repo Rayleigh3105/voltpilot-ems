@@ -174,15 +174,16 @@ public class FlowActivationService {
         // Kern logic instead (RegelnImKern); whatever does not translate is
         // still refused BEFORE anything changes. On the Docker box the site's
         // Steuerweg decides whether the Kern runs along or switches.
-        boolean edgeLight = BoxArt.LIGHT.equals(updateStatus.boxArt(gateway));
+        String art = updateStatus.boxArt(gateway);
+        String goKern = BoxArt.istGoKern(art) ? art : null;
         RegelnImKern.Vorbereitet kern = regelnImKern == null ? null
-                : regelnImKern.bereite(siteId, version, document, gateway, edgeLight);
+                : regelnImKern.bereite(siteId, version, document, gateway, goKern);
         if (kern != null && kern.halt() != null) {
             return ActivationOutcome.refused(kern.halt().reason(), kern.halt().message());
         }
-        if (edgeLight && kern == null) {
-            return ActivationOutcome.refused("edge_light_unsupported",
-                    "Diese Box ist eine Edge Light und kann Regeln aus dem Regel-Baukasten "
+        if (goKern != null && kern == null) {
+            return ActivationOutcome.refused(BoxArt.wort(goKern) + "_unsupported",
+                    "Diese Box ist eine " + BoxArt.anzeige(goKern) + " und kann Regeln aus dem Regel-Baukasten "
                             + "oder dem freien Editor noch nicht ausführen. Die Regel bleibt "
                             + "gespeichert, aber nicht ausgerollt.");
         }

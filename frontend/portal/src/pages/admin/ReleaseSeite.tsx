@@ -10,8 +10,12 @@ import { boxName, linieDerBox, releaseInhalt, verteiltSicht, wann } from '../../
 import { Zeitleiste } from './Zeitleiste';
 import { SatzText } from './GeraeteUpdates';
 
-const linienBoxen = (art: BoxArt, n: number) =>
-  `${n} ${art === 'light' ? (n === 1 ? 'Edge-Light-Box' : 'Edge-Light-Boxen') : (n === 1 ? 'Docker-Box' : 'Docker-Boxen')}`;
+const LINIEN_BOXEN: Record<BoxArt, [string, string]> = {
+  docker: ['Docker-Box', 'Docker-Boxen'],
+  light: ['Edge-Light-Box', 'Edge-Light-Boxen'],
+  industrie: ['Edge-Industrie-Box', 'Edge-Industrie-Boxen'],
+};
+const linienBoxen = (art: BoxArt, n: number) => `${n} ${LINIEN_BOXEN[art][n === 1 ? 0 : 1]}`;
 
 /**
  * Die Release-Seite (Geräte & Updates G7, Board Abschnitt 5): was drin ist

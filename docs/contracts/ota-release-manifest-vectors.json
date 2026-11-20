@@ -1,7 +1,7 @@
 {
   "$comment": "Die GETEILTEN Vektoren des Release-Manifests (docs/contracts/ota-release-manifest.schema.json): was ein Geraet mit einem GUELTIG SIGNIERTEN Manifest tut, je Box-Art (Plan Edge Light Stufe 2, B1). ZWEI Leser lesen diese Datei PER PFAD und muessen je Fall dasselbe Urteil liefern - Go edge-app/core/internal/otaverify (Verify nach gueltiger Signatur; dazu otaapply.Decide fuer die Sperre) und Java services/api .../ota/ReleaseManifest (der Leser, mit dem Register und Zuweisung die Box-Art eines Release bestimmen). Wer die Regel auf einer Seite aendert, aendert BEIDE Seiten UND diese Datei zusammen - das Muster von lan-host-vectors.json / stur-speicher-vectors.json.",
-  "$regel": "Streng senden, tolerant annehmen. Nach gueltiger Signatur: (1) steht das Backend der Box nicht in compat.backends, oder (2) traegt das Release einen Bestandteil, den dieses Backend nicht anwendet (ein unbekannter Typ oder der Typ einer anderen Box-Art), dann ist das Urteil deferred mit Grund und die Sperre backend - nie rejected, nie failed. compose wendet oci-image an, light wendet binary an. Ein unbekannter Typ oder ein unbekanntes Backend ist KEIN Formfehler; die Felder eines BEKANNTEN Typs werden dagegen voll geprueft (rejected). Eine ungueltige Signatur bleibt rejected und damit ein Vorfall.",
-  "$felder": "backend = Apply-Backend (Box-Art) des pruefenden Geraets. signatur = gueltig (Vorgabe) | manipuliert (die Manifest-Bytes werden nach dem Signieren veraendert). erwartet = ok | deferred | rejected (otaverify.Outcome). sperre = der Blocker, den der Sidecar dazu meldet (nur bei deferred). erzeugbar = ob vp-ota manifest dieses Manifest erzeugen darf (otaverify.ParseManifestStrict: bekannte Typen und Backends, ein Manifest je Box-Art, edge-light-JJJJ.MM.N nur mit light und binary). Die Faelle mit signatur=manipuliert prueft nur Go: die API verifiziert bewusst keine Signatur (AdminEdgeReleaseController.readSigned).",
+  "$regel": "Streng senden, tolerant annehmen. Nach gueltiger Signatur: (1) steht das Backend der Box nicht in compat.backends, oder (2) traegt das Release einen Bestandteil, den dieses Backend nicht anwendet (ein unbekannter Typ oder der Typ einer anderen Box-Art), dann ist das Urteil deferred mit Grund und die Sperre backend - nie rejected, nie failed. compose wendet oci-image an, light und industrie wenden binary an. Ein unbekannter Typ oder ein unbekanntes Backend ist KEIN Formfehler; die Felder eines BEKANNTEN Typs werden dagegen voll geprueft (rejected). Eine ungueltige Signatur bleibt rejected und damit ein Vorfall.",
+  "$felder": "backend = Apply-Backend (Box-Art) des pruefenden Geraets. signatur = gueltig (Vorgabe) | manipuliert (die Manifest-Bytes werden nach dem Signieren veraendert). erwartet = ok | deferred | rejected (otaverify.Outcome). sperre = der Blocker, den der Sidecar dazu meldet (nur bei deferred). erzeugbar = ob vp-ota manifest dieses Manifest erzeugen darf (otaverify.ParseManifestStrict: bekannte Typen und Backends, ein Manifest je Box-Art, edge-light-JJJJ.MM.N nur mit light und binary, edge-industrie-JJJJ.MM.N nur mit industrie und binary). Die Faelle mit signatur=manipuliert prueft nur Go: die API verifiziert bewusst keine Signatur (AdminEdgeReleaseController.readSigned).",
   "faelle": [
     {
       "name": "docker-release-auf-docker-box",
@@ -165,6 +165,114 @@
         "compat": {"backends": ["compose"]},
         "signing_key_id": "rel-2026-a",
         "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "size": 31744}
+      }
+    },
+    {
+      "name": "industrie-release-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": true,
+      "warum": "Ein Edge-Industrie-Release (WAGO PFC200): eigene Linie edge-industrie-JJJJ.MM.N, nur Backend industrie, nur binary - wie Edge Light, nur fuer die andere Box-Art.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "industrie-release-auf-light-box",
+      "backend": "light",
+      "erwartet": "deferred",
+      "sperre": "backend",
+      "erzeugbar": true,
+      "warum": "Ein Edge-Industrie-Release an eine Mango: Edge Light stellt zurueck (Sperre backend), auch wenn die Plattform passen koennte. Die API sperrt die Zuweisung ohnehin vorher.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "industrie-release-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "deferred",
+      "sperre": "backend",
+      "erzeugbar": true,
+      "warum": "Ein Edge-Industrie-Release an die Docker-Box: zurueckgestellt, kein Vorfall.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "industrie-release-mit-skriptstand-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Einen Skriptstand traegt nur ein Edge-Light-Release (die Skripte der Mango); die Box liest ihn tolerant und wendet ihn nicht an, erzeugbar ist so ein Edge-Industrie-Manifest nicht.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "size": 51234}
+      }
+    },
+    {
+      "name": "industrie-backend-mit-light-namen-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Die Box liest ihre Box-Art aus compat.backends; erzeugbar ist das Backend industrie nur unter edge-industrie-JJJJ.MM.N.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.11.7",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a"
       }
     },
     {

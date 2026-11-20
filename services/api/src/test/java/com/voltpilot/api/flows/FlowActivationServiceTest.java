@@ -244,6 +244,21 @@ class FlowActivationServiceTest {
         assertThat(publisher.payload).isNull();
     }
 
+    /** Edge Industrie trägt denselben Go-Kern: dieselbe Sperre, mit ihrem eigenen Wort und Namen. */
+    @Test
+    void anEdgeIndustrieGatewayRefusesWithItsOwnName() {
+        when(entities.batteryAsset(SITE)).thenReturn(
+                new EntityRegistryRepository.BatteryAsset(DEVICE, null, null, null, null));
+        when(updateStatus.boxArt(DEVICE)).thenReturn(BoxArt.INDUSTRIE);
+        FlowCompiler compiler = mock(FlowCompiler.class);
+        FlowActivationService.ActivationOutcome outcome = service(compiler, true).activate(SITE,
+                row(2, "simulated", null), MAPPER.createObjectNode());
+        assertThat(outcome.activated()).isFalse();
+        assertThat(outcome.reason()).isEqualTo("edge_industrie_unsupported");
+        assertThat(outcome.message()).contains("Edge Industrie").doesNotContain("Edge Light");
+        verifyNoInteractions(compiler);
+    }
+
     /**
      * Steuerlogik Stufe 6 (Zusammenführen): with the Kern seam an Edge Light runs a rule as a Kern logic. A halt of
      * the seam (the rule does not translate, the box cannot) refuses BEFORE the compiler; a prepared translation is
@@ -256,7 +271,7 @@ class FlowActivationServiceTest {
         when(updateStatus.boxArt(DEVICE)).thenReturn(BoxArt.LIGHT);
         RegelnImKern kern = mock(RegelnImKern.class);
         RegelnImKern.Vorbereitet halt = () -> new RegelnImKern.Halt("edge_light_unsupported", "Grund der Übersetzung");
-        when(kern.bereite(eq(SITE), any(), any(), eq(DEVICE), eq(true))).thenReturn(halt);
+        when(kern.bereite(eq(SITE), any(), any(), eq(DEVICE), eq(BoxArt.LIGHT))).thenReturn(halt);
         FlowCompiler compiler = mock(FlowCompiler.class);
         FlowActivationService service = service(compiler, true);
         service.setRegelnImKern(kern);
@@ -268,7 +283,7 @@ class FlowActivationServiceTest {
         verify(kern, never()).schreibe(any(), any());
 
         RegelnImKern.Vorbereitet bereit = () -> null;
-        when(kern.bereite(eq(SITE), any(), any(), eq(DEVICE), eq(true))).thenReturn(bereit);
+        when(kern.bereite(eq(SITE), any(), any(), eq(DEVICE), eq(BoxArt.LIGHT))).thenReturn(bereit);
         when(kern.ersetzt(SITE, DEVICE)).thenReturn(java.util.Set.of(FLOW));
         when(compiler.compile(any())).thenReturn(fixtureArtifact);
         FlowVersionRow other = new FlowVersionRow(UUID.randomUUID(), 1, SITE, "Anderer", "edge",

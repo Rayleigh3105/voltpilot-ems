@@ -43,7 +43,8 @@ interface Gruppen {
 
 function gruppen(a: SteuerwegAntwort): Gruppen {
   const s = a.stand;
-  const light = s.boxArt === 'light';
+  // Edge Light und Edge Industrie (Go-Kern): Regeln laufen dort immer im Kern.
+  const light = s.boxArt === 'light' || s.boxArt === 'industrie';
   const regeln = s.regeln.length > 0 || (!light && s.modus !== 'alt')
     ? { modus: (light ? 'kern' : s.modus) as Wegstand, schaltbar: !light } : null;
   const geraete = s.geraete.length > 0 || s.geraeteModus !== 'alt'
@@ -77,7 +78,7 @@ export function wegAnsicht(a: SteuerwegAntwort): WegAnsicht {
     return { titel: 'Bisheriger Weg', pille: { klasse: 'off', wort: 'bisher' }, satz: 'Die Anlage hat keine eindeutige Box.', knoepfe: [], hinweis: null };
   }
   const g = gruppen(a);
-  const light = s.boxArt === 'light';
+  const light = s.boxArt === 'light' || s.boxArt === 'industrie';
   const alle = [g.regeln, g.geraete].filter((x): x is { modus: Wegstand; schaltbar: boolean } => x != null);
   const schaltbar = alle.filter((x) => x.schaltbar);
   const imVergleich = schaltbar.some((x) => x.modus === 'mitlauf');

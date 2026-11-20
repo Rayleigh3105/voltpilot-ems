@@ -528,11 +528,23 @@ function FlottenKachel({ box: b, onOpen }: { box: FlottenBox; onOpen: (route: Ro
 }
 
 /**
- * Die Box als Gerät: grauer Umriss je Linie (Edge Light klein, Docker-Box breit
- * mit Lüftungsschlitzen), die Leuchte im Ton des Zustands. Nur „Update läuft"
+ * Die Box als Gerät: grauer Umriss je Linie (Edge Light klein, Edge Industrie
+ * hochkant wie ein Gerät auf der Hutschiene, Docker-Box breit mit
+ * Lüftungsschlitzen), die Leuchte im Ton des Zustands. Nur „Update läuft"
  * bewegt sich - der eine animierte Zustand des Portals (`vp-ustate-pulse`).
  */
 function BoxBild({ linie, ton }: { linie: FlottenBox['linie']; ton: FlottenTon }) {
+  if (linie === 'industrie') {
+    return (
+      <svg className={`vp-ueb-flotte-geraet ton-${ton}`} viewBox="0 0 44 32" width="44" height="32" aria-hidden="true">
+        <rect x="13" y="3" width="18" height="26" rx="3.5" className="koerper" />
+        <path d="M13.75 23.5h16.5" className="kante" />
+        <path d="M17 8.5h6M17 12h6" className="linie" />
+        <circle cx="22" cy="17.5" r="3.6" className="schein" />
+        <circle cx="22" cy="17.5" r="2" className="licht" />
+      </svg>
+    );
+  }
   if (linie === 'light') {
     return (
       <svg className={`vp-ueb-flotte-geraet ton-${ton}`} viewBox="0 0 44 32" width="44" height="32" aria-hidden="true">

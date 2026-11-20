@@ -158,6 +158,10 @@ class KundenbereichBeendetApiTest {
         // Kundenbereich.
         m.put("POST /api/v1/admin/werkstatt/boxen/{ref}/gehaeuse/neu",
                 "Werkstatt: Druckdatei des Gehäuses erneut erstellen, Box vor dem Versand, kein Kundenbereich");
+        // Fernlauf S4 (main eeefbc976): der Schalter „nachts von selbst“ gilt für Boxen ohne Kundenkonto -
+        // ein Betriebsschalter der Plattform (werkstatt_betrieb), kein Mandant.
+        m.put("POST /api/v1/admin/geraete/ohne-kundenkonto/nachtlauf",
+                "Fernlauf: Nachtlauf-Schalter für Boxen ohne Kundenkonto, Betrieb der Plattform, kein Kundenbereich");
         return m;
     }
 

@@ -38,9 +38,9 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code docs/contracts/v2/modbus-geraet.md}): anlegen, ändern, je Schreibwert
  * testen, freigeben, Freigabe zurücknehmen. Seit E8 (Pi-Ablösung-Konzept) auch
  * ein Gerät OHNE jeden Schreibwert (ein reines Selbstbau-Messgerät) - aber nur
- * für eine Anlage, deren führende Box Edge Light ist (siehe {@link #speichern}):
- * dort gibt es sonst keinen Weg, ein solches Gerät zu lesen, da Edge Light kein
- * Node-RED für den Lese-Flow der Selbstbau-Tür hat.
+ * für eine Anlage, deren führende Box den Go-Kern trägt (Edge Light oder Edge
+ * Industrie, siehe {@link #speichern}): dort gibt es sonst keinen Weg, ein solches
+ * Gerät zu lesen, da der Go-Kern kein Node-RED für den Lese-Flow der Selbstbau-Tür hat.
  *
  * <p>Es benutzt die Maschinerie der Selbstbau-Tür - Fassungen in
  * {@code connection_json}, Verbindungstest-Pflicht, Schalt-Test über den
@@ -136,7 +136,7 @@ public class ModbusGeraetService {
      *
      * <p>Seit E8 (Pi-Ablösung-Konzept) nimmt dieser Weg auch ein Gerät OHNE
      * jeden Schreibwert an - aber nur für eine Anlage, deren führende Box
-     * Edge Light ist: nur dort liest der Core ein solches Gerät selbst
+     * Edge Light oder Edge Industrie ist: nur dort liest der Core ein solches Gerät selbst
      * ({@code AusEntity} ohne {@code controls}-Zweig); auf der Docker-Box
      * bliebe die Entität unlesbar, denn ihr generierter Lese-Flow entsteht
      * nur über die Selbstbau-Tür ({@link SelfBuildComponentService}), die
@@ -156,7 +156,7 @@ public class ModbusGeraetService {
         JsonNode values = def.path("controls").path("values");
         boolean hatSchreibwerte = values.isArray() && !values.isEmpty();
         if (!hatSchreibwerte) {
-            if (!BoxArt.LIGHT.equals(updateStatus.boxArt(box))) {
+            if (!BoxArt.istGoKern(updateStatus.boxArt(box))) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Ein Gerät ohne Schreibwerte legen Sie über „Eigenes Gerät“ an.");
             }

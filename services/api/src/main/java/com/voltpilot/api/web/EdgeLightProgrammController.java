@@ -179,9 +179,10 @@ public class EdgeLightProgrammController {
         EdgeReleaseDto release = releases.findByVersion(version)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Release '" + version + "' ist nicht registriert."));
-        if (!BoxArt.LIGHT.equals(BoxArt.ofRelease(release.version(), release.manifest()))) {
+        if (!BoxArt.istGoKern(BoxArt.ofRelease(release.version(), release.manifest()))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Release '" + version + "' ist kein Edge-Light-Release - es hat keine Programme.");
+                    "Release '" + version + "' ist kein Edge-Light- oder Edge-Industrie-Release - es hat "
+                            + "keine Programme.");
         }
         if (release.manifest() == null || release.signature() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

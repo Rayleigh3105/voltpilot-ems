@@ -11,7 +11,7 @@ import java.util.UUID;
  * läuft, und schreibt das Ergebnis in derselben Transaktion; der Satz auf {@code v2/flows} lässt das Node-RED-Artefakt
  * einer Regel genau dann weg, wenn ihre Übersetzung scharf an die Box geht.
  *
- * <p>Auf Edge Light gibt es für eine Regel keinen alten Weg: dort läuft sie nur so, oder die Aktivierung hält mit
+ * <p>Auf Edge Light und Edge Industrie (Go-Kern) gibt es für eine Regel keinen alten Weg: dort läuft sie nur so, oder die Aktivierung hält mit
  * Grund an. Auf der Docker-Box entscheidet der Steuerweg der Anlage (ab Werk der alte Weg).
  */
 public interface RegelnImKern {
@@ -24,8 +24,12 @@ public interface RegelnImKern {
         Halt halt();
     }
 
-    /** Vor der Aktivierung, ohne etwas zu ändern: übersetzen, prüfen, das Artefakt bauen lassen. */
-    Vorbereitet bereite(UUID siteId, FlowVersionRow version, JsonNode document, UUID gateway, boolean edgeLight);
+    /**
+     * Vor der Aktivierung, ohne etwas zu ändern: übersetzen, prüfen, das Artefakt bauen lassen.
+     *
+     * @param goKern die Box-Art des Gateways, wenn es den Go-Kern trägt ({@code BoxArt.istGoKern}), sonst {@code null}
+     */
+    Vorbereitet bereite(UUID siteId, FlowVersionRow version, JsonNode document, UUID gateway, String goKern);
 
     /** Nach der Aktivierung, in ihrer Transaktion: die Übersetzung anlegen oder eine veraltete stilllegen. */
     void schreibe(UUID siteId, Vorbereitet vorbereitet);

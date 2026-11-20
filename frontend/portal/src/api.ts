@@ -369,7 +369,7 @@ export interface PricePoint {
  */
 export interface PriceBoxFeed {
   aktiv: boolean;
-  grund: 'kein_dynamischer_tarif' | 'keine_zone' | 'keine_box' | 'edge_light' | null;
+  grund: 'kein_dynamischer_tarif' | 'keine_zone' | 'keine_box' | 'edge_light' | 'edge_industrie' | null;
 }
 
 export interface PriceSeries {
@@ -10128,14 +10128,14 @@ export interface SteuerwegGeraet {
 }
 
 /**
- * Der Schalter der Anlage: `modus` gilt für die Regeln (auf einer Edge Light immer `kern`: dort gibt es für Regeln
+ * Der Schalter der Anlage: `modus` gilt für die Regeln (auf Edge Light und Edge Industrie immer `kern`: dort gibt es für Regeln
  * keinen alten Weg), `geraeteModus` für Steuerarten und Heizstab-Regler (auf beiden Box-Arten, ab Werk `alt`).
  */
 export interface SteuerwegAntwort {
   stand: {
     modus: 'alt' | 'mitlauf' | 'kern';
     seit: string | null;
-    boxArt: 'docker' | 'light' | null;
+    boxArt: 'docker' | 'light' | 'industrie' | null;
     boxKannMitlauf: boolean;
     boxKannScharf: boolean;
     regeln: SteuerwegRegel[];

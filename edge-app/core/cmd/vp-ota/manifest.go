@@ -38,7 +38,7 @@ func cmdManifest(args []string) error {
 	skripte := fs.String("skripte", "",
 		"Edge Light: der Skriptstand edge-light-openwrt.tar.gz; Pruefsumme und Groesse kommen signiert ins Manifest (fuer die Werkstatt)")
 	var backends stringList
-	fs.Var(&backends, "backend", "Apply-Backend, fuer das dieses Release gilt (Vorgabe: compose, mit --binary light)")
+	fs.Var(&backends, "backend", "Apply-Backend, fuer das dieses Release gilt (Vorgabe: compose, mit --binary light, unter edge-industrie-JJJJ.MM.N industrie)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `vp-ota manifest - unsigniertes release.json erzeugen
 
@@ -72,6 +72,15 @@ Mit --skripte traegt das Manifest auch den Skriptstand (edge-light/openwrt):
 Die Box wendet ihn beim Update nicht an; der Werkstatt-Dienst legt ihn beim
 Einrichten auf die Box und prueft ihn gegen diese signierte Pruefsumme.
 
+Ein Edge-Industrie-Release (WAGO PFC200, Box-Art industrie) heisst
+edge-industrie-JJJJ.MM.N und traegt nur das Programm fuer linux/arm, ohne
+Skriptstand; das Backend folgt dem Namen:
+
+  vp-ota manifest \
+    --release edge-industrie-2026.11.1 --seq 15 --commit 3bf8c03 \
+    --binary vp-edge-industrie:linux/arm=dist/vp-edge-industrie-linux-arm \
+    --state-schema 3 --key-id rel-2026-a --out release.json
+
 `)
 		fs.PrintDefaults()
 	}
@@ -91,6 +100,9 @@ Einrichten auf die Box und prueft ihn gegen diese signierte Pruefsumme.
 		backends = stringList{otaverify.BackendCompose}
 		if len(binaries) > 0 {
 			backends = stringList{otaverify.BackendLight}
+			if strings.HasPrefix(*release, otaverify.IndustrieReleasePrefix) {
+				backends = stringList{otaverify.BackendIndustrie}
+			}
 		}
 	}
 	if *validUntil != "" {

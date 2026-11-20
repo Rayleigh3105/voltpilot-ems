@@ -55,15 +55,16 @@ public final class LinienStand {
     }
 
     /**
-     * @param linie    die Linie der Box ({@link BoxArt#DOCKER}/{@link BoxArt#LIGHT}, {@code null} = unbekannt)
-     * @param stufe1   Edge Light ohne gekreuztes Vertrauen ({@link BoxArt#vertrauenGekreuzt})
+     * @param linie    die Linie der Box ({@link BoxArt#DOCKER}/{@link BoxArt#LIGHT}/{@link BoxArt#INDUSTRIE},
+     *                 {@code null} = unbekannt)
+     * @param stufe1   Edge Light oder Edge Industrie ohne Updates aus dem Portal ({@link BoxArt#stufe1})
      * @param zustand  der abgeleitete Zustand ({@link RolloutStates#derive})
      * @param offline  kein Lebenszeichen im Online-Fenster
      * @param upToDate das Urteil an der Linie ({@link EdgeStandVerdict.Verdict#upToDate})
      */
     public static String of(String linie, boolean stufe1, String zustand, boolean offline,
             Boolean upToDate) {
-        if (BoxArt.LIGHT.equals(linie) && stufe1) {
+        if (BoxArt.istGoKern(linie) && stufe1) {
             return HAND;
         }
         if (zustand != null && FEHLER_ZUSTAENDE.contains(zustand)) {

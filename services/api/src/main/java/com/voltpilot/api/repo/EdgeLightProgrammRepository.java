@@ -89,15 +89,18 @@ public class EdgeLightProgrammRepository {
 
     /**
      * Die Bytes einer fertigen Lieferung mit dieser Prüfsumme - nur, wenn ihr
-     * Release ein SIGNIERTES Edge-Light-Release ist (U-4 A: die offene Route
-     * liefert nur signierte Edge-Light-Programme aus).
+     * Release ein SIGNIERTES Edge-Light- oder Edge-Industrie-Release ist (U-4 A:
+     * die offene Route liefert nur signierte Programme dieser Linien aus; der
+     * Pfad heißt für beide /api/v1/edge/light-programm, der Loader beider
+     * Geräte ruft ihn wortgleich).
      */
     public Optional<byte[]> auslieferbar(String gzSha256) {
         return jdbc.query("SELECT p.daten FROM edge_light_programm p "
                 + "JOIN edge_release r ON r.release_seq = p.release_seq "
                 + "WHERE p.gz_sha256 = ? AND p.fertig_am IS NOT NULL "
                 + "AND r.manifest IS NOT NULL AND r.signature IS NOT NULL "
-                + "AND r.version LIKE 'edge-light-%' ORDER BY p.release_seq DESC LIMIT 1",
+                + "AND (r.version LIKE 'edge-light-%' OR r.version LIKE 'edge-industrie-%') "
+                + "ORDER BY p.release_seq DESC LIMIT 1",
                 (rs, n) -> rs.getBytes(1), gzSha256).stream().findFirst();
     }
 

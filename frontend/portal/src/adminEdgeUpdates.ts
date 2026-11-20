@@ -41,10 +41,17 @@ export type UpdateTone = 'ok' | 'warn' | 'off' | 'busy';
 export type StateClass = 'busy' | 'blocked' | 'incident' | 'calm';
 
 /**
- * Die Bauart einer Box (`ota.BoxArt` in der API): die Docker-Box (`edge-app`)
- * oder Edge Light (`vp-edge-light`, z. B. auf dem GL.iNet Mango).
+ * Die Bauart einer Box (`ota.BoxArt` in der API): die Docker-Box (`edge-app`),
+ * Edge Light (`vp-edge-light`, auf dem GL.iNet Mango) oder Edge Industrie
+ * (`vp-edge-industrie`, auf dem WAGO PFC200). Edge Light und Edge Industrie
+ * tragen denselben Go-Kern, haben aber je eine eigene Release-Linie.
  */
-export type BoxArt = 'docker' | 'light';
+export type BoxArt = 'docker' | 'light' | 'industrie';
+
+/** Trägt die Box-Art den Go-Kern (Edge Light, Edge Industrie)? Zwilling von `BoxArt.istGoKern`. */
+export function istGoKern(art: BoxArt | null | undefined): art is 'light' | 'industrie' {
+  return art === 'light' || art === 'industrie';
+}
 
 export interface EdgeUpdatesRelease {
   releaseSeq: number;
@@ -396,12 +403,12 @@ const BLOCKER_LEVERS: Record<string, string> = {
   politik:
     'Das Release gilt für diese Box nicht (Anti-Rollback-Boden oder Rückschritt) - '
     + 'ein passendes Release zuweisen.',
-  // Gültig signiert, aber für eine andere Box-Art (Docker-Box ↔ Edge Light)
+  // Gültig signiert, aber für eine andere Box-Art (Docker-Box, Edge Light, Edge Industrie)
   // oder mit Bestandteilen, die diese Box nicht anwendet. Die Box stellt
   // zurück, statt abzulehnen - kein Vorfall, und es bleibt dabei, bis ein
   // Release ihrer Box-Art zugewiesen ist (docs/contracts/ota-release-manifest-vectors.json).
   backend:
-    'Das Release ist für eine andere Box-Art bestimmt (Docker-Box oder Edge Light) oder trägt '
+    'Das Release ist für eine andere Box-Art bestimmt (Docker-Box, Edge Light oder Edge Industrie) oder trägt '
     + 'Bestandteile, die diese Box nicht anwendet - ein Release ihrer eigenen Box-Art zuweisen.',
   state_schema: 'Das Release kennt den Datenstand dieser Box nicht.',
   platte:
@@ -559,6 +566,11 @@ export type CrossoverState = 'gekreuzt' | 'offen' | 'unbekannt' | 'fehler' | 'vo
 
 /** Die ruhige Zeile für Edge Light ohne signierte Updates (Plan Edge Light, Stufe 1). */
 export const VON_HAND_LABEL = 'Updates von Hand (Edge Light, Stufe 1)';
+/** Dieselbe Zeile für Edge Industrie: ihr Weg ist `edge-industrie/install.sh`, nicht der Tunnel. */
+export const VON_HAND_LABEL_INDUSTRIE = 'Updates von Hand (Edge Industrie)';
+export const VON_HAND_DETAIL_INDUSTRIE =
+  'Diese Box nimmt keine Updates aus dem Portal an; einmal mit edge-industrie/install.sh neu '
+  + 'einrichten.';
 export const VON_HAND_DETAIL =
   'Diese Box prüft Updates noch nicht gegen die Signaturkette; Aktualisierung über den '
   + 'Wartungstunnel.';
@@ -610,7 +622,7 @@ export function stufe1(
   trust: DeviceTrust | null | undefined,
   loader?: string | null,
 ): boolean {
-  return deviceBoxArt(boxArt) === 'light' && (!vertrauenGekreuzt(trust) || loader === LOADER_FLASH);
+  return istGoKern(deviceBoxArt(boxArt)) && (!vertrauenGekreuzt(trust) || loader === LOADER_FLASH);
 }
 
 export function crossoverState(
@@ -623,6 +635,9 @@ export function crossoverState(
   tone: UpdateTone;
   detail: string | null;
 } {
+  if (deviceBoxArt(boxArt) === 'industrie' && stufe1(boxArt, trust, loader)) {
+    return { state: 'von_hand', label: VON_HAND_LABEL_INDUSTRIE, tone: 'off', detail: VON_HAND_DETAIL_INDUSTRIE };
+  }
   if (deviceBoxArt(boxArt) === 'light' && loader === LOADER_FLASH) {
     return { state: 'von_hand', label: VON_HAND_LABEL, tone: 'off', detail: VON_HAND_DETAIL_LOADER };
   }
@@ -678,11 +693,13 @@ export function crossoverHint(fleet: FleetRow[]): string | null {
   let unbekannt = 0;
   let fehler = 0;
   let vonHand = 0;
+  let vonHandIndustrie = 0;
   for (const row of fleet) {
     const s = crossoverState(row.trust, row.boxArt, row.loader).state;
     if (s === 'offen') offen += 1;
     else if (s === 'unbekannt') unbekannt += 1;
     else if (s === 'fehler') fehler += 1;
+    else if (s === 'von_hand' && deviceBoxArt(row.boxArt) === 'industrie') vonHandIndustrie += 1;
     else if (s === 'von_hand') vonHand += 1;
   }
   const parts: string[] = [];
@@ -707,10 +724,15 @@ export function crossoverHint(fleet: FleetRow[]): string | null {
       ? '1 Edge-Light-Box bekommt Updates von Hand (Stufe 1)'
       : `${vonHand} Edge-Light-Boxen bekommen Updates von Hand (Stufe 1)`);
   }
+  if (vonHandIndustrie > 0) {
+    parts.push(vonHandIndustrie === 1
+      ? '1 Edge-Industrie-Box bekommt Updates von Hand'
+      : `${vonHandIndustrie} Edge-Industrie-Boxen bekommen Updates von Hand`);
+  }
   return parts.length > 0 ? `${parts.join(' · ')}.` : null;
 }
 
-// ── Box-Art: Docker-Box oder Edge Light ────────────────────────────────────
+// ── Box-Art: Docker-Box, Edge Light oder Edge Industrie ────────────────────
 
 /** Die Box-Art eines Geräts; ein unbekanntes Wort bleibt unbekannt. */
 /**
@@ -736,12 +758,12 @@ export function loaderLabel(loader: string | null | undefined): string | null {
 }
 
 export function deviceBoxArt(boxArt: string | null | undefined): BoxArt | null {
-  return boxArt === 'docker' || boxArt === 'light' ? boxArt : null;
+  return boxArt === 'docker' || boxArt === 'light' || boxArt === 'industrie' ? boxArt : null;
 }
 
 /** Die Box-Art eines Releases - ohne Kennzeichnung ein Docker-Release (wie in der API). */
 export function releaseBoxArt(release: Pick<EdgeUpdatesRelease, 'boxArt'>): BoxArt {
-  return release.boxArt === 'light' ? 'light' : 'docker';
+  return release.boxArt === 'light' || release.boxArt === 'industrie' ? release.boxArt : 'docker';
 }
 
 /**
@@ -756,6 +778,7 @@ export function werkstattBoxArt(art: 'edge-light' | 'edge-app'): BoxArt {
 export const BOX_ART_LABELS: Record<BoxArt, string> = {
   docker: 'Docker-Box',
   light: 'Edge Light',
+  industrie: 'Edge Industrie',
 };
 export const BOX_ART_UNBEKANNT = 'Box-Art unbekannt';
 
@@ -772,6 +795,11 @@ export function boxArtLabel(boxArt: string | null | undefined): {
   if (art === 'light') {
     return { art, label: BOX_ART_LABELS.light,
       detail: 'Edge Light (vp-edge-light): eigene Release-Linie, kein Docker-Release.' };
+  }
+  if (art === 'industrie') {
+    return { art, label: BOX_ART_LABELS.industrie,
+      detail: 'Edge Industrie (vp-edge-industrie, WAGO PFC200): eigene Release-Linie, weder Docker- '
+        + 'noch Edge-Light-Release.' };
   }
   if (art === 'docker') {
     return { art, label: BOX_ART_LABELS.docker,
@@ -797,6 +825,18 @@ export const GRUND_LIGHT_STUFE_1 =
   'Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem Portal an '
   + '(kein geprüftes Vertrauens-Set). Einmal über den Wartungstunnel nachrüsten, danach kommt '
   + 'jede Fassung über das Portal.';
+export const GRUND_DOCKER_AUF_INDUSTRIE = 'Release für die Docker-Box – diese Box ist eine Edge Industrie.';
+export const GRUND_LIGHT_AUF_INDUSTRIE = 'Release für Edge Light – diese Box ist eine Edge Industrie.';
+export const GRUND_INDUSTRIE_AUF_LIGHT = 'Release für Edge Industrie – diese Box ist eine Edge Light.';
+export const GRUND_INDUSTRIE_AUF_DOCKER = 'Release für Edge Industrie – diese Box ist eine Docker-Box.';
+export const GRUND_INDUSTRIE_AUF_UNBEKANNT =
+  'Release für Edge Industrie – die Box-Art dieses Geräts ist unbekannt. Ein Edge-Industrie-Release '
+  + 'geht nur an eine Box, die sich als Edge Industrie gemeldet hat.';
+/** Edge-Industrie-Release an eine Edge-Industrie-Box ohne Updates aus dem Portal. */
+export const GRUND_INDUSTRIE_STUFE_1 =
+  'Release für Edge Industrie – diese Box nimmt keine Updates aus dem Portal an (kein geprüftes '
+  + 'Vertrauens-Set oder ein Loader ohne Updates). Einmal mit edge-industrie/install.sh neu '
+  + 'einrichten, danach kommt jede Fassung über das Portal.';
 
 /**
  * Warum dieses Release diesem Gerät NICHT zugewiesen werden kann - oder
@@ -818,12 +858,20 @@ export function releaseSperre(
   loader?: string | null,
 ): string | null {
   const geraet = deviceBoxArt(boxArt);
-  if (releaseBoxArt(release) === 'light') {
+  const linie = releaseBoxArt(release);
+  if (linie === 'light') {
     if (geraet === 'light' && loader === LOADER_FLASH) return GRUND_LIGHT_STUFE_1_LOADER;
     if (geraet === 'light') return vertrauenGekreuzt(trust) ? null : GRUND_LIGHT_STUFE_1;
+    if (geraet === 'industrie') return GRUND_LIGHT_AUF_INDUSTRIE;
     return geraet == null ? GRUND_LIGHT_AUF_UNBEKANNT : GRUND_LIGHT_AUF_DOCKER;
   }
-  return geraet === 'light' ? GRUND_DOCKER_AUF_LIGHT : null;
+  if (linie === 'industrie') {
+    if (geraet === 'industrie') return stufe1(geraet, trust, loader) ? GRUND_INDUSTRIE_STUFE_1 : null;
+    if (geraet === 'light') return GRUND_INDUSTRIE_AUF_LIGHT;
+    return geraet == null ? GRUND_INDUSTRIE_AUF_UNBEKANNT : GRUND_INDUSTRIE_AUF_DOCKER;
+  }
+  if (geraet === 'light') return GRUND_DOCKER_AUF_LIGHT;
+  return geraet === 'industrie' ? GRUND_DOCKER_AUF_INDUSTRIE : null;
 }
 
 export interface ZuweisbareReleases {
@@ -857,7 +905,8 @@ export function zuweisbareReleases(
     else {
       gesperrt += 1;
       // Stufe 1 ist der Grund, der zählt: er sagt, was zu tun ist (nachrüsten).
-      grund = g === GRUND_LIGHT_STUFE_1 || g === GRUND_LIGHT_STUFE_1_LOADER ? g : grund ?? g;
+      grund = g === GRUND_LIGHT_STUFE_1 || g === GRUND_LIGHT_STUFE_1_LOADER || g === GRUND_INDUSTRIE_STUFE_1
+        ? g : grund ?? g;
     }
   }
   let hinweis: string | null = null;

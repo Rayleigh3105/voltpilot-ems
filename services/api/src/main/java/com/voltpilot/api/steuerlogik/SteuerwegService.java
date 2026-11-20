@@ -41,7 +41,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Logik ({@code steuerlogik.herkunft = 'regel'}), die Regel bleibt, was der Kunde bearbeitet.
  *
  * <ul>
- *   <li>Edge Light: es gibt keinen alten Weg. Eine Regel läuft, sobald sie eingeschaltet wird, als scharfe
+ *   <li>Edge Light und Edge Industrie (Go-Kern): es gibt keinen alten Weg. Eine Regel läuft, sobald sie eingeschaltet wird, als scharfe
  *       Übersetzung; was sich nicht übersetzen lässt, hält die Aktivierung mit Grund an (vorher: jede Regel).</li>
  *   <li>Docker-Box: der Steuerweg der Anlage, ab Werk {@code alt}. {@code mitlauf}: die Übersetzungen laufen auf der
  *       Box mit, Node-RED schaltet weiter, der Herzschlag vergleicht beide. {@code kern}: nach einem ausdrücklichen
@@ -132,7 +132,8 @@ public class SteuerwegService implements RegelnImKern {
 
     @Override
     public Vorbereitet bereite(UUID siteId, FlowVersionRow version, JsonNode document, UUID gateway,
-            boolean edgeLight) {
+            String goKern) {
+        boolean edgeLight = goKern != null;
         String modus = wege.weg(siteId).modus();
         if (!edgeLight && SteuerwegRepository.ALT.equals(modus)) return Plan.alterWeg(version.flowId(), List.of());
         String zustand = edgeLight || SteuerwegRepository.KERN.equals(modus) ? SteuerlogikRepository.ZUSTAND_SCHARF
@@ -143,9 +144,10 @@ public class SteuerwegService implements RegelnImKern {
             // Auf der Docker-Box hält nichts die Regel an: sie bleibt auf dem alten Weg, der sie heute schon schaltet.
             return p.halt() == null ? p : Plan.alterWeg(version.flowId(), List.of(p.halt().message()));
         }
-        return Plan.angehalten(version.flowId(), new Halt(p.halt() != null ? p.halt().reason() : "edge_light_unsupported",
+        return Plan.angehalten(version.flowId(), new Halt(p.halt() != null ? p.halt().reason()
+                : BoxArt.wort(goKern) + "_unsupported",
                 p.halt() != null ? p.halt().message()
-                        : "Auf dieser Edge Light läuft eine Regel nur über den Kern der Box, und diese Regel lässt "
+                        : "Auf dieser " + BoxArt.anzeige(goKern) + " läuft eine Regel nur über den Kern der Box, und diese Regel lässt "
                                 + "sich nicht dorthin übersetzen: " + String.join(" ", p.gruende())
                                 + " Die Regel bleibt gespeichert, aber nicht ausgerollt."));
     }
@@ -304,10 +306,11 @@ public class SteuerwegService implements RegelnImKern {
     }
 
     /**
-     * Die Box der Anlage und was an ihr schaltbar ist: die Regeln nur auf der Docker-Box (auf Edge Light laufen sie
-     * immer im Kern), die Geräte (Steuerarten und Heizstab-Regler) auf beiden Box-Arten.
+     * Die Box der Anlage und was an ihr schaltbar ist: die Regeln nur auf der Docker-Box (auf Edge Light und Edge
+     * Industrie laufen sie immer im Kern), die Geräte (Steuerarten und Heizstab-Regler) auf allen Box-Arten.
+     * {@code light} heißt Go-Kern ({@link BoxArt#istGoKern}), {@code art} ist dann die Box-Art.
      */
-    private record Box(UUID id, boolean light, boolean regeln, boolean geraete) {}
+    private record Box(UUID id, String art, boolean light, boolean regeln, boolean geraete) {}
 
     private Box box(UUID siteId) {
         if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.");
@@ -315,10 +318,11 @@ public class SteuerwegService implements RegelnImKern {
         if (box == null) {
             throw new Abgelehnt("keine_box", "Die Anlage hat keine eindeutige führende Box.");
         }
-        boolean light = BoxArt.LIGHT.equals(updateStatus.boxArt(box));
+        String art = updateStatus.boxArt(box);
+        boolean light = BoxArt.istGoKern(art);
         boolean regeln = !light && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT)
                 && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT_REGELN);
-        return new Box(box, light, regeln, geraete.kann(box));
+        return new Box(box, art, light, regeln, geraete.kann(box));
     }
 
     /**
@@ -403,7 +407,8 @@ public class SteuerwegService implements RegelnImKern {
 
     private Abgelehnt ohneKern(Box b) {
         if (b.light()) {
-            return new Abgelehnt("edge_light", "Auf einer Edge Light laufen Regeln immer über den Kern der "
+            return new Abgelehnt(BoxArt.wort(b.art()), "Auf einer " + BoxArt.anzeige(b.art())
+                    + " laufen Regeln immer über den Kern der "
                     + "Box; Steuerarten und den Heizstab-Regler kann diese Box noch nicht über ihren Kern ausführen "
                     + "(Fähigkeit " + SteuerwegGeraete.FAEHIGKEIT + " fehlt). Bitte erst die Box aktualisieren.");
         }
@@ -518,7 +523,8 @@ public class SteuerwegService implements RegelnImKern {
         if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.");
         SteuerwegRepository.Weg weg = wege.weg(siteId);
         UUID box = leadDevices.fuehrendeBox(siteId).box();
-        boolean light = box != null && BoxArt.LIGHT.equals(updateStatus.boxArt(box));
+        String art = box == null ? null : updateStatus.boxArt(box);
+        boolean light = BoxArt.istGoKern(art);
         boolean regelnKann = box != null && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT)
                 && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT_REGELN);
         boolean scharfKann = regelnKann && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT_SCHARF);
@@ -550,7 +556,7 @@ public class SteuerwegService implements RegelnImKern {
         boolean geraeteKann = geraete.kann(box);
         List<SteuerwegGeraete.GeraetWeg> geraetWege = box == null ? List.of()
                 : geraete.stand(siteId, box, weg.geraeteModus(), this::vergleich);
-        return new Stand(light ? "kern" : weg.modus(), weg.seit(), light ? BoxArt.LIGHT : box == null ? null
+        return new Stand(light ? "kern" : weg.modus(), weg.seit(), light ? art : box == null ? null
                 : BoxArt.DOCKER, regelnKann, scharfKann || (geraeteKann
                 && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT_SCHARF)), regeln,
                 wege.schritte(siteId, SCHRITTE).stream()

@@ -49,6 +49,8 @@ public final class ReleaseManifest {
     public static final String BACKEND_COMPOSE = "compose";
     /** Edge Light: ein Programm je Architektur statt Container. */
     public static final String BACKEND_LIGHT = "light";
+    /** Edge Industrie (WAGO PFC200): wie Edge Light ein Programm je Architektur. */
+    public static final String BACKEND_INDUSTRIE = "industrie";
 
     public static final String TYPE_OCI_IMAGE = "oci-image";
     public static final String TYPE_BINARY = "binary";
@@ -56,17 +58,21 @@ public final class ReleaseManifest {
     /** Welchen Artefakt-Typ ein Backend ANWENDET (Go: {@code appliedTypes}). */
     private static final Map<String, String> APPLIED_TYPES = Map.of(
             BACKEND_COMPOSE, TYPE_OCI_IMAGE,
-            BACKEND_LIGHT, TYPE_BINARY);
+            BACKEND_LIGHT, TYPE_BINARY,
+            BACKEND_INDUSTRIE, TYPE_BINARY);
 
     private static final Set<String> KNOWN_TYPES = Set.of(TYPE_OCI_IMAGE, TYPE_BINARY);
 
     /** Die Backends, die dieser Stand kennt (Go: {@code KnownBackend}). */
-    private static final Set<String> KNOWN_BACKENDS = Set.of(BACKEND_COMPOSE, "quadlet", "mender", BACKEND_LIGHT);
+    private static final Set<String> KNOWN_BACKENDS = Set.of(BACKEND_COMPOSE, "quadlet", "mender", BACKEND_LIGHT,
+            BACKEND_INDUSTRIE);
 
     /** Präfix der Edge-Light-Linie (Entscheid E7, Go: {@code LightReleasePrefix}). */
     public static final String LIGHT_RELEASE_PREFIX = "edge-light-";
+    /** Präfix der Edge-Industrie-Linie (Go: {@code IndustrieReleasePrefix}). */
+    public static final String INDUSTRIE_RELEASE_PREFIX = "edge-industrie-";
 
-    private static final Pattern RELEASE = Pattern.compile("^edge(-light)?-\\d{4}\\.\\d{2}\\.\\d+$");
+    private static final Pattern RELEASE = Pattern.compile("^edge(-light|-industrie)?-\\d{4}\\.\\d{2}\\.\\d+$");
     private static final Pattern COMMIT = Pattern.compile("^[0-9a-f]{7,64}$");
     private static final Pattern KEY_ID = Pattern.compile("^[a-z0-9][a-z0-9._-]{0,63}$");
     private static final Pattern NAME = Pattern.compile("^[a-z][a-z0-9-]{0,31}$");
@@ -232,7 +238,7 @@ public final class ReleaseManifest {
         String release = text(m, "release");
         if (release == null || !RELEASE.matcher(release).matches()) {
             throw new InvalidManifestException("release '" + release
-                    + "' folgt nicht dem Schema edge-JJJJ.MM.N oder edge-light-JJJJ.MM.N");
+                    + "' folgt nicht dem Schema edge-JJJJ.MM.N, edge-light-JJJJ.MM.N oder edge-industrie-JJJJ.MM.N");
         }
         long seq = integer(m, "release_seq");
         if (seq < 1) {
@@ -296,8 +302,9 @@ public final class ReleaseManifest {
      * Zwilling von {@code otaverify.ParseManifestStrict} (Vektor-Feld
      * {@code erzeugbar}). Zusätzlich zu {@link #read}: jeder Typ und jedes
      * Backend ist bekannt, jeder Bestandteil trägt nur die Felder seines Typs,
-     * und es gilt EIN MANIFEST JE BOX-ART (edge-light-… nur mit Backend light
-     * und nur binary; jedes andere Release mit keinem von beiden).
+     * und es gilt EIN MANIFEST JE BOX-ART (edge-light-… nur mit Backend light,
+     * edge-industrie-… nur mit Backend industrie, beide nur binary; jedes andere
+     * Release mit keinem davon).
      *
      * <p>Das Register liest Edge-Light-Releases so: ein Eintrag, den die Boxen
      * zwar tolerant lesen, den aber kein Werkzeug erzeugen darf, gehört nicht in
@@ -314,16 +321,23 @@ public final class ReleaseManifest {
             throw new InvalidManifestException("Manifest ist kein gueltiges JSON.");
         }
         boolean light = m.release.startsWith(LIGHT_RELEASE_PREFIX);
+        boolean industrie = m.release.startsWith(INDUSTRIE_RELEASE_PREFIX);
+        // Die Programm-Linien: ihr Name, ihr Backend, ihr Präfix (Go: binaerLinien).
+        String linie = light ? "Edge-Light" : industrie ? "Edge-Industrie" : null;
+        String linienBackend = light ? BACKEND_LIGHT : industrie ? BACKEND_INDUSTRIE : null;
         for (String b : m.backends) {
             if (!KNOWN_BACKENDS.contains(b)) {
                 throw new InvalidManifestException("compat.backends: unbekanntes Backend '" + b + "'");
             }
-            if (BACKEND_LIGHT.equals(b) != light) {
-                throw new InvalidManifestException(light
-                        ? "Edge-Light-Release " + m.release + " gilt nur fuer das Backend 'light', nicht fuer '"
-                                + b + "'"
-                        : "das Backend 'light' gehoert zu Edge Light - das Release muss edge-light-JJJJ.MM.N "
-                                + "heissen, nicht '" + m.release + "'");
+            if (linienBackend != null && !linienBackend.equals(b)) {
+                throw new InvalidManifestException(linie + "-Release " + m.release + " gilt nur fuer das Backend '"
+                        + linienBackend + "', nicht fuer '" + b + "'");
+            }
+            if (linienBackend == null && (BACKEND_LIGHT.equals(b) || BACKEND_INDUSTRIE.equals(b))) {
+                String praefix = BACKEND_LIGHT.equals(b) ? LIGHT_RELEASE_PREFIX : INDUSTRIE_RELEASE_PREFIX;
+                throw new InvalidManifestException("das Backend '" + b + "' gehoert zu "
+                        + (BACKEND_LIGHT.equals(b) ? "Edge Light" : "Edge Industrie") + " - das Release muss "
+                        + praefix + "JJJJ.MM.N heissen, nicht '" + m.release + "'");
             }
         }
         JsonNode skripte = root.get("skripte");
@@ -344,12 +358,13 @@ public final class ReleaseManifest {
             if (!KNOWN_TYPES.contains(type)) {
                 throw new InvalidManifestException("artifacts[" + i + "]: unbekannter Typ '" + type + "'");
             }
-            if (TYPE_BINARY.equals(type) != light) {
-                throw new InvalidManifestException(light
-                        ? "artifacts[" + i + "] (" + name + "): ein Edge-Light-Release traegt nur Artefakte "
+            if (TYPE_BINARY.equals(type) != (linie != null)) {
+                throw new InvalidManifestException(linie != null
+                        ? "artifacts[" + i + "] (" + name + "): ein " + linie + "-Release traegt nur Artefakte "
                                 + "vom Typ 'binary'"
                         : "artifacts[" + i + "] (" + name + "): Artefakte vom Typ 'binary' gehoeren in ein "
-                                + "Edge-Light-Release (edge-light-JJJJ.MM.N)");
+                                + "Edge-Light- oder Edge-Industrie-Release (edge-light-JJJJ.MM.N, "
+                                + "edge-industrie-JJJJ.MM.N)");
             }
             if (TYPE_OCI_IMAGE.equals(type)) {
                 for (String f : List.of("arch", "sha256", "size", "gz_sha256", "gz_size")) {

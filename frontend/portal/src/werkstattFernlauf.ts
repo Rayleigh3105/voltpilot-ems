@@ -107,13 +107,18 @@ export function fassungKurz(f: string | null | undefined): string {
   return f.replace(/^edge-light-/, '');
 }
 
+/** Die Linien wie `BoxArt` in `adminEdgeUpdates` (hier ohne Import: diese Schicht hängt nicht an der Update-Seite). */
+type Linie = 'docker' | 'light' | 'industrie';
+
 /**
  * Die Linie einer wartenden Box ohne Kundenkonto (4.7): aus der Werkstatt, sonst aus ihrer gemeldeten
- * Fassung (ohne `edge-light-` ist es eine Docker-Box); `null` ohne beides - unbekannt ist nie „Docker".
+ * Fassung (`edge-light-` Edge Light, `edge-industrie-` Edge Industrie, sonst eine Docker-Box); `null` ohne
+ * beides - unbekannt ist nie „Docker".
  */
-export function fernlaufLinie(werkstattBoxArt: 'docker' | 'light' | null, laeuft: string | null): 'docker' | 'light' | null {
+export function fernlaufLinie(werkstattBoxArt: Linie | null, laeuft: string | null): Linie | null {
   if (werkstattBoxArt) return werkstattBoxArt;
   if (laeuft == null) return null;
+  if (laeuft.startsWith('edge-industrie-')) return 'industrie';
   return laeuft.startsWith('edge-light-') ? 'light' : 'docker';
 }
 

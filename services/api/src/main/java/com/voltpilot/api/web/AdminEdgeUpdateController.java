@@ -171,14 +171,14 @@ public class AdminEdgeUpdateController {
     }
 
     /** Der Schalter der Automatik ({@code ota.Erstverbindung}): ab Werk an. */
-    public record ErstverbindungSchalter(boolean alle, boolean docker, boolean light,
+    public record ErstverbindungSchalter(boolean alle, boolean docker, boolean light, boolean industrie,
             List<SchalterEintrag> eintraege) {
     }
 
     @GetMapping("/edge-updates/erstverbindung")
     public ErstverbindungSchalter erstverbindung() {
         var s = rollouts.erstverbindungSchalter();
-        return new ErstverbindungSchalter(s.alle(), s.docker(), s.light(),
+        return new ErstverbindungSchalter(s.alle(), s.docker(), s.light(), s.industrie(),
                 rollouts.erstverbindungSchalterEintraege().stream()
                         .map(e -> new SchalterEintrag(e.bereich(), e.an(), e.geaendertVon(), e.geaendertAm()))
                         .toList());
@@ -188,7 +188,7 @@ public class AdminEdgeUpdateController {
     }
 
     /**
-     * Die Automatik je Linie ({@code docker}, {@code light}) oder für {@code alle}
+     * Die Automatik je Linie ({@code docker}, {@code light}, {@code industrie}) oder für {@code alle}
      * an- oder abschalten - ohne Deploy; jede Änderung steht im Journal.
      */
     @PostMapping("/edge-updates/erstverbindung/{bereich}")

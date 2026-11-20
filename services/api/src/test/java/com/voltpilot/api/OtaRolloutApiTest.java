@@ -1135,6 +1135,102 @@ class OtaRolloutApiTest {
     }
 
     /** Ein Status-Herzschlag mit beliebigem Update-Block durch den ECHTEN Ingest. */
+    /**
+     * Edge Industrie (WAGO PFC200) ist eine eigene Linie: Backend industrie,
+     * Releases edge-industrie-JJJJ.MM.N. Jede Linie geht nur an ihre Box-Art,
+     * die Programme liegen wie bei Edge Light im Portal, und die Automatik beim
+     * ersten Verbinden lässt sich für diese Linie eigens schalten.
+     */
+    @Test
+    @Order(12)
+    void edgeIndustrieIstEineEigeneLinie() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        UUID pfc = claim(customer, TestKennung.box("ota-bi-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID mango = claim(customer, TestKennung.box("ota-bm-" + UUID.randomUUID().toString().substring(0, 8)));
+        reportBox(pfc, "industrie", "edge-industrie-2026.11.0-3bf8c038a1b2");
+        reportBox(mango, "light", "edge-light-2026.10.1-3bf8c038a1b2");
+        kreuzeVertrauen(mango);
+
+        long seq;
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery("SELECT max(release_seq) + 1 FROM edge_release")) {
+            rs.next();
+            seq = rs.getLong(1);
+        }
+        String version = "edge-industrie-2026.11.1";
+        registerRelease(admin, version, seq, LIGHT_MANIFEST.replace("edge-light-2026.10.1", version)
+                .replace("\"release_seq\": 41", "\"release_seq\": " + seq)
+                .replace("\"vp-edge-light\"", "\"vp-edge-industrie\"").replace("linux/mipsle", "linux/arm")
+                .replace("[\"light\"]", "[\"industrie\"]"), SIGNATURE);
+        // Ein Edge-Industrie-Release mit Backend light hat nicht die Form des Vertrags.
+        ResponseEntity<Map<String, Object>> falsch = post("/api/v1/admin/edge-releases", admin, Map.of(
+                "version", "edge-industrie-2026.11.2", "releaseSeq", seq + 1, "signature", SIGNATURE,
+                "manifest", LIGHT_MANIFEST.replace("edge-light-2026.10.1", "edge-industrie-2026.11.2")
+                        .replace("\"release_seq\": 41", "\"release_seq\": " + (seq + 1))));
+        assertThat(falsch.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) falsch.getBody().get("message")).contains("Edge-Industrie-Manifest");
+
+        JsonNode page = readModel(admin);
+        assertThat(fieldOf(page, pfc, "boxArt")).isEqualTo("industrie");
+        assertThat(fieldOf(page, mango, "boxArt")).isEqualTo("light");
+        assertThat(releaseBoxArt(page, seq)).isEqualTo("industrie");
+        assertThat(page.get("lines").findValuesAsText("boxArt")).contains("docker", "light", "industrie");
+
+        // Jede Linie nur an ihre Box-Art, mit eigenem Satz.
+        ResponseEntity<Map<String, Object>> aufMango = post("/api/v1/admin/devices/" + mango + "/update-target",
+                admin, Map.of("releaseSeq", seq));
+        assertThat(aufMango.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) aufMango.getBody().get("message"))
+                .contains("Release für Edge Industrie – diese Box ist eine Edge Light.");
+        ResponseEntity<Map<String, Object>> lightAufPfc = post("/api/v1/admin/devices/" + pfc + "/update-target",
+                admin, Map.of("releaseSeq", 41));
+        assertThat(lightAufPfc.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) lightAufPfc.getBody().get("message"))
+                .contains("Release für Edge Light – diese Box ist eine Edge Industrie.");
+        ResponseEntity<Map<String, Object>> ohneVertrauen = post("/api/v1/admin/devices/" + pfc + "/update-target",
+                admin, Map.of("releaseSeq", seq));
+        assertThat(ohneVertrauen.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) ohneVertrauen.getBody().get("message")).contains("edge-industrie/install.sh");
+        kreuzeVertrauen(pfc);
+
+        // Erst verteilbar, wenn das Programm für linux/arm geprüft im Portal liegt.
+        ResponseEntity<Map<String, Object>> ohneProgramm = post("/api/v1/admin/devices/" + pfc + "/update-target",
+                admin, Map.of("releaseSeq", seq));
+        assertThat(ohneProgramm.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) ohneProgramm.getBody().get("message")).contains("linux/arm");
+        ResponseEntity<Map<String, Object>> teil = null;
+        for (int ab = 0; ab < LIGHT_GZ.length; ab += 512 * 1024) {
+            teil = putTeil(admin, version, "linux/arm", ab,
+                    java.util.Arrays.copyOfRange(LIGHT_GZ, ab, Math.min(LIGHT_GZ.length, ab + 512 * 1024)));
+            assertThat(teil.getStatusCode()).isEqualTo(HttpStatus.OK);
+        }
+        assertThat(teil.getBody()).containsEntry("fertig", true);
+        assertThat(rest.getForEntity(url("/api/v1/edge/light-programm/" + LIGHT_GZ_SHA), byte[].class).getBody())
+                .as("derselbe offene Abrufweg wie Edge Light").isEqualTo(LIGHT_GZ);
+        assertThat(post("/api/v1/admin/devices/" + pfc + "/update-target", admin, Map.of("releaseSeq", seq))
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(sollOf(readModel(admin), pfc)).isEqualTo(version);
+
+        // Die Automatik beim ersten Verbinden: eigens für Edge Industrie schaltbar, mit Journal.
+        ResponseEntity<Map<String, Object>> aus = post("/api/v1/admin/edge-updates/erstverbindung/industrie",
+                admin, Map.of("an", false));
+        assertThat(aus.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(aus.getBody()).containsEntry("industrie", false).containsEntry("light", true)
+                .containsEntry("docker", true);
+        assertThat(post("/api/v1/admin/edge-updates/erstverbindung/industrie", admin, Map.of("an", true))
+                .getBody()).containsEntry("industrie", true);
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery("SELECT detail FROM rollout_event "
+                        + "WHERE event = 'erstverbindung_schalter' AND detail LIKE 'Edge Industrie%' ORDER BY id")) {
+            List<String> details = new java.util.ArrayList<>();
+            while (rs.next()) {
+                details.add(rs.getString(1));
+            }
+            assertThat(details).containsExactly("Edge Industrie: aus", "Edge Industrie: an");
+        }
+    }
+
     private void herzschlagRoh(UpdateStatusListener ingest, UUID deviceId, String version, String update) {
         String payload = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A
                 + "\",\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + deviceId

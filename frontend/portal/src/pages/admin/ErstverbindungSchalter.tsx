@@ -6,6 +6,7 @@ import { adminApi, type ErstverbindungSchalterStand } from '../../admin/adminApi
 const BEREICHE = [
   { id: 'alle', label: 'Alle Linien' },
   { id: 'light', label: 'Edge Light' },
+  { id: 'industrie', label: 'Edge Industrie' },
   { id: 'docker', label: 'Docker-Box' },
 ] as const;
 type Bereich = (typeof BEREICHE)[number]['id'];
@@ -51,7 +52,7 @@ export function ErstverbindungSchalter({ onGeaendert }: { onGeaendert?: () => vo
       <details>
         <summary className="vp-sec-summary">
           <h3 style={{ margin: 0, display: 'inline' }}>Automatik beim ersten Verbinden</h3>
-          {stand && <span className="vp-muted"> · {stand.alle && stand.light && stand.docker ? 'an' : 'teilweise aus'}</span>}
+          {stand && <span className="vp-muted"> · {stand.alle && stand.light && stand.industrie && stand.docker ? 'an' : 'teilweise aus'}</span>}
         </summary>
         <p className="vp-muted" style={{ marginTop: 'var(--vp-space-2)' }}>
           Neu verbundene Boxen holen sich mit ihrer ersten Meldung die neueste signierte Fassung ihrer Linie. Hier

@@ -169,4 +169,65 @@ class BoxArtTest {
         assertThat(many).contains("A (1), B (2), C (3) und 1 weitere: ");
         assertThat(many).doesNotContain("D (4)");
     }
+
+    @Test
+    @DisplayName("Edge Industrie: eigenes Backend, eigener Stempel, eigene Release-Linie")
+    void edgeIndustrieIsItsOwnBoxArt() {
+        assertThat(BoxArt.ofDevice("industrie", (String) null)).isEqualTo(BoxArt.INDUSTRIE);
+        assertThat(BoxArt.ofDevice("compose", "edge-industrie-2026.11.0")).isEqualTo(BoxArt.INDUSTRIE);
+        assertThat(BoxArt.ofDevice(null, "edge-industrie-g2d2bca1b6")).isEqualTo(BoxArt.INDUSTRIE);
+        assertThat(BoxArt.ofDevice("light", "edge-industrie-2026.11.0"))
+                .as("das gemeldete Backend gewinnt").isEqualTo(BoxArt.LIGHT);
+        assertThat(BoxArt.ofDevice("industrie", "edge-light-2026.11.0")).isEqualTo(BoxArt.INDUSTRIE);
+
+        assertThat(BoxArt.ofRelease("edge-industrie-2026.11.0", null)).isEqualTo(BoxArt.INDUSTRIE);
+        assertThat(BoxArt.ofRelease("edge-2026.11.0", "{\"compat\":{\"backends\":[\"industrie\"]}}"))
+                .isEqualTo(BoxArt.INDUSTRIE);
+        assertThat(BoxArt.ofRelease("edge-2026.11.0", "{\"compat\":{\"backends\":[\"industrie\",\"light\"]}}"))
+                .as("light gewinnt wie bisher").isEqualTo(BoxArt.LIGHT);
+        assertThat(BoxArt.ofRelease("edge-light-2026.11.0", null)).as("Mango-Linie unverändert").isEqualTo(BoxArt.LIGHT);
+    }
+
+    @Test
+    @DisplayName("Go-Kern: Edge Light und Edge Industrie, nie Docker oder unbekannt")
+    void goKern() {
+        assertThat(BoxArt.istGoKern(BoxArt.LIGHT)).isTrue();
+        assertThat(BoxArt.istGoKern(BoxArt.INDUSTRIE)).isTrue();
+        assertThat(BoxArt.istGoKern(BoxArt.DOCKER)).isFalse();
+        assertThat(BoxArt.istGoKern(null)).isFalse();
+        assertThat(BoxArt.wort(BoxArt.LIGHT)).isEqualTo("edge_light");
+        assertThat(BoxArt.wort(BoxArt.INDUSTRIE)).isEqualTo("edge_industrie");
+        assertThat(BoxArt.wort(BoxArt.DOCKER)).isNull();
+        assertThat(BoxArt.anzeige(BoxArt.INDUSTRIE)).isEqualTo("Edge Industrie");
+        assertThat(BoxArt.anzeige(BoxArt.LIGHT)).isEqualTo("Edge Light");
+        assertThat(BoxArt.anzeige(BoxArt.DOCKER)).isEqualTo("Docker-Box");
+    }
+
+    @Test
+    @DisplayName("Sperre über drei Linien: jede Linie nur an ihre Box-Art, Edge Light unverändert")
+    void sperreUeberDreiLinien() {
+        assertThat(BoxArt.sperrgrund(BoxArt.INDUSTRIE, BoxArt.INDUSTRIE, true, "update")).isNull();
+        assertThat(BoxArt.sperrgrund(BoxArt.INDUSTRIE, BoxArt.INDUSTRIE, true, null)).isNull();
+        assertThat(BoxArt.sperrgrund(BoxArt.INDUSTRIE, BoxArt.INDUSTRIE, false, "update"))
+                .isEqualTo(BoxArt.GRUND_INDUSTRIE_STUFE_1);
+        assertThat(BoxArt.sperrgrund(BoxArt.INDUSTRIE, BoxArt.INDUSTRIE, true, "flash"))
+                .isEqualTo(BoxArt.GRUND_INDUSTRIE_STUFE_1);
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.INDUSTRIE, true, "update"))
+                .isEqualTo(BoxArt.GRUND_INDUSTRIE_AUF_LIGHT)
+                .isEqualTo("Release für Edge Industrie – diese Box ist eine Edge Light.");
+        assertThat(BoxArt.sperrgrund(BoxArt.DOCKER, BoxArt.INDUSTRIE, true))
+                .isEqualTo("Release für Edge Industrie – diese Box ist eine Docker-Box.");
+        assertThat(BoxArt.sperrgrund(null, BoxArt.INDUSTRIE, true)).isEqualTo(BoxArt.GRUND_INDUSTRIE_AUF_UNBEKANNT);
+        assertThat(BoxArt.sperrgrund(BoxArt.INDUSTRIE, BoxArt.LIGHT, true, "update"))
+                .isEqualTo("Release für Edge Light – diese Box ist eine Edge Industrie.");
+        assertThat(BoxArt.sperrgrund(BoxArt.INDUSTRIE, BoxArt.DOCKER, true))
+                .isEqualTo("Release für die Docker-Box – diese Box ist eine Edge Industrie.");
+        // Edge Light und Docker wie bisher.
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.LIGHT, true, "update")).isNull();
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.DOCKER, true)).isEqualTo(BoxArt.GRUND_DOCKER_AUF_LIGHT);
+        assertThat(BoxArt.sperrgrund(BoxArt.DOCKER, BoxArt.LIGHT, true)).isEqualTo(BoxArt.GRUND_LIGHT_AUF_DOCKER);
+
+        assertThat(BoxArt.stufe1(BoxArt.INDUSTRIE, false, "update")).isTrue();
+        assertThat(BoxArt.stufe1(BoxArt.INDUSTRIE, true, "update")).isFalse();
+    }
 }

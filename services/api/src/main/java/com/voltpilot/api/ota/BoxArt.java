@@ -8,9 +8,13 @@ import java.util.Set;
  * Die EINE Regel „welche Box-Art ist das, und passt dieses Release dazu?" -
  * rein, ohne DB, ohne Broker (das {@link RolloutStates}-Muster).
  *
- * <p><b>Zwei Box-Arten:</b> die Docker-Box ({@code edge-app}, Apply-Backend
- * {@code compose}/{@code quadlet}/{@code mender}) und Edge Light
- * ({@code vp-edge-light} auf dem Mango, Backend {@code light}). Die Box-Art ist
+ * <p><b>Drei Box-Arten:</b> die Docker-Box ({@code edge-app}, Apply-Backend
+ * {@code compose}/{@code quadlet}/{@code mender}), Edge Light
+ * ({@code vp-edge-light} auf dem Mango, Backend {@code light}) und Edge
+ * Industrie ({@code vp-edge-industrie} auf dem WAGO PFC200, Backend
+ * {@code industrie}). Edge Light und Edge Industrie tragen denselben Go-Kern
+ * mit Schicht 1 ({@link #istGoKern}); was die Box KANN, fragt die Cloud dort,
+ * nie am einzelnen Wort. Jede hat ihre eigene Release-Linie. Die Box-Art ist
  * keine Zustands-Aussage über das Gerät, sondern seine Bauart; die Sperre hier
  * ist der Cloud-Zwilling von {@code compat.backends}, das jede Box ohnehin
  * selbst prüft - nur eben VOR dem Senden, statt dass eine falsche Zuweisung
@@ -18,12 +22,15 @@ import java.util.Set;
  *
  * <h2>Erkennen (Gerät)</h2>
  * <ol>
- *   <li>Meldet die Box {@code update.backend = "light"}, ist sie Edge Light.</li>
+ *   <li>Meldet die Box {@code update.backend = "light"}, ist sie Edge Light;
+ *       {@code "industrie"} heißt Edge Industrie.</li>
  *   <li><b>Übergang:</b> Heute meldet auch Edge Light noch {@code compose}
  *       (der Core trägt den Wert fest ein). Bis jede Edge-Light-Box ihr Backend
  *       selbst meldet, erkennt die API sie an ihrem Versionsstempel
  *       {@value #LIGHT_STAMP_PREFIX}… ({@code edge-light/scripts/lib.sh
- *       light_version}). Der Stempel gewinnt dabei über {@code compose}.</li>
+ *       light_version}). Der Stempel gewinnt dabei über {@code compose}.
+ *       Ebenso der Stempel {@value #INDUSTRIE_STAMP_PREFIX}… für Edge
+ *       Industrie.</li>
  *   <li>Ein Docker-Backend oder ein gemeldeter Stand ohne Backend (ältere
  *       Docker-Kerne melden nur die Version) heißt Docker-Box.</li>
  *   <li>Sonst ist die Box-Art <b>unbekannt</b> ({@code null}): ein Gerät, das
@@ -34,20 +41,25 @@ import java.util.Set;
  * <h2>Erkennen (Release)</h2>
  * Ein Release gilt bis auf Weiteres als Docker. Edge Light ist es, wenn das
  * signierte Manifest {@code light} unter {@code compat.backends} führt oder der
- * Register-Name zur Linie {@value #LIGHT_STAMP_PREFIX}JJJJ.MM.N gehört (E7).
+ * Register-Name zur Linie {@value #LIGHT_STAMP_PREFIX}JJJJ.MM.N gehört (E7);
+ * Edge Industrie ebenso mit {@code industrie} und
+ * {@value #INDUSTRIE_STAMP_PREFIX}JJJJ.MM.N.
  * Ein Manifest, das neben {@code light} auch ein Docker-Backend nennt, gilt als
  * Edge Light: Ein Docker-Kern vor dem Edge-Light-Update-Vertrag lehnt das
  * Backend {@code light} als Prüffehler ab ({@code failed}); ein neuerer stellt
  * ein solches Release nur zurück (Sperre {@code backend}). Solange ältere Kerne
  * in der Flotte sind, bleibt diese Sperre die sichere Seite. Erzeugen darf ein
  * Werkzeug ein gemischtes Manifest ohnehin nicht ({@code ParseManifestStrict}).
+ * Nennt ein Manifest {@code light} und {@code industrie}, gilt es als Edge
+ * Light (erzeugen darf es ebenfalls niemand).
  * Den vollen Formleser hat {@link ReleaseManifest}; hier genügt bewusst der rohe
  * Blick in {@code compat.backends}, damit auch ein unlesbares Manifest mit
  * {@code light} als Edge Light gilt.
  *
  * <h2>Zuweisen</h2>
  * Gesperrt wird, was belegt nicht passt. Ein Edge-Light-Release verlangt
- * zusätzlich den BELEG, dass die Box Edge Light ist - eine Box unbekannter Art
+ * zusätzlich den BELEG, dass die Box Edge Light ist, ein
+ * Edge-Industrie-Release den, dass sie Edge Industrie ist - eine Box unbekannter Art
  * bekommt es nicht, weil eine Docker-Box es als Vorfall abweisen würde. Ein
  * Docker-Release bleibt einer Box unbekannter Art zuweisbar wie bisher (eine
  * Box, die sich noch nie gemeldet hat, holt ihre Zuweisung retained ab).
@@ -60,7 +72,9 @@ import java.util.Set;
  * „fehlgeschlagen ⚠". Ein Edge-Light-Release an sie wird deshalb vor dem Senden
  * gesperrt; der Weg ist das einmalige Nachrüsten
  * ({@code edge-light/docs/nachruesten.md}). Dieselbe Regel nennt das Portal
- * „Updates von Hand (Edge Light, Stufe 1)" ({@code crossoverState}).
+ * „Updates von Hand (Edge Light, Stufe 1)" ({@code crossoverState}). Für Edge
+ * Industrie gilt dieselbe Regel mit eigenem Satz; ihr Weg ist
+ * {@code edge-industrie/install.sh}.
  *
  * <p>Der Zwilling im Portal ist {@code releaseSperre} in
  * {@code frontend/portal/src/adminEdgeUpdates.ts}; die Sätze dort und hier
@@ -72,9 +86,13 @@ public final class BoxArt {
     public static final String DOCKER = "docker";
     /** Edge Light ({@code vp-edge-light}). */
     public static final String LIGHT = "light";
+    /** Edge Industrie ({@code vp-edge-industrie}, WAGO PFC200). */
+    public static final String INDUSTRIE = "industrie";
 
     /** Das Apply-Backend, mit dem sich Edge Light meldet. */
     static final String BACKEND_LIGHT = "light";
+    /** Das Apply-Backend, mit dem sich Edge Industrie meldet. */
+    static final String BACKEND_INDUSTRIE = "industrie";
 
     /** Die Apply-Backends der Docker-Box ({@code compat.backends} im Manifest-Schema). */
     static final Set<String> BACKENDS_DOCKER = Set.of("compose", "quadlet", "mender");
@@ -85,6 +103,8 @@ public final class BoxArt {
      * {@link RolloutStates#releaseIsRunning} beide Linien trennt.
      */
     public static final String LIGHT_STAMP_PREFIX = "edge-light-";
+    /** Der Stempel- und Namens-Anfang von Edge Industrie (wie {@link #LIGHT_STAMP_PREFIX}). */
+    public static final String INDUSTRIE_STAMP_PREFIX = "edge-industrie-";
 
     /**
      * Docker-Release an eine Edge-Light-Box. Seit Edge Light eigene Releases hat
@@ -116,6 +136,33 @@ public final class BoxArt {
                     + "Edge-Light-Release geht nur an eine Box, die sich als Edge Light "
                     + "gemeldet hat.";
 
+    /** Docker-Release an eine Edge-Industrie-Box. */
+    public static final String GRUND_DOCKER_AUF_INDUSTRIE =
+            "Release für die Docker-Box – diese Box ist eine Edge Industrie.";
+    /** Edge-Light-Release an eine Edge-Industrie-Box. */
+    public static final String GRUND_LIGHT_AUF_INDUSTRIE =
+            "Release für Edge Light – diese Box ist eine Edge Industrie.";
+    /** Edge-Industrie-Release an eine Edge-Light-Box. */
+    public static final String GRUND_INDUSTRIE_AUF_LIGHT =
+            "Release für Edge Industrie – diese Box ist eine Edge Light.";
+    /** Edge-Industrie-Release an eine Docker-Box. */
+    public static final String GRUND_INDUSTRIE_AUF_DOCKER =
+            "Release für Edge Industrie – diese Box ist eine Docker-Box.";
+    /** Edge-Industrie-Release an eine Box, deren Art niemand belegt hat. */
+    public static final String GRUND_INDUSTRIE_AUF_UNBEKANNT =
+            "Release für Edge Industrie – die Box-Art dieses Geräts ist unbekannt. Ein "
+                    + "Edge-Industrie-Release geht nur an eine Box, die sich als Edge Industrie "
+                    + "gemeldet hat.";
+    /**
+     * Edge-Industrie-Release an eine Edge-Industrie-Box ohne gekreuztes Vertrauen
+     * oder mit einem Loader, der nur die Fassung aus dem Flash startet.
+     */
+    public static final String GRUND_INDUSTRIE_STUFE_1 =
+            "Release für Edge Industrie – diese Box nimmt keine Updates aus dem Portal an "
+                    + "(kein geprüftes Vertrauens-Set oder ein Loader ohne Updates). Einmal mit "
+                    + "edge-industrie/install.sh neu einrichten, danach kommt jede Fassung über "
+                    + "das Portal.";
+
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private BoxArt() {
@@ -127,12 +174,15 @@ public final class BoxArt {
      * @param backend {@code update.backend}, verbatim gespeichert
      * @param stamps  die gemeldeten Stempel ({@code version}, {@code update.current});
      *                jeder darf {@code null} sein
-     * @return {@link #DOCKER}, {@link #LIGHT} oder {@code null} = unbekannt
+     * @return {@link #DOCKER}, {@link #LIGHT}, {@link #INDUSTRIE} oder {@code null} = unbekannt
      */
     public static String ofDevice(String backend, String... stamps) {
         String b = backend == null ? null : backend.trim();
         if (BACKEND_LIGHT.equals(b)) {
             return LIGHT;
+        }
+        if (BACKEND_INDUSTRIE.equals(b)) {
+            return INDUSTRIE;
         }
         boolean reported = false;
         for (String s : stamps) {
@@ -142,6 +192,9 @@ public final class BoxArt {
             reported = true;
             if (s.trim().startsWith(LIGHT_STAMP_PREFIX)) {
                 return LIGHT;
+            }
+            if (s.trim().startsWith(INDUSTRIE_STAMP_PREFIX)) {
+                return INDUSTRIE;
             }
         }
         if (b != null && !b.isEmpty()) {
@@ -161,14 +214,22 @@ public final class BoxArt {
         if (version != null && version.trim().startsWith(LIGHT_STAMP_PREFIX)) {
             return LIGHT;
         }
+        if (version != null && version.trim().startsWith(INDUSTRIE_STAMP_PREFIX)) {
+            return INDUSTRIE;
+        }
         if (manifest != null && !manifest.isBlank()) {
             try {
                 JsonNode backends = JSON.readTree(manifest).path("compat").path("backends");
                 if (backends.isArray()) {
+                    boolean industrie = false;
                     for (JsonNode n : backends) {
                         if (BACKEND_LIGHT.equals(n.asText())) {
                             return LIGHT;
                         }
+                        industrie |= BACKEND_INDUSTRIE.equals(n.asText());
+                    }
+                    if (industrie) {
+                        return INDUSTRIE;
                     }
                 }
             } catch (Exception e) {
@@ -177,6 +238,38 @@ public final class BoxArt {
             }
         }
         return DOCKER;
+    }
+
+    /**
+     * Trägt diese Box-Art den Go-Kern mit Schicht 1 (Edge Light oder Edge
+     * Industrie)? Die neutrale Frage für alles, was die Box KANN (Regeln im Kern,
+     * Modbus-Gerät, Preise, Flows); {@code null} = unbekannt = nein.
+     */
+    public static boolean istGoKern(String art) {
+        return LIGHT.equals(art) || INDUSTRIE.equals(art);
+    }
+
+    /**
+     * Das Wort einer Go-Kern-Box in Verträgen und Antwort-Gründen
+     * ({@code edge_light}, {@code edge_industrie}; Gerätesuche, Steuerweg,
+     * Preis-Zuleitung); {@code null} für die Docker-Box und unbekannt.
+     */
+    public static String wort(String art) {
+        if (LIGHT.equals(art)) {
+            return "edge_light";
+        }
+        return INDUSTRIE.equals(art) ? "edge_industrie" : null;
+    }
+
+    /** Der Name der Box-Art für Sätze („Docker-Box", „Edge Light", „Edge Industrie"). */
+    public static String anzeige(String art) {
+        if (LIGHT.equals(art)) {
+            return "Edge Light";
+        }
+        if (INDUSTRIE.equals(art)) {
+            return "Edge Industrie";
+        }
+        return DOCKER.equals(art) ? "Docker-Box" : "unbekannt";
     }
 
     /**
@@ -211,7 +304,7 @@ public final class BoxArt {
      * @param release           die Box-Art des Releases
      * @param vertrauenGekreuzt ob das Gerät Wurzel und geprüftes Vertrauens-Set
      *                          gemeldet hat ({@link #vertrauenGekreuzt(String, String)});
-     *                          zählt nur für Edge Light (Stufe 1)
+     *                          zählt nur für Edge Light und Edge Industrie (Stufe 1)
      * @return {@code null}, wenn die Zuweisung passt, sonst der deutsche Grund
      */
     public static String sperrgrund(String geraet, String release, boolean vertrauenGekreuzt) {
@@ -233,18 +326,34 @@ public final class BoxArt {
                 }
                 return vertrauenGekreuzt ? null : GRUND_LIGHT_STUFE_1;
             }
+            if (INDUSTRIE.equals(geraet)) {
+                return GRUND_LIGHT_AUF_INDUSTRIE;
+            }
             return geraet == null ? GRUND_LIGHT_AUF_UNBEKANNT : GRUND_LIGHT_AUF_DOCKER;
         }
-        return LIGHT.equals(geraet) ? GRUND_DOCKER_AUF_LIGHT : null;
+        if (INDUSTRIE.equals(release)) {
+            if (INDUSTRIE.equals(geraet)) {
+                return stufe1(geraet, vertrauenGekreuzt, loader) ? GRUND_INDUSTRIE_STUFE_1 : null;
+            }
+            if (LIGHT.equals(geraet)) {
+                return GRUND_INDUSTRIE_AUF_LIGHT;
+            }
+            return geraet == null ? GRUND_INDUSTRIE_AUF_UNBEKANNT : GRUND_INDUSTRIE_AUF_DOCKER;
+        }
+        if (LIGHT.equals(geraet)) {
+            return GRUND_DOCKER_AUF_LIGHT;
+        }
+        return INDUSTRIE.equals(geraet) ? GRUND_DOCKER_AUF_INDUSTRIE : null;
     }
 
     /**
-     * Hat eine Edge-Light-Box Stufe 1 - nimmt sie keine Updates aus dem Portal
-     * an? Ohne gekreuztes Vertrauen, oder mit einem Loader, der nur die Fassung
-     * aus dem Flash startet. Für andere Box-Arten {@code false}.
+     * Hat eine Edge-Light- oder Edge-Industrie-Box Stufe 1 - nimmt sie keine
+     * Updates aus dem Portal an? Ohne gekreuztes Vertrauen, oder mit einem
+     * Loader, der nur die Fassung aus dem Flash startet. Für die Docker-Box
+     * {@code false}.
      */
     public static boolean stufe1(String geraet, boolean vertrauenGekreuzt, String loader) {
-        return LIGHT.equals(geraet)
+        return istGoKern(geraet)
                 && (!vertrauenGekreuzt || BoxGeraet.LOADER_FLASH.equals(loader));
     }
 }

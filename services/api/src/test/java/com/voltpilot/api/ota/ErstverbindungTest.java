@@ -127,15 +127,21 @@ class ErstverbindungTest {
     @Test
     @DisplayName("Schalter: global oder je Linie aus")
     void schalter() {
-        var lightAus = new Erstverbindung.Schalter(true, true, false);
+        var lightAus = new Erstverbindung.Schalter(true, true, false, true);
         assertThat(Erstverbindung.of(mango(), L113, lightAus, JETZT))
                 .isEqualTo(new Erstverbindung.Urteil(Erstverbindung.Art.AUS, null, null,
                         "Die Automatik ist für Edge Light abgeschaltet."));
         var docker = box(BoxArt.DOCKER, false, null, 58L, "edge-2026.10.7");
         assertThat(Erstverbindung.of(docker, D112, lightAus, JETZT).art())
                 .as("die andere Linie läuft weiter").isEqualTo(Erstverbindung.Art.ZUWEISEN);
-        assertThat(Erstverbindung.of(docker, D112, new Erstverbindung.Schalter(false, true, true), JETZT).grund())
+        assertThat(Erstverbindung.of(docker, D112, new Erstverbindung.Schalter(false, true, true, true), JETZT).grund())
                 .isEqualTo("Die Automatik ist abgeschaltet.");
+        var industrie = box(BoxArt.INDUSTRIE, true, "update", null, null);
+        assertThat(Erstverbindung.of(industrie, null, new Erstverbindung.Schalter(true, true, true, false), JETZT))
+                .isEqualTo(new Erstverbindung.Urteil(Erstverbindung.Art.AUS, null, null,
+                        "Die Automatik ist für Edge Industrie abgeschaltet."));
+        assertThat(Erstverbindung.of(mango(), L113, new Erstverbindung.Schalter(true, true, true, false), JETZT).art())
+                .as("Edge Industrie aus lässt Edge Light laufen").isEqualTo(Erstverbindung.Art.ZUWEISEN);
     }
 
     @Test

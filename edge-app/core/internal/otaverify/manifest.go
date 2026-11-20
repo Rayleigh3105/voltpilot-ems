@@ -56,7 +56,8 @@ const ManifestSchemaVersion = "1.0"
 // Backends, fuer die ein Release bestimmt sein kann. Ein Geraet, dessen
 // Backend nicht in compat.backends steht, wendet nicht an statt zu raten -
 // der Punkt des runtime-agnostischen Schnitts (§5). Das Backend ist zugleich
-// die BOX-ART: compose ist die Docker-Box, light ist Edge Light.
+// die BOX-ART: compose ist die Docker-Box, light ist Edge Light, industrie ist
+// Edge Industrie.
 const (
 	BackendCompose = "compose"
 	BackendQuadlet = "quadlet"
@@ -65,6 +66,10 @@ const (
 	// Container (Plan Edge Light Stufe 2, §2.2). Ein Edge-Light-Release hat ein
 	// EIGENES Manifest - nur dieses Backend, nur [ArtifactBinary].
 	BackendLight = "light"
+	// BackendIndustrie ist Edge Industrie (WAGO PFC200): derselbe Kern und
+	// dieselbe Anwendung wie [BackendLight], aber eine eigene Box-Art mit
+	// eigener Release-Linie - nur dieses Backend, nur [ArtifactBinary].
+	BackendIndustrie = "industrie"
 )
 
 // Artefakt-Typen. Jeder Typ hat seine eigenen Pflichtfelder und seine eigene
@@ -84,20 +89,32 @@ const (
 // (Entscheid E7: edge-light-JJJJ.MM.N, eigene Kadenz).
 const LightReleasePrefix = "edge-light-"
 
+// IndustrieReleasePrefix leitet jeden Release-Namen der Edge-Industrie-Linie
+// ein (edge-industrie-JJJJ.MM.N).
+const IndustrieReleasePrefix = "edge-industrie-"
+
+// binaerLinien sind die Linien mit Programmen statt Containern: ihr Praefix
+// und das EINE Backend, fuer das ein Release dieser Linie gilt.
+var binaerLinien = []struct{ praefix, backend, name string }{
+	{LightReleasePrefix, BackendLight, "Edge-Light"},
+	{IndustrieReleasePrefix, BackendIndustrie, "Edge-Industrie"},
+}
+
 // appliedTypes sagt, welche Artefakt-Typen ein Apply-Backend ANWENDET. Ein
 // Backend, das hier fehlt (quadlet, mender), hat auf diesem Stand keine
 // Anwendung - ein Geraet damit wendet also nichts an, statt zu raten.
 var appliedTypes = map[string]string{
-	BackendCompose: ArtifactOCIImage,
-	BackendLight:   ArtifactBinary,
+	BackendCompose:   ArtifactOCIImage,
+	BackendLight:     ArtifactBinary,
+	BackendIndustrie: ArtifactBinary,
 }
 
 var (
-	// releaseRe traegt beide Linien: Docker-Box edge-JJJJ.MM.N und Edge Light
-	// edge-light-JJJJ.MM.N. Die Docker-Box muss den Namen eines Edge-Light-
-	// Release LESEN koennen, sonst lehnte sie es als „Form kaputt" ab, statt
-	// es als „nicht fuer mich" zurueckzustellen.
-	releaseRe   = regexp.MustCompile(`^edge(-light)?-\d{4}\.\d{2}\.\d+$`)
+	// releaseRe traegt alle Linien: Docker-Box edge-JJJJ.MM.N, Edge Light
+	// edge-light-JJJJ.MM.N und Edge Industrie edge-industrie-JJJJ.MM.N. Jede
+	// Box muss den Namen eines fremden Release LESEN koennen, sonst lehnte sie
+	// es als „Form kaputt" ab, statt es als „nicht fuer mich" zurueckzustellen.
+	releaseRe   = regexp.MustCompile(`^edge(-light|-industrie)?-\d{4}\.\d{2}\.\d+$`)
 	commitRe    = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 	keyIDRe     = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 	artNameRe   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -109,8 +126,8 @@ var (
 	sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
-// IsReleaseName sagt, ob ein Name dem Release-Schema folgt (edge-JJJJ.MM.N
-// oder edge-light-JJJJ.MM.N). Der Umschlag der Zuweisung prueft mit genau
+// IsReleaseName sagt, ob ein Name dem Release-Schema folgt (edge-JJJJ.MM.N,
+// edge-light-JJJJ.MM.N oder edge-industrie-JJJJ.MM.N). Der Umschlag der Zuweisung prueft mit genau
 // dieser Regel - zwei Kopien liefen auseinander.
 func IsReleaseName(name string) bool { return releaseRe.MatchString(name) }
 
@@ -197,7 +214,7 @@ func KnownArtifactType(t string) bool {
 // KnownBackend sagt, ob dieser Stand das Backend kennt.
 func KnownBackend(b string) bool {
 	switch b {
-	case BackendCompose, BackendQuadlet, BackendMender, BackendLight:
+	case BackendCompose, BackendQuadlet, BackendMender, BackendLight, BackendIndustrie:
 		return true
 	}
 	return false
@@ -313,7 +330,7 @@ func (m *Manifest) validate() error {
 		return err
 	}
 	if !releaseRe.MatchString(m.Release) {
-		return fmt.Errorf("release '%s' folgt nicht dem Schema edge-JJJJ.MM.N oder edge-light-JJJJ.MM.N", m.Release)
+		return fmt.Errorf("release '%s' folgt nicht dem Schema edge-JJJJ.MM.N, edge-light-JJJJ.MM.N oder edge-industrie-JJJJ.MM.N", m.Release)
 	}
 	if m.ReleaseSeq < 1 {
 		return errors.New("release_seq muss >= 1 sein - sie ist die Ordnung der Releases")
@@ -423,7 +440,8 @@ func (a Artifact) validate(i int) error {
 //   - jeder Bestandteil traegt nur die Felder seines Typs;
 //   - EIN MANIFEST JE BOX-ART: ein Edge-Light-Release heisst edge-light-…,
 //     gilt nur fuer das Backend light und traegt nur binary-Artefakte; ein
-//     Release jeder anderen Box-Art traegt weder das eine noch das andere.
+//     Edge-Industrie-Release ebenso mit edge-industrie-… und industrie; ein
+//     Release jeder anderen Box-Art traegt weder diese Backends noch binary.
 //
 // Streng senden, tolerant annehmen: ein Geraet liest mit [ParseManifest],
 // damit ein neuerer oder fremder Stand dort „nicht fuer mich" heisst und
@@ -441,17 +459,26 @@ func ParseManifestStrict(raw []byte) (*Manifest, error) {
 
 func (m *Manifest) checkProduced() error {
 	light := strings.HasPrefix(m.Release, LightReleasePrefix)
+	linie := -1
+	for i, l := range binaerLinien {
+		if strings.HasPrefix(m.Release, l.praefix) {
+			linie = i
+		}
+	}
 	for _, b := range m.Compat.Backends {
 		if !KnownBackend(b) {
 			return fmt.Errorf("compat.backends: unbekanntes Backend '%s'", b)
 		}
-		if (b == BackendLight) != light {
-			if light {
-				return fmt.Errorf("Edge-Light-Release %s gilt nur fuer das Backend '%s', nicht fuer '%s'",
-					m.Release, BackendLight, b)
+		if linie >= 0 && b != binaerLinien[linie].backend {
+			l := binaerLinien[linie]
+			return fmt.Errorf("%s-Release %s gilt nur fuer das Backend '%s', nicht fuer '%s'",
+				l.name, m.Release, l.backend, b)
+		}
+		for _, l := range binaerLinien {
+			if linie < 0 && b == l.backend {
+				return fmt.Errorf("das Backend '%s' gehoert zu %s - das Release muss %sJJJJ.MM.N heissen, nicht '%s'",
+					l.backend, strings.ReplaceAll(l.name, "-", " "), l.praefix, m.Release)
 			}
-			return fmt.Errorf("das Backend '%s' gehoert zu Edge Light - das Release muss %sJJJJ.MM.N heissen, nicht '%s'",
-				BackendLight, LightReleasePrefix, m.Release)
 		}
 	}
 	if m.Skripte != nil {
@@ -472,13 +499,13 @@ func (m *Manifest) checkProduced() error {
 		if !KnownArtifactType(a.Type) {
 			return fmt.Errorf("artifacts[%d]: unbekannter Typ '%s'", i, a.Type)
 		}
-		if (a.Type == ArtifactBinary) != light {
-			if light {
-				return fmt.Errorf("artifacts[%d] (%s): ein Edge-Light-Release traegt nur Artefakte vom Typ '%s'",
-					i, a.Name, ArtifactBinary)
+		if (a.Type == ArtifactBinary) != (linie >= 0) {
+			if linie >= 0 {
+				return fmt.Errorf("artifacts[%d] (%s): ein %s-Release traegt nur Artefakte vom Typ '%s'",
+					i, a.Name, binaerLinien[linie].name, ArtifactBinary)
 			}
-			return fmt.Errorf("artifacts[%d] (%s): Artefakte vom Typ '%s' gehoeren in ein Edge-Light-Release (%sJJJJ.MM.N)",
-				i, a.Name, ArtifactBinary, LightReleasePrefix)
+			return fmt.Errorf("artifacts[%d] (%s): Artefakte vom Typ '%s' gehoeren in ein Edge-Light- oder Edge-Industrie-Release (%sJJJJ.MM.N, %sJJJJ.MM.N)",
+				i, a.Name, ArtifactBinary, LightReleasePrefix, IndustrieReleasePrefix)
 		}
 		switch a.Type {
 		case ArtifactOCIImage:

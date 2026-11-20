@@ -25,8 +25,8 @@
     },
     "release": {
       "type": "string",
-      "pattern": "^edge(-light)?-\\d{4}\\.\\d{2}\\.\\d+$",
-      "description": "Das menschenlesbare Release-Tag (Captain-Entscheid D5), identisch mit dem Git-Tag im voltpilot-ems-Repo. Zwei Linien mit eigener Kadenz: edge-JJJJ.MM.N fuer die Docker-Box, edge-light-JJJJ.MM.N fuer Edge Light (Entscheid E7). Die Box-Art steht in compat.backends; der Name folgt ihr (siehe allOf). NIE die Ordnung - dafuer ist release_seq da; sie ist EINE Ordnung ueber beide Linien, und jede Box vergleicht nur gegen ihre eigene."
+      "pattern": "^edge(-light|-industrie)?-\\d{4}\\.\\d{2}\\.\\d+$",
+      "description": "Das menschenlesbare Release-Tag (Captain-Entscheid D5), identisch mit dem Git-Tag im voltpilot-ems-Repo. Zwei Linien mit eigener Kadenz: edge-JJJJ.MM.N fuer die Docker-Box, edge-light-JJJJ.MM.N fuer Edge Light (Entscheid E7), edge-industrie-JJJJ.MM.N fuer Edge Industrie (WAGO PFC200). Die Box-Art steht in compat.backends; der Name folgt ihr (siehe allOf). NIE die Ordnung - dafuer ist release_seq da; sie ist EINE Ordnung ueber alle Linien, und jede Box vergleicht nur gegen ihre eigene."
     },
     "release_seq": {
       "type": "integer",
@@ -41,7 +41,7 @@
     "artifacts": {
       "type": "array",
       "minItems": 1,
-      "description": "Was dieses Release AUSMACHT, typisiert. Der einzige backend-spezifische Teil des Manifests: ein Apply-Backend wendet nur Artefakt-Typen an, die es versteht (compose: oci-image, light: binary). Die Docker-Box traegt zwei OCI-Images, Edge Light ein Programm je Architektur; spaeter moeglich sind os-image (Mender-Slot) oder quadlet-bundle, ohne dass irgendein anderes Feld sich aendert. Traegt ein gueltig signiertes Release einen Typ, den das Backend eines Geraets nicht anwendet (unbekannt oder einer anderen Box-Art), wendet das Geraet NICHTS davon an und stellt zurueck (deferred + Grund) - es lehnt nicht ab. Die Felder eines BEKANNTEN Typs prueft jedes Geraet voll.",
+      "description": "Was dieses Release AUSMACHT, typisiert. Der einzige backend-spezifische Teil des Manifests: ein Apply-Backend wendet nur Artefakt-Typen an, die es versteht (compose: oci-image, light und industrie: binary). Die Docker-Box traegt zwei OCI-Images, Edge Light ein Programm je Architektur; spaeter moeglich sind os-image (Mender-Slot) oder quadlet-bundle, ohne dass irgendein anderes Feld sich aendert. Traegt ein gueltig signiertes Release einen Typ, den das Backend eines Geraets nicht anwendet (unbekannt oder einer anderen Box-Art), wendet das Geraet NICHTS davon an und stellt zurueck (deferred + Grund) - es lehnt nicht ab. Die Felder eines BEKANNTEN Typs prueft jedes Geraet voll.",
       "items": {
         "oneOf": [
           { "$ref": "#/$defs/ociImage" },
@@ -76,8 +76,8 @@
         "backends": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "enum": ["compose", "quadlet", "mender", "light"] },
-          "description": "Fuer welche Apply-Backends dieses Release bestimmt ist - zugleich die Box-Art: compose = Docker-Box, light = Edge Light. Ein Geraet, dessen Backend hier NICHT steht, wendet nicht an und stellt nach gueltiger Signatur zurueck (deferred + Grund, Sperre backend) - nie ein Rateversuch, nie ein Vorfall. Ein Backend, das ein Geraet nicht kennt, ist fuer es kein Formfehler."
+          "items": { "type": "string", "enum": ["compose", "quadlet", "mender", "light", "industrie"] },
+          "description": "Fuer welche Apply-Backends dieses Release bestimmt ist - zugleich die Box-Art: compose = Docker-Box, light = Edge Light, industrie = Edge Industrie. Ein Geraet, dessen Backend hier NICHT steht, wendet nicht an und stellt nach gueltiger Signatur zurueck (deferred + Grund, Sperre backend) - nie ein Rateversuch, nie ein Vorfall. Ein Backend, das ein Geraet nicht kennt, ist fuer es kein Formfehler."
         },
         "inverter_families": {
           "type": "array",
@@ -106,7 +106,7 @@
   },
   "allOf": [
     {
-      "$comment": "EIN MANIFEST JE BOX-ART: edge-light-JJJJ.MM.N gilt nur fuer light und traegt nur binary; jedes andere Release traegt weder das Backend light noch ein binary.",
+      "$comment": "EIN MANIFEST JE BOX-ART: edge-light-JJJJ.MM.N gilt nur fuer light, edge-industrie-JJJJ.MM.N nur fuer industrie, beide tragen nur binary; einen Skriptstand traegt nur edge-light-JJJJ.MM.N; jedes andere Release traegt weder light noch industrie noch ein binary.",
       "if": { "required": ["release"], "properties": { "release": { "pattern": "^edge-light-" } } },
       "then": {
         "properties": {
@@ -115,10 +115,20 @@
         }
       },
       "else": {
-        "not": { "required": ["skripte"] },
-        "properties": {
-          "compat": { "properties": { "backends": { "items": { "not": { "const": "light" } } } } },
-          "artifacts": { "items": { "properties": { "type": { "not": { "const": "binary" } } } } }
+        "if": { "required": ["release"], "properties": { "release": { "pattern": "^edge-industrie-" } } },
+        "then": {
+          "not": { "required": ["skripte"] },
+          "properties": {
+            "compat": { "properties": { "backends": { "items": { "const": "industrie" } } } },
+            "artifacts": { "items": { "properties": { "type": { "const": "binary" } } } }
+          }
+        },
+        "else": {
+          "not": { "required": ["skripte"] },
+          "properties": {
+            "compat": { "properties": { "backends": { "items": { "not": { "enum": ["light", "industrie"] } } } } },
+            "artifacts": { "items": { "properties": { "type": { "not": { "const": "binary" } } } } }
+          }
         }
       }
     }
@@ -138,7 +148,7 @@
     "artifactName": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,31}$",
-      "description": "Die Rolle im Deployment (core, nodered, vp-edge-light) - der Schluessel, unter dem ein Backend das Artefakt einsetzt."
+      "description": "Die Rolle im Deployment (core, nodered, vp-edge-light, vp-edge-industrie) - der Schluessel, unter dem ein Backend das Artefakt einsetzt."
     },
     "ociImage": {
       "type": "object",
@@ -159,7 +169,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "name", "arch", "sha256", "size", "gz_sha256", "gz_size"],
-      "description": "Ein einzelnes Programm fuer EINE Plattform (Edge Light, Backend light; Plan Edge Light Stufe 2 §2.2). Je Architektur ein Eintrag unter demselben name; (name, arch) ist eindeutig. Kein ref: die Bytes sind ueber die Pruefsummen gepinnt.",
+      "description": "Ein einzelnes Programm fuer EINE Plattform (Edge Light, Backend light, und Edge Industrie, Backend industrie; Plan Edge Light Stufe 2 §2.2). Je Architektur ein Eintrag unter demselben name; (name, arch) ist eindeutig. Kein ref: die Bytes sind ueber die Pruefsummen gepinnt.",
       "properties": {
         "type": { "type": "string", "const": "binary" },
         "name": { "$ref": "#/$defs/artifactName" },

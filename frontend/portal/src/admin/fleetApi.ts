@@ -93,7 +93,7 @@ export interface AdminFleetRelease {
    * Die Linie des Releases (`ota.BoxArt`, additiv seit Geräte & Updates S0).
    * Fehlt sie (älterer Server), gilt das Release wie dort als Docker-Release.
    */
-  boxArt?: 'docker' | 'light' | null;
+  boxArt?: 'docker' | 'light' | 'industrie' | null;
 }
 
 /** Die kWp-Plausibilität (B4a) - `unbekannt` ist ein vollwertiges Urteil. */

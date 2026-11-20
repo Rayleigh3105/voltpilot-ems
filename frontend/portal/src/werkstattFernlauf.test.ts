@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   bereitZumAufspielen, bestaetigung, brauchtDichFernlauf, FERNLAUF_ERGEBNISSE, FERNLAUF_GRUPPEN, FERNLAUF_SCHRITTE,
-  fassungKurz, fragtSatz, fragtText, haken, heuteNacht, nachtlaufHalt, nachtlaufZeile, ohneKundenkontoKopf,
+  fassungKurz, fernlaufLinie, fragtSatz, fragtText, haken, heuteNacht, nachtlaufHalt, nachtlaufZeile, ohneKundenkontoKopf,
   schrittleiste, sonstHeuteNacht, standZeilen, tunnelKarte, verlaufZeile, type Fernlauf, type FernlaufStand,
   type NachtlaufSchalter,
 } from './werkstattFernlauf';
@@ -209,5 +209,15 @@ describe('Nachts von selbst (S4, §11.2)', () => {
     const [e] = brauchtDichFernlauf([stand({ verlauf: [nacht] })], JETZT);
     expect(e.grund).toBe('Meldet sich nicht.');
     expect(e.halt).toContain('angehalten');
+  });
+});
+
+describe('Linie einer wartenden Box', () => {
+  it('liest die Linie aus der Werkstatt, sonst aus der gemeldeten Fassung - unbekannt bleibt unbekannt', () => {
+    expect(fernlaufLinie('light', 'edge-2026.10.7-c39b18d9c2a4')).toBe('light');
+    expect(fernlaufLinie(null, 'edge-light-2026.11.4-c39b18d9c2a4')).toBe('light');
+    expect(fernlaufLinie(null, 'edge-industrie-2026.11.0-c39b18d9c2a4')).toBe('industrie');
+    expect(fernlaufLinie(null, 'edge-2026.10.7-c39b18d9c2a4')).toBe('docker');
+    expect(fernlaufLinie(null, null)).toBeNull();
   });
 });

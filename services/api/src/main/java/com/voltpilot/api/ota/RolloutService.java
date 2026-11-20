@@ -492,7 +492,8 @@ public class RolloutService {
             an.put(s.bereich(), s.an());
         }
         return new Erstverbindung.Schalter(an.getOrDefault(SCHALTER_ALLE, true),
-                an.getOrDefault(BoxArt.DOCKER, true), an.getOrDefault(BoxArt.LIGHT, true));
+                an.getOrDefault(BoxArt.DOCKER, true), an.getOrDefault(BoxArt.LIGHT, true),
+                an.getOrDefault(BoxArt.INDUSTRIE, true));
     }
 
     /** Die Einträge des Schalters mit Urheber und Zeit (für die Seite). */
@@ -508,9 +509,9 @@ public class RolloutService {
      */
     public void setzeErstverbindungSchalter(String bereich, boolean an, String actor) {
         if (!SCHALTER_ALLE.equals(bereich) && !BoxArt.DOCKER.equals(bereich)
-                && !BoxArt.LIGHT.equals(bereich)) {
+                && !BoxArt.LIGHT.equals(bereich) && !BoxArt.INDUSTRIE.equals(bereich)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Unbekannter Bereich: " + bereich + " (alle, docker, light).");
+                    "Unbekannter Bereich: " + bereich + " (alle, docker, light, industrie).");
         }
         if (rollouts.setzeErstverbindungSchalter(bereich, an, actor)) {
             rollouts.appendEvent(actor, Erstverbindung.EREIGNIS_SCHALTER, null, null,
@@ -676,13 +677,13 @@ public class RolloutService {
     }
 
     /**
-     * Die Linien in fester Reihenfolge (Docker-Box, Edge Light); eine Linie ohne
+     * Die Linien in fester Reihenfolge (Docker-Box, Edge Light, Edge Industrie); eine Linie ohne
      * Release und ohne Box fehlt. {@code releases} kommt neueste-zuerst.
      */
     private static List<EdgeUpdatesDto.LineDto> lines(List<EdgeUpdatesDto.ReleaseDto> releases,
             Map<String, Linie> perLine) {
         List<EdgeUpdatesDto.LineDto> lines = new ArrayList<>();
-        for (String art : List.of(BoxArt.DOCKER, BoxArt.LIGHT)) {
+        for (String art : List.of(BoxArt.DOCKER, BoxArt.LIGHT, BoxArt.INDUSTRIE)) {
             List<EdgeUpdatesDto.ReleaseDto> derLinie = releases.stream()
                     .filter(r -> art.equals(r.boxArt())).toList();
             // „Neuestes" ist das neueste SIGNIERTE (N4): ein unsigniertes kann keine Box bekommen.
@@ -889,7 +890,7 @@ public class RolloutService {
                     inhalt.add(new EdgeUpdatesDto.ReleaseTeilDto(a.type(), a.name(), a.arch(),
                             p == null ? null : p.size(), p == null ? null : p.gzSize()));
                 }
-                if (BoxArt.LIGHT.equals(art) && lightProgramme != null) {
+                if (BoxArt.istGoKern(art) && lightProgramme != null) {
                     Map<String, com.voltpilot.api.repo.EdgeLightProgrammRepository.Stand> da = new HashMap<>();
                     lightProgramme.alle(release.releaseSeq()).forEach(st -> da.put(st.arch(), st));
                     for (ReleaseManifest.Program p : m.programs()) {
@@ -1212,14 +1213,14 @@ public class RolloutService {
     }
 
     /**
-     * Ein Edge-Light-Release ist erst zuweisbar, wenn JEDES Programm seines
+     * Ein Edge-Light- oder Edge-Industrie-Release ist erst zuweisbar, wenn JEDES Programm seines
      * Manifests fertig und geprüft im Portal liegt (K2): die Box lädt es von
      * dort, und eine Zuweisung, deren Download ins Leere geht, endete nur in
      * „fehlgeschlagen". Der Release-Lauf lädt die Programme gleich nach dem
      * Eintrag ins Register hoch.
      */
     private void requireLightProgramme(EdgeReleaseDto release) {
-        if (lightProgramme == null || !BoxArt.LIGHT.equals(releaseBoxArt(release))) {
+        if (lightProgramme == null || !BoxArt.istGoKern(releaseBoxArt(release))) {
             return;
         }
         List<String> fehlen;

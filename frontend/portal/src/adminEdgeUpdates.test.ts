@@ -595,6 +595,44 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
       .toContain('ihr Loader startet immer die Fassung aus dem Flash');
   });
 
+  it('Edge Industrie: eigene Linie, dieselben Sätze wie BoxArtTest.sperreUeberDreiLinien', () => {
+    const industrie = rel({ releaseSeq: 42, version: 'edge-industrie-2026.11.0', boxArt: 'industrie' });
+    const light = rel({ releaseSeq: 41, version: 'edge-light-2026.11.4', boxArt: 'light' });
+    expect(boxArtLabel('industrie').label).toBe('Edge Industrie');
+    expect(releaseBoxArt(industrie)).toBe('industrie');
+    expect(releaseSperre(industrie, 'industrie', stufe2Trust, 'update')).toBeNull();
+    expect(releaseSperre(industrie, 'industrie', stufe2Trust)).toBeNull();
+    const stufe1Satz = 'Release für Edge Industrie – diese Box nimmt keine Updates aus dem Portal an (kein '
+      + 'geprüftes Vertrauens-Set oder ein Loader ohne Updates). Einmal mit edge-industrie/install.sh neu '
+      + 'einrichten, danach kommt jede Fassung über das Portal.';
+    expect(releaseSperre(industrie, 'industrie', pilotTrust, 'update')).toBe(stufe1Satz);
+    expect(releaseSperre(industrie, 'industrie', stufe2Trust, 'flash')).toBe(stufe1Satz);
+    expect(releaseSperre(industrie, 'light', stufe2Trust, 'update'))
+      .toBe('Release für Edge Industrie – diese Box ist eine Edge Light.');
+    expect(releaseSperre(industrie, 'docker', stufe2Trust))
+      .toBe('Release für Edge Industrie – diese Box ist eine Docker-Box.');
+    expect(releaseSperre(industrie, null, stufe2Trust)).toBe(
+      'Release für Edge Industrie – die Box-Art dieses Geräts ist unbekannt. Ein Edge-Industrie-Release '
+      + 'geht nur an eine Box, die sich als Edge Industrie gemeldet hat.');
+    expect(releaseSperre(light, 'industrie', stufe2Trust, 'update'))
+      .toBe('Release für Edge Light – diese Box ist eine Edge Industrie.');
+    expect(releaseSperre(rel({}), 'industrie', stufe2Trust))
+      .toBe('Release für die Docker-Box – diese Box ist eine Edge Industrie.');
+    // Edge Light unverändert.
+    expect(releaseSperre(light, 'light', stufe2Trust, 'update')).toBeNull();
+    expect(zuweisbareReleases([industrie, light, rel({})], 'industrie', stufe2Trust, 'update').passend
+      .map((r) => r.releaseSeq)).toEqual([42]);
+    expect(zuweisbareReleases([industrie], 'industrie', pilotTrust, 'update').hinweis).toContain(stufe1Satz);
+
+    const cross = crossoverState(pilotTrust, 'industrie', 'update');
+    expect(cross.state).toBe('von_hand');
+    expect(cross.label).toBe('Updates von Hand (Edge Industrie)');
+    expect(cross.detail).toContain('edge-industrie/install.sh');
+    expect(crossoverState(stufe2Trust, 'industrie', 'update').state).toBe('gekreuzt');
+    expect(crossoverHint([row({ deviceId: '1', trust: pilotTrust, boxArt: 'industrie' })]))
+      .toBe('1 Edge-Industrie-Box bekommt Updates von Hand.');
+  });
+
   it('G8: nennt das Gerät, wie die Box es meldet - nie geraten', () => {
     expect(geraetZeile({ geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' }))
       .toBe('Raspberry Pi 4 Model B Rev 1.4 · arm64');
