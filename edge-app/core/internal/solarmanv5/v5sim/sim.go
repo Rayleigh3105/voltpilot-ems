@@ -62,6 +62,13 @@ func (s *Sim) Set(values map[uint16]uint16) {
 	}
 }
 
+// Reg is the current value of one register.
+func (s *Sim) Reg(addr uint16) uint16 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.regs[addr]
+}
+
 // SetSilent makes the simulator swallow requests without answering.
 func (s *Sim) SetSilent(on bool) {
 	s.mu.Lock()

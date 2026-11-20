@@ -47,6 +47,22 @@ VP_DATA_DIR=/tmp/vp VP_PORTAL_BASE_URL=http://127.0.0.1:9 \
 # http://127.0.0.1:8484 → Einrichten → Deye, IP 127.0.0.1, Port 8899, Seriennummer 2985159064
 ```
 
+## Steuern und Prüfstand-Build
+
+Edge Light steuert einen Deye selbst (Fernsteuerung 1100-1121 oder Zeitfenster, Rückgabe, Absturz-Wiederherstellung, Wechselrichter-Automatik), aber nur mit **Edge-Light-Freigabe** je Gerätefamilie und Steuerpfad (`edge-app/core/internal/layer1/freigabe.go`).
+Die Tabelle ist leer, bis der Captain eine Familie am Prüfstand mit dem Go-Code freigegeben hat; ohne Eintrag wird geprüft und gelesen, nie geschrieben, und die Rückmeldung nennt den Grund.
+Sie kommt zu allen bestehenden Toren hinzu (Not-Aus, Zertifizierung oder First-Light-Freigabe, Automatik-Zertifikate) und lockert keines.
+Eine Deye-Freigabe, die mit dem Node-RED-Ausführer der Docker-Box erworben wurde, öffnet sie nicht.
+
+Für die Sitzung am Prüfstand gibt es den Prüfstand-Build, der die Freigabe für alle Familien öffnet und beim Start laut warnt:
+
+```bash
+(cd edge-app/core && GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -tags pruefstand -o /tmp/vp-edge-light-pruefstand ./cmd/vp-edge-light)
+```
+
+Er läuft nur am Prüfgerät und wird nie ausgeliefert: `build.sh` verweigert den Tag, und `test.sh` prüft das Release-Programm.
+Nach bestandenem Prüfstand trägt ein PR die Familie mit Pfad und Prüfnachweis in `freigaben` ein.
+
 ## Auf einem OpenWrt-Router (Pilot)
 
 Das Programm läuft bei **jedem Start aus dem RAM** (`/tmp`). Im Flash liegt die **bestätigte** Fassung gepackt (~5 MB gzip), die der Loader beim Start entpackt und gegen ihre Prüfsumme prüft – so startet die Box auch nach einem Stromausfall ohne Internet. Neue Fassungen kommen signiert über das Portal (Edge-Updates); der Loader tauscht, wacht über die Probe und nimmt zurück ([Updates](docs/boot-und-updates.md)). Grenzen: [Mango-Notizen](docs/mango.md).
@@ -115,6 +131,7 @@ edge-light/
 | `edge-app/core/internal/solarmanv5` | Solarman-V5-Protokoll (Zwilling von `nodered/deye/solarman-v5.js`) |
 | `edge-app/core/internal/deyedecode` | Deye-Registerkarten und Dekodierung (Zwilling von `nodered/deye/deye-decode.js`) |
 | `edge-app/core/internal/goeapi` | go-e HTTP-API v2 lesen (Zwilling von `nodered/goe/goe-api.js`) |
+| `edge-app/core/internal/steuerplan` | Steuern des Deye: Schreibplan, Ausführer und Rückmeldung (Zwilling der Schreibseite von `nodered/inverter-control-routing.js` und der Knoten „Steuerung / Schreibplan“ und „Deye Solarman-V5 schreiben + zuruecklesen“) |
 | `edge-app/core/cmd/vp-solarman-sim` | simulierter Deye-Logger für Tests (nie beim Kunden) |
 
 ## Gehäuse

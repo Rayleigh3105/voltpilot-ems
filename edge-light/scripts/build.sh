@@ -17,6 +17,15 @@
 # shellcheck source=edge-light/scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
+# Ein Release-Programm ist nie der Pruefstand-Build (Build-Tag `pruefstand`
+# oeffnet die Steuerung ohne Freigabe, layer1/pruefstand.go).
+case " ${GOFLAGS:-} " in
+  *pruefstand*)
+    echo "FEHLER: GOFLAGS nennt den Pruefstand-Tag - build.sh baut nur Release-Programme" >&2
+    exit 2
+    ;;
+esac
+
 VERSION="${VP_LIGHT_VERSION:-$(light_version)}"
 DIST="${VP_LIGHT_DIST:-$LIGHT_DIR/dist}"
 mkdir -p "$DIST"

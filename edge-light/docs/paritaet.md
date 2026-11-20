@@ -53,7 +53,7 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 
 | Funktion | Node-RED heute | Edge Light |
 |---|---|---|
-| Deye: Fernsteuerung, ToU, Ladeseite, Wechselrichter-Automatik, netzseitiger Drossel-Slot, Rücklesen | `inverter-control-routing.js`, `deye-charge-side.js`, `deye-grid-target.js`, `unplanned-load-native.js`, `readback-verify.js` | 🟡 Schreibplan, Rückgabe, Absturz-Wiederherstellung, Automatik, Tagesbudget und Rücklese-Urteil als Go-Zwilling (`internal/steuerplan`, gleich gegen die Vektoren `steuerplan-*-vectors.json` aus den Modulen und dem Knoten „Steuerung / Schreibplan“; Steuern in Go, Teil 1a) · ⬜ Ausführung in Schicht 1 · 🔒 |
+| Deye: Fernsteuerung, ToU, Ladeseite, Wechselrichter-Automatik, netzseitiger Drossel-Slot, Rücklesen | `inverter-control-routing.js`, `deye-charge-side.js`, `deye-grid-target.js`, `unplanned-load-native.js`, `readback-verify.js` | ✅ Code seit Teil 1b: Schreibplan, Ausführer, Rückgabe, Absturz-Wiederherstellung, Automatik, Tagesbudget und Rückmeldung in Go (`internal/steuerplan`, `layer1/steuern.go`; gleich gegen die Vektoren `steuerplan-*-vectors.json` aus den Modulen und den Knoten „Steuerung / Schreibplan“ und „Deye Solarman-V5 schreiben + zuruecklesen“), Erstfreigabe auf dem einen Programm (`TestEdgeLightFirstLightOnTheOneProgram`) · 🔒 schreibt erst mit Edge-Light-Freigabe (`layer1/freigabe.go`, leer bis zum Prüfstand) |
 | Fronius: Abregelung (Model 123, FC16-Block), Speicher (Model 124, geplant) | `sunspec/curtail*.js` | ⬜ 🔒 |
 | SunSpec-Simulator / generisches Modbus schreiben | Steuer-Executor | ⬜ |
 | KOSTAL, KACO (vorbereitet, gesperrt) | Steuer-Adapter | ⬜ 🔒 |

@@ -134,6 +134,21 @@ func (s *Session) exchange(ctx context.Context, frame []byte) ([]byte, error) {
 
 // ReadHolding reads count holding registers starting at start (fn 0x03).
 func (s *Session) ReadHolding(ctx context.Context, start, count uint16) ([]uint16, error) {
+	regs, err := s.ReadHoldingAsAnswered(ctx, start, count)
+	if err != nil {
+		return nil, err
+	}
+	if len(regs) < int(count) {
+		return nil, protoErr("Leseantwort mit %d statt %d Registern", len(regs), count)
+	}
+	return regs[:count], nil
+}
+
+// ReadHoldingAsAnswered reads like ReadHolding but returns the registers the
+// answer carried, however many: the control executor judges a short answer
+// itself (deye-control: "Logger lieferte keinen Registerwert"), exactly like
+// the flow's readRegistersFromResponse.
+func (s *Session) ReadHoldingAsAnswered(ctx context.Context, start, count uint16) ([]uint16, error) {
 	if count == 0 || count > MaxReadCount {
 		return nil, fmt.Errorf("Leseblock mit %d Registern ausserhalb 1..%d", count, MaxReadCount)
 	}
@@ -144,14 +159,7 @@ func (s *Session) ReadHolding(ctx context.Context, start, count uint16) ([]uint1
 		return nil, err
 	}
 	serial := s.serial
-	regs, err := ReadRegistersFromResponse(resp, ParseOpts{ExpectSerial: &serial})
-	if err != nil {
-		return nil, err
-	}
-	if len(regs) < int(count) {
-		return nil, protoErr("Leseantwort mit %d statt %d Registern", len(regs), count)
-	}
-	return regs[:count], nil
+	return ReadRegistersFromResponse(resp, ParseOpts{ExpectSerial: &serial})
 }
 
 // WriteRegister writes ONE holding register over this session: fn 0x06 when fc

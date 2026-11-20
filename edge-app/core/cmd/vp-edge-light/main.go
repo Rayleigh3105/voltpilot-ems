@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"path/filepath"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/agent"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
@@ -39,8 +40,12 @@ func startLayer1(ctx context.Context, cfg config.Config, a *agent.Agent) (func()
 	if err != nil {
 		return nil, err
 	}
+	if layer1.PruefstandBuild() {
+		slog.Warn("PRUEFSTAND-BUILD: die Steuerung ist ohne Edge-Light-Freigabe offen - nur am Pruefstand betreiben, nie im Feld")
+	}
 	l1ctx, cancel := context.WithCancel(ctx)
-	rt := layer1.New(bus, layer1.Options{Logger: slog.Default().WithGroup("layer1")})
+	rt := layer1.New(bus, layer1.Options{Logger: slog.Default().WithGroup("layer1"),
+		SteuerAblage: filepath.Join(cfg.DataDir, "steuern.json")})
 	a.SetGeraetesucheSpur(rt.LoggerSpur)
 	regelBus, err := layer1.DialMQTT(cfg.LocalMQTTAddr, "vp-edge-light-verbraucherregeln")
 	if err != nil {

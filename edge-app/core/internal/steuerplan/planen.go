@@ -223,3 +223,19 @@ func Planen(in PlanEingabe, z PlanZustand) (PlanAusgabe, PlanZustand) {
 	}
 	return out, z
 }
+
+// Steuerpfad is the Deye control path the plan node will take for this
+// selection: "remote" (block 1100-1121) or "tou" - the same dispatch as
+// ControlRoute, with the First-Light seed the plan node applies. Layer 1 keys
+// its Edge Light release on it.
+func Steuerpfad(sel, sp, cap, sticky Obj, now time.Time) string {
+	if sticky == nil {
+		sticky = DeyeSeedStickyFromGrant(sp, float64(now.UnixMilli()))
+	}
+	conn, _ := selConn(sel)
+	_, hasReg := DeyeFamilyControlReg(trimmed(get(sel, "family")))
+	if hasReg && !remoteForcedOff(conn) && DeyeControlPath(DeyeEffectiveCap(cap, sticky)) == DeyePathRemote {
+		return DeyePathRemote
+	}
+	return DeyePathTou
+}

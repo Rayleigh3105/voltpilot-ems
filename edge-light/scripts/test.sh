@@ -17,7 +17,9 @@
 #   5. das Programm laesst sich fuer MIPS bauen (der Mango),
 #   6. es laesst sich fuer ARMv7 bauen (der WAGO PFC200), und der Loader des
 #      PFC200 spricht wortgleich das Update-Protokoll des Mango-Loaders
-#      (pfc-abgleich.sh); die Modellangabe der Box (geraet).
+#      (pfc-abgleich.sh); die Modellangabe der Box (geraet),
+#   7. das Release-Programm ist nie der Pruefstand-Build (der Build-Tag
+#      `pruefstand` oeffnet die Steuerung ohne Freigabe).
 #
 #   edge-light/scripts/test.sh
 # shellcheck source=edge-light/scripts/lib.sh
@@ -75,5 +77,28 @@ go_run GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 -- build -o /dev/
 echo "--- 6. ARMv7-Build und Loader-Abgleich (WAGO PFC200)"
 go_run GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light
 "$LIGHT_DIR/scripts/pfc-abgleich.sh"
+
+echo "--- 7. Release-Programm ohne Pruefstand-Tag, Pruefstand-Build baut"
+rel_dist="$(mktemp -d)"
+trap 'rm -rf "${rel_dist:?}"' EXIT
+VP_LIGHT_DIST="$rel_dist" "$LIGHT_DIR/scripts/build.sh" amd64 >/dev/null
+build_info="$(go_run -- version -m "$rel_dist/vp-edge-light-linux-amd64")"
+case "$build_info" in
+  *pruefstand*)
+    echo "FEHLER: das Release-Programm traegt den Pruefstand-Tag" >&2
+    exit 1
+    ;;
+  *"build"*"GOOS=linux"*) ;;
+  *)
+    echo "FEHLER: das Release-Programm nennt keine Build-Angaben" >&2
+    exit 1
+    ;;
+esac
+if GOFLAGS=-tags=pruefstand "$LIGHT_DIR/scripts/build.sh" amd64 >/dev/null 2>&1; then
+  echo "FEHLER: build.sh baut mit dem Pruefstand-Tag" >&2
+  exit 1
+fi
+go_run -- build -tags pruefstand -o /dev/null ./cmd/vp-edge-light
+echo "    Release ohne Tag, build.sh verweigert ihn, Pruefstand-Build baut"
 
 echo "--- alles gruen"

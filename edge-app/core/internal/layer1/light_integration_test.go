@@ -48,9 +48,12 @@ func waitFor(t *testing.T, within time.Duration, what string, ok func() bool) {
 
 // startLightBox starts what vp-edge-light starts: the UNCHANGED agent and the
 // Go Layer 1 on its local bus. Everything stops with the test.
-func startLightBox(t *testing.T, opts layer1.Options) *agent.Agent {
+func startLightBox(t *testing.T, opts layer1.Options, anpassen ...func(*config.Config)) *agent.Agent {
 	t.Helper()
 	cfg := config.Defaults()
+	for _, f := range anpassen {
+		f(&cfg)
+	}
 	cfg.DataDir = t.TempDir()
 	cfg.PortalBaseURL = "http://127.0.0.1:9" // enrollment just retries
 	cfg.Ref = "VP-LIGHT-0001"
@@ -391,5 +394,69 @@ func TestEdgeLightFeedsTheMirrorAndWritesTheInstallerRegister(t *testing.T) {
 	}
 	if n := sim.RefusedConnections(); n != 0 {
 		t.Fatalf("%d Verbindungen abgewiesen - Poll und Schreibauftrag kollidierten am Ein-Client-Logger", n)
+	}
+}
+
+// TestEdgeLightFirstLightOnTheOneProgram is "Erstfreigabe auf dem einen
+// Programm": the UNCHANGED core arms a First-Light test, the Go Layer 1 of the
+// bench build drives the Deye remote block over the logger and reads it back,
+// the core sees the write land and the battery move, and the operator's
+// confirmations certify the device on the path the evidence came from. Without
+// the bench build the same test writes nothing (TestSteuernOhneFreigabe...).
+func TestEdgeLightFirstLightOnTheOneProgram(t *testing.T) {
+	layer1.SetPruefstandForTest(true)
+	t.Cleanup(func() { layer1.SetPruefstandForTest(false) })
+	sim, err := v5sim.Start("127.0.0.1:0", 2985159064)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sim.Close()
+	// HV SUN-30K-SG01HP3 with the PR-978 remote block, battery idle at 57 %.
+	sim.Set(map[uint16]uint16{
+		0x0000: 0x0006, 0x044d: 0xffff, 0x0451: 2,
+		0x024b: 5230, 0x024c: 57, 0x024e: 0,
+		0x026b: 0, 0x02c4: 0, 0x028d: 1800, 0x02a0: 100, 0x02a1: 120,
+	})
+	_, simPortStr, _ := net.SplitHostPort(sim.Addr())
+	simPort, _ := strconv.Atoi(simPortStr)
+	a := startLightBox(t, layer1.Options{FirstPoll: 50 * time.Millisecond, Poll: 200 * time.Millisecond,
+		SteuerAblage: t.TempDir() + "/steuern.json"},
+		func(c *config.Config) { c.SetpointIntervalSeconds = 1 })
+	if _, err := a.SetInverter(inverter.SelectionRequest{
+		Brand: "deye", Model: "sun-30k-sg01hp3",
+		Connection: inverter.Connection{IP: "127.0.0.1", Port: simPort, Serial: "2985159064"},
+	}); err != nil {
+		t.Fatalf("Auswahl abgelehnt: %v", err)
+	}
+	waitFor(t, 10*time.Second, "Messwert im Kern", func() bool { return a.CalibrationSnapshot().BatteryKw != nil })
+	if _, err := a.CalibrationArm(true); err != nil {
+		t.Fatalf("Scharfschalten: %v", err)
+	}
+	if _, err := a.CalibrationStartTest("discharge", 1); err != nil {
+		t.Fatalf("Testlauf: %v", err)
+	}
+	waitFor(t, 15*time.Second, "Testlauf geschrieben und zurueckgelesen", func() bool {
+		return sim.Reg(0x044c) == 1 && a.CalibrationSnapshot().WriteReadbackOK
+	})
+	// 1 kW discharge on 30 kW rated: +33 units in 1109 (Deye + = discharge).
+	if v := sim.Reg(0x0455); v != 33 {
+		t.Fatalf("1109 = %d, erwartet 33", v)
+	}
+	// The battery follows: 1 kW discharge (HV register in 10 W, the decoded
+	// reading is + = charge).
+	sim.Set(map[uint16]uint16{0x024e: 0xff9c})
+	waitFor(t, 10*time.Second, "Bewegung gemessen", func() bool {
+		s := a.CalibrationSnapshot()
+		return s.CanConfirmSign && s.CanConfirmScale
+	})
+	yes := true
+	if _, err := a.CalibrationConfirm(&yes, &yes); err != nil {
+		t.Fatalf("Bestaetigen: %v", err)
+	}
+	if _, err := a.CalibrationCertify(); err != nil {
+		t.Fatalf("Freigeben: %v", err)
+	}
+	if s := a.CalibrationSnapshot(); !s.DeviceCertified {
+		t.Fatalf("nicht freigegeben: %+v", s)
 	}
 }

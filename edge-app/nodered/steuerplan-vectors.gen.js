@@ -38,6 +38,7 @@ const NATIVE = require('./unplanned-load-native.js');
 const OUT = path.join(__dirname, 'steuerplan-vectors.json');
 const OUT_KNOTEN = path.join(__dirname, 'steuerplan-knoten-vectors.json');
 const OUT_AUTOMATIK = path.join(__dirname, 'steuerplan-automatik-vectors.json');
+const OUT_KETTE = path.join(__dirname, 'steuerplan-kette-vectors.json');
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const PLAN_BODY = flows.find((n) => n.id === 'auto-control-plan').func;
 const RECOVER_BODY = flows.find((n) => n.id === 'auto-control-recover').func;
@@ -650,11 +651,319 @@ function buildKnoten(automatik) {
   return JSON.stringify(enc(data)) + '\n';
 }
 
+// --- die Kette: Plan-Knoten -> echter Ausfuehrer-Knoten -> Rueckmeldung --------
+//
+// Der Ausfuehrer ("Deye Solarman-V5 schreiben + zuruecklesen") laeuft als ECHTER
+// Rumpf aus flows.json gegen ein gestelltes Geraet hinter einer gestellten
+// net-Schnittstelle: jede Anfrage ist ein echter V5-Rahmen, jede Antwort wird aus
+// einem Registermodell gebaut. Festgehalten wird jede Modbus-Operation mit der
+// Antwort, wie der Knoten sie sieht (Werte oder der Satz des Codecs), dazu die
+// Rueckmeldung vor und nach vp-control-readback shape() und die Ablagen danach.
+const EXEC_BODY = flows.find((n) => n.id === 'auto-control-exec-deye').func;
+const SV5 = require('./deye/solarman-v5.js');
+const SHAPE = require('./vp-palette/nodes/vp-control-readback.js').shape;
+
+function v5Response(serialRaw, seq, mb) {
+  const length = 14 + mb.length;
+  const header = Buffer.alloc(11);
+  header[0] = 0xa5;
+  header.writeUInt16LE(length, 1);
+  header.writeUInt16LE(0x1510, 3);
+  header.writeUInt16LE(seq & 0xffff, 5);
+  header.writeUInt32LE(serialRaw >>> 0, 7);
+  const pre = Buffer.alloc(14);
+  pre[0] = 0x02; pre[1] = 0x01;
+  const frame = Buffer.concat([header, pre, mb, Buffer.from([0x00, 0x15])]);
+  let sum = 0;
+  for (let i = 1; i < frame.length - 2; i++) sum = (sum + frame[i]) & 0xff;
+  frame[frame.length - 2] = sum;
+  return frame;
+}
+const withCrc = (body) => { const c = SV5.modbusCrc16(body); return Buffer.concat([body, Buffer.from([c & 0xff, (c >> 8) & 0xff])]); };
+
+// fakeNet - das gestellte Geraet. dev: { regs, ignoreWrites, zeroRemote,
+// fillerAddrs, watchdogRead, exceptionAddrs, faults: { <n>: 'fatal'|'garble'|'empty'|{exception} }, connectFail }
+function fakeNet(dev, ops) {
+  let n = 0;
+  class Socket {
+    constructor() { this.destroyed = false; this.h = {}; }
+    setNoDelay() {}
+    on(ev, fn) { (this.h[ev] = this.h[ev] || []).push({ fn }); }
+    once(ev, fn) { (this.h[ev] = this.h[ev] || []).push({ fn, once: true }); }
+    emit(ev, a) { const l = this.h[ev] || []; this.h[ev] = l.filter((x) => !x.once); for (const x of l) x.fn(a); }
+    destroy() { this.destroyed = true; }
+    connect(port, host, cb) {
+      if (dev.connectFail) { ops.push({ op: 'connect', fatal: true }); setImmediate(() => this.emit('error', new Error('connect ECONNREFUSED ' + host + ':' + port))); return; }
+      setImmediate(cb);
+    }
+    write(frame) {
+      if (this.destroyed) return;
+      const seq = frame.readUInt16LE(5);
+      const serialRaw = frame.readUInt32LE(7);
+      const mb = frame.slice(26, frame.length - 2);
+      const slave = mb[0];
+      const fn = mb[1];
+      const addr = mb.readUInt16BE(2);
+      const fault = (dev.faults || {})[n++];
+      let rec;
+      let respMb;
+      if (fn === 0x03) {
+        const count = mb.readUInt16BE(4);
+        rec = { op: 'read', addr, count };
+        if (fault && fault.exception) respMb = withCrc(Buffer.from([slave, 0x83, fault.exception]));
+        else if ((dev.exceptionAddrs || []).indexOf(addr) >= 0) respMb = withCrc(Buffer.from([slave, 0x83, 0x02]));
+        else {
+          const k = fault === 'empty' ? 0 : count;
+          const body = Buffer.alloc(3 + 2 * k);
+          body[0] = slave; body[1] = 3; body[2] = 2 * k;
+          for (let i = 0; i < k; i++) {
+            const a = addr + i;
+            let v = (dev.regs[a] || 0) & 0xffff;
+            if (dev.zeroRemote && a >= 0x044c && a <= 0x0461) v = 0;
+            if ((dev.fillerAddrs || []).indexOf(a) >= 0) v = 0xffff;
+            if (dev.watchdogRead !== undefined && a === 0x044d) v = dev.watchdogRead;
+            body.writeUInt16BE(v, 3 + 2 * i);
+          }
+          respMb = withCrc(body);
+        }
+      } else {
+        const fc = fn === 0x06 ? 6 : 16;
+        const value = fn === 0x06 ? mb.readUInt16BE(4) : mb.readUInt16BE(7);
+        rec = { op: 'write', fc, addr, value };
+        if (fault && fault.exception) respMb = withCrc(Buffer.from([slave, fn | 0x80, fault.exception]));
+        else {
+          if (!dev.ignoreWrites && fault !== 'fatal') dev.regs[addr] = value;
+          respMb = fn === 0x06 ? withCrc(mb.slice(0, 6)) : withCrc(Buffer.from([slave, 0x10, mb[2], mb[3], 0, 1]));
+        }
+      }
+      if (fault === 'garble') { respMb = Buffer.from(respMb); respMb[respMb.length - 1] ^= 0xff; }
+      if (fault === 'fatal') {
+        rec.fatal = true;
+        ops.push(rec);
+        setImmediate(() => this.emit('error', new Error('read ECONNRESET')));
+        return;
+      }
+      const resp = v5Response(serialRaw, seq, respMb);
+      try {
+        if (rec.op === 'read') rec.regs = SV5.readRegistersFromResponse(resp, { expectLoggerSerial: serialRaw }).map((x) => x & 0xffff);
+        else { SV5.readWriteResultFromResponse(resp, { expectLoggerSerial: serialRaw, expectFn: fn }); rec.ok = true; }
+      } catch (e) { rec.error = e.message; }
+      ops.push(rec);
+      setImmediate(() => this.emit('data', resp));
+    }
+  }
+  return { Socket };
+}
+
+async function runExecNode(state, msg, nowMs, dev) {
+  const ops = [];
+  const store = (name) => state.flow[name] || (state.flow[name] = {});
+  const sandbox = {
+    msg,
+    node: { status() {}, error() {}, warn() {}, log() {} },
+    context: { get: (k) => state.exec[k], set: (k, v) => { state.exec[k] = v; } },
+    flow: { get: (k, s) => store(s || 'memory')[k], set: (k, v, s) => { store(s || 'memory')[k] = v; } },
+    global: { get: (k) => (k === 'net' ? fakeNet(dev, ops) : (k === 'vpSharedBusArbiter' ? { runControl: (t, fn) => fn() } : undefined)) },
+    Buffer, Math, isFinite, Number, Array, Object, JSON, String, Promise, setTimeout, clearTimeout, setImmediate,
+    Date: fakeDate(nowMs),
+  };
+  const ret = new vm.Script('(function(){' + EXEC_BODY + '\n})()').runInContext(vm.createContext(sandbox));
+  const out = ret && typeof ret.then === 'function' ? await ret : ret;
+  return { out, ops };
+}
+
+function runRecoverNode(state, nowMs) {
+  const store = (name) => state.flow[name] || (state.flow[name] = {});
+  const sandbox = {
+    msg: {}, node: { status() {}, error() {}, warn() {} },
+    context: { get: () => undefined, set: () => {} },
+    flow: { get: (k, s) => store(s || 'memory')[k], set: () => {} },
+    Buffer, Math, isFinite, Number, Array, Object, JSON, String, Date: fakeDate(nowMs),
+  };
+  return new vm.Script('(function(){' + RECOVER_BODY + '\n})()').runInContext(vm.createContext(sandbox));
+}
+
+const KEEP_MEM = /^deye_(cap|native_cfg):/;
+const KEEP_FILE = /^deye_(ctrl_snapshot$|path:|tou_budget:)/;
+function ablageOf(state) {
+  const pick = (o, re) => Object.fromEntries(Object.keys(o || {}).filter((k) => re.test(k)).map((k) => [k, o[k]]));
+  return { memory: pick(state.flow.memory, KEEP_MEM), file: pick(state.flow.file, KEEP_FILE),
+    sv5_ctrl_last: state.exec.sv5_ctrl_last || {} };
+}
+
+async function chainCase(name, c) {
+  const flow0 = JSON.parse(JSON.stringify(c.flow));
+  const state = { ctx: {}, exec: {}, flow: JSON.parse(JSON.stringify(flow0)) };
+  const dev = { regs: Object.assign({}, c.regs || {}) };
+  let now = T0;
+  const ticks = [];
+  for (const t of c.ticks) {
+    if (t.advance) now += t.advance;
+    if (t.flow) for (const s of Object.keys(t.flow)) Object.assign(state.flow[s] || (state.flow[s] = {}), t.flow[s]);
+    for (const k of ['ignoreWrites', 'zeroRemote', 'fillerAddrs', 'watchdogRead', 'exceptionAddrs', 'faults', 'connectFail']) {
+      if (k in (t.device || {})) dev[k] = t.device[k]; else delete dev[k];
+    }
+    let msg;
+    if (t.recover) msg = runRecoverNode(state, now);
+    else msg = runPlanNode(state, { setpoint: t.setpoint }, now, c.catalog).out;
+    let payload = null;
+    let ops = [];
+    if (msg && msg.control) {
+      const r = await runExecNode(state, msg, now, dev);
+      ops = r.ops;
+      payload = r.out ? r.out.payload : null;
+    }
+    ticks.push({
+      now, recover: t.recover === true, setpoint: t.setpoint, flow_delta: t.flow, device: t.device,
+      ops, payload, shaped: payload ? SHAPE(JSON.parse(JSON.stringify(payload))) : null,
+      ablage: JSON.parse(JSON.stringify(ablageOf(state))),
+    });
+  }
+  return { name, catalog: c.catalog || 'produktion', flow: flow0, ticks };
+}
+
+// Ein Deye mit Fernsteuer-Block (PR-978) und der Installateur-Konfiguration.
+const REMOTE_REGS = { 0: 0x0006, 0x044d: 0xffff, 0x0451: 2,
+  0x008d: 1, 0x008e: 2, 0x008f: 7182, 0x0091: 1, 0x0092: 0x00ff, 0x0094: 0, 0x0095: 600, 0x0096: 1200, 0x0097: 1800, 0x0098: 2200, 0x0099: 2300,
+  0x009a: 5000, 0x00a6: 10, 0x00ac: 0, 0x00e7: 330 };
+const TOU_REGS = Object.assign({}, REMOTE_REGS);
+
+async function chainCases() {
+  const S = sel();
+  const z = zielOf(S);
+  const cases = [];
+  const remoteFlow = flowFor(S, {});
+  const touFlow = flowFor(S, {});
+  // Fernsteuerung: Probe, Uebernahme, Totmann-Tritt, Rueckgabe.
+  cases.push(await chainCase('fern_uebernahme', { flow: remoteFlow, regs: REMOTE_REGS, ticks: [
+    { setpoint: sp() }, { advance: 10000, setpoint: sp() }, { advance: 10000, setpoint: sp({ battery_setpoint_kw: 2 }) },
+    { advance: 310000, setpoint: sp({ battery_setpoint_kw: 2 }) },
+    { advance: 10000, setpoint: sp({ control_enabled: false }) }, { advance: 10000, setpoint: sp({ control_enabled: false }) },
+  ] }));
+  cases.push(await chainCase('fern_ohne_freigabe', { flow: remoteFlow, regs: REMOTE_REGS, ticks: [
+    { setpoint: sp({ device_certified: false }) }, { advance: 10000, setpoint: sp({ device_certified: false }) },
+  ] }));
+  cases.push(await chainCase('fern_rueckmeldung', { flow: remoteFlow, regs: REMOTE_REGS, ticks: [
+    { setpoint: sp() },
+    { advance: 10000, setpoint: sp(), device: { watchdogRead: 51 } },
+    { advance: 10000, setpoint: sp(), device: { watchdogRead: 0xffff } },
+    { advance: 10000, setpoint: sp(), device: { zeroRemote: true } },
+    { advance: 10000, setpoint: sp(), device: { fillerAddrs: [0x044c, 0x0450] } },
+    { advance: 10000, setpoint: sp(), device: { ignoreWrites: true } },
+    { advance: 10000, setpoint: sp({ battery_setpoint_kw: 3 }), device: { ignoreWrites: true } },
+    { advance: 10000, setpoint: sp(), device: { faults: { 5: 'garble', 6: 'garble', 8: 'empty', 9: { exception: 0x0b } } } },
+    { advance: 10000, setpoint: sp(), device: { faults: { 3: 'fatal' } } },
+    { advance: 10000, setpoint: sp(), device: { faults: { 1: { exception: 4 } } } },
+    { advance: 10000, setpoint: sp(), device: { connectFail: true } },
+  ] }));
+  // Faehigkeitspruefung: endgueltig ohne Block, voruebergehend, Hysterese, Seed.
+  cases.push(await chainCase('probe', { flow: touFlow, regs: TOU_REGS, ticks: [
+    { setpoint: sp(), device: { exceptionAddrs: [0x044c] } },
+    { advance: 10000, setpoint: sp() },
+    { advance: 70000, setpoint: sp(), device: { faults: { 1: { exception: 0x0b } } } },
+    { advance: 70000, setpoint: sp(), device: { faults: { 0: { exception: 2 } } } },
+    { advance: 7 * 3600e3, setpoint: sp() }, { advance: 10000, setpoint: sp() }, { advance: 10000, setpoint: sp() },
+    { advance: 10000, setpoint: sp() },
+  ] }));
+  cases.push(await chainCase('probe_seed', { flow: flowFor(S, {}), regs: REMOTE_REGS, ticks: [
+    { setpoint: sp({ device_certified_path: 'remote' }), device: { zeroRemote: true } },
+    { advance: 70000, setpoint: sp({ device_certified_path: 'remote' }) },
+  ] }));
+  cases.push(await chainCase('probe_null', { flow: flowFor(S, {}), regs: REMOTE_REGS, ticks: [
+    { setpoint: sp(), device: { zeroRemote: true } }, { advance: 30000, setpoint: sp() }, { advance: 70000, setpoint: sp() },
+  ] }));
+  // Zeitfenster-Pfad: Schnappschuss, Schreiben bei Aenderung, Budget, Rueckgabe, Absturz.
+  const touCap = flowFor(S, { cap: 'tou' });
+  touCap.memory['deye_cap:' + z].at = T0 - 1000;
+  cases.push(await chainCase('zeitfenster', { flow: touCap, regs: TOU_REGS, ticks: [
+    { setpoint: sp() }, { advance: 10000, setpoint: sp() }, { advance: 10000, setpoint: sp({ battery_setpoint_kw: -1.6 }) },
+    { advance: 900000, setpoint: sp({ battery_setpoint_kw: -1.6 }) }, { advance: 900000, setpoint: sp({ battery_setpoint_kw: 2, pv_limit_kw: 4 }) },
+    { advance: 10000, setpoint: sp({ battery_setpoint_kw: 0 }) },
+    { advance: 10000, setpoint: sp({ control_enabled: false }) },
+  ] }));
+  cases.push(await chainCase('zeitfenster_absturz', { flow: touCap, regs: TOU_REGS, ticks: [
+    { setpoint: sp() }, { recover: true }, { recover: true },
+  ] }));
+  cases.push(await chainCase('zeitfenster_budget', { flow: flowFor(S, { cap: 'tou', touBudget: { day: TOUB.touBudgetDay(T0), changes: 17 } }), regs: TOU_REGS, ticks: [
+    { setpoint: sp() }, { advance: 1000000, setpoint: sp({ battery_setpoint_kw: 2 }) }, { advance: 1000000, setpoint: sp({ battery_setpoint_kw: -2 }) },
+    { advance: 10000, setpoint: sp({ battery_setpoint_kw: -2 }) },
+  ] }));
+  cases.push(await chainCase('zeitfenster_kalibrierung', { flow: touCap, regs: TOU_REGS, ticks: [
+    { setpoint: sp({ device_certified: false, calibration: true, source: 'calibration' }) },
+    { advance: 10000, setpoint: sp({ device_certified: false, calibration: true, source: 'calibration', battery_setpoint_kw: 1 }) },
+    { advance: 10000, setpoint: sp({ device_certified: false, calibration: true, source: 'calibration', control_enabled: false }) },
+  ] }));
+  cases.push(await chainCase('zeitfenster_skala', { flow: flowFor(S, { cap: 'tou_noscale' }), regs: TOU_REGS, ticks: [
+    { setpoint: sp() }, { advance: 10000, setpoint: sp() },
+  ] }));
+  // Wechselrichter-Automatik: Vorbedingungen lesen, einmal uebergeben, Beleg, Rueckkehr.
+  const nat = (extra = {}) => sp(Object.assign({ battery_mode: 'native', effective_floor_soc_pct: 20 }, extra));
+  cases.push(await chainCase('automatik', { flow: flowFor(S, { cap: 'remote' }), regs: REMOTE_REGS, ticks: [
+    { setpoint: nat() }, { advance: 10000, setpoint: nat() }, { advance: 10000, setpoint: nat() },
+    { advance: 10000, setpoint: nat({ grid_charge_allowed: true }) }, { advance: 10000, setpoint: sp() },
+  ] }));
+  const win = (intent) => sp({ battery_mode: 'native_window', battery_native_intent: intent, battery_window_min_kw: -25, battery_window_max_kw: 25,
+    battery_window_natural_min_kw: -25, battery_window_natural_max_kw: 25, effective_floor_soc_pct: 20 });
+  cases.push(await chainCase('automatik_netz_null', { catalog: 'ladeseite_netz', flow: flowFor(S, { cap: 'remote' }), regs: REMOTE_REGS, ticks: [
+    { setpoint: win('self_consumption') }, { advance: 10000, setpoint: win('self_consumption') }, { advance: 10000, setpoint: win('self_consumption') },
+    { advance: 10000, setpoint: sp() },
+  ] }));
+  // Netzseitiger Drossel-Slot und Netz-Sollwert-Test.
+  cases.push(await chainCase('netzziel', { flow: flowFor(S, { cap: 'remote' }), regs: REMOTE_REGS, ticks: [
+    { setpoint: sp({ battery_mode: 'grid_target', grid_target_kw: 0, grid_target_neutralize: true }) },
+    { advance: 10000, setpoint: sp({ battery_mode: 'grid_target', grid_target_kw: -3 }) },
+    { advance: 10000, setpoint: sp({ grid_test: { step: 'halten', side: 'grid', target_kw: -2, pv_cap_permille: 999 } }) },
+    { advance: 10000, setpoint: sp({ grid_test: { step: 'rueckkehr', side: 'battery', target_kw: 0, neutralize: true } }) },
+  ] }));
+  // Pfadwechsel waehrend der Uebernahme: der Ausfuehrer schreibt diesen Takt nicht.
+  cases.push(await chainCase('pfadwechsel', { flow: flowFor(S, { cap: 'tou' }), regs: REMOTE_REGS, ticks: [
+    { setpoint: sp() }, { advance: 7 * 3600e3, setpoint: sp() }, { advance: 10000, setpoint: sp() },
+  ] }));
+  // Raender des Ausfuehrers: Budget voll, Fehler in Probe, Schnappschuss,
+  // Vorbedingungen, Beobachtung und Netzlade-Beleg, FC6-Schnappschuss.
+  cases.push(await chainCase('budget_voll', { flow: flowFor(S, { cap: 'tou', touBudget: { day: TOUB.touBudgetDay(T0), changes: 18 } }), regs: TOU_REGS, ticks: [
+    { setpoint: sp() }, { advance: 1000000, setpoint: sp({ battery_setpoint_kw: 2 }) }, { advance: 10000, setpoint: sp({ battery_setpoint_kw: 2 }) },
+    { advance: 10000, setpoint: sp({ battery_setpoint_kw: 2, calibration: true }) },
+  ] }));
+  cases.push(await chainCase('fehler_probe', { flow: flowFor(S, {}), regs: REMOTE_REGS, ticks: [
+    { setpoint: sp(), device: { faults: { 0: 'fatal' } } }, { advance: 10000, setpoint: sp(), device: { faults: { 1: 'garble' } } },
+  ] }));
+  cases.push(await chainCase('fehler_schnappschuss', { flow: touCap, regs: TOU_REGS, ticks: [
+    { setpoint: sp(), device: { faults: { 2: { exception: 2 } } } }, { advance: 10000, setpoint: sp(), device: { faults: { 4: 'fatal' } } },
+    { advance: 10000, setpoint: sp(), device: { faults: { 12: { exception: 4 } } } },
+  ] }));
+  cases.push(await chainCase('fc6', { flow: flowFor(sel({}, { control_write_fc: 6 }), { cap: 'tou' }), regs: TOU_REGS, ticks: [
+    { setpoint: sp() }, { advance: 10000, setpoint: sp({ battery_setpoint_kw: 1 }) },
+  ] }));
+  const nat2 = (extra = {}) => sp(Object.assign({ battery_mode: 'native', effective_floor_soc_pct: 20 }, extra));
+  cases.push(await chainCase('automatik_fehler', { flow: flowFor(S, { cap: 'remote' }), regs: Object.assign({}, REMOTE_REGS, { 0x00ac: 1 }), ticks: [
+    { setpoint: nat2(), device: { faults: { 0: { exception: 2 }, 3: 'garble' } } },
+    { advance: 10000, setpoint: nat2({ grid_charge_allowed: true }) }, { advance: 10000, setpoint: nat2({ grid_charge_allowed: true }) },
+    { advance: 10000, setpoint: nat2({ grid_charge_allowed: true }), device: { faults: { 9: { exception: 2 } } } },
+    { advance: 10000, setpoint: nat2({ grid_charge_allowed: true }), device: { faults: { 2: { exception: 2 } } } },
+    { advance: 10000, setpoint: nat2({ grid_charge_allowed: true }), device: { faults: { 4: 'fatal' } } },
+  ] }));
+  const halb = flowFor(S, { cap: 'remote' });
+  halb.file['deye_path:' + z] = { path: 'remote', since: T0 - 5000, contrary: 0, everRemote: false, verdict: cap('remote'), verdictAt: T0 - 5000 };
+  cases.push(await chainCase('beleg_landung', { flow: halb, regs: REMOTE_REGS, ticks: [
+    { setpoint: sp() }, { advance: 10000, setpoint: sp(), device: { faults: { 8: 'empty', 9: 'empty', 10: { exception: 2 } } } },
+  ] }));
+  return cases;
+}
+
+async function buildKette() {
+  const data = { hinweis: 'Erzeugt von steuerplan-vectors.gen.js - nicht von Hand aendern.', t0: T0, kette: await chainCases() };
+  return JSON.stringify(enc(data)) + '\n';
+}
+
 if (require.main === module) {
+  (async () => {
+  fs.writeFileSync(OUT_KETTE, await buildKette());
   fs.writeFileSync(OUT, build());
   fs.writeFileSync(OUT_KNOTEN, buildKnoten(false));
   fs.writeFileSync(OUT_AUTOMATIK, buildKnoten(true));
-  for (const f of [OUT, OUT_KNOTEN, OUT_AUTOMATIK]) console.log('geschrieben: ' + f + ' (' + fs.statSync(f).size + ' Bytes)');
+  for (const f of [OUT, OUT_KNOTEN, OUT_AUTOMATIK, OUT_KETTE]) console.log('geschrieben: ' + f + ' (' + fs.statSync(f).size + ' Bytes)');
+  })();
 }
 
-module.exports = { OUT, OUT_KNOTEN, OUT_AUTOMATIK, build, buildKnoten };
+module.exports = { OUT, OUT_KNOTEN, OUT_AUTOMATIK, OUT_KETTE, build, buildKnoten, buildKette };

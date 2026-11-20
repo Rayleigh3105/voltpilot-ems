@@ -67,9 +67,13 @@ type Options struct {
 	// the read-back (2 s). Both only shortened by tests.
 	WriteLaneWait time.Duration
 	WriteSettle   time.Duration
-	Dialer        solarmanv5.Dialer
-	Now           func() time.Time
-	Logger        *slog.Logger
+	// SteuerAblage is the file of the durable control records (snapshot,
+	// path decision, day budget - the flow's 'file' context); "" keeps them
+	// in memory only.
+	SteuerAblage string
+	Dialer       solarmanv5.Dialer
+	Now          func() time.Time
+	Logger       *slog.Logger
 }
 
 // Runtime is the Go Layer 1.
@@ -136,6 +140,9 @@ type Runtime struct {
 	koppelDQ     map[string]string
 	koppelCaps   map[string][]koppelbild.Faehigkeit
 	koppelBefehl map[string]koppelBefehl
+
+	// the control path (steuern.go)
+	st steuerung
 }
 
 // Ready is closed once every bus subscription is confirmed.
@@ -195,6 +202,7 @@ func New(bus Bus, opts Options) *Runtime {
 		erzEnt: map[string]erzeugerbild.BindungsEntitaet{}, erzQuellen: map[string]erzeugerbild.BindungsQuelle{},
 		koppel: map[string]*koppelbild.Steuerung{}, koppelDQ: map[string]string{},
 		koppelCaps: map[string][]koppelbild.Faehigkeit{}, koppelBefehl: map[string]koppelBefehl{},
+		st:     newSteuerung(),
 		bootID: "l1-" + strconv.FormatInt(time.Now().UnixNano(), 36)}
 	r.mw.lz = messwerte.NeueLaufzeit(messwerteIO{r}, opts.Now, nil)
 	return r
@@ -247,6 +255,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 	if err := r.bus.Subscribe(localbus.TopicRegistersWant, r.onRegistersWant); err != nil {
 		return err
 	}
+	if err := r.bus.Subscribe(localbus.TopicSetpoint, r.onSetpoint); err != nil {
+		return err
+	}
 	if err := r.bus.Subscribe(measurements.LocalOcppConfigResultTopic, r.onOcppErgebnis); err != nil {
 		return err
 	}
@@ -257,6 +268,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	go r.runSources(ctx)
 	go r.runErzeuger(ctx)
 	go r.runMesswerte(ctx)
+	go r.runSteuern(ctx)
 
 	timer := time.NewTimer(r.opts.FirstPoll)
 	defer timer.Stop()
@@ -280,6 +292,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 }
 
 func (r *Runtime) onInverterConfig(_ string, payload []byte) {
+	r.steuerAuswahlSetzen(payload)
 	s, err := parseSelection(payload)
 	if err != nil {
 		r.log.Warn("Wechselrichter-Auswahl verworfen", "err", err)

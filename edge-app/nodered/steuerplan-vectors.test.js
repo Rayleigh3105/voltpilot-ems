@@ -27,6 +27,26 @@ test('die Plan-Knoten-Vektoren entsprechen dem Knoten aus flows.json', () => {
   assert.strictEqual(fs.readFileSync(gen.OUT_AUTOMATIK, 'utf8'), gen.buildKnoten(true), 'steuerplan-automatik-vectors.json ' + veraltet);
 });
 
+test('die Ketten-Vektoren entsprechen Plan-Knoten und Ausfuehrer aus flows.json', async () => {
+  assert.strictEqual(fs.readFileSync(gen.OUT_KETTE, 'utf8'), await gen.buildKette(), 'steuerplan-kette-vectors.json ' + veraltet);
+});
+
+test('die Kette deckt Schreiben, Rueckgabe, Absturz, Budget, Fehler und Automatik ab', () => {
+  const kette = JSON.parse(fs.readFileSync(gen.OUT_KETTE, 'utf8')).kette;
+  const ticks = kette.flatMap((c) => c.ticks);
+  const has = (pred, what) => assert.ok(ticks.some(pred), what);
+  has((t) => t.ops.some((o) => o.op === 'write') && t.shaped && t.shaped.all_match === true, 'geschrieben und bestaetigt');
+  has((t) => t.shaped && t.shaped.all_match === false, 'echte Abweichung');
+  has((t) => t.shaped && t.shaped.all_match === null && t.shaped.registers.length > 0, 'ohne Rueckmeldung');
+  has((t) => t.shaped && t.shaped.mode === 'release', 'Rueckgabe');
+  has((t) => t.recover && t.ops.some((o) => o.op === 'write'), 'Absturz-Wiederherstellung');
+  has((t) => t.shaped && t.shaped.mode === 'native', 'Uebergabe an die Wechselrichter-Automatik belegt');
+  has((t) => t.shaped && t.shaped.blocked === true, 'angehaltene Steuerung');
+  has((t) => t.ops.some((o) => o.fatal), 'abgebrochene Verbindung');
+  has((t) => t.ops.some((o) => typeof o.error === 'string'), 'Modbus-Ausnahme');
+  has((t) => t.ops.length > 0 && t.payload === null, 'Takt ohne Rueckmeldung');
+});
+
 test('die Vektoren decken Fernsteuerung, Zeitfenster, Rueckgabe, Automatik und Budget ab', () => {
   const plan = JSON.parse(fs.readFileSync(gen.OUT_KNOTEN, 'utf8')).plan
     .concat(JSON.parse(fs.readFileSync(gen.OUT_AUTOMATIK, 'utf8')).plan);
