@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/wagobild"
 )
 
 // The runtime: the Go twin of measurement-runtime.js MeasurementRuntime -
@@ -45,6 +47,8 @@ type Leseauftrag struct {
 	Start, Count int
 	SourceKind   string
 	Target       Ziel
+	// Funktionscode of a register image (3 or 4); 0 = by the source kind.
+	Funktionscode int
 }
 
 // JSONAuftrag is one HTTP request of a group: the go-e filter carries every
@@ -85,6 +89,8 @@ type IO interface {
 	Beleg(b Beleg)
 	Status(s Status)
 	Proben(b Probenstapel)
+	// Ereignis sends one device event of a register image (edge/events).
+	Ereignis(e wagobild.Ereignis)
 	// OcppKonfigurieren asks the core to configure the charge points' sampled
 	// data; the answer comes back through Laufzeit.OcppErgebnis.
 	OcppKonfigurieren(revision *float64, values map[string]string)
@@ -136,6 +142,10 @@ type Laufzeit struct {
 	decoder         decoderZustand
 	requestWindow   []*ticket
 	sampleWindow    []int64
+	// WAGO register images: the heartbeat per controller across ticks, and
+	// what was already reported as an event.
+	wacht  wagobild.HerzschlagWacht
+	wagoEv wagobild.Ereignisse
 }
 
 type decoderZustand struct {
@@ -391,6 +401,7 @@ func (l *Laufzeit) Tick(ctx context.Context) []Sample {
 		}
 	}
 	dekodiert := map[string]*Sample{}
+	bilder := map[string]*wagobild.Gepruefte{}
 	for i, s := range plan.Selections {
 		if !dueProben[i] {
 			continue
@@ -404,7 +415,9 @@ func (l *Laufzeit) Tick(ctx context.Context) []Sample {
 		}
 		words := bucket(s.Target.Key)
 		var sample *Sample
-		if s.Point.Address != nil {
+		if istWagoPunkt(s.Point) {
+			sample = l.registerbildSample(s, words, plan, bilder, now)
+		} else if s.Point.Address != nil {
 			addresses := adressen(s.Point, optionen.discoveryFor(s.Target.Key))
 			if w, ok := alleWorte(words, addresses); ok && len(addresses) > 0 {
 				sample, _ = DecodeRegisters(s.Point, w, addresses, decoderOptionen(s.Point, words, s.Target.Key, plan, decoder))
@@ -430,6 +443,97 @@ func (l *Laufzeit) Tick(ctx context.Context) []Sample {
 		return []Sample{}
 	}
 	return l.publishSamples(samples, now, plan)
+}
+
+// registerbildSample is one card value of a WAGO register image: the image is
+// judged once per controller and tick, and only a card the head check calls
+// "gelesen" (of the point's family) yields a value, read at base address +
+// card offset in the plant's word order. stale rides on the sample.
+func (l *Laufzeit) registerbildSample(s Kandidat, words map[int]uint16, plan *Plan, bilder map[string]*wagobild.Gepruefte, now time.Time) *Sample {
+	g := l.registerbildLesung(s.Target, words, plan, bilder, now)
+	if g == nil || g.Ergebnis != "erkannt" {
+		return nil
+	}
+	index := karteIndex(s.Point.PointKey)
+	if index < 0 || index >= len(g.Karten) {
+		return nil
+	}
+	karte := g.Karten[index]
+	familie := 495
+	if s.Point.Family == "wago.pm494" {
+		familie = 494
+	}
+	if karte.Ergebnis != "gelesen" || karte.Kartentyp != familie {
+		return nil
+	}
+	bild := plan.Registerbilder[s.Target.Key]
+	off, ok := offsetInt(s.Point.Address)
+	if !ok {
+		return nil
+	}
+	addresses := make([]int, s.Point.Address.WidthWords)
+	for i := range addresses {
+		addresses[i] = bild.Basisadresse + off + i
+	}
+	w, ok := alleWorte(words, addresses)
+	if !ok {
+		return nil
+	}
+	p := *s.Point
+	p.Endian = "big"
+	if bild.Wortfolge == "little" {
+		p.Endian = "word_little_byte_big"
+	}
+	sample, err := DecodeRegisters(&p, w, addresses, DecodeOptionen{})
+	if err != nil || sample == nil {
+		return sample
+	}
+	if g.Qualitaet != nil && *g.Qualitaet == wagobild.QualitaetAlt && sample.Quality == "good" {
+		sample.Quality = wagobild.QualitaetAlt
+	}
+	return sample
+}
+
+// registerbildLesung judges a controller's image once per tick: the head
+// check with the heartbeat watch, the finding as the source's
+// layout_changed, and the device events.
+func (l *Laufzeit) registerbildLesung(target Ziel, words map[int]uint16, plan *Plan, bilder map[string]*wagobild.Gepruefte, now time.Time) *wagobild.Gepruefte {
+	if g, ok := bilder[target.Key]; ok {
+		return g
+	}
+	var gelesen *wagobild.Gepruefte
+	if bild, ok := plan.Registerbilder[target.Key]; ok && bild.Kartenzahl != nil {
+		laenge := wagobild.KopflaengeMin + *bild.Kartenzahl*wagobild.KartenblocklaengeMin
+		addresses := make([]int, laenge)
+		for i := range addresses {
+			addresses[i] = bild.Basisadresse + i
+		}
+		if w, ok := alleWorte(words, addresses); ok {
+			l.mu.Lock()
+			g := wagobild.PruefeLesung(w, target.Key, bild.parameter(), &bild.Soll, &l.wacht)
+			l.mu.Unlock()
+			gelesen = &g
+			if g.Ergebnis != "erkannt" {
+				l.beleg(target, Beleg{Failed: true, ErrorClass: wagobild.FindingErrorClass})
+			}
+			komponente := func(_ wagobild.Karte, index int) string {
+				for _, x := range plan.Selections {
+					if x.Target.Key == target.Key && x.EntityID != "" && karteIndex(x.Point.PointKey) == index {
+						return x.EntityID
+					}
+				}
+				return ""
+			}
+			l.mu.Lock()
+			ereignisse, _ := l.wagoEv.Lesung(g, target.DataSourceID, target.Key, komponente, now)
+			l.mu.Unlock()
+			for _, e := range ereignisse {
+				l.io.Ereignis(e)
+			}
+		}
+	}
+	bilder[target.Key] = gelesen
+	return gelesen
 }
 
 func mitEntity(s Sample, x Kandidat) Sample {
@@ -518,7 +622,8 @@ func (l *Laufzeit) readBlock(ctx context.Context, b Block, words map[int]uint16)
 		l.beleg(b.Target, Beleg{Failed: true, ErrorClass: "budget"})
 		return
 	}
-	w, err := l.io.LiesRegister(ctx, Leseauftrag{Start: b.Start, Count: b.Count, SourceKind: b.SourceKind, Target: b.Target})
+	w, err := l.io.LiesRegister(ctx, Leseauftrag{Start: b.Start, Count: b.Count, SourceKind: b.SourceKind, Target: b.Target,
+		Funktionscode: b.Funktionscode})
 	l.finishRequest(t)
 	switch {
 	case err != nil:

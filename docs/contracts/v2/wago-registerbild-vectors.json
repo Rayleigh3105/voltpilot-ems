@@ -5,16 +5,16 @@
     "Handbuch-Angaben gelten nur für die Artikel in gilt_fuer — für die 750-494 ist fast alles außer dem",
     "Prozessabbild-Aufbau zu erheben. Alle Fälle sind herkunft vertrag, belegt false: ihre Rohwerte sind ausgedacht und",
     "zeigen nur, wie ein Leser das Registerbild liest. Simulator-Fälle bringt IP-12, belegte Pilot-Fälle IP-14.",
-    "Zwillinge gibt es noch keine: IP-6 (Edge-Dekodierung) und IP-7 (Kopf-Prüfung) lesen diese Datei, sobald sie",
-    "gebaut sind. Wer den Aufbau ändert, ändert diese Datei, wago-registerbild.md und den Test gemeinsam.",
+    "Zwillinge: der Leser der Docker-Box (IP-6, IP-7), sein Go-Zwilling in Edge Light und der Baustein der",
+    "CODESYS-Bibliothek, der die Fälle schreibt. Wer den Aufbau ändert, ändert diese Datei, wago-registerbild.md, den Test und die Zwillinge gemeinsam.",
     "Erzeugt einmalig per Skript (Wörter kodiert aus den Absichten); geprüft von einem unabhängigen Leser im Test."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./wago-registerbild.schema.json",
   "vertrag": "./wago-registerbild.md",
   "herkunft": "UEMS AP-05 §4.1, §4.5, §4.6, §8 IP-2; Entscheide E1, E2, E4, E9 vom 10.09.2026; Befunde aus IP-1 (befunde-ip1.md)",
-  "zwillinge": [],
-  "pruefer": ["frontend/portal/src/wagoRegisterbild.test.ts"],
+  "zwillinge": ["edge-app/nodered/measurements/wago-registerbild.js", "edge-app/core/internal/wagobild/wagobild.go", "sps/codesys/bibliothek/FB_VP_WagoBild.st"],
+  "pruefer": ["frontend/portal/src/wagoRegisterbild.test.ts", "edge-app/nodered/measurements/wago-registerbild.test.js", "edge-app/core/internal/wagobild/vectors_test.go", "sps/codesys/pruefer/wago.py"],
   "registerbild": {"hauptversion": 1, "nebenversion": 0},
   "quellen": {
     "WAGO-750-495": {

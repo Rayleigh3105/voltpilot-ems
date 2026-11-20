@@ -1,5 +1,5 @@
-"""Pruefer der VoltPilot-Bibliothek fuer CODESYS gegen die Vertragsvektoren des Erzeuger-Bilds
-und des Koppelbilds.
+"""Pruefer der VoltPilot-Bibliothek fuer CODESYS gegen die Vertragsvektoren des Erzeuger-Bilds,
+des Koppelbilds und des WAGO-Bilds.
 
     python3 sps/codesys/pruefer/pruefe.py            # alles pruefen, Bericht, Exit 1 bei Fehler
     python3 sps/codesys/pruefer/pruefe.py --schreibe # dazu erwartung.json und plcopen/*.xml neu schreiben
@@ -25,6 +25,13 @@ Koppelbild (FB_VP_Koppelbild, koppelbild-vectors.json):
 10. Grundprogramm: Probe-Stellplatz 8 schaltet die Lampe und laesst sie nach der Frist los.
 11. Vorlagen PV und BHKW nehmen den Wunsch an, Vorrang bleibt im Anlagenprogramm, nach der Frist
     faehrt die Anlage allein.
+
+WAGO-Bild (FB_VP_WagoBild, wago-registerbild-vectors.json; wago.py):
+
+12. Vertragsfaelle: jeder Fall, den ein Programm mit dem Baustein schreiben kann, mit denselben
+    gelesenen Woertern, und vom Leser der Box gelesen genau wie erwartet.
+13. Unbekannt ist das Typ-Maximum, Bloecke hinter der Kartenzahl 0; Herzschlag; Pruefwert ueber
+    VP_WagoSetze32.
 """
 
 from __future__ import annotations
@@ -40,12 +47,14 @@ sys.path.insert(0, str(HIER))
 import koppel  # noqa: E402
 import st  # noqa: E402
 import vertrag  # noqa: E402
+import wago  # noqa: E402
 
 CODESYS = HIER.parent
 BIBLIOTHEK = sorted((CODESYS / "bibliothek").glob("*.st"))
 GVL = CODESYS / "grundprogramm" / "GVL_VoltPilot.st"
 ERWARTUNG = CODESYS / "probeprojekt" / "erwartung.json"
 VORLAGEN = CODESYS / "vorlagen"
+wago.REPO = CODESYS.parent.parent
 
 
 def projekt(programm: Path | None = None) -> st.Projekt:
@@ -579,12 +588,15 @@ def main(argv: list[str]) -> int:
                      pruefe_grundprogramm, lambda x: pruefe_probeprojekt(x, "--schreibe" in argv),
                      pruefe_koppel_faelle, pruefe_koppel_ueberlauf, pruefe_koppel_pruefwert,
                      pruefe_koppel_grundprogramm, pruefe_vorlagen,
+                     lambda x: wago.pruefe_vertragsfaelle(x, projekt), lambda x: wago.pruefe_unbekannt(x, projekt),
+                     lambda x: wago.pruefe_herzschlag(x, projekt),
+                     lambda x: wago.pruefe_pruefwert(x, CODESYS / "bibliothek" / "FB_VP_WagoBild.st"),
                      lambda x: pruefe_plcopen(x, "--schreibe" in argv)):
         try:
             pruefung(b)
         except Exception as fehler:  # noqa: BLE001 - jede Pruefung scheitert fuer sich, mit Grund
             b.nein(f"{getattr(pruefung, '__name__', 'Probeprojekt')}: {type(fehler).__name__}: {fehler}")
-    print("VoltPilot-Bibliothek (CODESYS) gegen die Vertragsvektoren des Erzeuger-Bilds und des Koppelbilds:")
+    print("VoltPilot-Bibliothek (CODESYS) gegen die Vertragsvektoren des Erzeuger-Bilds, des Koppelbilds und des WAGO-Bilds:")
     print("\n".join(b.zeilen))
     if b.fehler:
         print(f"{len(b.fehler)} Fehler")

@@ -25,6 +25,8 @@ type ProbeOp struct {
 	Address   int    `json:"address"`
 	DataType  string `json:"data_type,omitempty"`
 	WordOrder string `json:"word_order"`
+	// Nameplate: wago_kopf only - also read the controller's nameplate.
+	Nameplate bool `json:"nameplate,omitempty"`
 }
 
 // ProbeErgebnis is one answered step on edge/probe/result.

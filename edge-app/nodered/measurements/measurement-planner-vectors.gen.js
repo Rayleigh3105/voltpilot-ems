@@ -12,9 +12,9 @@
  * ihren Eigenschaften, nicht nach festen Schluesseln) und halten fest, was
  * buildPlan daraus macht: angenommen/abgelehnt mit Grund, die Lesebloecke je
  * Ziel, die HTTP-Gruppen, die Voraussetzungen der Decoder, die OCPP-Abstimmung
- * und die Last. WAGO- und Erzeuger-Punkte fehlen bewusst: das Erzeuger-Bild
- * beurteilt Edge Light in seinem eigenen Zwilling (internal/erzeugerbild), das
- * WAGO-Bild folgt in einer eigenen Stufe.
+ * und die Last. Erzeuger-Punkte fehlen bewusst: das Erzeuger-Bild beurteilt
+ * Edge Light in seinem eigenen Zwilling (internal/erzeugerbild). Die Punkte des
+ * WAGO-Registerbilds plant der Planer selbst (registerbilder je Ziel).
  */
 
 const fs = require('fs');
@@ -84,6 +84,19 @@ const BINDUNG = {
 };
 const DISC = { models:{ 103:{ base:40070 }, 160:{ base:40200, moduleCount:2 } } };
 
+// WAGO: eine Steuerung als Quelle, an die eine Anlagensteuerung gebunden ist.
+const WAGO_BINDUNG = {
+  entities:{
+    'sps-1':{ entity_id:'sps-1', entity_type:'anlagensteuerung', edge_source_id:'src-sps', data_source_id:'DQ-W' },
+    'sps-2':{ entity_id:'sps-2', entity_type:'anlagensteuerung', edge_source_id:'src-sps' },
+    'sps-3':{ entity_id:'sps-3', entity_type:'anlagensteuerung', edge_source_id:'src-sps-b' },
+  },
+  sources:{ 'src-sps':{ id:'src-sps', communication:'modbus_tcp', connection:{ ip:'10.0.0.20', port:502, unit_id:1 } },
+    'src-sps-b':{ id:'src-sps-b', communication:'modbus_tcp', connection:{ ip:'10.0.0.21', port:502, unit_id:1 } } },
+};
+const BILD = (entity, extra) => Object.assign({ entity_id:entity, basisadresse:100, funktionscode:4, wortfolge:'big', kartenzahl:4,
+  controller_kennung:1, karten:[2, 3, 4, 5].map((steckplatz, i) => ({ steckplatz, kartentyp:i < 2 ? 494 : 495, variante:1 })) }, extra || {});
+
 const FAELLE = [
   { name:'falsche Katalogfassung', config:{ revision:1, catalog_version:'1999.01.01.1', selections:[sel(deye3[0], 60)] } },
   { name:'Deye-Punkte am Primaer-Wechselrichter', config:{ revision:2, catalog_version:V,
@@ -124,6 +137,22 @@ const FAELLE = [
   { name:'OCPP zu lang', options:{ ocppCapability:{ supported:true, readonly:false, maxLength:5 } }, config:{ revision:18,
     catalog_version:V, selections:ocpp.map((p) => sel(p, 60)) } },
   { name:'OCPP ohne Faehigkeit', config:{ revision:19, catalog_version:V, selections:ocpp.map((p) => sel(p, 60)) } },
+  { name:'WAGO: Vorlage je Karte, einzelne Karte, Karte ausserhalb, ohne Bild', options:{ binding:WAGO_BINDUNG },
+    config:{ revision:21, catalog_version:V, registerbilder:[BILD('sps-1')], selections:[
+      { point_key:'wago.pm495.karte[*].power_l1', cadence_s:60, entity_id:'sps-1' },
+      { point_key:'wago.pm494.karte[1].energy_import_total', cadence_s:60, entity_id:'sps-1' },
+      { point_key:'wago.pm494.karte[1].kartenregister_35', cadence_s:300, entity_id:'sps-1' },
+      { point_key:'wago.pm495.karte[7].power_l1', cadence_s:60, entity_id:'sps-1' },
+      { point_key:'wago.pm495.karte[4].power_l2', cadence_s:60, entity_id:'sps-1' },
+      { point_key:'wago.pm495.karte[0].power_l2', cadence_s:60, entity_id:'sps-3' },
+      { point_key:'wago.pm495.karte[0].power_l3', cadence_s:60 }] } },
+  { name:'WAGO: zwei Bilder auf einem Ziel - keines gilt', options:{ binding:WAGO_BINDUNG },
+    config:{ revision:22, catalog_version:V, registerbilder:[BILD('sps-1'), BILD('sps-2', { basisadresse:500 })], selections:[
+      { point_key:'wago.pm495.karte[0].power_l1', cadence_s:60, entity_id:'sps-1' }] } },
+  { name:'WAGO: fuenf Karten, Bild ohne Kennung und Variante', options:{ binding:WAGO_BINDUNG },
+    config:{ revision:23, catalog_version:V, registerbilder:[{ entity_id:'sps-1', basisadresse:0, funktionscode:3, wortfolge:'little', kartenzahl:5,
+      karten:[1, 2, 3, 4, 5].map((steckplatz) => ({ steckplatz, kartentyp:495 })) }], selections:[
+      { point_key:'wago.pm495.karte[*].energy_import_total', cadence_s:60, entity_id:'sps-1' }] } },
 ];
 
 const zielAus = (t) => (t ? { key:t.key, ...(t.sourceId ? { sourceId:t.sourceId } : {}),
@@ -137,7 +166,9 @@ function ergebnis(plan) {
     selections:plan.selections.map((s) => ({ requested_key:s.requested_key, point_key:s.point.point_key,
       cadence_s:s.cadence_s, target:zielAus(s.target), ...(s.entity_id ? { entity_id:s.entity_id } : {}) })),
     blocks:plan.blocks.map((b) => ({ key:b.key, start:b.start, count:b.count, cadence_s:b.cadence_s,
-      source_kind:b.source_kind, target:zielAus(b.target), points:b.points, requestCostMs:b.requestCostMs })),
+      source_kind:b.source_kind, target:zielAus(b.target), points:b.points, requestCostMs:b.requestCostMs,
+      ...(b.funktionscode ? { funktionscode:b.funktionscode } : {}) })),
+    registerbilder:plan.registerbilder,
     httpGroups:plan.httpGroups.map((g) => ({ key:g.key, target:zielAus(g.target) })),
     decoderPrerequisites:plan.decoderPrerequisites.map((x) => ({ point_key:x.point.point_key, cadence_s:x.cadence_s,
       target:zielAus(x.target), requested_key:x.requested_key, trigger_key:x.trigger_key })),
@@ -147,8 +178,13 @@ function ergebnis(plan) {
 
 const clean = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
 
-const faelle = FAELLE.map((c) => ({ name:c.name, config:c.config, options:c.options || {},
-  result:clean(ergebnis(P.buildPlan(JSON.parse(JSON.stringify(c.config)), JSON.parse(JSON.stringify(c.options || {}))))) }));
+// Wie die Laufzeit (apply): die Bilder je Ziel aus der Konfiguration und der Bindung.
+const planen = (c) => {
+  const options = JSON.parse(JSON.stringify(c.options || {}));
+  options.registerbilder = P.registerbilderJeZiel(c.config.registerbilder, options.binding);
+  return P.buildPlan(JSON.parse(JSON.stringify(c.config)), options);
+};
+const faelle = FAELLE.map((c) => ({ name:c.name, config:c.config, options:c.options || {}, result:clean(ergebnis(planen(c))) }));
 
 const out = {
   _comment: [

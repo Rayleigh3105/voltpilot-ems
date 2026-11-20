@@ -19,6 +19,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/messwerte"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/modbustcp"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/solarmanv5"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/wagobild"
 )
 
 // The measurement library on Edge Light ("Zusatzmesswerte nach Katalog"): the
@@ -48,10 +49,11 @@ const (
 
 // messplanDokument is the retained edge/measurements/config as Layer 1 reads it.
 type messplanDokument struct {
-	Revision       *float64                     `json:"revision"`
-	CatalogVersion string                       `json:"catalog_version"`
-	Selections     []messwerte.Auswahl          `json:"selections"`
-	Erzeugerbilder []erzeugerbild.Bildparameter `json:"erzeuger_registerbilder"`
+	Revision       *float64                        `json:"revision"`
+	CatalogVersion string                          `json:"catalog_version"`
+	Selections     []messwerte.Auswahl             `json:"selections"`
+	Erzeugerbilder []erzeugerbild.Bildparameter    `json:"erzeuger_registerbilder"`
+	Registerbilder []messwerte.RegisterbildEintrag `json:"registerbilder"`
 }
 
 // messwerteZustand is the library's part of the Runtime.
@@ -151,7 +153,7 @@ func (r *Runtime) messwerteAnwenden(ctx context.Context) {
 	}
 	erz := r.planeErzeuger(&erzeugerbild.Konfig{Revision: int64(*doc.Revision), CatalogVersion: doc.CatalogVersion,
 		Auswahl: erzeugerAuswahl(doc.Selections), Bilder: doc.Erzeugerbilder})
-	konfig := messwerte.Konfig{Revision: doc.Revision, CatalogVersion: doc.CatalogVersion}
+	konfig := messwerte.Konfig{Revision: doc.Revision, CatalogVersion: doc.CatalogVersion, Registerbilder: doc.Registerbilder}
 	keys := []string{}
 	for _, s := range doc.Selections {
 		// The Erzeuger image judges its own points; the core reads the Shelly
@@ -413,8 +415,20 @@ func (r *Runtime) liesMessRegister(ctx context.Context, a messwerte.Leseauftrag)
 		return nil, messFehler(err)
 	}
 	defer c.Close()
+	// modbusFunktionscode: a register image reads with ITS function code (a
+	// plant parameter), never a default.
+	fc := 3
+	switch {
+	case a.SourceKind == "wago_registerbild":
+		if a.Funktionscode != 3 && a.Funktionscode != 4 {
+			return nil, &messwerte.Lesefehler{Text: "Registerbild ohne Funktionscode"}
+		}
+		fc = a.Funktionscode
+	case a.SourceKind == "modbus_input":
+		fc = 4
+	}
 	var w []uint16
-	if a.SourceKind == "modbus_input" {
+	if fc == 4 {
 		w, err = c.ReadInput(uint16(a.Start), uint16(a.Count))
 	} else {
 		w, err = c.ReadHolding(uint16(a.Start), uint16(a.Count))
@@ -600,6 +614,15 @@ func (m messwerteIO) Proben(b messwerte.Probenstapel) {
 	}
 	if err := m.r.bus.Publish(measurements.LocalSamplesTopic, bytes.TrimSpace(buf.Bytes()), false); err != nil {
 		m.r.log.Warn("Messwerte konnten nicht auf den lokalen Bus", "err", err)
+	}
+}
+
+// Ereignis sends one device event of a register image (frozen_source,
+// device_restart, range_limit); the core forwards edge/events to the cloud.
+func (m messwerteIO) Ereignis(e wagobild.Ereignis) {
+	raw, _ := json.Marshal(e)
+	if err := m.r.bus.Publish(wagobild.EreignisTopic, raw, false); err != nil {
+		m.r.log.Warn("Geräte-Ereignis nicht auf den lokalen Bus", "art", e.Art, "err", err)
 	}
 }
 

@@ -296,8 +296,8 @@ func TestEdgeLightReadsTheErzeugerImageOfTheControllerInThisDevice(t *testing.T)
 
 	// "Steuerung verbinden": the head probe through the local bus, names
 	// included; a plain register read of the same controller is read in turn
-	// (raw value and words); a step Edge Light does not run yet (wago_kopf) is
-	// refused by name, never left to time out.
+	// (raw value and words); the WAGO head step reads the same controller and
+	// reports the foreign signature (an Erzeuger image is no WAGO image).
 	anfrage, _ := json.Marshal(map[string]any{"request_id": "p-1", "ops": []any{
 		map[string]any{"id": "k", "op": "erzeuger_kopf", "host": "127.0.0.1", "port": steuerung.port,
 			"unit_id": 1, "fc": 4, "address": 0, "word_order": "big"},
@@ -312,11 +312,12 @@ func TestEdgeLightReadsTheErzeugerImageOfTheControllerInThisDevice(t *testing.T)
 	var ergebnis struct {
 		RequestID string `json:"request_id"`
 		Results   []struct {
-			ID           string   `json:"id"`
-			OK           bool     `json:"ok"`
-			ErrorCode    string   `json:"error_code"`
-			Raw          *float64 `json:"raw"`
-			Registers    []uint16 `json:"registers"`
+			ID           string         `json:"id"`
+			OK           bool           `json:"ok"`
+			ErrorCode    string         `json:"error_code"`
+			Raw          *float64       `json:"raw"`
+			WagoKopf     map[string]any `json:"wago_kopf"`
+			Registers    []uint16       `json:"registers"`
 			ErzeugerKopf *struct {
 				Erkannt           bool   `json:"erkannt"`
 				TeAnzahl          int    `json:"te_anzahl"`
@@ -343,7 +344,7 @@ func TestEdgeLightReadsTheErzeugerImageOfTheControllerInThisDevice(t *testing.T)
 		len(r.Registers) != 2 || r.Registers[0] != bild[0] || r.Registers[1] != bild[1] {
 		t.Errorf("einfache Lesung: %+v", r)
 	}
-	if r := ergebnis.Results[2]; r.OK || r.ErrorCode != "not_supported" {
+	if r := ergebnis.Results[2]; !r.OK || r.WagoKopf["erkannt"] != false || r.WagoKopf["grund"] != "signatur_fremd" {
 		t.Errorf("WAGO-Kopf: %+v", r)
 	}
 }
