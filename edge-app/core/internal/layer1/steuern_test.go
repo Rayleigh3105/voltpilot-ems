@@ -171,3 +171,54 @@ func TestSteuernAbsturzWiederherstellung(t *testing.T) {
 		t.Fatalf("Snapshot nicht geloescht: %s", b)
 	}
 }
+
+// The generic SunSpec / Modbus write against the simulator profile's compact
+// block (40 setpoint, 41 enable, 42 PV limit) on the one-client write device.
+func modbusSteuerRig(t *testing.T) (*rig, *busLog, *schreibGeraet) {
+	t.Helper()
+	g := startSchreibGeraet(t)
+	r := newRig(t, Options{Poll: time.Hour})
+	raw, _ := json.Marshal(map[string]any{"schema_version": "1.0", "brand": "generic_modbus", "model": "sunspec-sim",
+		"family": "sunspec", "communication": "modbus_tcp", "control_tier": 1,
+		"connection": map[string]any{"ip": "127.0.0.1", "port": g.port(), "unit_id": 1}})
+	if err := r.bus.Publish(localbus.TopicInverterConfig, raw, true); err != nil {
+		t.Fatal(err)
+	}
+	return r, r.listen(localbus.TopicControlReadback), g
+}
+
+// Fleet-certified as the simulator profile is, Edge Light without its release
+// only reads the block back (certified false) and writes nothing.
+func TestSteuernModbusOhneFreigabeLiestNur(t *testing.T) {
+	r, l, g := modbusSteuerRig(t)
+	m := readbackUntil(t, r, l, map[string]any{"device_certified": false, "battery_setpoint_kw": 2.5},
+		func(m map[string]any) bool { return m["certified"] == false })
+	if regs, _ := m["registers"].([]any); len(regs) != 3 {
+		t.Fatalf("Rueckmeldung: %v", m)
+	}
+	if w := g.geschrieben(); len(w) != 0 {
+		t.Fatalf("ohne Freigabe geschrieben: %v", w)
+	}
+}
+
+// The bench build writes setpoint, enable and PV limit with FC6, reads them
+// back held, and a kill-off hands the device back (enable 0, limit cleared).
+func TestSteuernModbusPruefstand(t *testing.T) {
+	pruefstand(t)
+	r, l, g := modbusSteuerRig(t)
+	readbackUntil(t, r, l, map[string]any{"device_certified": false, "battery_setpoint_kw": 2.5, "pv_limit_kw": 3},
+		func(m map[string]any) bool { return m["all_match"] == true && m["certified"] == true })
+	if g.reg(40) != 250 || g.reg(41) != 1 || g.reg(42) != 300 {
+		t.Fatalf("Register 40/41/42 = %d/%d/%d", g.reg(40), g.reg(41), g.reg(42))
+	}
+	for _, fc := range g.geschrieben() {
+		if fc != 6 {
+			t.Fatalf("Schreibrahmen %v (erwartet FC6)", g.geschrieben())
+		}
+	}
+	readbackUntil(t, r, l, map[string]any{"device_certified": false, "control_enabled": false},
+		func(m map[string]any) bool { return m["mode"] == "release" && m["all_match"] == true })
+	if g.reg(41) != 0 || g.reg(42) != 0xffff {
+		t.Fatalf("nach der Rueckgabe: Freigabe %d, PV-Grenze %d", g.reg(41), g.reg(42))
+	}
+}

@@ -316,6 +316,8 @@ func catalogFor(t *testing.T, name string) []NativeCapability {
 		return append(append([]NativeCapability{}, prod...), rel("own_config", "self_consumption"), rel("grid_zero", "self_consumption"))
 	case "leer":
 		return nil
+	case "simulator":
+		return SimulatorNativeCapabilities
 	}
 	t.Fatalf("unbekannter Katalog %q", name)
 	return nil

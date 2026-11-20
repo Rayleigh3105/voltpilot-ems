@@ -70,6 +70,10 @@ type PlanEingabe struct {
 	TouBudget func(ip string, port float64) any
 	Catalog   []NativeCapability
 	Now       time.Time
+	// Gesperrt: the Edge Light release is closed for this device - the plan
+	// comes out as for a device without any grant (no device grant, no
+	// calibration bypass, no fleet-wide family certification).
+	Gesperrt bool
 }
 
 // PlanZustand is the node context that outlives a tick.
@@ -98,6 +102,14 @@ func Planen(in PlanEingabe, z PlanZustand) (PlanAusgabe, PlanZustand) {
 	if sp == nil {
 		return out, z
 	}
+	if in.Gesperrt {
+		g := make(Obj, len(sp))
+		for k, v := range sp {
+			g[k] = v
+		}
+		g["device_certified"], g["calibration"] = false, false
+		sp = g
+	}
 	sel := in.Selection
 	var snapRegs Obj
 	if in.Snapshot != nil {
@@ -118,7 +130,7 @@ func Planen(in PlanEingabe, z PlanZustand) (PlanAusgabe, PlanZustand) {
 	if v := get(sel, "rated_kw"); isFiniteNum(v) && num(v) > 0 {
 		rated = num(v)
 	}
-	plan := ControlRoute(sel, sp, RouteOpts{Snapshot: snapRegs, RatedKw: rated, Deye: cap, DeyeSticky: sticky})
+	plan := ControlRoute(sel, sp, RouteOpts{Snapshot: snapRegs, RatedKw: rated, Deye: cap, DeyeSticky: sticky, OhneFlotte: in.Gesperrt})
 	if plan.Adapter == "idle" {
 		return out, z
 	}
@@ -126,10 +138,16 @@ func Planen(in PlanEingabe, z PlanZustand) (PlanAusgabe, PlanZustand) {
 	failsafe := !isTrue(get(sp, "control_enabled")) || SetpointStale(get(sp, "ts"), in.Now)
 	wasControlling := z.WasControlling
 	nativeWanted := get(sp, "battery_mode") == "native" || get(sp, "battery_mode") == "native_window"
-	out.NativeCapabilities = NativeCapabilitiesDeye(sel, sp, in.Catalog, cap, sticky)
+	out.NativeCapabilities = NativeCapabilitiesGeneric(sel, sp, in.Catalog, in.Gesperrt)
+	if out.NativeCapabilities == nil {
+		out.NativeCapabilities = NativeCapabilitiesDeye(sel, sp, in.Catalog, cap, sticky)
+	}
 	nativeRefusal := ""
 	if nativeWanted && !failsafe {
-		nat := NativePlanDeye(sel, sp, in.Catalog, cap, sticky, nativeCfg)
+		nat := NativePlanGeneric(sel, sp, in.Catalog, in.Gesperrt)
+		if nat == nil {
+			nat = NativePlanDeye(sel, sp, in.Catalog, cap, sticky, nativeCfg)
+		}
 		var natPre []ReadOp
 		if nat != nil && nat.Supported != nil && *nat.Supported && len(nat.Preconditions) > 0 {
 			natPre = nat.Preconditions
@@ -190,7 +208,7 @@ func Planen(in PlanEingabe, z PlanZustand) (PlanAusgabe, PlanZustand) {
 		touBudget = &b
 	}
 	release := func(calibration, controlEnabled bool) Plan {
-		return ControlRelease(sel, ReleaseOpts{Calibration: calibration, ControlEnabled: controlEnabled,
+		return ControlRelease(sel, ReleaseOpts{OhneFlotte: in.Gesperrt, Calibration: calibration, ControlEnabled: controlEnabled,
 			DeviceCertified: isTrue(get(sp, "device_certified")), Snapshot: snapRegs, Deye: cap, DeyeSticky: sticky})
 	}
 	switch {

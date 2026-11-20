@@ -49,7 +49,7 @@ VP_DATA_DIR=/tmp/vp VP_PORTAL_BASE_URL=http://127.0.0.1:9 \
 
 ## Steuern und Prüfstand-Build
 
-Edge Light steuert einen Deye selbst (Fernsteuerung 1100-1121 oder Zeitfenster, Rückgabe, Absturz-Wiederherstellung, Wechselrichter-Automatik) und regelt Fronius-Erzeuger über SunSpec Model 123 ab (Pfad `abregelung`), aber nur mit **Edge-Light-Freigabe** je Gerätefamilie und Steuerpfad (`edge-app/core/internal/layer1/freigabe.go`).
+Edge Light steuert einen Deye selbst (Fernsteuerung 1100-1121 oder Zeitfenster, Rückgabe, Absturz-Wiederherstellung, Wechselrichter-Automatik) regelt Fronius-Erzeuger über SunSpec Model 123 ab (Pfad `abregelung`) und schreibt das generische SunSpec-/Modbus-Profil (Pfad `modbus`), aber nur mit **Edge-Light-Freigabe** je Gerätefamilie und Steuerpfad (`edge-app/core/internal/layer1/freigabe.go`).
 Die Tabelle ist leer, bis der Captain eine Familie am Prüfstand mit dem Go-Code freigegeben hat; ohne Eintrag wird geprüft und gelesen, nie geschrieben, und die Rückmeldung nennt den Grund.
 Sie kommt zu allen bestehenden Toren hinzu (Not-Aus, Zertifizierung oder First-Light-Freigabe, Automatik-Zertifikate) und lockert keines.
 Eine Deye-Freigabe, die mit dem Node-RED-Ausführer der Docker-Box erworben wurde, öffnet sie nicht.

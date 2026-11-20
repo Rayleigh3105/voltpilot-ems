@@ -182,6 +182,7 @@ const CATALOGS = {
     NATIVE.releaseDeyeChargeSide('grid_zero', 'self_consumption', 'Vektor-Nachweis'),
   ]),
   leer: [],
+  simulator: NATIVE.SIMULATOR_NATIVE_CAPABILITIES,
 };
 
 // --- der Plan-Knoten als echter Rumpf ------------------------------------------
@@ -956,14 +957,149 @@ async function buildKette() {
   return JSON.stringify(enc(data)) + '\n';
 }
 
+// --- Teil 3: der generische SunSpec-/Modbus-Pfad (Simulator-Profil) -----------
+//
+// Plan-Knoten -> echter Ausfuehrer "SunSpec/Modbus schreiben + zuruecklesen"
+// gegen ein gestelltes Geraet mit dem kompakten Registerblock (40 Sollwert,
+// 41 Freigabe, 42 PV-Grenze, 43/44 Fenster) hinter einer gestellten net-
+// Schnittstelle.
+const GEN_EXEC_BODY = flows.find((n) => n.id === 'auto-control-exec').func;
+
+function fakeModbusNet(dev, ops) {
+  let n = 0;
+  class Socket {
+    constructor() { this.h = {}; }
+    setNoDelay() {}
+    on(ev, fn) { (this.h[ev] = this.h[ev] || []).push({ fn }); }
+    once(ev, fn) { (this.h[ev] = this.h[ev] || []).push({ fn, once: true }); }
+    emit(ev, a) { const l = this.h[ev] || []; this.h[ev] = l.filter((x) => !x.once); for (const x of l) x.fn(a); }
+    destroy() {}
+    connect(port, ip, cb) {
+      if (dev.connectFail) { ops.push({ op: 'connect', fail: true }); setImmediate(() => this.emit('error', new Error('connect ECONNREFUSED'))); return; }
+      ops.push({ op: 'connect', ip, port });
+      setImmediate(cb);
+    }
+    write(buf) {
+      const tx = buf.readUInt16BE(0); const unit = buf[6]; const fn = buf[7]; const addr = buf.readUInt16BE(8); const v = buf.readUInt16BE(10);
+      const fault = (dev.faults || {})[n++];
+      let rec; let pdu;
+      if (fn === 0x03) {
+        rec = { op: 'read', unit, addr };
+        if (fault && fault.exception) pdu = Buffer.from([0x83, fault.exception]);
+        else { pdu = Buffer.alloc(4); pdu[0] = 3; pdu[1] = 2; pdu.writeUInt16BE((dev.regs[addr] || 0) & 0xffff, 2); }
+      } else {
+        rec = { op: 'write', unit, addr, value: v };
+        if (fault && fault.exception) pdu = Buffer.from([0x86, fault.exception]);
+        else { if (!dev.ignoreWrites) dev.regs[addr] = v; pdu = buf.slice(7, 12); }
+      }
+      if (fault && fault.exception) rec.error = 'Modbus-Ausnahme 0x' + fault.exception.toString(16);
+      else if (fn === 0x03) rec.value = pdu.readUInt16BE(2);
+      else rec.ok = true;
+      ops.push(rec);
+      const head = Buffer.alloc(7); head.writeUInt16BE(tx, 0); head.writeUInt16BE(pdu.length + 1, 4); head[6] = unit;
+      setImmediate(() => this.emit('data', Buffer.concat([head, pdu])));
+    }
+  }
+  return { Socket };
+}
+
+async function runGenericExec(state, msg, nowMs, dev) {
+  const ops = [];
+  const sandbox = {
+    msg, node: { status() {}, error() {}, warn() {}, log() {} },
+    context: { get: (k) => state.exec[k], set: (k, v) => { state.exec[k] = v; } },
+    flow: { get: () => undefined, set: () => {} },
+    global: { get: (k) => (k === 'net' ? fakeModbusNet(dev, ops) : (k === 'vpSharedBusArbiter' ? { runControl: (t, fn) => fn(), targetKey: (c, d) => c.ip + ':' + (c.port || d) } : undefined)) },
+    Buffer, Math, isFinite, Number, Array, Object, JSON, String, Promise, setTimeout, clearTimeout, setImmediate, Date: fakeDate(nowMs),
+  };
+  const ret = new vm.Script('(function(){' + GEN_EXEC_BODY + '\n})()').runInContext(vm.createContext(sandbox));
+  const out = ret && typeof ret.then === 'function' ? await ret : ret;
+  return { out, ops };
+}
+
+const modbusSel = (over = {}, conn = {}) => Object.assign({ schema_version: '1.0', brand: 'generic_modbus', model: 'sunspec-sim',
+  family: 'sunspec', communication: 'modbus_tcp', control_tier: 1, rated_kw: 10 }, over,
+{ connection: Object.assign({ ip: '192.168.1.70', port: 502, unit_id: 1 }, conn) });
+
+async function modbusChain(name, c) {
+  const state = { ctx: {}, exec: {}, flow: { memory: { inverter_config: c.sel }, file: {} } };
+  const dev = { regs: Object.assign({}, c.regs || {}) };
+  let now = T0;
+  const ticks = [];
+  for (const t of c.ticks) {
+    if (t.advance) now += t.advance;
+    for (const k of ['ignoreWrites', 'faults', 'connectFail']) { if (t.device && k in t.device) dev[k] = t.device[k]; else delete dev[k]; }
+    const { out } = runPlanNode(state, { setpoint: t.setpoint }, now, c.catalog);
+    let payload = null; let ops = [];
+    if (out && out.control && out.control.adapter === 'modbus_tcp') {
+      const r = await runGenericExec(state, out, now, dev);
+      ops = r.ops; payload = r.out ? r.out.payload : null;
+    }
+    ticks.push({ now, setpoint: t.setpoint, control: out ? out.control : null, native_capabilities: out ? (out.nativeCapabilities || null) : null,
+      native_refusal: out && typeof out.nativeRefusal === 'string' ? out.nativeRefusal : '', ops, payload,
+      shaped: payload ? SHAPE(JSON.parse(JSON.stringify(payload))) : null,
+      ctx: { was_controlling: state.ctx.was_controlling === true, native_written: typeof state.ctx.native_written === 'string' } });
+  }
+  return { name, catalog: c.catalog || 'produktion', sel: c.sel, ticks };
+}
+
+async function modbusCases() {
+  const cases = [];
+  const S = modbusSel();
+  const win = (intent, min, max, extra = {}) => sp(Object.assign({ battery_mode: 'native_window', battery_native_intent: intent, battery_window_min_kw: min,
+    battery_window_max_kw: max, battery_window_natural_min_kw: -10, battery_window_natural_max_kw: 10, grid_charge_allowed: true }, extra));
+  cases.push(await modbusChain('setpoint', { sel: S, ticks: [
+    { setpoint: sp({ device_certified: false }) }, { advance: 10000, setpoint: sp({ device_certified: false, battery_setpoint_kw: 2.37, pv_limit_kw: 3.5 }) },
+    { advance: 10000, setpoint: sp({ device_certified: false, control_enabled: false }) }, { advance: 10000, setpoint: sp({ device_certified: false, control_enabled: false }) },
+    { advance: 10000, setpoint: sp({ device_certified: false, battery_setpoint_kw: -400 }) }, { advance: 10000, setpoint: sp({ device_certified: false, ts: iso(T0 - 25 * 60e3) }) },
+  ] }));
+  cases.push(await modbusChain('geraet', { sel: modbusSel({}, { invert_control_sign: true, port: 1502, unit_id: 3 }), ticks: [
+    { setpoint: sp({ device_certified: false, battery_setpoint_kw: 1.5 }) },
+    { advance: 10000, setpoint: sp({ device_certified: false }), device: { ignoreWrites: true } },
+    { advance: 10000, setpoint: sp({ device_certified: false }), device: { faults: { 1: { exception: 4 } } } },
+    { advance: 10000, setpoint: sp({ device_certified: false }), device: { faults: { 4: { exception: 2 } } } },
+    { advance: 10000, setpoint: sp({ device_certified: false }), device: { connectFail: true } },
+  ] }));
+  cases.push(await modbusChain('fremde_familie', { sel: modbusSel({ family: 'sma_hybrid', model: 'x' }), ticks: [
+    { setpoint: sp({ device_certified: false }) }, { advance: 10000, setpoint: sp() }, { advance: 10000, setpoint: sp({ control_enabled: false }) },
+  ] }));
+  for (const catalog of ['produktion', 'simulator']) {
+    cases.push(await modbusChain('automatik', { catalog, sel: modbusSel({}, { firmware: 'sim' }), ticks: [
+      { setpoint: sp({ device_certified: false, battery_mode: 'native', grid_charge_allowed: true }) },
+      { advance: 10000, setpoint: sp({ device_certified: false, battery_mode: 'native', grid_charge_allowed: true }) },
+      { advance: 10000, setpoint: sp({ device_certified: false, battery_mode: 'native', grid_charge_allowed: true, pv_limit_kw: 2 }) },
+      { advance: 10000, setpoint: sp({ device_certified: false, battery_mode: 'native' }) },
+      { advance: 10000, setpoint: win('surplus_charge', 0, 10, { device_certified: false }) },
+      { advance: 10000, setpoint: win('self_consumption', -10, 4, { device_certified: false }) },
+      { advance: 10000, setpoint: win('self_consumption', -10, 10, { device_certified: false, battery_window_natural_min_kw: undefined, battery_window_natural_max_kw: undefined }) },
+      { advance: 10000, setpoint: win('cover_load', -3, 0, { device_certified: false }) },
+      { advance: 10000, setpoint: win('cover_load', -3, 2, { device_certified: false }) },
+      { advance: 10000, setpoint: win('quer', -3, 0, { device_certified: false }) },
+      { advance: 10000, setpoint: win('self_consumption', 1, 10, { device_certified: false }) },
+      { advance: 10000, setpoint: sp({ device_certified: false }) },
+    ] }));
+  }
+  cases.push(await modbusChain('automatik_ohne_firmware', { catalog: 'simulator', sel: S, ticks: [
+    { setpoint: sp({ device_certified: false, battery_mode: 'native', grid_charge_allowed: true }) },
+  ] }));
+  cases.push(await modbusChain('rueckgabe_ohne_ip', { sel: modbusSel({}, { ip: ' ' }), ticks: [{ setpoint: sp() }] }));
+  return cases;
+}
+
+const OUT_MODBUS = path.join(__dirname, 'steuerplan-modbus-vectors.json');
+async function buildModbus() {
+  return JSON.stringify(enc({ hinweis: 'Erzeugt von steuerplan-vectors.gen.js - nicht von Hand aendern.', t0: T0, kette: await modbusCases() })) + '\n';
+}
+
 if (require.main === module) {
   (async () => {
   fs.writeFileSync(OUT_KETTE, await buildKette());
+  fs.writeFileSync(OUT_MODBUS, await buildModbus());
   fs.writeFileSync(OUT, build());
   fs.writeFileSync(OUT_KNOTEN, buildKnoten(false));
   fs.writeFileSync(OUT_AUTOMATIK, buildKnoten(true));
-  for (const f of [OUT, OUT_KNOTEN, OUT_AUTOMATIK, OUT_KETTE]) console.log('geschrieben: ' + f + ' (' + fs.statSync(f).size + ' Bytes)');
+  for (const f of [OUT, OUT_KNOTEN, OUT_AUTOMATIK, OUT_KETTE, OUT_MODBUS]) console.log('geschrieben: ' + f + ' (' + fs.statSync(f).size + ' Bytes)');
   })();
 }
 
-module.exports = { OUT, OUT_KNOTEN, OUT_AUTOMATIK, OUT_KETTE, build, buildKnoten, buildKette };
+module.exports = { OUT, OUT_KNOTEN, OUT_AUTOMATIK, OUT_KETTE, OUT_MODBUS, build, buildKnoten, buildKette, buildModbus };

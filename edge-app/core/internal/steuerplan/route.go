@@ -10,6 +10,10 @@ type RouteOpts struct {
 	RatedKw    any
 	Deye       Obj
 	DeyeSticky Obj
+	// OhneFlotte drops the fleet-wide family certification (the simulator
+	// profile `sunspec`): Layer 1's Edge Light release closes it like a
+	// device grant.
+	OhneFlotte bool
 }
 
 // idleNotPorted is the honest answer for a transport Edge Light does not
@@ -57,7 +61,7 @@ func ControlRoute(sel, sp Obj, opts RouteOpts) Plan {
 	controlEnabled := isTrue(get(sp, "control_enabled"))
 	calibration := isTrue(get(sp, "calibration"))
 	family := trimmed(get(sel, "family"))
-	certified := certifiedFamily(family) || isTrue(get(sp, "device_certified"))
+	certified := (certifiedFamily(family) && !opts.OhneFlotte) || isTrue(get(sp, "device_certified"))
 	kw := num(get(sp, "battery_setpoint_kw"))
 	var pvLimitKw *float64
 	if v := get(sp, "pv_limit_kw"); isFiniteNum(v) && num(v) >= 0 {
@@ -76,8 +80,11 @@ func ControlRoute(sel, sp Obj, opts RouteOpts) Plan {
 		}
 		return deyeControl(a)
 	}
-	if get(sel, "communication") == CommSolarman {
-		// A Deye logger under another tier: the original's dispatch, honestly.
+	if tier == TierSunspec && get(sel, "communication") == CommModbus {
+		return sunspecControl(conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw)
+	}
+	if c := get(sel, "communication"); c == CommSolarman || c == CommModbus {
+		// A transport of Edge Light under another tier: the original's dispatch.
 		if tier == TierVendorEMS {
 			return vendorEmsPlan(conn, ip, family, controlEnabled, nil)
 		}
@@ -553,6 +560,7 @@ func deyeControl(a deyeArgs) Plan {
 
 // ReleaseOpts are controlRelease's opts.
 type ReleaseOpts struct {
+	OhneFlotte      bool
 	Calibration     bool
 	ControlEnabled  bool
 	DeviceCertified bool
@@ -577,11 +585,14 @@ func ControlRelease(sel Obj, o ReleaseOpts) Plan {
 		return idle("keine IP-Adresse")
 	}
 	family := trimmed(get(sel, "family"))
-	certified := certifiedFamily(family) || o.DeviceCertified
+	certified := (certifiedFamily(family) && !o.OhneFlotte) || o.DeviceCertified
 	releaseAllowed := certified || o.Calibration
 	tier := ResolveControlTier(sel)
+	if tier == TierSunspec && get(sel, "communication") == CommModbus {
+		return sunspecRelease(conn, ip, family, tier, certified, o.ControlEnabled, o.Calibration, releaseAllowed)
+	}
 	if tier != TierTou || get(sel, "communication") != CommSolarman {
-		if get(sel, "communication") == CommSolarman {
+		if c := get(sel, "communication"); c == CommSolarman || c == CommModbus {
 			if tier == TierVendorEMS {
 				return vendorEmsPlan(conn, ip, family, o.ControlEnabled, ptr(tier))
 			}
