@@ -95,7 +95,7 @@ Ein offenes Fenster öffnet den **Netzweg** zur Box. Die **Anmeldung** an der Bo
 |---|---|---|
 | 1 | Portal und API: der SSH-Schlüssel steht am Techniker-Zugang und geht im Soll-Stand mit | umgesetzt |
 | 2 | Tunnel-Dienst: gibt einer Box die Schlüssel der Techniker aus, für die gerade ein Fenster zu ihr offen ist | umgesetzt; auf der Wartungs-VM seit dem 09.10.2026 eingeschaltet (`10.10.32.1:8022`) |
-| 3 | Box (`service-tunnel.sh`): holt die Schlüssel ab, hält sie nur im Arbeitsspeicher und führt die Frist selbst | umgesetzt für OpenWrt mit Dropbear ab 2025.89 (Mango, 25.12); eine Box holt erst ab, wenn ihr Tunnel mit diesem Skript eingerichtet ist |
+| 3 | Box (`service-tunnel.sh`): holt die Schlüssel ab, hält sie nur im Arbeitsspeicher und führt die Frist selbst | umgesetzt für OpenWrt mit Dropbear ab 2025.89 (Mango, 25.12); eine Box holt erst ab, wenn ihr Tunnel mit diesem Skript eingerichtet ist. Für Geräte ohne OpenWrt (WAGO PFC200) tut dasselbe das Programm `vp-wartung` ([unten](#boxen-ohne-openwrt-das-tunnel-programm-vp-wartung)); an keinem Gerät eingerichtet |
 | 4 | Rückmeldung des Tunnel-Dienstes ans Portal: Box verbunden, zuletzt gefragt, Schlüssel abgeholt | umgesetzt ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)); wirkt, sobald Portal und Tunnel-Dienst beide auf diesem Stand laufen |
 | 5 | Regeln: Werkstatt-Regel (Root-Passwort, Anmeldeprobe über Portal und Tunnel), ein Notfall-Schlüssel als einziger dauerhafter Schlüssel | beschrieben in [mango.md](../edge-light/docs/mango.md#bevor-eine-box-die-werkstatt-verlässt); je Box vom Kapitän umzusetzen, an keinem Gerät ausgeführt |
 | 6 | Box: Mit einem Fenster-Schlüssel enden die Sitzungen, die mit ihm begonnen wurden ([unten](#was-mit-einer-laufenden-anmeldung-geschieht)) | umgesetzt im Box-Skript, belegt im Container; gilt für eine Box erst nach einem erneuten Lauf von `service-tunnel.sh` ([Ausrollen](../edge-light/docs/mango.md#sitzungen-beenden-ausrollen-je-box)); am 11.10.2026 an der Labor-Mango eingespielt und am 12.10.2026 vom Kapitän mit einem echten Fenster erprobt ([Stand](../edge-light/docs/mango.md#stand-an-der-labor-mango-sitzungen-beenden)), an keiner anderen Box |
@@ -205,6 +205,51 @@ Aufbau, Obergrenze, die Abwägung gegen einen größeren Protokollspeicher und g
 
 **Wer das Portal verwaltet, verwaltet damit die Anmeldung.** Sobald die Boxen Fenster-Schlüssel abholen, genügt ein Konto mit der Rolle `platform-admin`, um als root auf eine verbundene Box zu kommen: Zugang mit eigenem Schlüssel anlegen, Fenster öffnen. Vorgesehen sind deshalb ein zweiter Faktor für Portal-Administratoren vor der ersten Kundenbox auf diesem Weg und, vorgemerkt, vom Portal signierte Freigaben. Beides ist nicht umgesetzt.
 
+## Boxen ohne OpenWrt: das Tunnel-Programm `vp-wartung`
+
+Der WAGO PFC200 ist die Box „Edge Industrie“ (Name vom Kapitän am 20.11.2026 festgelegt; die Mango bleibt Edge Light): dieselbe Box-Software wie auf der Mango, als ein Programm neben der SPS-Laufzeit (Entscheid des Kapitäns vom 19.11.2026, bestätigt am 20.11.2026).
+Das Gerät hat kein WireGuard im Kern, und seine Firewall gehört der WAGO-Firmware.
+Darum richtet dort nicht `service-tunnel.sh` den Tunnel ein, sondern ein eigenes Programm: `vp-wartung` ([`edge-industrie/wartung`](../edge-industrie/wartung/README.md)), eingerichtet von [`edge-industrie/wartung.sh`](../edge-industrie/README.md#wartungstunnel).
+Für Portal, API, Tunnel-Dienst und Techniker ändert sich nichts: derselbe Server, derselbe [Vertrag](contracts/fernwartung-schluessel-v1.md), dieselben Befehle (`ssh -p 2222 root@<Box-Adresse>`, `http://<Box-Adresse>:8484`).
+
+Jede Regel der Box-Seite gilt auch hier; erfüllt wird sie anders:
+
+| Regel | Mango (`service-tunnel.sh`) | PFC200 (`vp-wartung`) |
+|---|---|---|
+| Tunnel | WireGuard des Kerns, Schnittstelle `wg_wartung` | WireGuard im eigenen Prozess (wireguard-go mit Netstack): keine Schnittstelle im Kern, keine Route |
+| SSH 2222 nur aus dem Tunnel | eigene Firewall-Kette weist den Port auf jedem anderen Weg ab | der Port lauscht auf keiner Netzbuchse, er existiert nur im Tunnel; in die WAGO-Firewall greift nichts ein |
+| Anmeldung | Dropbear, nur Schlüssel | SSH-Server des Programms, nur root, nur Schlüssel; Befehl, Shell mit Terminal, Weiterleitung; kein SFTP (`scp -O` geht nicht, Dateien über `cat \| ssh`) |
+| Host-Schlüssel | der des Dropbear der Box | die des Dropbear des Geräts (`/etc/dropbear`, im Programm gelesen); liest es keinen, startet es nicht |
+| Abholer fragt nur durch den Tunnel | Route geprüft, Firewall-Regel als zweiter Riegel | der Abholer hat keinen anderen Weg als den Tunnel |
+| Fenster-Schlüssel nur im Arbeitsspeicher | eigenes tmpfs, das nur die SSH-Instanz liest | im Speicher des Prozesses, in keiner Datei |
+| Frist in Laufzeit, auch ohne Server und bei hängendem Abholer | `/proc/uptime`, dazu ein cron-Lauf je Minute | monotone Uhr, dazu ein eigener Takt je Sekunde neben dem Abholer |
+| Die Antwort ist die ganze Liste | ja | ja; dieselbe Prüfregel, an denselben Fällen geprüft |
+| Mit dem Schlüssel enden seine Sitzungen | Zuordnung über die Marke `SSH_PUBKEYINFO`; nicht zuzuordnen: endet | jede Verbindung kennt ihren Schlüssel; „nicht zuzuordnen“ gibt es nicht |
+| Dauerhafte Schlüssel | `/etc/dropbear/authorized_keys`, nur gelesen | `/root/.ssh/authorized_keys`, nur gelesen; **eine Zeile mit Optionen gilt im Tunnel nicht** (das Programm könnte sie nicht durchsetzen), `status` zählt sie |
+| Dauerhaft geht vor Fenster | Dropbear nimmt die erste passende Zeile | geprüft wird zuerst die Datei der dauerhaften Schlüssel |
+| Lebenszeichen | `dropbear -K 300` | alle 300 s, nach drei ohne Antwort endet die Sitzung |
+| Ereignisliste | Flash, nur bei einem Ereignis, höchstens 250 Zeilen, nie ein Schlüssel; aus dem Protokollspeicher gelesen | Flash (`/home/voltpilot/wartung/ereignisse`), dieselben Grenzen; das Programm schreibt sie selbst |
+| Web-App 8484 im Fenster | Firewall-Regel für das Techniker-Netz | Durchreiche im Tunnel auf `127.0.0.1:8484`; `VP_SERVICE_WEB=zu` lässt sie weg |
+| Wächter | cron: Neustart der Schnittstelle ohne Handshake seit 10 min | ohne Handshake seit 3 min löst das Programm den Servernamen neu auf |
+| Zustand | `service-tunnel.sh <ziel> status` | `wartung.sh <ziel> status`, auf dem Gerät `vp-wartung status` |
+| Abbauen | `abbauen wg_wartung`, verweigert über den eigenen Tunnel | `wartung.sh <ziel> abbauen`, verweigert über den eigenen Tunnel |
+
+Was die Tabelle für den PFC200 behauptet, belegen die Tests des Programms mit einem echten WireGuard-Tunnel und `edge-industrie/test/wartung-probe.sh` mit dem ARMv7-Programm im Container.
+Am Test-PFC200 (Firmware 03.10.08(22), Dropbear 2022.82) lief das Programm am 20.11.2026 einmal kurz aus dem RAM gegen eine Gegenstelle auf dem Rechner daneben: Host-Schlüssel wie der Dropbear des Geräts, Anmeldung als root, Fenster-Schlüssel und Ende der Sitzung, 13 MB Arbeitsspeicher ([Belege](../edge-industrie/README.md#was-belegt-ist)).
+Gegen den echten Wartungsserver, mit einem echten Fenster aus dem Portal, als eingerichteter Dienst und über einen Neustart des Geräts ist nichts davon belegt.
+
+- **Beenden heißt auch hier: wie ein Verbindungsabbruch, nur sofort.**
+  Das Terminal legt auf, was darin läuft, bekommt SIGHUP; ein Befehl ohne Terminal bekommt das Ende seiner Eingabe und scheitert an seiner nächsten Ausgabe oder läuft zu Ende.
+- **Nur RSA bleibt die Regel für Fenster-Schlüssel**, solange Mango-Boxen in der Flotte sind: Die Schlüsselausgabe kennt nur `ssh-rsa`, und die Prüfregel der Box nimmt nichts anderes.
+  Dauerhafte Schlüssel können auf dem PFC200 auch ECDSA oder Ed25519 sein; der Dropbear des Geräts an Port 22 nimmt allerdings kein Ed25519.
+- **Die Uhr.**
+  WireGuard verwirft einen Handshake mit einem älteren Zeitstempel als dem zuletzt gesehenen.
+  Steht die Uhr des PFC200 nach einem Neustart in der Vergangenheit, steht der Tunnel erst, wenn sie gestellt ist; `status` nennt dann „seit dem Start KEINER“.
+  Fristen der Fenster-Schlüssel hängen nicht an der Uhr.
+- **Kein Update aus dem Portal tauscht das Programm.**
+  Es ändert sich nur durch `wartung.sh` (Werkstatt, Fernlauf).
+- **Die SPS-Laufzeit, die Firewall, die Netzeinstellungen und der Dropbear des Geräts** bleiben unberührt; bei Speichernot trifft der Kernel erst das Box-Programm, dann den Tunnel, nie die Laufzeit (`oom_score_adj` 300).
+
 ## Web-App der Box im Fenster
 
 Entscheid des Kapitäns vom 09.10.2026: Die Web-App der Box (Port 8484) ist im offenen Fenster für **jeden** Techniker frei, nicht mehr je Techniker-Adresse. `service-tunnel.sh` gibt sie beim Einrichten des Tunnels für das ganze Techniker-Netz frei.
@@ -306,3 +351,4 @@ Empfohlene Reihenfolge: erst die Cloud (Migration, API, Portal), dann der Dienst
 
 - Tunnel-Dienst mit Installationsanleitung: `services/tunnel-dienst/`. Erste Einrichtung auf einer echten VM (Debian 13) am 08.10.2026; was dabei belegt wurde und was offen ist, steht dort unter „Prüfen“.
 - Box-Seite und beaufsichtigter Wechsel des Piloten: `edge-light/openwrt/service-tunnel.sh`, `edge-light/docs/mango.md`. Proben: `edge-light/test/service-tunnel-probe.sh` (Einrichtung, OpenWrt 24.10) und `edge-light/test/wartung-anmeldung-probe.sh` (Anmeldung mit Fenster-Schlüsseln, OpenWrt 25.12).
+- Box-Seite ohne OpenWrt (WAGO PFC200): das Programm `edge-industrie/wartung` (`vp-wartung`), eingerichtet von `edge-industrie/wartung.sh`. Probe: `edge-industrie/test/wartung-probe.sh` (ARMv7-Programm im BusyBox-Container gegen `vp-wartung-gegenstelle`).

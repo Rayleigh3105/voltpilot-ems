@@ -20,7 +20,7 @@ Die VoltPilot-Box als **ein einziges Programm** – ohne Docker, ohne Node-RED. 
 Benötigt Go ≥ 1.24 **oder** Docker (die Skripte wählen selbst).
 
 ```bash
-edge-light/scripts/test.sh          # Vektoren, Go-Tests (mit Race-Detector), MIPS-Build, ARMv7-Build, Loader-Abgleich Edge Industrie
+edge-light/scripts/test.sh          # Vektoren, Go-Tests (mit Race-Detector), MIPS-Build, ARMv7-Build, Loader-Abgleich Edge Industrie, Tunnel-Programm vp-wartung, Prüfregel der Schlüsselausgabe
 edge-light/scripts/build.sh         # dist/vp-edge-light-linux-{mipsle,arm64,arm,amd64} + .sha256
 edge-light/scripts/release.sh edge-light-JJJJ.MM.N <ausgabe>  # eine Fassung: mipsle, arm64, arm, Skriptstand, sha256sums (nur lokales Go)
 edge-light/test/qemu-smoke.sh       # MIPS-Programm unter Emulation gegen simulierten Deye
@@ -100,7 +100,7 @@ edge-light/
 │   ├── install.sh             Einrichtung über SSH (auch durch den WireGuard-Tunnel): Vertrauens-Set, bestätigte Fassung
 │   ├── service-tunnel.sh      Wartungstunnel zum Wartungsserver aus dem Portal (WireGuard, SSH mit Fenster-Schlüsseln, Web-App im Fenster)
 │   └── files/                 Loader, procd-Dienst, UCI-Konfiguration; `vp-wartung`: Abholer und Startskript der Fenster-Schlüssel, Ereignisliste der Fernwartung
-├── scripts/                   build.sh, test.sh (lokales Go oder Docker; ruft den Loader-Abgleich von Edge Industrie); release.sh und skripte-paket.py für eine Fassung edge-light-JJJJ.MM.N (Lauf `.forgejo/workflows/edge-light-release.yaml`: Tag → Prüfen → Anhänge am Forgejo-Release; mit `EDGE_LIGHT_SIGNIEREN=true` Manifest, Signatur, Register, Programme ins Portal)
+├── scripts/                   build.sh, test.sh (lokales Go oder Docker; ruft den Loader-Abgleich und die Tests des Tunnel-Programms von Edge Industrie); pruefregel-abgleich.sh prüft die Prüfregel der Schlüsselausgabe im Abholer der Mango gegen die Fälle des Vertrags; release.sh und skripte-paket.py für eine Fassung edge-light-JJJJ.MM.N (Lauf `.forgejo/workflows/edge-light-release.yaml`: Tag → Prüfen → Anhänge am Forgejo-Release; mit `EDGE_LIGHT_SIGNIEREN=true` Manifest, Signatur, Register, Programme ins Portal)
 └── test/
     ├── qemu-smoke.sh          MIPS-Programm unter qemu gegen simulierten Logger
     ├── mango-labtest.sh       Start + Messung auf einem echten Mango per SSH (ohne Portal)

@@ -80,6 +80,7 @@ Befehle im jeweils genannten Verzeichnis ausführen:
 | Forecast mit ML | `pip install -e '.[dev,ml]'` |
 | `frontend/portal` | `npm run typecheck`, `npm test`, `npm run build` |
 | `edge-app/core` | `go test ./...` |
+| `edge-industrie/wartung` (Tunnel-Programm `vp-wartung`, eigenes Go-Modul) | `go vet ./... && go test -race ./...`; läuft in `edge-light/scripts/test.sh` mit |
 | `edge-app/nodered` (ohne `vp-palette`) | `npm test` - deckt alle `*.test.js` ab, auch außerhalb von `nodered/` und `nodered/deye/`. `node --test` direkt an der Wurzel ausführen bricht ab: Node sammelt dabei jedes `test/`-Verzeichnis ein, auch die Mocha-Specs (`describe`) unter `vp-palette/test/` |
 | `edge-app/nodered/vp-palette` | `npm ci && npm test` (eigene Mocha-Suite) |
 

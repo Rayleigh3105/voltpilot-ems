@@ -1,8 +1,10 @@
 # Fernwartung: Schlüsselausgabe des Tunnel-Dienstes (v1)
 
-Eine Box fragt den Wartungsserver über den Wartungstunnel, wessen SSH-Schlüssel sich gerade bei ihr anmelden darf. Der Tunnel-Dienst antwortet mit den Schlüsseln der Techniker, für die ein Fenster zu **dieser** Box offen ist. Hintergrund: [Fernwartung](../fernwartung.md#anmeldung-an-der-box-fenster-schlüssel), Server-Seite: [Tunnel-Dienst](../../services/tunnel-dienst/README.md#schlüsselausgabe). Box-Seite: `edge-light/openwrt/files/usr/libexec/vp-wartung/schluessel-holen.sh`; ihre Prüfregel (`pruefe`) und dieser Vertrag ändern sich nur gemeinsam.
+Eine Box fragt den Wartungsserver über den Wartungstunnel, wessen SSH-Schlüssel sich gerade bei ihr anmelden darf. Der Tunnel-Dienst antwortet mit den Schlüsseln der Techniker, für die ein Fenster zu **dieser** Box offen ist. Hintergrund: [Fernwartung](../fernwartung.md#anmeldung-an-der-box-fenster-schlüssel), Server-Seite: [Tunnel-Dienst](../../services/tunnel-dienst/README.md#schlüsselausgabe). Box-Seite: `edge-light/openwrt/files/usr/libexec/vp-wartung/schluessel-holen.sh` (Mango) und `edge-industrie/wartung/internal/vertrag` im Tunnel-Programm `vp-wartung` (WAGO PFC200); beide Prüfregeln (`pruefe`, `vertrag.Pruefe`) und dieser Vertrag ändern sich nur gemeinsam.
 
 Vektor: [`fernwartung-schluessel-v1.example.txt`](fernwartung-schluessel-v1.example.txt). Er ist die Antwort an die Box `10.10.16.2` aus dem [Vektor des Soll-Stands](fernwartung-soll-v1.example.json) bei einer Stunde Restlaufzeit; der Test des Tunnel-Dienstes erzeugt ihn Byte für Byte (`TestVertragsvektorDerAntwort`).
+
+Fälle für die Prüfregel der Box: [`fernwartung-schluessel-v1-pruefregel.json`](fernwartung-schluessel-v1-pruefregel.json), Antworten, die jede Box-Seite gleich annehmen oder verwerfen muss. `edge-light/scripts/pruefregel-abgleich.sh` lässt die Funktion `pruefe` aus dem Abholer der Mango wortgleich über jeden Fall laufen (auf Wunsch mit Shell und awk der Box, `VP_PRUEF_BILD`), `TestPruefregelFaelle` die Go-Regel.
 
 ## Anfrage
 
@@ -68,3 +70,5 @@ Der **Prüfwert** hängt nur an der Liste (welcher Zugang, welcher Schlüssel), 
 - **Die Frist führt die Box selbst,** gemessen an ihrer Laufzeit seit dem Start und nicht an der Uhr: Laufzeit beim Empfang plus `<restlaufzeit>`. Der Server kann einen Schlüssel nicht zurückholen, wenn die Box ihn nicht mehr fragt.
 - Die Box fragt wieder, bevor eine Frist abläuft, und übernimmt aus **jeder** gültigen Antwort die Restlaufzeit, auch wenn der Prüfwert gleich geblieben ist: Sie kann länger oder kürzer geworden sein.
 - Die Box prüft jede Zeile selbst, auch den Schlüssel (`ssh-rsa`, Länge, Zeichen), und kappt eine Restlaufzeit über ihrem eigenen Höchstwert.
+- Der Server schreibt die Restlaufzeit ohne führende Null. Eine Box darf eine Antwort mit führender Null verwerfen: Das Tunnel-Programm `vp-wartung` tut es, weil das awk mancher BusyBox eine solche Zahl zur Basis acht liest (`060` als 48). Das Skript der Mango nimmt sie an; die Frist kann dort dann nur kürzer ausfallen, nie länger.
+- `vp-wartung` liest den Schlüssel außerdem wirklich ein (RSA 2048 bis 4096 Bit, Normalform) und verwirft die Antwort sonst; das Skript der Mango überlässt das Dropbear, der einen unlesbaren Schlüssel nie annimmt.

@@ -5,6 +5,8 @@
 # wenn es da ist (Go >= 1.24, wie edge-app/core/go.mod), sonst im offiziellen
 # golang-Container. Der Container laeuft mit der eigenen uid, damit nie
 # root-eigene Dateien im Repo entstehen, und teilt sich einen Cache-Volume.
+# VP_GO_DIR nennt ein anderes Modul unter dem Repo (edge-industrie/wartung,
+# das Tunnel-Programm von Edge Industrie).
 
 set -euo pipefail
 
@@ -13,6 +15,7 @@ REPO_ROOT="$(cd "$LIGHT_DIR/.." && pwd -P)"
 CORE_DIR="$REPO_ROOT/edge-app/core"
 GO_IMAGE="${VP_LIGHT_GO_IMAGE:-golang:1.24}"
 GO_CACHE_VOLUME="${VP_LIGHT_GO_CACHE:-vp-light-gocache}"
+WARTUNG_DIR="$REPO_ROOT/edge-industrie/wartung"
 
 have_local_go() {
   command -v go >/dev/null 2>&1 || return 1
@@ -34,8 +37,9 @@ go_run() {
     shift
   done
   [ "${1:-}" = "--" ] && shift
+  local dir="${VP_GO_DIR:-$CORE_DIR}"
   if have_local_go; then
-    (cd "$CORE_DIR" && env ${envs[@]+"${envs[@]}"} go "$@")
+    (cd "$dir" && env ${envs[@]+"${envs[@]}"} go "$@")
     return
   fi
   command -v docker >/dev/null 2>&1 || {
@@ -50,7 +54,7 @@ go_run() {
   for e in ${envs[@]+"${envs[@]}"}; do denv+=(-e "$e"); done
   docker run --rm --user "$(id -u):$(id -g)" \
     -v "$REPO_ROOT":/src -v "$GO_CACHE_VOLUME":/cache \
-    -w /src/edge-app/core \
+    -w "/src${dir#"$REPO_ROOT"}" \
     -e HOME=/tmp -e GOCACHE=/cache/build -e GOMODCACHE=/cache/mod \
     ${denv[@]+"${denv[@]}"} "$GO_IMAGE" go "$@"
 }

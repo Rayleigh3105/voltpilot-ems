@@ -22,6 +22,9 @@ MANGO="$REPO_ROOT/edge-light/openwrt/files/usr/libexec/vp-edge-light/boot.sh"
 PFC="$REPO_ROOT/edge-industrie/files/home/voltpilot/libexec/boot.sh"
 DIENST="$REPO_ROOT/edge-industrie/files/etc/init.d/vp-edge-industrie"
 INSTALL="$REPO_ROOT/edge-industrie/install.sh"
+# Der Wartungstunnel des PFC200: Einrichtung und Dienst-Skript von vp-wartung.
+WARTUNG="$REPO_ROOT/edge-industrie/wartung.sh"
+WARTUNG_DIENST="$REPO_ROOT/edge-industrie/files/etc/init.d/vp-wartung"
 # Das Protokoll: Speicherbedarf, Pruefsumme, Uhr, Marken, Ruecknahme, Behalten,
 # Probestart, Tausch, Urteil, Wache.
 GEMEINSAM="free_kb bedarf_kb summe uptime_s versuch zurueck behalten probestart tauschen probe_pruefen waechter"
@@ -36,7 +39,7 @@ funktion() {
   ' "$1"
 }
 
-for f in "$PFC" "$DIENST" "$INSTALL"; do
+for f in "$PFC" "$DIENST" "$INSTALL" "$WARTUNG" "$WARTUNG_DIENST"; do
   if ! sh -n "$f"; then
     echo "FEHLER: ${f#"$REPO_ROOT"/} ist kein gueltiges sh" >&2
     FEHLER=1

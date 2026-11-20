@@ -1,0 +1,202 @@
+#!/bin/sh
+# Wartungstunnel (vp-wartung) als Dienst auf dem WAGO PFC200 (WAGO-Firmware
+# mit BusyBox-Init).
+#
+#   /etc/init.d/vp-wartung start|stop|restart|status
+#
+# Startet das Tunnel-Programm (/home/voltpilot/wartung/vp-wartung lauf), und
+# endet es, startet es dieses Skript nach 10 s erneut - unbegrenzt oft. Endet
+# das Programm immer gleich wieder, waechst die Pause bis auf fuenf Minuten:
+# das Protokoll des Geraets liegt im Flash und soll nicht volllaufen. Das
+# Programm und dieses Skript gehoeren zum Betriebssystem der Box, NICHT zu
+# vp-edge-industrie: ein Update, ein Absturz oder ein falsches Programm dort
+# beruehren die Anmeldung im Wartungstunnel nicht. Beide aendern sich nur
+# durch edge-industrie/wartung.sh, nie durch ein Update aus dem Portal.
+#
+# Das Programm laeuft als root (eine Anmeldung im Tunnel ist eine als root),
+# mit einem weichen Speicherlimit und einem oom_score_adj zwischen dem
+# Box-Programm (800) und der SPS-Laufzeit: bei Speichernot trifft der Kernel
+# erst das Box-Programm, dann den Tunnel, nie die Laufzeit.
+#
+# Die Ausgabe des Programms geht an syslog (logger -t vp-wartung).
+
+PROGRAMM=/home/voltpilot/wartung/vp-wartung
+KONFIG=/home/voltpilot/wartung/konfig
+MARKE=vp-wartung
+PIDDATEI=/var/run/vp-wartung.pid
+KINDDATEI=/var/run/vp-wartung.kind
+# Pause vor dem naechsten Start (waechst bis PAUSE_MAX, solange das Programm
+# keine Minute durchhaelt) und Frist fuer ein geordnetes Ende.
+PAUSE=10
+PAUSE_MAX=300
+FRIST=15
+GOMEMLIMIT_WERT=64MiB
+OOM_ADJ=300
+
+PATH="${PATH:+$PATH:}/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
+
+melde() { logger -t "$MARKE" "$*" 2>/dev/null; }
+# laufzeit - Sekunden seit dem Start des Geraets (nicht die Uhr: sie springt).
+laufzeit() { cut -d. -f1 /proc/uptime 2>/dev/null || echo 0; }
+
+# zeile <pid> - die Befehlszeile eines Prozesses in einer Zeile.
+zeile() { tr '\000' ' ' <"/proc/$1/cmdline" 2>/dev/null; }
+
+# dienst_pid - die PID des laufenden Dienstes (dieses Skript mit "lauf"), sonst
+# nichts. Eine PID-Datei allein beweist nichts: nach einem harten Ende kann
+# die Nummer laengst einem anderen Prozess gehoeren.
+dienst_pid() {
+  p="$(cat "$PIDDATEI" 2>/dev/null)"
+  case "$p" in '' | *[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null || return 1
+  case "$(zeile "$p")" in
+    *"vp-wartung lauf"*) echo "$p" ;;
+    *) return 1 ;;
+  esac
+}
+
+# kind_pid - die PID des Programms.
+kind_pid() {
+  p="$(cat "$KINDDATEI" 2>/dev/null)"
+  case "$p" in '' | *[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null || return 1
+  case "$(zeile "$p")" in
+    *"$PROGRAMM lauf"*) echo "$p" ;;
+    *) return 1 ;;
+  esac
+}
+
+# warte_ende <pid> <sekunden> - 0, sobald der Prozess weg ist.
+warte_ende() {
+  i=0
+  while kill -0 "$1" 2>/dev/null; do
+    [ "$i" -lt "$2" ] || return 1
+    sleep 1
+    i=$((i + 1))
+  done
+  return 0
+}
+
+# verwaistes_beenden - ein Programm, dessen Dienst hart beendet wurde, laeuft
+# sonst weiter; ein zweites daneben meldete sich mit demselben Schluessel am
+# Wartungsserver, und beide stoerten einander.
+verwaistes_beenden() {
+  k="$(kind_pid)" || return 0
+  kill -TERM "$k" 2>/dev/null
+  warte_ende "$k" "$FRIST" || kill -KILL "$k" 2>/dev/null
+}
+
+# kind_term - TERM genau einmal an das Programm.
+kind_term() {
+  [ "$GESENDET" = 0 ] || return 0
+  k="$(cat "$KINDDATEI" 2>/dev/null)"
+  case "$k" in '' | *[!0-9]*) return 0 ;; esac
+  kill -TERM "$k" 2>/dev/null
+  GESENDET=1
+}
+
+# lauf - der Dienst selbst (von "start" in den Hintergrund gelegt).
+lauf() {
+  trap '' HUP
+  echo "$$" >"$PIDDATEI"
+  ENDE=0
+  GESENDET=0
+  GEMELDET=0
+  pause="$PAUSE"
+  trap 'ENDE=1; kind_term' TERM INT
+  while [ "$ENDE" = 0 ]; do
+    rm -f "$KINDDATEI"
+    GESENDET=0
+    beginn="$(laufzeit)"
+    if [ -x "$PROGRAMM" ] && [ -f "$KONFIG" ]; then
+      GEMELDET=0
+      # Jeder Start bekommt seinen eigenen logger. Das linke Ende der Leitung
+      # notiert die PID und wartet; der Dienst wartet auf den logger.
+      {
+        GOMEMLIMIT="$GOMEMLIMIT_WERT" "$PROGRAMM" lauf -konfig "$KONFIG" 2>&1 &
+        echo "$!" >"$KINDDATEI"
+        { echo "$OOM_ADJ" >"/proc/$!/oom_score_adj"; } 2>/dev/null
+        wait "$!"
+        echo "vp-wartung: das Programm endete mit Code $?"
+      } </dev/null | logger -t "$MARKE" &
+      rohr=$!
+      while kill -0 "$rohr" 2>/dev/null; do
+        wait "$rohr"
+        # TERM kam, bevor die PID notiert war: nachholen.
+        if [ "$ENDE" = 1 ] && [ "$GESENDET" = 0 ] && kill -0 "$rohr" 2>/dev/null; then
+          sleep 1
+          kind_term
+        fi
+      done
+    elif [ "$GEMELDET" = 0 ]; then
+      melde "Programm oder Einstellungen fehlen ($PROGRAMM, $KONFIG) - edge-industrie/wartung.sh ausfuehren"
+      GEMELDET=1
+    fi
+    [ "$ENDE" = 0 ] || break
+    sleep "$pause" &
+    schlaf=$!
+    wait "$schlaf"
+    kill "$schlaf" 2>/dev/null
+    # Lief das Programm mindestens eine Minute, gilt wieder die kurze Pause.
+    if [ "$(($(laufzeit) - beginn))" -ge "$((60 + pause))" ]; then
+      pause="$PAUSE"
+    else
+      pause="$((pause * 2))"
+      [ "$pause" -le "$PAUSE_MAX" ] || pause="$PAUSE_MAX"
+    fi
+  done
+  rm -f "$PIDDATEI" "$KINDDATEI"
+}
+
+start() {
+  if p="$(dienst_pid)"; then
+    echo "vp-wartung: laeuft schon (Dienst $p)"
+    return 0
+  fi
+  verwaistes_beenden
+  # Abgekoppelt von der Sitzung, die startet (rc-Skript beim Hochfahren, ssh).
+  "$0" lauf </dev/null >/dev/null 2>&1 &
+  echo "vp-wartung: gestartet"
+}
+
+stop() {
+  if p="$(dienst_pid)"; then
+    kill -TERM "$p" 2>/dev/null
+    if ! warte_ende "$p" "$FRIST"; then
+      k="$(kind_pid)" && kill -KILL "$k" 2>/dev/null
+      kill -KILL "$p" 2>/dev/null
+    fi
+  fi
+  verwaistes_beenden
+  rm -f "$PIDDATEI" "$KINDDATEI"
+  echo "vp-wartung: beendet"
+}
+
+status() {
+  if p="$(dienst_pid)"; then
+    if k="$(kind_pid)"; then
+      echo "vp-wartung: laeuft (Dienst $p, Programm $k)"
+    else
+      echo "vp-wartung: laeuft (Dienst $p, wartet auf den naechsten Start)"
+    fi
+    return 0
+  fi
+  echo "vp-wartung: laeuft nicht"
+  return 3
+}
+
+case "${1:-}" in
+  start) start ;;
+  stop) stop ;;
+  restart)
+    stop
+    start
+    ;;
+  status) status ;;
+  lauf) lauf ;;
+  *)
+    echo "Aufruf: $0 start|stop|restart|status" >&2
+    exit 2
+    ;;
+esac

@@ -20,7 +20,11 @@
 #      Mango-Loaders (edge-industrie/scripts/loader-abgleich.sh); die
 #      Modellangabe der Box (geraet),
 #   7. das Release-Programm ist nie der Pruefstand-Build (der Build-Tag
-#      `pruefstand` oeffnet die Steuerung ohne Freigabe).
+#      `pruefstand` oeffnet die Steuerung ohne Freigabe),
+#   8. das Tunnel-Programm von Edge Industrie (edge-industrie/wartung, vp-wartung): seine
+#      Tests mit echtem WireGuard ueber die Schleife des Rechners, der Bau fuer
+#      ARMv7, und die Pruefregel der Schluesselausgabe auf beiden Box-Seiten
+#      gegen dieselben Faelle (pruefregel-abgleich.sh).
 #
 #   edge-light/scripts/test.sh
 # shellcheck source=edge-light/scripts/lib.sh
@@ -102,5 +106,12 @@ if GOFLAGS=-tags=pruefstand "$LIGHT_DIR/scripts/build.sh" amd64 >/dev/null 2>&1;
 fi
 go_run -- build -tags pruefstand -o /dev/null ./cmd/vp-edge-light
 echo "    Release ohne Tag, build.sh verweigert ihn, Pruefstand-Build baut"
+
+echo "--- 8. Tunnel-Programm von Edge Industrie (vp-wartung) und die Pruefregel der Schluesselausgabe"
+VP_GO_DIR="$WARTUNG_DIR" go_run -- vet ./...
+VP_GO_DIR="$WARTUNG_DIR" go_run CGO_ENABLED=1 -- test -count=1 -race ./...
+VP_GO_DIR="$WARTUNG_DIR" go_run GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 -- vet ./...
+VP_GO_DIR="$WARTUNG_DIR" go_run GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-wartung
+"$LIGHT_DIR/scripts/pruefregel-abgleich.sh"
 
 echo "--- alles gruen"

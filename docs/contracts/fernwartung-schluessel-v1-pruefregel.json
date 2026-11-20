@@ -1,0 +1,272 @@
+{
+  "beschreibung": "Fälle für die Prüfregel der Box zur Antwort der Schlüsselausgabe (fernwartung-schluessel-v1.md, Abschnitte „Antwort“ und „Regeln für die Box“). Jede Box-Seite prüft dieselben Antworten: pruefe in edge-light/openwrt/files/usr/libexec/vp-wartung/schluessel-holen.sh (Mango) und vertrag.Pruefe in edge-industrie/wartung/internal/vertrag (Edge Industrie, WAGO PFC200). gilt = die Box übernimmt die Liste; dann nennt schluessel je Zeile die Restlaufzeit, wie die Box sie führt (gekappt auf 24 h), den Zugang und den Schlüssel. Hier stehen nur Antworten, die beide Seiten gleich beurteilen müssen; wo die Go-Regel strenger ist (sie liest den Schlüssel wirklich ein und nimmt keine Restlaufzeit mit führender Null), steht im Vertrag. Prüfer: edge-light/scripts/pruefregel-abgleich.sh (Shell-Regel) und TestPruefregelFaelle (Go-Regel). Die Schlüssel sind eigens erzeugte öffentliche Schlüssel ohne Gegenstück.",
+  "faelle": [
+    {
+      "name": "Vertragsvektor: ein Schlüssel (RSA 3072), eine Stunde",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC65yGMPv85jYw73Y34zwg28UDa5p7/5R89oMU38SLkF/XCJtuHiW5r63r4e0LDhKAL7IzqeRFsj/NwNBMNkIxVYzTFNWUxFPU0KrBg6jrcejgb2kTkK+a1VrzbPiWCd0gyxZEAeuVukvqr3OxHsAUc4b8WPviPjqu2BgWwVv9fHWGKcVoyGISLgI1YbrF8qzYRlpAaGSLlrHjT3JB9Ytgda7dNWXggf83lyzCvO6leSS8azex11WfYWM7tq2duUoPqm2qAD2itPapCaTL3nVdFRHZtGQ6yZhrA1wDBAxZ4/uPmD7+SaYBqH0GNWAQlz72YTL+RjAPYI9I3r2DUQx1AS7oQ3BCZ0kvpv8kmCvXzZryO6iqc3C0855Ky35Aeyykdd9wmQ1/JvUDt0v80wH6xXeE8hln/vyM6RxM9TAeQfprUrfaU/YpOiCF7jIdVgPMicOLQ/VyFuPTQibEAnui420MaDR5bBs/ebmWv34dthws64dZQXEuku4UnkhU8TF0=\nende 1\n",
+      "gilt": true,
+      "pruefwert": "6e7abb201a8aaa9a",
+      "schluessel": [
+        {
+          "rest": 3600,
+          "zugang": "a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABgQC65yGMPv85jYw73Y34zwg28UDa5p7/5R89oMU38SLkF/XCJtuHiW5r63r4e0LDhKAL7IzqeRFsj/NwNBMNkIxVYzTFNWUxFPU0KrBg6jrcejgb2kTkK+a1VrzbPiWCd0gyxZEAeuVukvqr3OxHsAUc4b8WPviPjqu2BgWwVv9fHWGKcVoyGISLgI1YbrF8qzYRlpAaGSLlrHjT3JB9Ytgda7dNWXggf83lyzCvO6leSS8azex11WfYWM7tq2duUoPqm2qAD2itPapCaTL3nVdFRHZtGQ6yZhrA1wDBAxZ4/uPmD7+SaYBqH0GNWAQlz72YTL+RjAPYI9I3r2DUQx1AS7oQ3BCZ0kvpv8kmCvXzZryO6iqc3C0855Ky35Aeyykdd9wmQ1/JvUDt0v80wH6xXeE8hln/vyM6RxM9TAeQfprUrfaU/YpOiCF7jIdVgPMicOLQ/VyFuPTQibEAnui420MaDR5bBs/ebmWv34dthws64dZQXEuku4UnkhU8TF0="
+        }
+      ]
+    },
+    {
+      "name": "leere Liste: kein Fenster mit SSH-Schlüssel offen",
+      "antwort": "vp-wartung-schluessel 1 99ba3c5f3272c926\nende 0\n",
+      "gilt": true,
+      "pruefwert": "99ba3c5f3272c926",
+      "schluessel": []
+    },
+    {
+      "name": "zwei Schlüssel (RSA 2048 und 4096); eine Restlaufzeit über 24 h wird gekappt",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 90000 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 1 b4f6d8e0-2c3a-4d7f-9b1e-4a6c8e0f2d44 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDQFk58hO9HX7qQ/X9lgn8R2bNTHok1pXWW0Gyd4qGN7wzYLkNbkyL9sJu76gGeyLsMK/DPBVma7qTBuS1aX5QyVMv5teXaIoW9DJCZwEdwT/OPs0Ed4jIUfUfG62mlGoF+XkJf+Qq2XBBdXrR+Faj1E938lZKJnFHV27U92Dr5DL4COkfE98c3uBRYDDsRwYpMD+aQ6oxKl3ragVoMkIjZc2/WP3gcbzMgylH35jPW7XP67bmErR4UjCep/HAGHj3ffvhNj7ZpFCx8qCM+Xp60/NG1km88+bAVxttfHrlK3FNGGYSFZIrLDvjAN9UFvNnhfJ/SpoK78iwmiTegsrhd4ox6gHQp8m07vYMFK8XJ2KOrLFK8Q0PG/Wu690ea2ZYQcNFPWP+qihfcyRo0YloTqezgV7hXRc2p7RyHXQVg/TCt5xNY73cFRJAqJjswlR7o8k1j1vwS6v8DrUkKdO5vrHQNCDtIMJokorSbxnA4JVqD6VU8FyB9mAeqhXC4ST4WlXFPD3hD3Q6eHeRl6KPPJcpQX2TDnBXTpaY3wQ+2kQeCkwku23bfHigTKMSPv8EDqK/OxfH4YqUY58w1IxgyYi477UiI3DhH1+2CK8lY+3EkZMVIgadiAj+h3LRNHoQt6M0D0UBDBgXhmWq2MXDA0vazhBMOEyf0xXbFnuN+jw==\nende 2\n",
+      "gilt": true,
+      "pruefwert": "6e7abb201a8aaa9a",
+      "schluessel": [
+        {
+          "rest": 86400,
+          "zugang": "a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        },
+        {
+          "rest": 1,
+          "zugang": "b4f6d8e0-2c3a-4d7f-9b1e-4a6c8e0f2d44",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAACAQDQFk58hO9HX7qQ/X9lgn8R2bNTHok1pXWW0Gyd4qGN7wzYLkNbkyL9sJu76gGeyLsMK/DPBVma7qTBuS1aX5QyVMv5teXaIoW9DJCZwEdwT/OPs0Ed4jIUfUfG62mlGoF+XkJf+Qq2XBBdXrR+Faj1E938lZKJnFHV27U92Dr5DL4COkfE98c3uBRYDDsRwYpMD+aQ6oxKl3ragVoMkIjZc2/WP3gcbzMgylH35jPW7XP67bmErR4UjCep/HAGHj3ffvhNj7ZpFCx8qCM+Xp60/NG1km88+bAVxttfHrlK3FNGGYSFZIrLDvjAN9UFvNnhfJ/SpoK78iwmiTegsrhd4ox6gHQp8m07vYMFK8XJ2KOrLFK8Q0PG/Wu690ea2ZYQcNFPWP+qihfcyRo0YloTqezgV7hXRc2p7RyHXQVg/TCt5xNY73cFRJAqJjswlR7o8k1j1vwS6v8DrUkKdO5vrHQNCDtIMJokorSbxnA4JVqD6VU8FyB9mAeqhXC4ST4WlXFPD3hD3Q6eHeRl6KPPJcpQX2TDnBXTpaY3wQ+2kQeCkwku23bfHigTKMSPv8EDqK/OxfH4YqUY58w1IxgyYi477UiI3DhH1+2CK8lY+3EkZMVIgadiAj+h3LRNHoQt6M0D0UBDBgXhmWq2MXDA0vazhBMOEyf0xXbFnuN+jw=="
+        }
+      ]
+    },
+    {
+      "name": "ohne Zeilenende hinter ende",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 120 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1",
+      "gilt": true,
+      "pruefwert": "6e7abb201a8aaa9a",
+      "schluessel": [
+        {
+          "rest": 120,
+          "zugang": "a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        }
+      ]
+    },
+    {
+      "name": "acht Schlüssel: die Obergrenze",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 60 zugang_0 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 61 zugang_1 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 62 zugang_2 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 63 zugang_3 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 64 zugang_4 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 65 zugang_5 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 66 zugang_6 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 67 zugang_7 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 8\n",
+      "gilt": true,
+      "pruefwert": "6e7abb201a8aaa9a",
+      "schluessel": [
+        {
+          "rest": 60,
+          "zugang": "zugang_0",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        },
+        {
+          "rest": 61,
+          "zugang": "zugang_1",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        },
+        {
+          "rest": 62,
+          "zugang": "zugang_2",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        },
+        {
+          "rest": 63,
+          "zugang": "zugang_3",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        },
+        {
+          "rest": 64,
+          "zugang": "zugang_4",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        },
+        {
+          "rest": 65,
+          "zugang": "zugang_5",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        },
+        {
+          "rest": 66,
+          "zugang": "zugang_6",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        },
+        {
+          "rest": 67,
+          "zugang": "zugang_7",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        }
+      ]
+    },
+    {
+      "name": "Zugang mit 64 Zeichen, Restlaufzeit mit neun Ziffern (gekappt)",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 999999999 ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": true,
+      "pruefwert": "6e7abb201a8aaa9a",
+      "schluessel": [
+        {
+          "rest": 86400,
+          "zugang": "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
+          "base64": "AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp"
+        }
+      ]
+    },
+    {
+      "name": "neun Schlüssel: mehr nimmt die Box nicht an",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 60 zugang_0 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 60 zugang_1 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 60 zugang_2 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 60 zugang_3 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 60 zugang_4 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 60 zugang_5 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 60 zugang_6 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 60 zugang_7 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nschluessel 60 zugang_8 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 9\n",
+      "gilt": false
+    },
+    {
+      "name": "leere Antwort",
+      "antwort": "",
+      "gilt": false
+    },
+    {
+      "name": "nur die Kopfzeile: ende fehlt",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\n",
+      "gilt": false
+    },
+    {
+      "name": "abgeschnitten: ende fehlt",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\n",
+      "gilt": false
+    },
+    {
+      "name": "ende nennt eine andere Zahl",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 2\n",
+      "gilt": false
+    },
+    {
+      "name": "ende ohne Zahl",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nende\n",
+      "gilt": false
+    },
+    {
+      "name": "eine Zeile nach ende",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nende 0\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\n",
+      "gilt": false
+    },
+    {
+      "name": "zweimal ende",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nende 0\nende 0\n",
+      "gilt": false
+    },
+    {
+      "name": "Kopf: Version 2",
+      "antwort": "vp-wartung-schluessel 2 6e7abb201a8aaa9a\nende 0\n",
+      "gilt": false
+    },
+    {
+      "name": "Kopf: anderes Wort",
+      "antwort": "vp-wartung-liste 1 6e7abb201a8aaa9a\nende 0\n",
+      "gilt": false
+    },
+    {
+      "name": "Kopf: Prüfwert mit 15 Zeichen",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9\nende 0\n",
+      "gilt": false
+    },
+    {
+      "name": "Kopf: Prüfwert mit Großbuchstaben",
+      "antwort": "vp-wartung-schluessel 1 6E7ABB201A8AAA9A\nende 0\n",
+      "gilt": false
+    },
+    {
+      "name": "Kopf: ein viertes Feld",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a x\nende 0\n",
+      "gilt": false
+    },
+    {
+      "name": "Kopf fehlt",
+      "antwort": "schluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Restlaufzeit 0",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 0 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Restlaufzeit mit zehn Ziffern",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 1000000000 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Restlaufzeit negativ",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel -5 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Restlaufzeit mit Komma",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600.5 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Zugang mit Punkt",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 zugang.1 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Zugang mit 65 Zeichen",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Ed25519-Schlüssel",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPF8J+Tx+nv7Miomv15d5alFETERDj7k2e/Cd92aPZ8v\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "RSA mit 1024 Bit",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQCvRo48OHbbd42QFuITJfIxyaMky8pvIPpv11GEjU6PGsfvSxBidcCJNH5RtogslZ/VZJNrMu7FryFxVsih5I5Bq+e9RxXMzNi7PVbzb8SQISsOWCA6KtLMxexAPoG7s/JtGEGdns3NS8elvxGDBBdzBx/rexyYcidge+wSkhEuLw==\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Schlüssel abgeschnitten: die Länge ist kein Vielfaches von vier",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Schlüssel mit fremdem Zeichen",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57R*nyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Kommentar hinter dem Schlüssel",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp techniker@rechner\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Optionen vor dem Schlüssel",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 no-pty ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "zwei Leerzeichen zwischen Feldern",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel  3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Tabulator statt Leerzeichen",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nschluessel\t3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\nende 1\n",
+      "gilt": false
+    },
+    {
+      "name": "Leerzeile zwischen den Zeilen",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\n\nende 0\n",
+      "gilt": false
+    },
+    {
+      "name": "Zeilenenden mit Wagenrücklauf",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\r\nschluessel 3600 a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpJT5Je57RqnyokglBcFKTjxKPijwl+2kFiTGjoX/1acL++ZF+T7ewVaem4TWf92Wh5ZVQFWzWX8SS01gCjMyRy/a27waPZW7+7KnMQY5rVT5FOh898H0mzF5G3k9BXqZtdcRzi3iT4bzAvn3qNfxaCudrUbsF0ah3AEvshY6dgJSsVYuLHtuIxUpu0CH9xvkkq3Wg1MHa4JG8pS5cajj6kDcDNnYVTAEs8e0UIdEI35+nVYP7QYKNc9xOxewjH07BYrjYulYKGKOxZVl2hEAu1Vao2Xe4bDMKliWr0CQZQdXQg9DKwIPdQDZUw2QAwkSlVgWcVGvRBXc0175i4ngp\r\nende 1\r\n",
+      "gilt": false
+    },
+    {
+      "name": "unbekannte Zeile",
+      "antwort": "vp-wartung-schluessel 1 6e7abb201a8aaa9a\nhinweis bitte neu starten\nende 0\n",
+      "gilt": false
+    }
+  ]
+}

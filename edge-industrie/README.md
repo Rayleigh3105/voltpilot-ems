@@ -4,10 +4,10 @@ Edge Industrie ist die VoltPilot-Box als eigenes Programm auf der WAGO-Firmware 
 Der Kern ist derselbe wie bei Edge Light auf der Mango (`edge-app/core`), ebenso das Update-Protokoll; nur ohne OpenWrt: BusyBox-Init statt procd, eine Einstellungsdatei statt UCI, ein eigener Benutzer statt root.
 Der Name „Edge Light“ gehört allein der Mango ([edge-light/](../edge-light/README.md)).
 
-**Stand: von Hand einrichtbar, am Gerät noch nichts belegt.**
+**Stand: von Hand einrichtbar; am Gerät ist nur der Wartungstunnel einmal kurz belegt ([unten](#was-belegt-ist)).**
 Alles hier ist gegen ein BusyBox-Linux für ARMv7 im Container geprüft, so nah an der WAGO-Firmware, wie die Unterlagen es hergeben (Firmware 27: glibc 2.35, BusyBox 1.34.1, BusyBox-Init).
 Was nur ein echtes Gerät zeigen kann, steht unten als [Annahme mit Prüfstein](#annahmen-über-die-firmware).
-Lesen aus der SPS, Werkstatt, Wartungstunnel und Koppelbild gehören nicht zu diesem Stand.
+Die Werkstatt gehört nicht zu diesem Stand; den Wartungstunnel richtet `wartung.sh` ein ([unten](#wartungstunnel)).
 
 ## Aufbau
 
@@ -15,17 +15,22 @@ Lesen aus der SPS, Werkstatt, Wartungstunnel und Koppelbild gehören nicht zu di
 edge-industrie/
 ├── README.md                              dieser Überblick
 ├── install.sh                             Einrichtung über SSH: Benutzer, Loader, Dienst, Vertrauens-Set, bestätigte Fassung
+├── wartung.sh                             Wartungstunnel über SSH: Programm vp-wartung, Schlüssel der Box, Dienst (key, <adresse>, status, abbauen)
 ├── files/
 │   ├── etc/init.d/vp-edge-industrie       Dienst-Skript (start, stop, restart, status)
+│   ├── etc/init.d/vp-wartung              Dienst-Skript des Wartungstunnels
 │   └── home/voltpilot/
 │       ├── konfig                         Einstellungen (Schlüssel = Wert)
 │       └── libexec/boot.sh                Loader: Start aus dem RAM, Tausch, Probe, Behalten, Zurück
+├── wartung/                               vp-wartung: der Wartungstunnel als ein Programm (eigenes Go-Modul)
 ├── scripts/
 │   ├── build.sh                           baut dist/vp-edge-industrie-linux-arm
+│   ├── build-wartung.sh                   baut dist/vp-wartung-linux-arm
 │   └── loader-abgleich.sh                 Loader wortgleich mit dem Mango-Loader (läuft in edge-light/scripts/test.sh)
 └── test/
     ├── install-probe.sh                   install.sh, Dienst und Loader gegen BusyBox-Linux für ARMv7 im Container
-    └── update-probe.sh                    das Update im Loader, dieselben Fälle wie boot-update-probe.sh der Mango
+    ├── update-probe.sh                    das Update im Loader, dieselben Fälle wie boot-update-probe.sh der Mango
+    └── wartung-probe.sh                   wartung.sh, Dienst und vp-wartung gegen einen Wartungsserver im Kleinen
 ```
 
 ## Was auf dem Gerät entsteht
@@ -40,10 +45,12 @@ edge-industrie/
 | `/home/voltpilot/daten/` | Kennung, Zertifikat, Vertrauens-Set, Auswahl, Marken der Update-Versuche | voltpilot (0700) |
 | `/tmp/vp-edge-industrie/` | das entpackte Programm und alles, was laufend geschrieben wird (RAM) | voltpilot (0700) |
 | `/home/voltpilot/programm/` | das entpackte Programm, nur wenn `/tmp` keine Programme startet | voltpilot |
+| `/home/voltpilot/wartung/` | Wartungstunnel: Programm `vp-wartung`, Schlüssel der Box, Einstellungen, Ereignisliste (nur mit `wartung.sh`) | root (0700) |
+| `/etc/init.d/vp-wartung`, `/etc/rc.d/S99_vp-wartung` | Dienst-Skript des Wartungstunnels und sein Link (nur mit `wartung.sh`) | root |
 
-Die Wurzel des Geräts bekommt nur das Dienst-Skript und seinen Link.
+Die Wurzel des Geräts bekommt nur die Dienst-Skripte und ihre Links.
 Alles andere liegt unter `/home/voltpilot`.
-Die SPS-Laufzeit, ihre Dienste, die Firewall und die Netzeinstellungen des Geräts fasst weder `install.sh` noch das Programm an.
+Die SPS-Laufzeit, ihre Dienste, die Firewall und die Netzeinstellungen des Geräts fassen weder `install.sh` und `wartung.sh` noch die Programme an.
 
 ## Rechte
 
@@ -78,6 +85,41 @@ Danach wird die Box gekoppelt wie jede andere, über die lokale Web-App `http://
 
 Das Protokoll von Loader und Programm geht an syslog, Marke `vp-edge-industrie`.
 
+## Wartungstunnel
+
+Die Fernwartung des PFC200 läuft über denselben Wartungsserver und dieselben Regeln wie bei der Mango ([Fernwartung](../docs/fernwartung.md#boxen-ohne-openwrt-das-tunnel-programm-vp-wartung)).
+Die Box-Seite ist hier ein eigenes Programm, `vp-wartung` ([edge-industrie/wartung](wartung/README.md)): WireGuard im eigenen Prozess, darin SSH auf 2222 und die Web-App 8484, der Abholer der Fenster-Schlüssel und die Ereignisliste.
+Es gehört zum Betriebssystem der Box, nicht zum Box-Programm `vp-edge-industrie`, und kein Update aus dem Portal tauscht es.
+
+```bash
+edge-industrie/scripts/build-wartung.sh                                       # dist/vp-wartung-linux-arm
+edge-industrie/wartung.sh root@<pfc-ip> key                                   # Programm und Schlüssel der Box
+# Im Portal: Geräte › Fernwartung › „Tunnel-Schlüssel hinterlegen“ (Referenz und Schlüssel), dann mit der zugeteilten Adresse:
+VP_SERVICE_PUBKEY='<server>' edge-industrie/wartung.sh root@<pfc-ip> 10.10.16.5
+edge-industrie/wartung.sh root@<pfc-ip> status
+edge-industrie/wartung.sh root@<pfc-ip> abbauen                               # alles wieder weg
+```
+
+- **`key`** kopiert das Programm (Prüfsumme auf dem Gerät nachgerechnet) und erzeugt den Schlüssel der Box; der private Teil bleibt auf dem Gerät (`/home/voltpilot/wartung/wg.key`, nur root).
+  Ausgegeben werden der öffentliche Schlüssel und die Box-Referenz.
+- **`<adresse>`** schreibt die Einstellungen, legt Dienst-Skript und Start-Link an und startet den Dienst.
+  Neue Einstellungen prüft das Programm auf dem Gerät (`vp-wartung pruefe`), bevor sie die bisherigen ersetzen: Mit Werten, mit denen der Tunnel nicht startet, bleibt alles, wie es war.
+  Ein erneuter Aufruf mit denselben Werten fasst den laufenden Tunnel nicht an; mit anderen Werten startet der Dienst neu.
+  Läuft der Aufruf durch den Tunnel selbst (Fernlauf), antwortet das Skript erst und startet den Dienst zwei Sekunden später neu.
+- **`status`** zeigt Tunnel (Handshake, Adresse des Servers), Abholer, dauerhafte Schlüssel, Fenster, Sitzungen und die letzten Ereignisse; `vp-wartung status werte` auf dem Gerät gibt dieselben Angaben als `schluessel=wert`.
+- **`abbauen`** entfernt Dienst, Link, Programm, Schlüssel, Einstellungen und Ereignisliste; durch den Tunnel selbst verweigert es.
+- Die Variablen heißen wie bei `service-tunnel.sh` der Mango (`VP_SERVICE_PUBKEY`, `VP_SERVICE_ENDPOINT`, `VP_SERVICE_NET`, `VP_SERVICE_WEB`, `VP_SERVICE_SCHLUESSEL_SERVER`, `VP_SERVICE_SCHLUESSEL_PORT`); alle stehen im Kopf von [`wartung.sh`](wartung.sh).
+
+Was im Tunnel gilt:
+
+- SSH 2222 und die Web-App 8484 lauschen auf keiner Netzbuchse des Geräts, nur im Tunnel.
+  SSH an Port 22 (der Dropbear der Firmware) ändert sich nicht.
+- Anmeldung nur als root und nur mit Schlüssel: im offenen Fenster der Schlüssel des Technikers aus dem Portal (RSA), sonst nur, was dauerhaft in `/root/.ssh/authorized_keys` steht.
+  Zeilen mit Optionen vor dem Schlüssel gelten im Tunnel nicht.
+- Der Server im Tunnel zeigt die Host-Schlüssel des Geräts (`/etc/dropbear/dropbear_ecdsa_host_key`, `dropbear_rsa_host_key`), keinen eigenen.
+- Kein SFTP: Dateien gehen wie bei `install.sh` über `cat | ssh`.
+- Das Protokoll des Programms geht an syslog, Marke `vp-wartung`; wer wann angemeldet war, steht in `/home/voltpilot/wartung/ereignisse`.
+
 ## Einstellungen
 
 `/home/voltpilot/konfig`, eine Angabe je Zeile in der Form `schluessel = wert`.
@@ -103,6 +145,7 @@ Zwei Dinge sind nicht einstellbar:
 | 8887 | OCPP, nur wenn Ladesäulen angebunden sind | im Netz des Geräts |
 | 1883 | lokaler Bus | nur auf dem Gerät selbst (127.0.0.1) |
 | 1502 | Modbus-Datenspiegel, ab Werk aus | im Netz des Geräts, wenn eingeschaltet |
+| 2222, 8484 im Tunnel | SSH und Web-App für die Fernwartung (`vp-wartung`) | nur im Wartungstunnel, auf keiner Netzbuchse |
 
 80, 443, 8080 und 8081 belegt die WAGO-Firmware, 502 die SPS.
 Ob 8484, 8887, 1883 und 1502 am Gerät wirklich frei sind, zeigt PS-P5.
@@ -134,17 +177,37 @@ VP_INDUSTRIE_VERSION=edge-light-2099.01.0 edge-industrie/scripts/build.sh   # ei
 edge-industrie/test/install-probe.sh        # install.sh, Dienst und Loader mit dem echten ARMv7-Programm
 edge-industrie/test/update-probe.sh         # das Update im Loader: dieselben Fälle wie boot-update-probe.sh der Mango
 edge-industrie/scripts/loader-abgleich.sh   # Loader wortgleich mit dem Mango-Loader; läuft in edge-light/scripts/test.sh
+edge-industrie/scripts/build-wartung.sh      # das Tunnel-Programm für ARMv7
+edge-industrie/test/wartung-probe.sh        # wartung.sh, Dienst und vp-wartung gegen einen Wartungsserver im Kleinen
 ```
 
-Beide Proben laufen in `busybox:1.34.1-glibc` für `linux/arm/v7`, ohne Netz, mit BusyBox-Init als erstem Prozess.
+Die Proben laufen in `busybox:1.34.1-glibc` für `linux/arm/v7` mit BusyBox-Init als erstem Prozess; die ersten beiden ohne Netz, die des Wartungstunnels an einem eigenen Docker-Netz mit der Gegenstelle.
 
 | Probe | Belegt |
 |---|---|
 | `install-probe.sh` | `install.sh` verweigert vor dem ersten SSH-Aufruf, was nicht passt, und ändert nichts, wenn dem Gerät ein Werkzeug fehlt. Ablage, Eigentümer und Schreibschutz stimmen. Das echte Programm läuft als `voltpilot` mit `nice 10`, meldet „WAGO 750-8212“ und `arm` und ist update-bereit. Der Datenspiegel ist aus und lauscht eingeschaltet auf 1502, nichts auf 502. Der Dienst startet das Programm nach einem Absturz nach 10 s neu, beendet es geordnet und startet nach „Strom aus“ von selbst. Ein zweiter Aufruf von `install.sh` erhält Einstellungen und Kennung. Trägt `/tmp` `noexec`, läuft das Programm aus dem Flash |
 | `update-probe.sh` | Als Benutzer `voltpilot`: Gut-Fall mit Behalten; Probestart scheitert; drei Abstürze; keine Cloud bis zur Frist; Selbsttest durchgefallen; Fälschung im RAM; Strom weg in der Probe; Strom weg beim Tausch mit Nachladen genau dieser Fassung; Obergrenze der Marken im Flash. Mit dem echten Programm: Probestart, Urteil „offen“ ohne Cloud, Rücknahme mit dessen Grund, geordnetes Ende auf TERM. Kein Loader-Selbstupdate, auch wenn das Programm am Pfad der Mango schreiben dürfte |
+| `wartung-probe.sh` | Mit dem echten ARMv7-Programm `vp-wartung` gegen einen Wartungsserver im Kleinen (echtes WireGuard, Schlüsselausgabe nach Vertrag), der Server unter seinem Namen erreicht: `wartung.sh` verweigert vor dem ersten SSH-Aufruf, was nicht passt, und ändert nichts, wenn dem Gerät ein Werkzeug fehlt. Der Schlüssel der Box entsteht auf dem Gerät, nur für root, und steht in keiner Ausgabe. Das Programm läuft als root mit `oom_score_adj` 300. 2222 und 8484 lauschen auf keiner Netzbuchse und sind über das Netz nicht erreichbar, im Tunnel schon. Ohne Fenster abgewiesen; dauerhafter Schlüssel; Zeile mit Optionen gilt nicht; der Server zeigt den Host-Schlüssel des Geräts; Terminal; SIGHUP nicht ignoriert. Fenster-Schlüssel: Anmeldung, Ende der Sitzung mit dem Schlüssel, die dauerhafte bleibt; Ereignisliste ohne Schlüssel. Frist ohne Server. Web-App im Tunnel. Neustart des Programms nach 10 s, wachsende Pause bei sofortigem Ende. Nach „Strom aus“ startet der Dienst von selbst, kein Fenster-Schlüssel überlebt. Gleiche Werte fassen den Tunnel nicht an; `wartung.sh` durch den Tunnel selbst; `abbauen` lässt nichts zurück und `/etc` wie vorher |
 
 **Was der Container nicht belegt:** alles, was von der echten Firmware abhängt.
 Er hat keine SPS-Laufzeit, kein WBM, keine Firewall, kein echtes `get_coupler_details`, keinen echten Flash und rechnet unter Emulation.
+
+**Am Test-Gerät belegt (20.11.2026, Firmware 03.10.08(22), Kern 5.15.19-rt29, Dropbear 2022.82), nur der Wartungstunnel:**
+`vp-wartung` lief dort einmal für gut zwei Minuten aus einem Ordner unter `/tmp`, mit eigenen Einstellungen und einem eigenen Schlüssel, gegen `vp-wartung-gegenstelle` auf dem Rechner am selben Kabel; danach war der Ordner wieder weg.
+Eingerichtet wurde nichts: kein Dienst, kein Start-Link, nichts unter `/home` oder `/etc`.
+
+| Was | Befund |
+|---|---|
+| Das ARMv7-Programm startet auf dem echten Kern neben der SPS-Laufzeit | ja; 12,9 MB Arbeitsspeicher (VmRSS und VmHWM), 10 Threads, 0,0 % Rechenzeit in `top` neben `codesys3` |
+| Host-Schlüssel | `vp-wartung hostschluessel` nennt dieselben Fingerabdrücke wie `ssh-keyscan` am Dropbear des Geräts (ECDSA nistp521 und RSA); der Server im Tunnel zeigte den ECDSA-Schlüssel |
+| Befund am Gerät, behoben | Dropbear 2022.82 speichert den privaten ECDSA-Wert ungekürzt (Datei mit 243 statt 242 Byte); der erste Stand des Programms las den Schlüssel deshalb nicht und hätte im Tunnel nur RSA gezeigt. `hostkey` kürzt jetzt auf die Ordnung der Kurve und prüft den Punkt (Test `TestECDSAMitUngekuerztemWert`) |
+| Am Gerät lauscht | ein UDP-Socket des Programms, kein TCP-Port (`netstat`) |
+| Anmeldung im Tunnel | als root (`uid=0`), Shell `/bin/bash`, Heim `/root` aus `/etc/passwd`; Terminal `/dev/pts/0`; SIGHUP nicht ignoriert |
+| Fenster-Schlüssel | ohne Fenster abgewiesen; nach dem Öffnen Anmeldung als `fenster`; nach dem Schließen endete die offene Sitzung innerhalb von 3 s, die mit dauerhaftem Schlüssel blieb; Ereignisliste mit Zugang, Fingerabdruck und Grund, ohne Schlüssel |
+| Ende | `SIGTERM` beendete das Programm in 1 s, die offene Sitzung mit dem Grund „das Tunnel-Programm endet“ |
+
+Nicht belegt bleibt am Gerät: `wartung.sh` selbst, der Dienst und sein Start beim Hochfahren, der echte Wartungsserver, die Uhr nach einem Neustart.
+Rohausgaben: `firstmate/data/vp-pfc200-s3-werkstatt/geraetetest-vp-wartung.md`.
 
 ## Annahmen über die Firmware
 
@@ -164,6 +227,10 @@ Die Prüfsteine PS-P… sind die des PFC200-Konzepts (Abschnitt 7, „Prüfstein
 | Die Firmware startet beim Hochfahren jedes `/etc/rc.d/S*` mit `start`; `S99_` kommt nach dem Netz | der Dienst startet nicht von selbst; der Name des Links ist mit `VP_PFC_RC_LINK` wählbar, fehlt `/etc/rc.d`, sagt `install.sh` das | PS-P7, PS-P15 |
 | `wget` oder `curl` des Geräts kann HTTPS und kennt die Wurzeln, denen das Portal vertraut | betrifft nur das Nachladen der bestätigten Fassung nach Strom weg beim Tausch; der Loader meldet „kein startbares Programm“ und versucht es weiter | PS-P3 (Zusatz unten) |
 | `syslogd` läuft; `logger` schreibt dorthin | das Protokoll fehlt; `status` und `/health` antworten weiter | PS-P7 (Zusatz unten) |
+| Der Dropbear des Geräts hält seine Host-Schlüssel unter `/etc/dropbear/dropbear_ecdsa_host_key` und `dropbear_rsa_host_key`, im Dropbear-Format | am Test-Gerät so gelesen (20.11.2026, unten); liest `vp-wartung` eine vorhandene Datei nicht, nennt `wartung.sh` den Grund und richtet nichts ein | belegt für Firmware 03.10.08(22) |
+| Dauerhafte SSH-Schlüssel von root stehen in `/root/.ssh/authorized_keys` | im Tunnel gilt sonst kein dauerhafter Schlüssel; `status` nennt die Zahl | am Test-Gerät so gelesen |
+| Das Gerät erreicht den Wartungsserver ausgehend über UDP 51820 und löst seinen Namen auf | kein Handshake; `status` sagt es, das Programm versucht es weiter und löst den Namen neu auf | Werkstatt-Lauf |
+| Die Uhr des Geräts steht nicht hinter dem letzten Handshake (WireGuard verwirft ältere Zeitstempel) | kein Handshake, bis die Uhr gestellt ist; Fristen der Fenster-Schlüssel hängen nicht an der Uhr | Werkstatt-Lauf (Zeitabgleich) |
 | Ein Firmware-Update lässt `/home/voltpilot` stehen, die Wurzel nicht | Dienst-Skript und Link fehlen danach; `install.sh` erneut ausführen | PS-P17 |
 
 ## Handgriffe für Stufe 0
