@@ -87,12 +87,15 @@ export function funnelStages(
   let crossed = 0;
   let open = 0;
   let vonHand = 0;
+  let vonHandIndustrie = 0;
   for (const d of connectedRows) {
     const s = crossoverState(d.trust, d.boxArt, d.loader).state;
     if (s === 'gekreuzt') crossed += 1;
     else if (s === 'offen' || s === 'fehler') open += 1;
-    // Edge Light ohne Stufe 2 ist keine offene Aufgabe, aber auch nicht
-    // update-fähig über das Portal - benannt, nicht mitgezählt.
+    // Edge Light ohne Stufe 2 (und Edge Industrie ohne Updates aus dem Portal)
+    // ist keine offene Aufgabe, aber auch nicht update-fähig über das Portal -
+    // benannt, nicht mitgezählt.
+    else if (s === 'von_hand' && d.boxArt === 'industrie') vonHandIndustrie += 1;
     else if (s === 'von_hand') vonHand += 1;
   }
   const stages: FunnelStage[] = [
@@ -145,7 +148,11 @@ export function funnelStages(
         + (vonHand === 0 ? ''
           : vonHand === 1
             ? ' 1 Edge-Light-Box bekommt Updates von Hand (Stufe 1).'
-            : ` ${vonHand} Edge-Light-Boxen bekommen Updates von Hand (Stufe 1).`),
+            : ` ${vonHand} Edge-Light-Boxen bekommen Updates von Hand (Stufe 1).`)
+        + (vonHandIndustrie === 0 ? ''
+          : vonHandIndustrie === 1
+            ? ' 1 Edge-Industrie-Box bekommt Updates von Hand.'
+            : ` ${vonHandIndustrie} Edge-Industrie-Boxen bekommen Updates von Hand.`),
       // Ein offener Crossover ist eine AUFGABE, kein Fehler - aber er ist der
       // Grund, warum ein Rollout auf dieser Box nichts bewirkt.
       attention: open > 0,

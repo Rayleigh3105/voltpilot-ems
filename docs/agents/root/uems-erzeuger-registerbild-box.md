@@ -58,7 +58,7 @@ Rollen `pv-generation`/`grid-meter`, und die Rolle `plant-controller` las kein F
   Palette sendet keine — wirksam erst mit dem Box-Release, das beides trägt. Rückwirkend entsteht nichts.
 - Nachweise: Go `plant_controller_sample_test.go`, Node-RED `erzeuger-laufzeit.test.js` („Quellen-Telemetrie“).
 
-## Edge Light: Go-Zwilling (PFC200-Konzept Stufe 2, 19.11.2026)
+## Go-Kern (Edge Light, Edge Industrie): Go-Zwilling (PFC200-Konzept Stufe 2, 19.11.2026)
 
 - `edge-app/core/internal/erzeugerbild` bildet Leser, Stufe, Melde-Regel, Standort-Sample, Messplan und die Probe
   `erzeuger_kopf` nach; `internal/layer1/erzeuger.go` bedient damit dieselben Bus-Topics wie die Palette. Edge Light meldet
@@ -101,7 +101,7 @@ Rollen `pv-generation`/`grid-meter`, und die Rolle `plant-controller` las kein F
 - Abgleich bei Bau: der Leser stimmt mit den EZ-1-Vektoren (20 Fälle) und den EZ-2-Simulatorfällen (9) überein;
   EZ-2 nennt den Wortfolge-Grund noch `wortfolge_abweichend` (WAGO-Wort), der Vertrag `wortfolge_falsch`.
 
-## Koppelbild auf Edge Light (PFC200 Stufe 4)
+## Koppelbild auf dem Go-Kern (Edge Light, Edge Industrie; PFC200 Stufe 4)
 
 Box-Seite des [Koppelbilds](../../contracts/v2/koppelbild.md): `internal/koppelbild` (Schreiber, Leser, Lage, Laufzeit je Steuerung) und `layer1/koppel.go`.
 
