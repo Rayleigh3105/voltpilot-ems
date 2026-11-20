@@ -187,6 +187,49 @@ public class ProbePublisher {
     }
 
     /**
+     * Publish ONE {@code koppel_test} - the switch test of a Stellplatz in the VoltPilot-Koppelbild (PFC200 Stufe 4,
+     * contract {@code op_koppel_test}). Same envelope and non-retained/QoS1 discipline as every other op; the box
+     * writes the test wish for at most {@code ttl_s} and the wish expires on its own, so a lost answer leaves nothing
+     * behind.
+     */
+    public synchronized void publishKoppelTest(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
+            Instant requestedAt, String requestedBy, KoppelTestOp op) throws Exception {
+        String topic = probeTopic(tenantId, siteId, deviceId);
+        MqttMessage message = new MqttMessage(koppelTestEnvelope(tenantId, siteId, deviceId, requestId, requestedAt,
+                requestedBy, op));
+        message.setQos(1);
+        message.setRetained(false);
+        verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
+        // ⚠ Same rule as every write: the customer's LAN address is NOT logged.
+        log.debug("published koppel_test {} (Stellplatz {}, NON-retained)", requestId, op.platz());
+    }
+
+    /**
+     * Der Op {@code koppel_test} (Vertrag {@code op_koppel_test}): Verbindung der Steuerung, Soll der
+     * Steuerungskennung, Stellplatz, Art des Angebots und Testwert in den ganzen Einheiten des Bilds.
+     */
+    public record KoppelTestOp(String id, String host, int port, int unitId, long steuerungId, int platz, String art,
+            long wert, int ttlSeconds) {
+    }
+
+    static byte[] koppelTestEnvelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
+            Instant requestedAt, String requestedBy, KoppelTestOp op) {
+        StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
+        sb.append(",\"ops\":[{\"op\":\"koppel_test\"")
+                .append(",\"id\":\"").append(esc(op.id())).append('"')
+                .append(",\"host\":\"").append(esc(op.host().trim())).append('"')
+                .append(",\"port\":").append(op.port())
+                .append(",\"unit_id\":").append(op.unitId())
+                .append(",\"steuerung_id\":").append(op.steuerungId())
+                .append(",\"platz\":").append(op.platz())
+                .append(",\"art\":\"").append(esc(op.art())).append('"')
+                .append(",\"wert\":").append(op.wert())
+                .append(",\"ttl_s\":").append(op.ttlSeconds())
+                .append("}]}");
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
      * Ein Kopf-Schritt vor den Lese-Schritten: {@code wago_kopf} oder {@code erzeuger_kopf}. Beide
      * tragen dieselben Parameter (Basisadresse, Registerart, Wortfolge je Anlage) und keinen Datentyp.
      */

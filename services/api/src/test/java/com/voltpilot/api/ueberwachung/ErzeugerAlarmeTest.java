@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.voltpilot.api.erzeuger.Koppelbild;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -280,5 +281,64 @@ class ErzeugerAlarmeTest {
                 .bekannt()).isFalse();
         assertThat(ErzeugerAlarme.programmstand(new Werte().stale("kopf.programmstand", 2608).bild(1), null)
                 .bekannt()).isFalse();
+    }
+
+    // ------------------------------------------------------------------ Koppelbild (PFC200 Stufe 4)
+
+    private static ErzeugerAlarme.Koppel koppel(String lage, String kopfUrteil, String bibliothek, int freigegeben,
+            long alterS) {
+        Koppelbild.Stand st = new Koppelbild.Stand("DQ-1", lage, null, JETZT.minusSeconds(alterS + 2), bibliothek,
+                kopfUrteil, 58, List.of("fernsteuerung_frei", "edge_lebt"), 97, 0, List.of());
+        return new ErzeugerAlarme.Koppel(st, JETZT.minusSeconds(alterS), freigegeben, JETZT);
+    }
+
+    @Test
+    void nimmtNichtAnNurMitFreigegebenemStellplatzUndNieAusEinemVeraltetenStand() {
+        assertThat(ErzeugerAlarme.koppelAnnahme(koppel("keine_antwort", null, null, 0, 5)).zustand())
+                .isEqualTo("keine_freigabe");
+        ErzeugerAlarme.Urteil u = ErzeugerAlarme.koppelAnnahme(koppel("keine_antwort", null, null, 1, 5));
+        assertThat(u.zustand()).isEqualTo("nimmt_nicht_an");
+        assertThat(u.text()).isEqualTo("Die Steuerung nimmt die Wünsche der Box nicht an: die Steuerung antwortet der "
+                + "Box nicht.");
+        assertThat(u.messzeit()).isEqualTo(JETZT.minusSeconds(5));
+        assertThat(ErzeugerAlarme.koppelAnnahme(koppel("bereit", "siegel_falsch", "1.0", 1, 5)).zustand())
+                .isEqualTo("nimmt_nicht_an");
+        assertThat(ErzeugerAlarme.koppelAnnahme(koppel("bereit", "angenommen", "1.0", 2, 5)).zustand())
+                .isEqualTo("nimmt_an");
+        assertThat(ErzeugerAlarme.koppelAnnahme(koppel("gesperrt", "gesperrt", "1.0", 1, 5)).zustand())
+                .as("die Anlage sperrt selbst - die Steuerung nimmt Telegramme an").isEqualTo("nimmt_an");
+        assertThat(ErzeugerAlarme.koppelAnnahme(koppel("keine_antwort", null, null, 1, 121)).bekannt())
+                .as("die Box schweigt: unbekannt, nie in Ordnung").isFalse();
+        for (String lage : List.of("steuerung_fremd", "nicht_lesbar", "sps_steht", "ohne_soll")) {
+            assertThat(ErzeugerAlarme.koppelAnnahme(koppel(lage, null, null, 1, 5)).zustand()).as(lage)
+                    .isEqualTo("nimmt_nicht_an");
+        }
+    }
+
+    @Test
+    void bibliothekAelterAlsDasSollIstAelterOhneFassungUnbekannt() {
+        ErzeugerAlarme.Urteil alt = ErzeugerAlarme.koppelBibliothek(koppel("bereit", "angenommen", "0.9", 0, 5));
+        assertThat(alt.zustand()).isEqualTo("aelter");
+        assertThat(alt.text()).isEqualTo("Die Steuerung fährt die VoltPilot-Bibliothek 0.9, erwartet ist 1.0.");
+        assertThat(ErzeugerAlarme.koppelBibliothek(koppel("bereit", "angenommen", "1.0", 0, 5)).zustand())
+                .isEqualTo("aktuell");
+        assertThat(ErzeugerAlarme.koppelBibliothek(koppel("bereit", "angenommen", "1.1", 0, 5)).zustand())
+                .isEqualTo("aktuell");
+        assertThat(ErzeugerAlarme.koppelBibliothek(koppel("nicht_lesbar", null, null, 0, 5)).bekannt()).isFalse();
+        assertThat(ErzeugerAlarme.koppelBibliothek(koppel("bereit", "angenommen", "0.9", 0, 600)).bekannt()).isFalse();
+        assertThat(ErzeugerAlarme.koppelBibliothek(new ErzeugerAlarme.Koppel(null, null, 0, JETZT)).bekannt()).isFalse();
+    }
+
+    @Test
+    void zweiterSchreiberNurAusDerLageEinerNurWennDieBoxEsSehenKann() {
+        ErzeugerAlarme.Urteil u = ErzeugerAlarme.koppelSchreiber(koppel("zweiter_schreiber", "angenommen", "1.0", 0, 5));
+        assertThat(u.zustand()).isEqualTo("zweiter_schreiber");
+        assertThat(u.text()).startsWith("Ein zweites Programm schreibt Wünsche an die Steuerung");
+        assertThat(ErzeugerAlarme.koppelSchreiber(koppel("bereit", "angenommen", "1.0", 0, 5)).zustand())
+                .isEqualTo("einer");
+        for (String lage : List.of("nicht_lesbar", "keine_antwort", "ohne_soll", "steuerung_fremd", "sps_steht")) {
+            assertThat(ErzeugerAlarme.koppelSchreiber(koppel(lage, null, null, 0, 5)).bekannt()).as(lage).isFalse();
+        }
+        assertThat(ErzeugerAlarme.koppelSchreiber(koppel("zweiter_schreiber", null, null, 0, 300)).bekannt()).isFalse();
     }
 }

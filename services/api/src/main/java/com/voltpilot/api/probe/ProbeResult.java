@@ -33,7 +33,24 @@ public record ProbeResult(String requestId, String errorCode, String message,
     public record OpResult(String id, boolean ok, Double raw, List<Integer> registers,
             Double value, String errorCode, String message, Reading reading, Switched switched,
             Finding finding, List<Sample> samples, @JsonProperty("wago_kopf") WagoKopf wagoKopf,
-            @JsonProperty("erzeuger_kopf") ErzeugerKopf erzeugerKopf, List<Ausgang> ausgaenge) {
+            @JsonProperty("erzeuger_kopf") ErzeugerKopf erzeugerKopf, List<Ausgang> ausgaenge,
+            @JsonProperty("koppel_test") KoppelTest koppelTest) {
+
+        /** Every shape before the Koppelbild switch test (PFC200 Stufe 4) - unchanged. */
+        public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
+                Double value, String errorCode, String message, Reading reading, Switched switched,
+                Finding finding, List<Sample> samples, WagoKopf wagoKopf, ErzeugerKopf erzeugerKopf,
+                List<Ausgang> ausgaenge) {
+            this(id, ok, raw, registers, value, errorCode, message, reading, switched, finding, samples,
+                    wagoKopf, erzeugerKopf, ausgaenge, null);
+        }
+
+        /** The {@code koppel_test} shape: what the box saw and what the controller acknowledged, also next to a refusal. */
+        public static OpResult ausKoppelTest(String id, boolean ok, String errorCode, String message,
+                KoppelTest koppelTest) {
+            return new OpResult(id, ok, null, null, null, errorCode, message, null, null, null, null, null, null,
+                    null, koppelTest);
+        }
 
         /** Every shape before the Shelly output set (Heizstab V1) - unchanged. */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
@@ -107,6 +124,23 @@ public record ProbeResult(String requestId, String errorCode, String message,
                 List<Sample> samples) {
             this(id, ok, null, null, null, errorCode, message, null, null, null, samples);
         }
+    }
+
+    /**
+     * Der Schalt-Test eines Stellplatzes im VoltPilot-Koppelbild (Vertrag {@code op_result.koppel_test}, PFC200
+     * Stufe 4): die Lage der Box, das Angebot, das sie sah, ob sie den Testwunsch geschrieben hat, seine Folge und die
+     * Quittung der SPS dazu. Lücke statt Null - ein Feld ohne Wert fehlt; {@code urteil} fehlt, solange keine Quittung
+     * zu genau dieser Folge kam.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record KoppelTest(String lage, String grund, String kopfUrteil, KoppelAngebot angebot, Boolean geschrieben,
+            Integer folge, String urteil, Long wirksam) {
+    }
+
+    /** Das Angebot eines Stellplatzes, wie die Box es beim Schalt-Test las (ganze Einheiten des Bilds). */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record KoppelAngebot(String art, String ziel, int nr, long min, long max, List<String> bits) {
     }
 
     /**

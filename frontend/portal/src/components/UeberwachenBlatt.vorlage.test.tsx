@@ -128,4 +128,21 @@ describe('UeberwachenBlatt · Erzeuger-Vorlagen', () => {
     });
     expect(probelauf).not.toHaveBeenCalled();
   });
+  it('belegt „Steuerung nimmt Wünsche nicht an“ mit 5 Minuten vor und schickt Ziel „nimmt Wünsche nicht an“ (PFC200 Stufe 4)', async () => {
+    anlegen.mockResolvedValue({ id: 'r4' });
+    blatt('erzeuger.koppel_nimmt_nicht_an');
+
+    expect(sp(screen.getByText(/Sag mir Bescheid/).textContent)).toBe(
+      'Sag mir Bescheid, wenn die Steuerung länger als 5 Minuten die Wünsche der Box nicht annimmt '
+        + '(nur mit freigegebenem Stellplatz). · Warnung',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Überwachung starten' }));
+    await waitFor(() => expect(anlegen).toHaveBeenCalledTimes(1));
+    expect(anlegen.mock.calls[0][0]).toEqual({
+      wertart: 'erzeuger.koppel_nimmt_nicht_an',
+      bezug: { anlage: 'a1' },
+      bedingung: { art: 'zustand', ziel: ['nimmt_nicht_an'], dauer_s: 300, erholen_s: 300 },
+      schwere: 'warnung',
+    });
+  });
 });

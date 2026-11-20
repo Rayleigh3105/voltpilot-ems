@@ -58,6 +58,8 @@ class ErzeugerUeberwachungTest {
 
     private final UeberwachungRepository repo = mock(UeberwachungRepository.class);
     private final AnlagensteuerungRepository steuerungen = mock(AnlagensteuerungRepository.class);
+    private final com.voltpilot.api.erzeuger.KoppelbildRepository koppel =
+            mock(com.voltpilot.api.erzeuger.KoppelbildRepository.class);
     private final BenachrichtigungAusgang ausgang = mock(BenachrichtigungAusgang.class);
     private final UeberwachungsService dienst = new UeberwachungsService(repo, new WerteKatalog(),
             mock(ZustandWerteLeser.class), mock(EreignisWerteLeser.class), mock(AnlagenflussWerteLeser.class),
@@ -79,7 +81,7 @@ class ErzeugerUeberwachungTest {
 
     ErzeugerUeberwachungTest() {
         dienst.setAusgang(ausgang);
-        dienst.setErzeugerLeser(new ErzeugerWerteLeser(steuerungen));
+        dienst.setErzeugerLeser(new ErzeugerWerteLeser(steuerungen, koppel));
         when(repo.anlageName(ANLAGE)).thenReturn("Gore");
         when(repo.aktiverAlarmAufAnlage(any(), any())).thenReturn(Optional.empty());
         when(repo.instanz(eq(REGEL), anyString()))
@@ -354,6 +356,67 @@ class ErzeugerUeberwachungTest {
         lauf(0);
         lauf(90_000);
         assertThat(alarme).isEmpty();
+    }
+
+    /** Der Koppelbild-Stand, wie die Box ihn zuletzt meldete (5 s vor dem Takt, außer die Box liefert nicht). */
+    private void koppelStand(String lage, int freigegeben) {
+        when(koppel.aktiveAnzahl(GERAET)).thenReturn(freigegeben);
+        when(koppel.juengsterStand(KOMPONENTE)).thenAnswer(a -> Optional.of(new com.voltpilot.api.erzeuger
+                .KoppelbildRepository.StandZeile(UUID.randomUUID(), KOMPONENTE,
+                        "{\"lage\":\"" + lage + "\",\"bibliothek\":\"1.0\",\"plaetze\":[]}",
+                        (liefertBis == null ? takt : liefertBis).minusSeconds(5))));
+    }
+
+    @Test
+    void steuerungNimmtWuenscheNichtAnMeldetNachFuenfMinutenHaeltBeimSchweigenUndEntwarnt() {
+        vorlage("erzeuger.koppel_nimmt_nicht_an");
+        koppelStand("keine_antwort", 1);
+
+        lauf(0);
+        lauf(285);
+        assertThat(alarme).isEmpty();
+        lauf(300);
+        assertThat(alarme).hasSize(1);
+        verifyVersand("ausgeloest", 1);
+        ArgumentCaptor<String> betreff = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> inhalt = ArgumentCaptor.forClass(String.class);
+        verify(ausgang).email(eq("alarm"), any(), any(), eq("ausgeloest"), anyInt(), betreff.capture(),
+                inhalt.capture(), any(), any(), isNull());
+        assertThat(betreff.getValue()).isEqualTo("Gore: Steuerung nimmt Wünsche nicht an");
+        assertThat(inhalt.getValue()).startsWith("Seit 14:00 Uhr: Die Steuerung nimmt die Wünsche der Box nicht an: "
+                + "die Steuerung antwortet der Box nicht.\n");
+
+        liefertBis = takt; // die Box schweigt
+        lauf(900);
+        assertThat(instanzen.get("anlage:" + ANLAGE).zustand()).isEqualTo("aktiv"); // Unbekannt entwarnt nicht
+
+        liefertBis = null;
+        koppelStand("bereit", 1);
+        lauf(915);
+        lauf(1215);
+        verify(repo).alarmWiederNormal(alarme.get(0), T0.plusSeconds(1215), true);
+        verifyVersand("wieder_normal", 1);
+    }
+
+    @Test
+    void ohneFreigegebenenStellplatzMeldetDieAnnahmeNichts() {
+        vorlage("erzeuger.koppel_nimmt_nicht_an");
+        koppelStand("keine_antwort", 0);
+        lauf(0);
+        lauf(900);
+        assertThat(alarme).isEmpty();
+    }
+
+    @Test
+    void zweiterSchreiberMeldetNachEinerMinute() {
+        vorlage("erzeuger.zweiter_schreiber");
+        koppelStand("zweiter_schreiber", 1);
+        lauf(0);
+        lauf(45);
+        assertThat(alarme).isEmpty();
+        lauf(60);
+        assertThat(alarme).hasSize(1);
+        verifyVersand("ausgeloest", 1);
     }
 
     @Test

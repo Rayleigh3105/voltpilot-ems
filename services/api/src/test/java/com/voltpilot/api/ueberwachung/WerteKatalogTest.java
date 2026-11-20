@@ -166,7 +166,8 @@ class WerteKatalogTest {
         assertThat(erzeugerVorlagen).extracting(WerteKatalog.Eintrag::wertart).containsExactly(
                 "erzeuger.fernsteuerung_nicht_bereit", "erzeuger.daten_veraltet", "erzeuger.anlage_folgt_nicht",
                 "erzeuger.netzbetreiber_abgeschaltet", "erzeuger.fernwirk_verbindung_weg",
-                "erzeuger.programmstand_veraltet");
+                "erzeuger.programmstand_veraltet", "erzeuger.koppel_nimmt_nicht_an", "erzeuger.bibliothek_veraltet",
+                "erzeuger.zweiter_schreiber");
         for (WerteKatalog.Eintrag e : erzeugerVorlagen) {
             assertThat(e.leser().art()).as(e.wertart()).isEqualTo("erzeuger");
             assertThat(e.vorschlag()).as(e.wertart() + ": nie ab Werk gesät").isNull();
@@ -180,6 +181,10 @@ class WerteKatalogTest {
         assertThat(katalog.eintrag("erzeuger.fernwirk_verbindung_weg").vorlage().dauerS()).isEqualTo(600);
         assertThat(katalog.eintrag("erzeuger.netzbetreiber_abgeschaltet").vorlage().dauerS()).isZero();
         assertThat(katalog.eintrag("erzeuger.programmstand_veraltet").vorlage().dauerS()).isEqualTo(86_400); // EZ-11b: 24 h
+        // PFC200 Stufe 4: die Koppelbild-Vorlagen.
+        assertThat(katalog.eintrag("erzeuger.koppel_nimmt_nicht_an").vorlage().dauerS()).isEqualTo(300);
+        assertThat(katalog.eintrag("erzeuger.bibliothek_veraltet").vorlage().dauerS()).isEqualTo(86_400);
+        assertThat(katalog.eintrag("erzeuger.zweiter_schreiber").vorlage().dauerS()).isEqualTo(60);
     }
 
     @Test

@@ -169,6 +169,12 @@ const ZUSTANDSWORT: Record<string, string> = {
   keine_fernwirktechnik: 'ohne Fernwirktechnik',
   // UEMS EZ-11b: „Programmstand veraltet“ (Vergleich aus EZ-16).
   aelter: 'älter als erwartet',
+  // PFC200 Stufe 4: die Koppelbild-Vorlagen (Stellplätze der Steuerung).
+  nimmt_an: 'nimmt Wünsche an',
+  nimmt_nicht_an: 'nimmt Wünsche nicht an',
+  keine_freigabe: 'ohne freigegebenen Stellplatz',
+  einer: 'nur die Box schreibt',
+  zweiter_schreiber: 'ein zweites Programm schreibt',
 };
 
 /** Die Schwellen der Erzeuger-Vorlagen als Felder (EZ-11): Beschriftung und Einheit je Schwelle. */
@@ -216,6 +222,17 @@ export function vorlageSatz(
       break;
     case 'erzeuger.programmstand_veraltet':
       kern = `die Anlagensteuerung${laenger} einen älteren Programmstand fährt als erwartet`;
+      break;
+    case 'erzeuger.koppel_nimmt_nicht_an':
+      kern = `die Steuerung${laenger} die Wünsche der Box nicht annimmt (nur mit freigegebenem Stellplatz)`;
+      break;
+    case 'erzeuger.bibliothek_veraltet':
+      kern = `die Steuerung${laenger} eine ältere VoltPilot-Bibliothek fährt als erwartet`;
+      break;
+    case 'erzeuger.zweiter_schreiber':
+      kern = dauer_s > 0
+        ? `ein zweites Programm${laenger} Wünsche an die Steuerung schreibt`
+        : 'ein zweites Programm Wünsche an die Steuerung schreibt';
       break;
     default:
       kern = `${wertart}${laenger} gemeldet wird`;

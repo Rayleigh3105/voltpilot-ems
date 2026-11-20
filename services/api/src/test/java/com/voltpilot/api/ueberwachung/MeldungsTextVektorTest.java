@@ -183,8 +183,8 @@ class MeldungsTextVektorTest {
                 assertThat(VERBOTEN.matcher(t).find()).as("%s: „%s“", fall, t).isFalse();
             }
         }
-        // 15 seit steuerlogik.stoerung (#1892).
-        assertThat(arten).as("feste Meldungsarten im Katalog").isEqualTo(15);
+        // 15 seit steuerlogik.stoerung (#1892), 18 seit den Koppelbild-Vorlagen (PFC200 Stufe 4).
+        assertThat(arten).as("feste Meldungsarten im Katalog").isEqualTo(18);
     }
 
     @Test

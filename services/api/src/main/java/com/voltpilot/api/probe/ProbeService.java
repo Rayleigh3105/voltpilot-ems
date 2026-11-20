@@ -75,6 +75,14 @@ public class ProbeService {
      */
     static final Duration TEST_TIMEOUT = Duration.ofSeconds(12);
 
+    /**
+     * How long the portal waits for a Koppelbild switch test ({@code koppel_test}, PFC200 Stufe 4) - its own wait,
+     * not {@link #TEST_TIMEOUT}. Typically 2-3 s on the box; the worst case is a 4 s wait for the controller's Modbus
+     * lane plus two read/write sessions plus a 1.5 s pause between them, and the box agent gives up on Layer 1 after
+     * 15 s and answers {@code timeout} itself. Waiting 20 s means the portal always hears the box's own verdict.
+     */
+    static final Duration KOPPEL_TEST_TIMEOUT = Duration.ofSeconds(20);
+
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final DeviceRepository devices;
@@ -281,6 +289,50 @@ public class ProbeService {
             return new ProbeResult(requestId, "timeout",
                     "Die Anlage hat nicht rechtzeitig geantwortet. Falls das Gerät doch "
                             + "geschaltet hat, fällt es von selbst wieder zurück.",
+                    List.of());
+        } finally {
+            registry.forget(requestId);
+        }
+    }
+
+    /**
+     * Der Schalt-Test eines Stellplatzes im Koppelbild (PFC200 Stufe 4, {@code koppel_test}) an die Box, die die
+     * Anlagensteuerung {@code entityId} ausführt. Dieselbe Korrelation und ehrliche Zeitüberschreitung wie ein
+     * Verbindungstest, aber die eigene Wartezeit {@link #KOPPEL_TEST_TIMEOUT}: die Box schreibt den Testwunsch nach
+     * einer frischen Lesung der Quittung und wartet dann auf die Quittung der SPS zu genau seiner Folge - das sind
+     * mehrere Modbus-Runden, nie eine.
+     *
+     * @param siteId die Anlage der Steuerung, schon als Anlage des Mandanten belegt
+     */
+    public ProbeResult koppelTest(UUID siteId, UUID entityId, ProbePublisher.KoppelTestOp op, String requestedBy) {
+        UUID tenantId = TenantContext.get();
+        if (tenantId == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+        }
+        DeviceDto device = ziel.pruefung(siteId, null, entityId);
+        ProbePublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Der Schalt-Test ist derzeit nicht möglich.");
+        }
+        String requestId = newRequestId();
+        CompletableFuture<ProbeResult> future = registry.register(requestId, device.id());
+        try {
+            pub.publishKoppelTest(tenantId, device.siteId(), device.id(), requestId, Instant.now(), requestedBy, op);
+        } catch (Exception e) {
+            registry.forget(requestId);
+            log.warn("koppel_test {} could not be published: {}", requestId, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Die Anlage ist gerade nicht erreichbar. Bitte in einem Moment erneut versuchen.");
+        }
+        try {
+            ProbeResult result = registry.await(future, KOPPEL_TEST_TIMEOUT);
+            if (result != null) {
+                return result;
+            }
+            return new ProbeResult(requestId, "timeout",
+                    "Die Box hat nicht rechtzeitig geantwortet. Ein Testwunsch läuft nach "
+                            + op.ttlSeconds() + " s von selbst ab.",
                     List.of());
         } finally {
             registry.forget(requestId);

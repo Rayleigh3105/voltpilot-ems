@@ -91,4 +91,11 @@ class ProbeServiceTestConnectionTest {
         // Die Registerlesung und der Schalt-Test bleiben bei ihrer kurzen Wartezeit.
         assertThat(ProbeService.TIMEOUT).isEqualTo(Duration.ofSeconds(5));
     }
+
+    @Test
+    void derKoppelTestWartetLaengerAlsDieBoxSelbst() {
+        // PFC200 Stufe 4: der Agent der Box gibt den koppel_test nach 15 s selbst auf (Antwort timeout).
+        assertThat(ProbeService.KOPPEL_TEST_TIMEOUT).isEqualTo(Duration.ofSeconds(20))
+                .isGreaterThan(Duration.ofSeconds(15)).isGreaterThan(ProbeService.TEST_TIMEOUT);
+    }
 }

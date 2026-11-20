@@ -618,4 +618,34 @@ class ProbeResultListenerTest {
         assertThat(s.value()).isEqualTo(0.0);
         assertThat(s.count()).isEqualTo(1);
     }
+
+    /**
+     * PFC200 Stufe 4: der Block {@code koppel_test} reist mit der Quittung der SPS, auch neben einer Ablehnung; ohne
+     * gültige Lage ist er keine Aussage, und ein ok ohne Block ist kein bestandener Test.
+     */
+    @Test
+    void aKoppelTestTravelsWithTheControllersReceiptAlsoBesideARefusal() throws Exception {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"stellplatz-1\",\"ok\":true,\"koppel_test\":{\"lage\":\"bereit\",\"kopf_urteil\":\"angenommen\","
+                        + "\"angebot\":{\"art\":\"limit_w\",\"ziel\":\"erzeugung_gesamt\",\"nr\":0,\"min\":0,\"max\":265000,"
+                        + "\"bits\":[\"bereit\"]},\"geschrieben\":true,\"folge\":3,\"urteil\":\"angenommen\",\"wirksam\":200000}},"
+                        + "{\"id\":\"stellplatz-2\",\"ok\":false,\"error_code\":\"unreachable\",\"message\":\"zweiter Schreiber\","
+                        + "\"koppel_test\":{\"lage\":\"zweiter_schreiber\",\"geschrieben\":false}},"
+                        + "{\"id\":\"stellplatz-3\",\"ok\":true,\"koppel_test\":{\"lage\":\"erfunden\"}}")));
+
+        List<ProbeResult.OpResult> zeilen = get(f).results();
+        assertThat(zeilen.get(0).ok()).isTrue();
+        assertThat(zeilen.get(0).koppelTest()).isEqualTo(new ProbeResult.KoppelTest("bereit", null, "angenommen",
+                new ProbeResult.KoppelAngebot("limit_w", "erzeugung_gesamt", 0, 0, 265_000, List.of("bereit")), true, 3,
+                "angenommen", 200_000L));
+        assertThat(zeilen.get(1).ok()).isFalse();
+        assertThat(zeilen.get(1).errorCode()).isEqualTo("unreachable");
+        assertThat(zeilen.get(1).koppelTest().lage()).isEqualTo("zweiter_schreiber");
+        assertThat(zeilen.get(1).koppelTest().urteil()).isNull();
+        assertThat(zeilen.get(2).ok()).isFalse();
+        assertThat(zeilen.get(2).koppelTest()).isNull();
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(zeilen.get(0)))
+                .contains("\"koppel_test\":{\"lage\":\"bereit\",\"kopf_urteil\":\"angenommen\"");
+    }
 }

@@ -180,4 +180,18 @@ class ProbePublisherTest {
                 + "\"id\":\"erreichbarkeit\",\"host\":\"192.168.20.40\",\"port\":503,\"unit_id\":1,"
                 + "\"register_kind\":\"input\",\"address\":0,\"word_order\":\"big\"}");
     }
+
+    /** PFC200 Stufe 4: der Schalt-Test eines Stellplatzes geht Feld für Feld wie das Vertragsbeispiel hinaus. */
+    @Test
+    void aKoppelTestGoesOutLikeTheContractExample() throws Exception {
+        ObjectMapper m = new ObjectMapper();
+        JsonNode beispiel = m.readTree(java.nio.file.Files.readString(
+                java.nio.file.Path.of("../../docs/contracts/examples/mqtt-probe.valid.koppel-test.json")));
+        byte[] raw = ProbePublisher.koppelTestEnvelope(
+                UUID.fromString(beispiel.path("tenant_id").asText()), UUID.fromString(beispiel.path("site_id").asText()),
+                UUID.fromString(beispiel.path("device_id").asText()), beispiel.path("request_id").asText(),
+                Instant.parse(beispiel.path("requested_at").asText()), beispiel.path("requested_by").asText(),
+                new ProbePublisher.KoppelTestOp("stellplatz-1", "127.0.0.1", 502, 1, 1042, 1, "limit_w", 200_000, 30));
+        assertThat(m.readTree(raw)).isEqualTo(beispiel);
+    }
 }

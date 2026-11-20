@@ -375,6 +375,72 @@ export const WERTART_TEXTE: Record<string, WertartTexte> = {
       entwarnung: 'Seit {ende} läuft der erwartete Programmstand.',
     },
   },
+  "erzeuger.koppel_nimmt_nicht_an": {
+    zustandsworte: {
+      nimmt_an: 'nimmt Wünsche an',
+      nimmt_nicht_an: 'nimmt Wünsche nicht an',
+      keine_freigabe: 'ohne freigegebenen Stellplatz',
+    },
+    meldung: {
+      gilt_bei: {
+        zustaende: ['nimmt_nicht_an'],
+      },
+      titel: 'Steuerung nimmt Wünsche nicht an',
+      lage: [
+        'Seit {beginn}: {satz}',
+        'Die Steuerung nimmt seit {beginn} die Wünsche der Box nicht an.',
+      ],
+      ursache: 'Solange die Steuerung die Wünsche nicht annimmt, fährt die Anlage nur mit ihren eigenen Werten; Fahrplan und Regeln wirken dort nicht.',
+      was_tun: 'Prüfen Sie Steuerung und Verbindung zur Box. Hält das an, sagen Sie Ihrem Installateur Bescheid.',
+      push: 'Seit {beginn} nimmt die Steuerung keine Wünsche an.',
+      entwarnung_titel: 'Steuerung nimmt Wünsche wieder an',
+      entwarnung: 'Seit {ende} nimmt die Steuerung die Wünsche der Box wieder an.',
+      entwarnung_dauer: 'Das dauerte {dauer}.',
+    },
+  },
+  "erzeuger.bibliothek_veraltet": {
+    zustandsworte: {
+      aktuell: 'aktuell',
+      aelter: 'älter als erwartet',
+    },
+    meldung: {
+      gilt_bei: {
+        zustaende: ['aelter'],
+      },
+      titel: 'Bibliothek veraltet',
+      lage: [
+        'Seit {beginn}: {satz}',
+        'Die Steuerung läuft seit {beginn} mit einer älteren VoltPilot-Bibliothek als erwartet.',
+      ],
+      ursache: 'Eine ältere Bibliothek kann Wünsche der Box anders behandeln als erwartet.',
+      was_tun: 'Lassen Sie die VoltPilot-Bibliothek der Steuerung von Ihrem Installateur aktualisieren.',
+      push: 'Ältere VoltPilot-Bibliothek als erwartet.',
+      entwarnung_titel: 'Bibliothek aktuell',
+      entwarnung: 'Seit {ende} läuft die erwartete VoltPilot-Bibliothek.',
+    },
+  },
+  "erzeuger.zweiter_schreiber": {
+    zustandsworte: {
+      einer: 'nur die Box schreibt',
+      zweiter_schreiber: 'ein zweites Programm schreibt',
+    },
+    meldung: {
+      gilt_bei: {
+        zustaende: ['zweiter_schreiber'],
+      },
+      titel: 'Zweiter Schreiber an der Steuerung',
+      lage: [
+        'Seit {beginn}: {satz}',
+        'Seit {beginn} schreibt ein zweites Programm Wünsche an die Steuerung.',
+      ],
+      ursache: 'Zwei Programme dürfen der Steuerung nie zugleich Wünsche schicken; die Box hat ihr Schreiben darum eingestellt.',
+      was_tun: 'Prüfen Sie, welches andere Gerät oder Programm die Steuerung beschreibt, und schalten Sie es ab. Hält das an, sagen Sie Ihrem Installateur Bescheid.',
+      push: 'Seit {beginn} schreibt ein zweites Programm an die Steuerung.',
+      entwarnung_titel: 'Nur noch die Box schreibt',
+      entwarnung: 'Seit {ende} schreibt nur noch die Box Wünsche an die Steuerung.',
+      entwarnung_dauer: 'Das dauerte {dauer}.',
+    },
+  },
   "ladepunkt.wallbox_meldet_sich_nicht": {
     zustandsworte: {
       erreichbar: 'erreichbar',

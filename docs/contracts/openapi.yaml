@@ -13472,6 +13472,27 @@ paths:
               schema: { $ref: "#/components/schemas/AnlagensteuerungWerte" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/koppelbild:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: geraetId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Das Koppelbild einer Anlagensteuerung - Stand der Box und Stellplätze (PFC200 Stufe 4).
+      description: >
+        Recht `messwerte.ansehen`. Der jüngste Herzschlag-Block `koppel` der Box für diese Steuerung
+        (docs/contracts/v2/koppelbild.md §15; `aktuell` = höchstens 120 s alt) und je Stellplatz Angebot, Wunsch
+        der Box, Quittung der SPS und Freigabe. Stellplätze sind die des Stands und die mit einer Freigabe-Zeile.
+        `unterstuetzt`: die Box, die die Steuerung liest, meldet `koppelbild`. Unbekannt ist null, nie 0. Eine
+        fremde oder umzäunte Steuerung ist 404.
+      responses:
+        "200":
+          description: Das Koppelbild.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Koppelbild" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/verlauf:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -13551,6 +13572,91 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: Das Bild nennt eine Einheit, die die Steuerung nicht trägt.
+  /api/v1/geraete/{id}/koppelbild/stellplaetze/{platz}/test:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: platz, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 8 } }
+    post:
+      tags: [geraete]
+      summary: Schalt-Test eines Stellplatzes im Koppelbild (PFC200 Stufe 4).
+      description: >
+        Recht `schalttest.durchfuehren` am Gerät (der Anlagensteuerung). Schickt der Box, die die Steuerung liest,
+        EINE Probe `koppel_test` (Verbindung der Datenquelle, `steuerung_id` = Steuerungskennung der Fassung, Art
+        des jetzigen Angebots, `wert` in ganzen Einheiten des Bilds, `ttl_s` 30). Ein Testwert außerhalb des Bands
+        ist 400 (abgelehnt, nicht geklemmt). Bestanden (`ok`) heißt: die SPS quittierte den Testwunsch zu genau
+        seiner Folge mit angenommen, begrenzt oder ueberstimmt; nur dann steht der Beleg für die Freigabe bereit,
+        gebunden an die Form des Angebots. Eine Zeitüberschreitung ist ein Ergebnis (`error_code` timeout), kein
+        Fehler.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KoppelbildTestAnfrage" }
+      responses:
+        "200":
+          description: Das Ergebnis des Tests.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KoppelbildTestErgebnis" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            Die Box kann das Koppelbild nicht (Fähigkeit `koppelbild` fehlt), die Fassung nennt keine
+            Steuerungskennung, oder der Stellplatz bietet gerade nichts an.
+        "503":
+          description: Die Box ist gerade nicht erreichbar.
+  /api/v1/geraete/{id}/koppelbild/stellplaetze/{platz}/freigabe:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: platz, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 8 } }
+    post:
+      tags: [geraete]
+      summary: Einen Stellplatz des Koppelbilds freigeben (PFC200 Stufe 4).
+      description: >
+        Recht `freigabe.erteilen` am Gerät. Nur mit einem bestandenen Test für genau das jetzige Angebot (Art,
+        Ziel, Nummer, Band) und `physicallyConfirmed: true` (die Wirkung an der Anlage gesehen). Je Steuerung
+        höchstens ein freigegebener Stellplatz je Kommando des Schiedsrichters (409). Danach trägt der
+        Registry-Push an eine Box mit `koppelbild` die Fähigkeit `actuate` mit `platz`. Idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [physicallyConfirmed]
+              properties:
+                physicallyConfirmed: { type: boolean }
+      responses:
+        "200":
+          description: Das Koppelbild nach der Freigabe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Koppelbild" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Kein Angebot, kein bestandener Test für dieses Angebot, Box ohne `koppelbild` oder das Kommando trägt schon ein anderer Stellplatz.
+    delete:
+      tags: [geraete]
+      summary: Die Freigabe eines Stellplatzes zurücknehmen (PFC200 Stufe 4).
+      description: >
+        Recht `freigabe.erteilen` am Gerät. Die Box schreibt auf diesem Stellplatz keinen Wunsch mehr; vor einer
+        neuen Freigabe ist der Test zu wiederholen. Idempotent.
+      responses:
+        "200":
+          description: Das Koppelbild nach der Rücknahme.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Koppelbild" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/sites/{siteId}/netz-vermarktung:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -39201,6 +39307,118 @@ components:
             properties:
               te_nr: { type: integer, minimum: 1, maximum: 10 }
               typ: { type: string, maxLength: 32, nullable: true }
+    Koppelbild:
+      type: object
+      description: "Das Koppelbild einer Anlagensteuerung (koppelbild.md §15). Unbekannt ist null, nie 0."
+      required: [unterstuetzt, stand, stellplaetze]
+      properties:
+        unterstuetzt: { type: boolean, description: "Die Box, die die Steuerung liest, meldet koppelbild." }
+        stand: { allOf: [{ $ref: "#/components/schemas/KoppelbildStand" }], nullable: true }
+        stellplaetze: { type: array, items: { $ref: "#/components/schemas/KoppelbildStellplatz" } }
+    KoppelbildStand:
+      type: object
+      required: [empfangen_at, aktuell, lage, grund, gelesen_at, bibliothek, bibliothek_soll, bibliothek_veraltet,
+        kopf_urteil, rest_s, fernsteuerung_frei, edge_lebt, hand_ort, angenommen_zaehler, abgelehnt_zaehler]
+      properties:
+        empfangen_at: { type: string, format: date-time }
+        aktuell: { type: boolean, description: "Höchstens 120 s alt." }
+        lage: { type: string, enum: [bereit, gesperrt, sps_neustart, sps_steht, zweiter_schreiber, steuerung_fremd, nicht_lesbar, keine_antwort, ohne_soll] }
+        grund: { type: string, nullable: true, description: "Bei nicht_lesbar der Lesegrund (signatur_fremd = kein Koppelbild)." }
+        gelesen_at: { type: string, format: date-time, nullable: true }
+        bibliothek: { type: string, nullable: true, example: "1.0" }
+        bibliothek_soll: { type: string, example: "1.0" }
+        bibliothek_veraltet: { type: boolean, nullable: true }
+        kopf_urteil: { type: string, nullable: true }
+        rest_s: { type: integer, nullable: true }
+        fernsteuerung_frei: { type: boolean, nullable: true }
+        edge_lebt: { type: boolean, nullable: true }
+        hand_ort: { type: boolean, nullable: true }
+        angenommen_zaehler: { type: integer, nullable: true }
+        abgelehnt_zaehler: { type: integer, nullable: true }
+    KoppelbildStellplatz:
+      type: object
+      required: [platz, angebot, wunsch, test, urteil, folge, wirksam, kommando, freigabe, freigabe_moeglich, freigabe_grund]
+      properties:
+        platz: { type: integer, minimum: 1, maximum: 8 }
+        angebot:
+          type: object
+          nullable: true
+          required: [art, ziel, nr, min, max, bereit, gruende]
+          properties:
+            art: { type: string, enum: [limit_w, limit_pct, setpoint_w, on_off, mode, setpoint_c] }
+            ziel: { type: string, enum: [erzeugung_gesamt, erzeugungseinheit, speicher, verbraucher, netzbezug, einspeisung, probe] }
+            nr: { type: integer }
+            min: { type: integer, description: "Ganze Einheiten des Bilds (W, 0,1 %, 0/1, 1..8, 0,1 °C)." }
+            max: { type: integer }
+            bereit: { type: boolean }
+            gruende: { type: array, items: { type: string, enum: [grund_stoerung, grund_hand_ort, grund_wartung, grund_vorrang, grund_sonstiger] } }
+        wunsch:
+          type: object
+          nullable: true
+          required: [art, wert, grund, folge]
+          properties:
+            art: { type: string }
+            wert: { type: integer }
+            grund: { type: string, nullable: true }
+            folge: { type: integer }
+        test: { type: boolean, description: "Der Wunsch stammt aus einem Schalt-Test." }
+        urteil: { type: string, nullable: true }
+        folge: { type: integer, nullable: true }
+        wirksam: { type: integer, nullable: true }
+        kommando: { type: string, nullable: true, enum: [limit_kw, limit_pct, setpoint_kw, on_off, mode, setpoint_c, null] }
+        freigabe:
+          type: object
+          required: [status, freigegeben_at, freigegeben_von, test, verfallen_grund]
+          properties:
+            status: { type: string, enum: [offen, getestet, freigegeben, verfallen] }
+            freigegeben_at: { type: string, format: date-time, nullable: true }
+            freigegeben_von: { type: string, nullable: true }
+            test:
+              type: object
+              nullable: true
+              required: [wert, urteil, wirksam, at]
+              properties:
+                wert: { type: integer }
+                urteil: { type: string, enum: [angenommen, begrenzt, ueberstimmt] }
+                wirksam: { type: integer, nullable: true }
+                at: { type: string, format: date-time }
+            verfallen_grund: { type: string, nullable: true, enum: [angebot_geaendert, null] }
+        freigabe_moeglich: { type: boolean }
+        freigabe_grund: { type: string, nullable: true, enum: [box_kann_nicht, angebot_fehlt, kein_test, test_nicht_angenommen, kommando_belegt, null] }
+    KoppelbildTestAnfrage:
+      type: object
+      required: [wert]
+      properties:
+        wert: { type: integer, description: "Der Testwert in ganzen Einheiten des Bilds, im Band des Angebots." }
+    KoppelbildTestErgebnis:
+      type: object
+      required: [ok, koppel_test, satz, error_code, beleg_gespeichert]
+      properties:
+        ok: { type: boolean }
+        koppel_test:
+          type: object
+          nullable: true
+          description: "Der Block koppel_test der Box (mqtt-probe.schema.json op_result.koppel_test); fehlende Felder fehlen."
+          properties:
+            lage: { type: string }
+            grund: { type: string }
+            kopf_urteil: { type: string }
+            angebot:
+              type: object
+              properties:
+                art: { type: string }
+                ziel: { type: string }
+                nr: { type: integer }
+                min: { type: integer }
+                max: { type: integer }
+                bits: { type: array, items: { type: string } }
+            geschrieben: { type: boolean }
+            folge: { type: integer }
+            urteil: { type: string }
+            wirksam: { type: integer }
+        satz: { type: string }
+        error_code: { type: string, nullable: true }
+        beleg_gespeichert: { type: boolean }
     AnlagensteuerungWerte:
       type: object
       required: [geraet_id, entity_id, stand, abgerufen_am, werte]

@@ -83,6 +83,11 @@ public class ProbeResultListener extends Rueckmeldeweg {
             ProbeResult.Finding.RULE_MISSING, ProbeResult.Finding.RULE_OUT_OF_RANGE,
             ProbeResult.Finding.RULE_NO_ANSWER);
 
+    /** Die Lagen der Box im Block {@code koppel_test} (Vertrag, Koppelbild §10); eine fremde ist keine Aussage. */
+    private static final Set<String> KOPPEL_LAGEN = Set.of("bereit", "gesperrt", "sps_neustart", "sps_steht",
+            "zweiter_schreiber", "steuerung_fremd", "nicht_lesbar", "keine_antwort", "ohne_soll");
+    private static final java.util.regex.Pattern KOPPEL_WORT = java.util.regex.Pattern.compile("^[a-z][a-z0-9_]{0,63}$");
+
     private final String brokerUrl;
     private final String username;
     private final String password;
@@ -201,6 +206,16 @@ public class ProbeResultListener extends Rueckmeldeweg {
                             ok ? null : text(line), null, nurAusgaenge));
                     continue;
                 }
+                JsonNode koppelNode = line.get("koppel_test");
+                if (koppelNode != null && koppelNode.isObject()) {
+                    // PFC200 Stufe 4: der Schalt-Test eines Stellplatzes - der Block steht AUCH bei ok=false (was
+                    // sah die Box?); ohne gültige Lage ist er keine Aussage, und ok ohne Lage ist kein Test.
+                    ProbeResult.KoppelTest kt = koppelTest(koppelNode);
+                    boolean gut = ok && kt != null;
+                    results.add(ProbeResult.OpResult.ausKoppelTest(id, gut, gut ? null : code(line),
+                            gut ? null : text(line), kt));
+                    continue;
+                }
                 JsonNode erzeugerNode = line.get("erzeuger_kopf");
                 if (erzeugerNode != null && erzeugerNode.isObject()) {
                     // EZ-15: der Kopf eines Erzeuger-Registerbilds — wie beim WAGO-Kopf AUCH bei ok=false
@@ -283,6 +298,39 @@ public class ProbeResultListener extends Rueckmeldeweg {
         }
         registry.complete(deviceId, requestId,
                 new ProbeResult(requestId, code(json), text(json), results));
+    }
+
+    /** Der Block {@code koppel_test} - oder {@code null} ohne gültige Lage. Fremde Wörter und Zahlen fallen weg. */
+    private static ProbeResult.KoppelTest koppelTest(JsonNode n) {
+        String lage = n.path("lage").asText("");
+        if (!KOPPEL_LAGEN.contains(lage)) {
+            return null;
+        }
+        ProbeResult.KoppelAngebot angebot = null;
+        JsonNode a = n.get("angebot");
+        if (a != null && a.isObject() && KOPPEL_WORT.matcher(a.path("art").asText("")).matches()
+                && KOPPEL_WORT.matcher(a.path("ziel").asText("")).matches() && a.path("nr").isIntegralNumber()
+                && a.path("min").isIntegralNumber() && a.path("max").isIntegralNumber()) {
+            List<String> bits = new ArrayList<>();
+            for (JsonNode b : a.path("bits")) {
+                if (b.isTextual() && KOPPEL_WORT.matcher(b.asText()).matches() && bits.size() < 16) {
+                    bits.add(b.asText());
+                }
+            }
+            angebot = new ProbeResult.KoppelAngebot(a.path("art").asText(), a.path("ziel").asText(),
+                    a.path("nr").asInt(), a.path("min").asLong(), a.path("max").asLong(), List.copyOf(bits));
+        }
+        JsonNode geschrieben = n.get("geschrieben");
+        JsonNode wirksam = n.get("wirksam");
+        return new ProbeResult.KoppelTest(lage, koppelWort(n, "grund"), koppelWort(n, "kopf_urteil"), angebot,
+                geschrieben != null && geschrieben.isBoolean() ? geschrieben.asBoolean() : null,
+                optInt(n, "folge"), koppelWort(n, "urteil"),
+                wirksam != null && wirksam.isIntegralNumber() && wirksam.canConvertToLong() ? wirksam.asLong() : null);
+    }
+
+    private static String koppelWort(JsonNode n, String feld) {
+        JsonNode v = n.get(feld);
+        return v != null && v.isTextual() && KOPPEL_WORT.matcher(v.asText()).matches() ? v.asText() : null;
     }
 
     /** Der Kopf-Block — oder {@code null}, wenn {@code signatur_ok}/{@code erkannt} fehlen. */
