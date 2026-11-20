@@ -46,6 +46,10 @@ type sourcePlan struct {
 	NH3      *nh3Plan        // kaco_modbus
 	Deye     *solarmanPlan   // solarman_v5
 
+	// Conn is the source's connection as configured (sunspec: the curtailment
+	// path reads curtail_write_fc off it).
+	Conn map[string]any
+
 	// DataSourceID is the assigned data source (DQ-…) the push named, the
 	// identity of the read receipt (else the local id).
 	DataSourceID string
@@ -203,7 +207,7 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
 				continue
 			}
-			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: sp.IP, Port: sp.Port, Addr: sp.Addr, Sunspec: sp})
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: sp.IP, Port: sp.Port, Addr: sp.Addr, Sunspec: sp, Conn: conn})
 			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): " + comm + " " + sp.Addr + " -> Leseplan sunspec_live (unit " + strconv.Itoa(int(sp.UnitID)) + ", model_type " + sp.ModelType + ")"})
 		case comm == CommModbusTCP:
 			// The flow's plan: port num(conn.port, 502), unit num(conn.unit_id, 1),

@@ -7,7 +7,7 @@ import "strings"
 // list the core parses from edge/control/readback, the cycle verdict derived
 // once from the per-register verdicts, and the only-controller awareness.
 // nil = not a usable readback (the node publishes nothing). The curtail
-// family is the Fronius path and not handled here.
+// family (the Fronius curtailment, curtail:true) passes through verbatim.
 func Form(payload Obj, now string) Obj {
 	if payload == nil {
 		return nil
@@ -26,6 +26,25 @@ func Form(payload Obj, now string) Obj {
 			return nil
 		}
 		registers = append(registers, o)
+	}
+	if isTrue(get(payload, "curtail")) {
+		// The per-unit curtailment family rides through verbatim: its identity
+		// and verdict are what the core's onCurtailReadback needs.
+		if s, _ := get(payload, "source_id").(string); s == "" {
+			return nil
+		}
+		if s, _ := get(payload, "unit_key").(string); s == "" {
+			return nil
+		}
+		out := make(Obj, len(payload)+1)
+		for k, v := range payload {
+			out[k] = v
+		}
+		if _, ok := get(payload, "ts").(string); !ok {
+			out["ts"] = now
+		}
+		out["registers"] = registers
+		return out
 	}
 	controlEnabled := isTrue(get(payload, "control_enabled"))
 	certified := isTrue(get(payload, "certified"))

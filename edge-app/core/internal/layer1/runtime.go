@@ -141,8 +141,9 @@ type Runtime struct {
 	koppelCaps   map[string][]koppelbild.Faehigkeit
 	koppelBefehl map[string]koppelBefehl
 
-	// the control path (steuern.go)
+	// the control path (steuern.go) and the PV curtailment (abregeln.go)
 	st steuerung
+	ab abregelung
 }
 
 // Ready is closed once every bus subscription is confirmed.
@@ -203,6 +204,7 @@ func New(bus Bus, opts Options) *Runtime {
 		koppel: map[string]*koppelbild.Steuerung{}, koppelDQ: map[string]string{},
 		koppelCaps: map[string][]koppelbild.Faehigkeit{}, koppelBefehl: map[string]koppelBefehl{},
 		st:     newSteuerung(),
+		ab:     newAbregelung(),
 		bootID: "l1-" + strconv.FormatInt(time.Now().UnixNano(), 36)}
 	r.mw.lz = messwerte.NeueLaufzeit(messwerteIO{r}, opts.Now, nil)
 	return r
@@ -269,6 +271,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	go r.runErzeuger(ctx)
 	go r.runMesswerte(ctx)
 	go r.runSteuern(ctx)
+	go r.runAbregeln(ctx)
 
 	timer := time.NewTimer(r.opts.FirstPoll)
 	defer timer.Stop()

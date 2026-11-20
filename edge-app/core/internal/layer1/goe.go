@@ -390,6 +390,7 @@ func (r *Runtime) publishSource(p sourcePlan, values map[string]any) {
 		r.sourceTrace(p.ID, "badid", true, "Quelle "+p.ID+": ungueltige Quellen-ID fuer ein MQTT-Topic - nicht veroeffentlicht")
 		return
 	}
+	r.merkeQuelle(p.ID, values)
 	values["ts"] = isoMillis(r.opts.Now())
 	raw, _ := json.Marshal(values)
 	if err := r.bus.Publish(sources.TopicPrefix+p.ID+"/telemetry", raw, false); err != nil {

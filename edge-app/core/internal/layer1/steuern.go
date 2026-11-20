@@ -99,6 +99,7 @@ func (r *Runtime) onSetpoint(_ string, payload []byte) {
 	case r.st.kick <- struct{}{}:
 	default:
 	}
+	r.abregelSollwert(sp)
 }
 
 // runSteuern is the control goroutine: crash recovery once, then one tick per

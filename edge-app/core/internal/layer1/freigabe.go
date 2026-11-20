@@ -21,8 +21,8 @@ import "sync/atomic"
 
 // Freigabe is one bench release of the Go control path.
 type Freigabe struct {
-	Familie string // the selection's family, e.g. "hybrid_3p"
-	Pfad    string // "remote" or "tou"
+	Familie string // the selection's family ("hybrid_3p"), for the curtailment the source's communication ("fronius_sunspec")
+	Pfad    string // "remote", "tou" or "abregelung"
 	Beleg   string // the bench record: date, device, firmware, cases, who released
 }
 

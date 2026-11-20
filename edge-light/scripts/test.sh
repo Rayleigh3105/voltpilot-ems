@@ -38,7 +38,8 @@ if command -v node >/dev/null 2>&1; then
     "$NODERED/measurements/wago-vectors.test.js" "$NODERED/fronius/solar-api-vectors.test.js" \
     "$NODERED/kostal/kostal-decode-vectors.test.js" "$NODERED/kaco/kaco-http-vectors.test.js" \
     "$NODERED/kaco/aiswei-decode-vectors.test.js" "$NODERED/kostal/kostal-dxs-vectors.test.js" \
-    "$NODERED/kostal/kostal-piko-rtu-vectors.test.js" "$NODERED/steuerplan-vectors.test.js"
+    "$NODERED/kostal/kostal-piko-rtu-vectors.test.js" "$NODERED/steuerplan-vectors.test.js" \
+    "$NODERED/steuerplan-abregelung-vectors.test.js"
   # Verbraucherregel (vp-consumer-policy): die Vektoren kommen aus der JS-Referenz.
   node "$NODERED/vp-palette/test/verbraucherregel-vectors.gen.js" --check
   # Messwerte-Bibliothek: Katalog und Budget-Vertrag, die Edge Light einbettet,

@@ -100,6 +100,14 @@ func Dial(ctx context.Context, dial Dialer, address string, unit byte, connectTi
 // Close ends the session.
 func (c *Client) Close() error { return c.c.Close() }
 
+// SetUnit addresses the following requests to another unit behind the same
+// gateway (one socket, several inverters - a Fronius Datamanager).
+func (c *Client) SetUnit(unit byte) { c.unit = unit }
+
+// SetTimeout bounds the following exchanges (a cycle with a deadline caps each
+// operation on its remaining budget).
+func (c *Client) SetTimeout(d time.Duration) { c.timeout = d }
+
 // Exchange sends one PDU (function code first) and returns the response PDU.
 // A Modbus exception comes back as *ExceptionError; a response for a foreign
 // transaction, a wrong function code or a malformed length as a plain error.
