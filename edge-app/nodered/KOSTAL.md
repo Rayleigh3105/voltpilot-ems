@@ -68,6 +68,12 @@ verworfen (Lücke im Chart) statt Batterie = 0 zu erfinden.
 vorbelegt (1502/71/Automatisch). „Verbindung testen" liest einmalig und zeigt
 Netz + SoC.
 
+**Edge Light** ([Paritätsliste](../../edge-light/docs/paritaet.md)) liest den
+PLENTICORE BI seit 20.11.2026 mit dem Go-Zwilling `core/internal/kostalplenticore`
+(Hauptgerät und Verbindungstest; als weitere Quelle liest ihn auch die
+Docker-Box nicht). Beide Seiten hängen an `kostal/kostal-decode-vectors.json`,
+erzeugt aus `kostal-decode.js` (`node kostal/kostal-decode-vectors.gen.js`).
+
 ## 4. Abgrenzungen / bewusste Grenzen
 
 - **Hybride (PLENTICORE plus) werden hier bewusst NICHT angeboten:** deren

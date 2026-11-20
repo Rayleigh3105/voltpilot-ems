@@ -167,6 +167,13 @@ welches gilt, folgt aus dem gewählten Modell.
 Stick und Wechselrichter fahren herunter, die Abrufe laufen in Timeouts. Was
 zurückkommt, wird getragen; der Rest ist **abwesend**, nie 0.
 
+**Edge Light** ([Paritätsliste](../../edge-light/docs/paritaet.md)) liest die
+App-Schnittstelle seit 20.11.2026 mit dem Go-Zwilling `core/internal/kacohttp`
+(Hauptgerät, weitere Quelle, Verbindungstest samt gefundener Seriennummer).
+Beide Seiten hängen an `kaco/kaco-http-vectors.json`, erzeugt aus `kaco-http.js`
+(`node kaco/kaco-http-vectors.gen.js` nach jeder Änderung); die Vektoren fahren
+auch ganze Lesezyklen gegen ein nachgebautes HTTP-Modul.
+
 ## 9. Der hybride NH3 über seinen eigenen Ethernet-Port (Experten-Weg)
 
 Der NH3 hat - anders als die NX-Geräte - einen **eigenen Ethernet-Anschluss**
@@ -181,6 +188,9 @@ Gelesen werden: PV-Gesamtleistung (31601), Batterieleistung (31619), Ladestand
 Nummer − 30001), `4xxxx` sind **Holding**-Register (FC3, Nummer − 40001). Wer
 pauschal FC3 sendet, liest die falsche Tabelle und bekommt plausibel aussehenden
 Unsinn.
+
+**Edge Light** liest diesen Weg seit 20.11.2026 mit `core/internal/aiswei`
+(gemeinsame Vektoren `kaco/aiswei-decode-vectors.json` aus `aiswei-decode.js`).
 
 ## 10. ⚠ Am Gerät zu prüfen (VERIFY-on-device)
 

@@ -95,6 +95,48 @@ const LAEUFE = [
   { name: 'Unzulaessiger Funktionscode', req: req({ write_fc: 3 }), antworten: [] },
 ];
 
+// Schalt-Test (switch-write.js): writePlan und runWrite mit eingespielten
+// Abhaengigkeiten - der Core hat Ziel, Register und Werte schon zugelassen.
+const sop = (o) => Object.assign({ id: 's1', host: '192.168.1.30', port: 502, unit_id: 1, fc: 5, address: 7, value: 1 }, o);
+const SCHALT_PLAN = [
+  sop({}), sop({ fc: 6, value: 1234 }), sop({ fc: 16, value: 65535 }), sop({ fc: 5, value: 2 }), sop({ fc: 3 }),
+  sop({ host: ' 10.0.0.9 ', port: '1502', unit_id: '0' }), sop({ host: '' }), sop({ address: 65536 }),
+  sop({ address: -1 }), sop({ value: -1 }), sop({ address: '12.7', value: '1.9' }), sop({ port: 0, unit_id: 300 }),
+  sop({ port: 'x', unit_id: null }), sop({ host: 7 }), null,
+];
+const SCHALT_LAEUFE = [
+  { name: 'Spule ein, ohne Zuruecklesen', op: sop({}), antworten: [{ ok: true }] },
+  { name: 'Spule ein, Zuruecklesen bestaetigt', op: sop({ readback_address: 7 }), antworten: [{ ok: true }, { coils: [1] }] },
+  { name: 'Register mit FC6, Zuruecklesen anderer Adresse', op: sop({ fc: 6, value: 300, readback_address: 8 }), antworten: [{ ok: true }, { regs: [301] }] },
+  { name: 'Zuruecklesen ungueltig: die geschriebene Adresse', op: sop({ fc: 16, value: 5, readback_address: 70000 }), antworten: [{ ok: true }, { regs: [5] }] },
+  { name: 'Zuruecklesen leer', op: sop({ readback_address: 7 }), antworten: [{ ok: true }, { coils: [] }] },
+  { name: 'Zuruecklesen scheitert: trotzdem geschaltet', op: sop({ readback_address: 7 }), antworten: [{ ok: true }, { fehler: 'Antwort-Timeout (8000 ms)' }] },
+  { name: 'Schreiben abgewiesen', op: sop({}), antworten: [{ fehler: 'Modbus-Ausnahme 0x02' }] },
+  { name: 'Geraet unerreichbar', op: sop({}), antworten: [{ fehler: 'Verbindung fehlgeschlagen: connect ECONNREFUSED 192.168.1.30:502' }] },
+  { name: 'Geraet belegt', op: sop({}), antworten: [{ fehler: 'Warteschlange für 192.168.1.30:502 voll - älteste Anfrage verworfen' }] },
+  { name: 'Unvollstaendig', op: sop({ fc: 1 }), antworten: [] },
+  { name: 'ohne id', op: { host: '192.168.1.30', fc: 5, address: 1, value: 0 }, antworten: [{ ok: true }] },
+];
+
+async function schaltLauf(c) {
+  const antworten = c.antworten.slice();
+  const aufrufe = [];
+  const next = () => {
+    const a = antworten.shift();
+    if (!a) return Promise.reject(new Error('Vektor: keine Antwort mehr'));
+    if (a.fehler !== undefined) return Promise.reject(new Error(a.fehler));
+    return Promise.resolve(a.regs || a.coils || null);
+  };
+  const deps = {
+    writeValue: (p) => { aufrufe.push({ schreiben: p }); return next(); },
+    readRegisters: (p) => { aufrufe.push({ lesen: p }); return next(); },
+    readCoils: (p) => { aufrufe.push({ spulen: p }); return next(); },
+    arbiter: { runControl: (key, fn) => { aufrufe.push({ spur: key }); return fn(); } },
+  };
+  const ergebnis = await SW.runWrite(JSON.parse(JSON.stringify(c.op)), deps);
+  return { name: c.name, op: c.op, antworten: c.antworten, aufrufe, ergebnis };
+}
+
 async function lauf(c) {
   const antworten = c.antworten.slice();
   const aufrufe = [];
@@ -121,16 +163,21 @@ const clean = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
 async function build() {
   const laeufe = [];
   for (const c of LAEUFE) laeufe.push(clean(await lauf(c)));
+  const schaltLaeufe = [];
+  for (const c of SCHALT_LAEUFE) schaltLaeufe.push(clean(await schaltLauf(c)));
   const out = {
     _comment: [
       'GENERIERT von register-write-vectors.gen.js aus vp-palette/lib/register-write.js und switch-write.js - nicht von Hand bearbeiten.',
       'Gepruefte Seiten: register-write-vectors.test.js (JS) und edge-app/core/internal/einmalschreiben (Go, Edge Light).',
       'plan ist null, wo plan() den Auftrag verwirft; laeufe.aufrufe ist die Folge der Geraetezugriffe von runOnce.',
+      'schalt_plan/schalt_laeufe: writePlan und runWrite des Schalt-Tests (switch-write.js), Geraetezugriffe in Folge.',
     ],
     settle_ms: RW.SETTLE_MS,
     plan: PLAN.map((r) => ({ req: clean(r), plan: clean(RW.plan(r === null ? null : JSON.parse(JSON.stringify(r)))) })),
     classify: CLASSIFY.map((m) => ({ meldung: m, ergebnis: SW.classify(m) })),
     laeufe,
+    schalt_plan: SCHALT_PLAN.map((o) => ({ op: clean(o), plan: clean(SW.writePlan(o === null ? null : JSON.parse(JSON.stringify(o)))) })),
+    schalt_laeufe: schaltLaeufe,
   };
   return JSON.stringify(out, null, 2) + '\n';
 }

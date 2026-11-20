@@ -31,6 +31,12 @@ type testReadResult struct {
 	Message   string            `json:"message,omitempty"`
 	Reading   *testconn.Reading `json:"reading,omitempty"`
 	Finding   *deyedecode.Drop  `json:"finding,omitempty"`
+	// Serial is the inverter serial the KACO App-Schnittstelle test used
+	// (from the inventory when none was given) - test-read.js returns it so
+	// the form can fill it in.
+	Serial string `json:"serial,omitempty"`
+	// FoundUnits is the multi-inverter search's answer (probe_units).
+	FoundUnits []int `json:"found_units,omitempty"`
 }
 
 // onTestRead answers "Verbindung testen" - the Go twin of test-read.js for
@@ -56,8 +62,7 @@ func (r *Runtime) onTestRead(ctx context.Context, payload []byte) {
 
 func (r *Runtime) testRead(ctx context.Context, req *testReadRequest) testReadResult {
 	if req.ProbeUnits {
-		return testReadResult{ErrorCode: testconn.ErrInvalidRequest,
-			Message: "Die Suche nach weiteren Wechselrichtern ist in Edge Light noch nicht verfügbar."}
+		return r.probeUnits(ctx, req)
 	}
 	switch req.Communication {
 	case CommSolarmanV5:
@@ -100,6 +105,30 @@ func (r *Runtime) testRead(ctx context.Context, req *testReadRequest) testReadRe
 			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
 		}
 		return r.testKostalPikoRtu(ctx, p, req.Role)
+	case CommFroniusSolarAPI:
+		p, why := planFronius(&req.selection)
+		if p == nil {
+			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
+		}
+		return r.testFronius(ctx, p, req.Role)
+	case CommKostalModbus:
+		p, why := planPlenticore(&req.selection)
+		if p == nil {
+			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
+		}
+		return r.testPlenticore(ctx, p, req.Role)
+	case CommKacoHTTP:
+		p, why := planKacoHTTP(&req.selection)
+		if p == nil {
+			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
+		}
+		return r.testKacoHTTP(ctx, p, req.Role)
+	case CommKacoModbus:
+		p, why := planNH3(&req.selection)
+		if p == nil {
+			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
+		}
+		return r.testNH3(ctx, p, req.Role)
 	case CommModbusTCP:
 		p, why := planModbus(&req.selection)
 		if p == nil {

@@ -1091,3 +1091,89 @@ test('a KOSTAL PIKO at night (no AC id) publishes nothing and names it; as a gri
     piko.server.close();
   }
 });
+
+// --- KACO als Quelle: App-Schnittstelle (kaco_http) und NH3-Registerkarte (kaco_modbus) ---
+//
+// Beide Wege plant der Quellen-Speicher und liest der Quellen-Executor mit den
+// Lesern aus kaco/kaco-http.js bzw. kaco/aiswei-decode.js. Der Executor muss die
+// Module dafuer selbst einbetten - ein Flow-Knoten kann nichts requiren.
+
+function kacoHttpServer({ serial = 'B1234567890', inverter, meter }) {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      const u = new URL(req.url, 'http://x');
+      res.setHeader('content-type', 'application/json');
+      if (u.pathname === '/getdev.cgi') return res.end(JSON.stringify({ inv: [{ isn: serial, add: 3, rate: 10000 }] }));
+      if (u.pathname === '/getdevdata.cgi' && u.searchParams.get('sn') === serial) {
+        if (u.searchParams.get('device') === '2') return res.end(JSON.stringify(inverter));
+        if (u.searchParams.get('device') === '3' && meter) return res.end(JSON.stringify(meter));
+      }
+      res.statusCode = 404;
+      res.end('{}');
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+// Modbus-Stand-in mit getrennten Tabellen je Funktionscode (FC3 Holding, FC4 Input).
+function startTableModbusServer(tables) {
+  return new Promise((resolve) => {
+    const server = net.createServer((sock) => {
+      let acc = Buffer.alloc(0);
+      sock.on('data', (chunk) => {
+        acc = Buffer.concat([acc, chunk]);
+        while (acc.length >= 12) {
+          const req = acc.slice(0, 12); acc = acc.slice(12);
+          const fc = req[7];
+          const addr = req.readUInt16BE(8);
+          const count = req.readUInt16BE(10);
+          const table = tables[fc];
+          let ok = !!table;
+          for (let i = 0; ok && i < count; i++) if (!table.has(addr + i)) ok = false;
+          const resp = ok ? Buffer.alloc(9 + count * 2) : Buffer.alloc(9);
+          resp.writeUInt16BE(req.readUInt16BE(0), 0);
+          resp.writeUInt16BE(ok ? 3 + count * 2 : 3, 4);
+          resp[6] = req[6];
+          resp[7] = ok ? fc : fc | 0x80;
+          resp[8] = ok ? count * 2 : 0x02;
+          if (ok) for (let i = 0; i < count; i++) resp.writeUInt16BE(table.get(addr + i) & 0xffff, 9 + i * 2);
+          sock.write(resp);
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+test('a KACO Erzeuger source (kaco_http) is read over the App-Schnittstelle and publishes pv_power_kw', async () => {
+  const kaco = await kacoHttpServer({ inverter: { pac: 4200, fac: 4998 }, meter: { pac: -1500 } });
+  try {
+    const { flow, sends, warns } = await storeAndRead([{ id: 'src-kaco', role: 'pv-generation', brand: 'kaco', family: 'kaco_http',
+      communication: 'kaco_http', connection: { ip: '127.0.0.1', port: kaco.port } }]);
+    assert.equal(flow.source_plans[0].adapter, 'kaco_http');
+    assert.equal(sends.length, 1, warns.join('\n'));
+    assert.equal(sends[0][0].source_id, 'src-kaco');
+    assert.equal(sends[0][0].payload.pv_power_kw, 4.2);
+  } finally {
+    kaco.server.close();
+  }
+});
+
+test('a KACO NH3 Netz source (kaco_modbus) reads the AISWEI map (FC4 + FC3) and publishes signed power_kw', async () => {
+  const input = new Map();
+  for (let a = 1000; a < 1028; a++) input.set(a, 0);
+  for (let a = 1600; a < 1625; a++) input.set(a, 0);
+  input.set(1601, 3100); // PV 3100 W
+  const holding = new Map([[6433, 0xffff], [6434, 0xf830]]); // -2000 W Einspeisung
+  const nh3 = await startTableModbusServer({ 4: input, 3: holding });
+  try {
+    const { flow, sends, warns } = await storeAndRead([{ id: 'src-nh3', role: 'grid-meter', brand: 'kaco', family: 'kaco_nh3',
+      communication: 'kaco_modbus', connection: { ip: '127.0.0.1', port: nh3.port, unit_id: 1 } }]);
+    assert.equal(flow.source_plans[0].adapter, 'kaco_modbus');
+    assert.equal(sends.length, 1, warns.join('\n'));
+    assert.equal(sends[0][1].source_id, 'src-nh3');
+    assert.equal(sends[0][1].payload.power_kw, -2);
+  } finally {
+    nh3.server.close();
+  }
+});

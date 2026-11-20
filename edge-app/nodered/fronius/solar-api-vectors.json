@@ -1,0 +1,681 @@
+{
+ "_comment": [
+  "GENERIERT von solar-api-vectors.gen.js aus solar-api.js - nicht von Hand bearbeiten.",
+  "Gepruefte Seiten: solar-api-vectors.test.js (JS) und edge-app/core/internal/froniusapi (Go, Edge Light).",
+  "raw ist der Antworttext; json=false heisst: JSON.parse scheitert, keine Messung."
+ ],
+ "power_flow_path": "/solar_api/v1/GetPowerFlowRealtimeData.fcgi",
+ "families": [
+  "fronius_solar_api"
+ ],
+ "urls": [
+  {
+   "scheme": "http",
+   "host": "192.168.1.40",
+   "port": 80,
+   "url": "http://192.168.1.40:80/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
+  },
+  {
+   "scheme": "https",
+   "host": "10.0.0.5",
+   "port": 443,
+   "url": "https://10.0.0.5:443/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
+  },
+  {
+   "scheme": "ftp",
+   "host": "fronius",
+   "port": 8080,
+   "url": "http://fronius:8080/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
+  },
+  {
+   "scheme": null,
+   "host": "fd00::7",
+   "port": 80,
+   "url": "http://fd00::7:80/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
+  }
+ ],
+ "cases": [
+  {
+   "name": "GEN24 Hybrid tagsueber",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":5300,\"P_Grid\":-1200,\"P_Load\":-900,\"P_Akku\":-3200},\"Inverters\":{\"1\":{\"SOC\":62.44}}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": -1.2,
+     "pv_power_kw": 5.3,
+     "load_kw": 0.9,
+     "soc_pct": 62.4
+    },
+    "battKw": -3.2
+   }
+  },
+  {
+   "name": "GEN24 Hybrid tagsueber",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":5300,\"P_Grid\":-1200,\"P_Load\":-900,\"P_Akku\":-3200},\"Inverters\":{\"1\":{\"SOC\":62.44}}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 1.2,
+     "pv_power_kw": 5.3,
+     "load_kw": 0.9,
+     "soc_pct": 62.4
+    },
+    "battKw": -3.2
+   }
+  },
+  {
+   "name": "Netzbezug, Akku entlaedt",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":0,\"P_Grid\":1834.5,\"P_Load\":-2500.25,\"P_Akku\":665.75},\"Inverters\":{\"1\":{\"SOC\":41}}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 1.835,
+     "pv_power_kw": 0,
+     "load_kw": 2.5,
+     "soc_pct": 41
+    },
+    "battKw": 0.666
+   }
+  },
+  {
+   "name": "Netzbezug, Akku entlaedt",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":0,\"P_Grid\":1834.5,\"P_Load\":-2500.25,\"P_Akku\":665.75},\"Inverters\":{\"1\":{\"SOC\":41}}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": -1.834,
+     "pv_power_kw": 0,
+     "load_kw": 2.5,
+     "soc_pct": 41
+    },
+    "battKw": 0.666
+   }
+  },
+  {
+   "name": "Wechselrichter schlaeft (P_PV null)",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":null,\"P_Grid\":420,\"P_Load\":-420,\"P_Akku\":null}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 0.42,
+     "load_kw": 0.42
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Wechselrichter schlaeft (P_PV null)",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":null,\"P_Grid\":420,\"P_Load\":-420,\"P_Akku\":null}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": -0.42,
+     "load_kw": 0.42
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Nacht, alles null",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":null,\"P_Grid\":null,\"P_Load\":null,\"P_Akku\":null}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Nacht, alles null",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":null,\"P_Grid\":null,\"P_Load\":null,\"P_Akku\":null}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "ohne Akku (kein SOC)",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":7120,\"P_Grid\":-6000,\"P_Load\":-1120},\"Inverters\":{\"1\":{\"DT\":1,\"P\":7120}}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": -6,
+     "pv_power_kw": 7.12,
+     "load_kw": 1.12
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "ohne Akku (kein SOC)",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":7120,\"P_Grid\":-6000,\"P_Load\":-1120},\"Inverters\":{\"1\":{\"DT\":1,\"P\":7120}}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 6,
+     "pv_power_kw": 7.12,
+     "load_kw": 1.12
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "SOC 0 ist keine Antwort",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100,\"P_Grid\":0,\"P_Load\":-100},\"Inverters\":{\"1\":{\"SOC\":0}}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 0,
+     "pv_power_kw": 0.1,
+     "load_kw": 0.1
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "SOC 0 ist keine Antwort",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100,\"P_Grid\":0,\"P_Load\":-100},\"Inverters\":{\"1\":{\"SOC\":0}}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 0,
+     "pv_power_kw": 0.1,
+     "load_kw": 0.1
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "SOC 100 gilt, 100.04 nicht",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100},\"Inverters\":{\"1\":{\"SOC\":100}}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.1,
+     "soc_pct": 100
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "SOC 100 gilt, 100.04 nicht",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100},\"Inverters\":{\"1\":{\"SOC\":100}}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.1,
+     "soc_pct": 100
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "SOC ueber 100",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100},\"Inverters\":{\"1\":{\"SOC\":100.04}}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.1
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "SOC ueber 100",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100},\"Inverters\":{\"1\":{\"SOC\":100.04}}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.1
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "SOC als Text",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100},\"Inverters\":{\"1\":{\"SOC\":\"55\"}}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.1
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "SOC als Text",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100},\"Inverters\":{\"1\":{\"SOC\":\"55\"}}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.1
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Inverters ohne \"1\"",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100},\"Inverters\":{\"2\":{\"SOC\":55}}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.1
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Inverters ohne \"1\"",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":100},\"Inverters\":{\"2\":{\"SOC\":55}}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.1
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "negatives P_PV klemmt auf 0",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":-12,\"P_Grid\":12}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 0.012,
+     "pv_power_kw": 0
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "negatives P_PV klemmt auf 0",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":-12,\"P_Grid\":12}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": -0.012,
+     "pv_power_kw": 0
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "positives P_Load klemmt auf 0",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_Load\":300}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "load_kw": 0
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "positives P_Load klemmt auf 0",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_Load\":300}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "load_kw": 0
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "P_Grid als Text zaehlt nicht",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_Grid\":\"1200\",\"P_PV\":10}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.01
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "P_Grid als Text zaehlt nicht",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_Grid\":\"1200\",\"P_PV\":10}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.01
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Rundung halb",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1234.5,\"P_Grid\":-0.5,\"P_Load\":-2.5},\"Inverters\":{\"1\":{\"SOC\":33.35}}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 0,
+     "pv_power_kw": 1.235,
+     "load_kw": 0.003,
+     "soc_pct": 33.4
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Rundung halb",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1234.5,\"P_Grid\":-0.5,\"P_Load\":-2.5},\"Inverters\":{\"1\":{\"SOC\":33.35}}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 0.001,
+     "pv_power_kw": 1.235,
+     "load_kw": 0.003,
+     "soc_pct": 33.4
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Rundung negativ halb",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_Grid\":-1234.5}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": -1.234
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Rundung negativ halb",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_Grid\":-1234.5}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 1.235
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "BadStatus",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":8}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "BadStatus",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":8}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Status-Code als Text gilt nicht als Fehler",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":\"8\"}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.001
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Status-Code als Text gilt nicht als Fehler",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":\"8\"}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.001
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "kein Head",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":{\"P_PV\":2}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.002
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "kein Head",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":{\"P_PV\":2}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.002
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "kein Site",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "kein Site",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Site ist kein Objekt",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":5}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Site ist kein Objekt",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":5}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Data ist eine Liste",
+   "raw": "{\"Body\":{\"Data\":[]}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Data ist eine Liste",
+   "raw": "{\"Body\":{\"Data\":[]}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Site ist eine Liste",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":[]}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Site ist eine Liste",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":[]}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Zahl ausserhalb von float64",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1e400,\"P_Grid\":5}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": 0.005
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Zahl ausserhalb von float64",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1e400,\"P_Grid\":5}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "power_kw": -0.005
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "doppelter Schluessel: der letzte gilt",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1,\"P_PV\":2000}}}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 2
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "doppelter Schluessel: der letzte gilt",
+   "raw": "{\"Body\":{\"Data\":{\"Site\":{\"P_PV\":1,\"P_PV\":2000}}}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 2
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "kein JSON",
+   "raw": "<html>404</html>",
+   "invert_grid_sign": false,
+   "json": false,
+   "decode": null
+  },
+  {
+   "name": "kein JSON",
+   "raw": "<html>404</html>",
+   "invert_grid_sign": true,
+   "json": false,
+   "decode": null
+  },
+  {
+   "name": "leerer Text",
+   "raw": "",
+   "invert_grid_sign": false,
+   "json": false,
+   "decode": null
+  },
+  {
+   "name": "leerer Text",
+   "raw": "",
+   "invert_grid_sign": true,
+   "json": false,
+   "decode": null
+  },
+  {
+   "name": "JSON null",
+   "raw": "null",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "JSON null",
+   "raw": "null",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "JSON-Zahl",
+   "raw": "42",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "JSON-Zahl",
+   "raw": "42",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Leerraum um das JSON",
+   "raw": "  \n{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":10}}}}\n ",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.01
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Leerraum um das JSON",
+   "raw": "  \n{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{\"Data\":{\"Site\":{\"P_PV\":10}}}}\n ",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": {
+    "reading": {
+     "pv_power_kw": 0.01
+    },
+    "battKw": null
+   }
+  },
+  {
+   "name": "Datamanager v0 (keine PowerFlow-Antwort)",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{}}",
+   "invert_grid_sign": false,
+   "json": true,
+   "decode": null
+  },
+  {
+   "name": "Datamanager v0 (keine PowerFlow-Antwort)",
+   "raw": "{\"Head\":{\"Status\":{\"Code\":0}},\"Body\":{}}",
+   "invert_grid_sign": true,
+   "json": true,
+   "decode": null
+  }
+ ]
+}

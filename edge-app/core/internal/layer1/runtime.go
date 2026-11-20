@@ -9,9 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/aiswei"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/deyedecode"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/erzeugerbild"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/froniusapi"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kacohttp"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/koppelbild"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kostalplenticore"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/messwerte"
@@ -51,6 +55,10 @@ type Options struct {
 	// (`/api/dxs.json`): 3-4 s (report §4.6), not go-e's 8 s, so a 5-s poll
 	// tick never stacks two requests against the weak webserver.
 	KostalDxsTimeout time.Duration
+	// ProbeIDTimeout / ProbeOverallTimeout bound the multi-inverter search
+	// per unit id (1,5 s) and as a whole (12 s), like makeProbeUnits.
+	ProbeIDTimeout      time.Duration
+	ProbeOverallTimeout time.Duration
 	// KostalRtuTimeout bounds one FC03 round trip against the RS485-to-
 	// Ethernet gateway of the Modbus-RTU Ausweg.
 	KostalRtuTimeout time.Duration
@@ -84,12 +92,14 @@ type Runtime struct {
 	ready    chan struct{}
 
 	// the additional sources (sources.go, goe.go)
-	http     *http.Client
-	srcMu    sync.Mutex
-	srcPlans []sourcePlan
-	srcRR    int
-	srcSig   string
-	srcTrace map[string]traceState
+	http *http.Client
+	// httpNoVerify is the client for insecure_tls (built on first use).
+	httpNoVerify *http.Client
+	srcMu        sync.Mutex
+	srcPlans     []sourcePlan
+	srcRR        int
+	srcSig       string
+	srcTrace     map[string]traceState
 
 	// sunspecSeen: the SunSpec identity last logged per address (sunspec.go).
 	sunspecSeen sync.Map
@@ -224,6 +234,11 @@ func (r *Runtime) Run(ctx context.Context) error {
 	}); err != nil {
 		return err
 	}
+	if err := r.bus.Subscribe(localbus.TopicSwitchRequest, func(_ string, p []byte) {
+		go r.onSwitchTest(ctx, p)
+	}); err != nil {
+		return err
+	}
 	if err := r.bus.Subscribe(localbus.TopicInstallerWriteRequest, func(_ string, p []byte) {
 		go r.onInstallerWrite(ctx, p)
 	}); err != nil {
@@ -353,6 +368,50 @@ func (r *Runtime) pollOnce(ctx context.Context) {
 			return
 		}
 		r.pollModbus(ctx, p)
+	case CommFroniusSolarAPI:
+		if !froniusapi.Known(s.Family) {
+			r.idle("unbekannte Fronius-Familie: " + s.Family)
+			return
+		}
+		p, why := planFronius(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollFronius(ctx, p)
+	case CommKostalModbus:
+		if !kostalplenticore.Known(s.Family) {
+			r.idle("unbekannte Kostal-Familie: " + s.Family)
+			return
+		}
+		p, why := planPlenticore(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollPlenticore(ctx, p)
+	case CommKacoHTTP:
+		if !kacohttp.Known(s.Family) {
+			r.idle("unbekannte KACO-Familie: " + s.Family)
+			return
+		}
+		p, why := planKacoHTTP(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollKacoHTTP(ctx, p)
+	case CommKacoModbus:
+		if !aiswei.Known(s.Family) {
+			r.idle("unbekannte KACO-Familie: " + s.Family)
+			return
+		}
+		p, why := planNH3(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollNH3(ctx, p)
 	default:
 		// Honest, not silent: the parity matrix names what is ported. The core
 		// then shows "keine aktuellen Daten" exactly as for a dead device.
