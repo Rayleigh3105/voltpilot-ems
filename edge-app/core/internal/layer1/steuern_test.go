@@ -25,8 +25,9 @@ func remoteDeye(sim *v5sim.Sim) {
 func (r *rig) selectSteuerDeye() { r.selectSteuerDeyeFamilie("hybrid_3p") }
 
 // selectSteuerDeyeFamilie selects the simulated Deye under the given family;
-// hybrid_1p carries its own ToU register map (steuerplan/deye.go) and is not
-// an entry of freigaben, so it stays useful to prove the gate still blocks.
+// hybrid_1p carries its own ToU register map (steuerplan/deye.go) and, since
+// 20.11.2026, its own freigaben entry alongside hybrid_3p (PR #1965's shared
+// vectors cover both).
 func (r *rig) selectSteuerDeyeFamilie(familie string) {
 	r.t.Helper()
 	_, port, _ := net.SplitHostPort(r.sim.Addr())
@@ -90,14 +91,19 @@ func pruefstand(t *testing.T) {
 
 // Without an entry in freigaben the device is probed and planned, the
 // readback names why, and not one register is written - although the core
-// says certified and control is enabled. hybrid_1p has its own ToU register
-// map (steuerplan/deye.go) and reaches the same gate as hybrid_3p, but carries
-// no entry, so it stays useful to prove the gate still blocks after hybrid_3p
-// was released.
+// says certified and control is enabled. Both Deye families carrying a ToU
+// register map (hybrid_3p, hybrid_1p) are released by now (see
+// TestSteuernHybrid3pFreigegebenSchreibtOhnePruefstand and
+// TestSteuernHybrid1pFreigegebenSchreibtOhnePruefstand), so this test clears
+// the table for its own duration to keep proving the general mechanism: no
+// entry, no write frame - regardless of which family it is.
 func TestSteuernOhneFreigabeSchreibtNichts(t *testing.T) {
+	alt := freigaben
+	freigaben = nil
+	t.Cleanup(func() { freigaben = alt })
 	r, l, _ := steuerRig(t)
 	remoteDeye(r.sim)
-	r.selectSteuerDeyeFamilie("hybrid_1p")
+	r.selectSteuerDeye()
 	m := readbackUntil(t, r, l, nil, func(m map[string]any) bool { return m["blocked"] == true })
 	if reason, _ := m["reason"].(string); !strings.Contains(reason, "Edge Light") || !strings.Contains(reason, "Prüfstand") {
 		t.Fatalf("Grund: %v", m)
@@ -119,6 +125,29 @@ func TestSteuernHybrid3pFreigegebenSchreibtOhnePruefstand(t *testing.T) {
 	r, l, _ := steuerRig(t)
 	remoteDeye(r.sim)
 	r.selectSteuerDeye()
+	m := readbackUntil(t, r, l, nil, func(m map[string]any) bool { return m["all_match"] == true })
+	if m["control_path"] != "remote" || m["wrote"] != true || m["certified"] != true {
+		t.Fatalf("Rueckmeldung: %v", m)
+	}
+	if w := r.sim.Writes(); len(w) == 0 {
+		t.Fatalf("mit Freigabe nicht geschrieben")
+	}
+	readbackUntil(t, r, l, map[string]any{"control_enabled": false}, func(m map[string]any) bool {
+		return m["mode"] == "release" && m["all_match"] == true
+	})
+	if v := r.sim.Reg(0x044c); v != 0 {
+		t.Fatalf("1100 nach der Rueckgabe = %d", v)
+	}
+}
+
+// hybrid_1p (remote) carries its own ToU register map but the same PR-978
+// remote block as hybrid_3p, and is released in freigaben without a bench
+// build since 20.11.2026 on the same grounds (PR #1965's shared vectors
+// cover both families).
+func TestSteuernHybrid1pFreigegebenSchreibtOhnePruefstand(t *testing.T) {
+	r, l, _ := steuerRig(t)
+	remoteDeye(r.sim)
+	r.selectSteuerDeyeFamilie("hybrid_1p")
 	m := readbackUntil(t, r, l, nil, func(m map[string]any) bool { return m["all_match"] == true })
 	if m["control_path"] != "remote" || m["wrote"] != true || m["certified"] != true {
 		t.Fatalf("Rueckmeldung: %v", m)
