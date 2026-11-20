@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten"]` (Docker-Box; Edge Light ohne `measurement_config_per_component` und mit `koppelbild`, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten"]` (Docker-Box; Edge Light mit zusätzlich `koppelbild`, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -40,9 +40,10 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   ihn je Ziel einmal und sendet je Komponente ein Sample mit ihrer `entity_id`
   ([`measurement-samples` 2.1 §2](mqtt-measurement-samples-2.1.md)). `MeasurementConfigPublisher`
   fragt dieses Wort; ohne es bekommt die Box den zusammengelegten Plan Byte für Byte wie bisher.
-  **Gemeldet** (Entscheid firstmate 23.09.2026 A, wirksam mit dem nächsten Box-Release): Core
-  (`measurements.geteiltePunkte` in Plan, lokalem Stapel und Status) und Node-RED
-  (`measurement-planner.js` `lesungenJeZiel`) lesen den Punkt je Ziel einmal in der schnellsten
+  **Gemeldet von beiden Box-Arten** (Entscheid firstmate 23.09.2026 A, erweitert auf Edge Light
+  mit B15 des Pi-Ablösung-Konzepts): Core (`measurements.geteiltePunkte` in Plan, lokalem Stapel
+  und Status), Node-RED (`measurement-planner.js` `lesungenJeZiel`) und Edge Lights
+  Messwerte-Bibliothek (`internal/messwerte`) lesen den Punkt je Ziel einmal in der schnellsten
   Kadenz; eine Ablehnung nur einer Komponente nennt deren `entity_id`
   ([`mqtt-measurement-config-status`](mqtt-measurement-config-status.schema.json)
   `x-rejection-entity-rule`). Eingeschaltet, nachdem Punktzustand, Cloud-Status je Komponente,
@@ -176,16 +177,15 @@ Box-Art (`edgemain.Options.BoxArt`): `cloud.BuiltSupports(boxArt)` gibt die List
 das Backend (`light` bzw. `compose`), mit dem die Box auch ein Release prüft. Eine Edge-Light-Box ab diesem Stand meldet
 also `light`; ältere Stände melden weiter `compose`, darum bleibt die Erkennung am Versionsstempel in der API bestehen.
 
-Die Vektoren sagen je Wort, welche Box-Art es trägt: `box_arten` (wahlfrei; fehlt = beide). Edge Light hat keine
-Node-RED-Palette und meldet darum `measurement_config_per_component` nicht (`box_arten: ["docker"]`): dessen Weg endet in
-der Palette.
-`erzeuger_registerbild` und `anlagensteuerung_quelle` melden seit Stufe 2 des PFC200-Konzepts beide Box-Arten: Edge Light
-liest das Erzeuger-Bild mit dem Go-Zwilling (`internal/erzeugerbild`, verdrahtet in `internal/layer1/erzeuger.go`), der gegen
-die Vertrags-Vektoren und die aus der Palette erzeugten `erzeuger-laufzeit-vectors.json` geprüft ist.
+Die Vektoren sagen je Wort, welche Box-Art es trägt: `box_arten` (wahlfrei; fehlt = beide).
+`erzeuger_registerbild`, `anlagensteuerung_quelle` und seit B15 (Pi-Ablösung-Konzept) auch `measurement_config_per_component`
+melden beide Box-Arten: Edge Light liest das Erzeuger-Bild mit dem Go-Zwilling (`internal/erzeugerbild`, verdrahtet in
+`internal/layer1/erzeuger.go`), der gegen die Vertrags-Vektoren und die aus der Palette erzeugten
+`erzeuger-laufzeit-vectors.json` geprüft ist, und die Messwerte-Bibliothek (`internal/messwerte`) liest einen geteilten
+Punkt ebenso je Ziel einmal wie die Palette der Docker-Box. Damit bekommt eine Anlagensteuerung an einer Edge Light den
+Mess-Plan mit `entity_id` je Komponente statt des zusammengelegten Plans: zwei Anlagensteuerungen an einer Box, die sich
+Punktnamen teilen, werden einander zugeordnet statt benannt abgelehnt (`driver_unavailable`).
 `koppelbild` meldet nur Edge Light (`box_arten: ["edge_light"]`): das Koppelbild läuft in Layer 1, die Docker-Box hat keines.
-Auf Edge Light kommen Erzeuger-Punkte im zusammengelegten Plan an; zwei Anlagensteuerungen an einer Edge Light teilen sich
-die Punktnamen und werden dort ohne `entity_id` gesendet, die Box lehnt sie dann benannt ab (`driver_unavailable`), statt sie
-einer Steuerung zuzuordnen.
 Das Feld liest nur der Go-Test (`cloud/edge_supports_test.go`); Java und TS überlesen es.
 
 Auch die Tabelle `edge-capabilities.json` kennt die Box-Art nicht: `BoxFaehigkeiten.effective` ordnet nach `release_seq`

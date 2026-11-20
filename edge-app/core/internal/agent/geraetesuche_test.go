@@ -85,9 +85,10 @@ func TestEdgeLightSuchtOhneFlashUndMeldetSichAlsLight(t *testing.T) {
 	}
 	supports := cloud.BuiltSupports(a.boxArt())
 	// The Erzeuger image Edge Light reads with the Go twin (PFC200 Stufe 2);
-	// the shared point read once per target stays the palette's.
+	// since B15 (Pi-Ablösung-Konzept) the Messwerte-Bibliothek also reads a
+	// shared point once per target, so Edge Light reports the word too.
 	if !slices.Contains(supports, "geraetesuche") || !slices.Contains(supports, "erzeuger_registerbild") ||
-		slices.Contains(supports, "measurement_config_per_component") {
+		!slices.Contains(supports, "measurement_config_per_component") {
 		t.Fatalf("Edge Light supports %v", supports)
 	}
 	if a.geraetesucheOffenPfad() != "" {

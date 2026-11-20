@@ -38,11 +38,13 @@ type StatusExtension struct {
 // lowering-only under its own watchdogs and reports it once
 // (agent/sprungprobe.go, internal/sprungprobe).
 // measurement_config_per_component (AP-07 IP-18b): the core accepts a shared
-// point once per component (measurements.geteiltePunkte) and the palette reads
-// it once per target, one sample per component. Reported since its follow-ups
-// exist in the cloud - point state, per-component status, revision push and the
-// summing guard at Bilanz, formula and Kennzahl, visible in the portal
-// (decision firstmate 23.09.2026 A, "Summen-Waechter komplett").
+// point once per component (measurements.geteiltePunkte) and reads it once per
+// target, one sample per component - the Docker box's palette and Edge Light's
+// Messwerte-Bibliothek (internal/messwerte) both already do this deduplication.
+// Reported by both box types since its follow-ups exist in the cloud - point
+// state, per-component status, revision push and the summing guard at Bilanz,
+// formula and Kennzahl, visible in the portal (decision firstmate 23.09.2026 A,
+// "Summen-Waechter komplett"; B15, Pi-Ablösung-Konzept, extended to Edge Light).
 // erzeuger_registerbild (EZ-5): the core carries erzeugerbilder and the probe
 // op erzeuger_kopf, and the palette reads the Erzeuger image every 5 s and
 // sends its points with quality and events (measurements/erzeuger-*.js;
@@ -122,11 +124,12 @@ type StatusExtension struct {
 // translations only to a box reporting it.
 //
 // EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
-// Edge Light has no Node-RED palette, so the shared point read once per target
-// is the Docker box's only (edge-supports-vectors.json box_arten). The Erzeuger
-// image reader and the plant-controller binding are both box types' since
-// Edge Light reads the image with the Go twin (internal/erzeugerbild, wired in
-// layer1/erzeuger.go - PFC200 concept Stufe 2).
+// measurement_config_per_component is both box types' (B15, Pi-Ablösung-
+// Konzept): Edge Light's Messwerte-Bibliothek (internal/messwerte) already
+// reads a shared point once per target, same as the Docker box's palette. The
+// Erzeuger image reader and the plant-controller binding are both box types'
+// too, since Edge Light reads the image with the Go twin (internal/
+// erzeugerbild, wired in layer1/erzeuger.go - PFC200 concept Stufe 2).
 //
 // koppelbild (PFC200 Stufe 4, koppelbild.md §15): Layer 1 reads the
 // acknowledgement and writes the telegram of a controller's Koppelbild in the
@@ -136,10 +139,7 @@ type StatusExtension struct {
 // the Docker box never reports it.
 func BuiltSupports(boxArt string) []string {
 	out := []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
-		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe"}
-	if boxArt != geraetesuche.BoxArtEdgeLight {
-		out = append(out, "measurement_config_per_component")
-	}
+		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component"}
 	out = append(out, "erzeuger_registerbild", "anlagensteuerung_quelle")
 	out = append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
 		"modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten")

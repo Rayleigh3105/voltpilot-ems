@@ -594,7 +594,7 @@ class GeraetesucheApiTest {
         return root.queryForObject("SELECT count(*) FROM geraetesuche WHERE device_id = ?", Long.class, w.box());
     }
 
-    /** Der Status-Herzschlag einer Edge Light: {@code supports} ohne das Palette-Wort ({@code box_arten}). */
+    /** Der Status-Herzschlag einer Edge Light: {@code supports} nach ihren eigenen {@code box_arten}. */
     private static ObjectNode ersterHerzschlagEinerEdgeLight(Welt w) throws Exception {
         JsonNode vektoren = MAPPER.readTree(Files.readString(Path.of("../../docs/contracts/v2/edge-supports-vectors.json")));
         ObjectNode herzschlag = MAPPER.createObjectNode().put("schema_version", "1.0")
@@ -607,7 +607,7 @@ class GeraetesucheApiTest {
             boolean edgeLight = beideArten || f.path("box_arten").toString().contains("\"edge_light\"");
             if (f.path("advertised").asBoolean() && edgeLight) supports.add(f.path("name").asText());
         }
-        assertThat(supports.toString()).contains("\"geraetesuche\"").doesNotContain("measurement_config_per_component");
+        assertThat(supports.toString()).contains("\"geraetesuche\"").contains("\"measurement_config_per_component\"");
         return herzschlag;
     }
 
