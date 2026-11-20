@@ -28,8 +28,8 @@ import (
 type Options struct {
 	// Name is the program name in the start/stop log lines.
 	Name string
-	// BoxArt is the box type this binary is (geraetesuche.BoxArtDocker or
-	// BoxArtEdgeLight): it decides supports[], update.backend and what the
+	// BoxArt is the box type this binary is (geraetesuche.BoxArtDocker,
+	// BoxArtEdgeLight or BoxArtEdgeIndustrie): it decides supports[], update.backend and what the
 	// device search can see (edge-supports.md "Je Box-Art").
 	BoxArt string
 	// Extra runs after the agent started (its local bus is up) and until ctx

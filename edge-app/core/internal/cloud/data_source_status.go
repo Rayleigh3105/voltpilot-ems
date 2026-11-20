@@ -143,18 +143,21 @@ func BuiltSupports(boxArt string) []string {
 	out = append(out, "erzeuger_registerbild", "anlagensteuerung_quelle")
 	out = append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
 		"modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten")
-	if boxArt == geraetesuche.BoxArtEdgeLight {
+	if geraetesuche.GoKern(boxArt) {
 		out = append(out, "koppelbild")
 	}
 	return out
 }
 
 // UpdateBackend is the apply backend a box type reports in update.backend and
-// verifies a release against: light for Edge Light (vp-edge-light), compose
-// for the Docker box.
+// verifies a release against: light for Edge Light (vp-edge-light), industrie
+// for Edge Industrie (vp-edge-industrie), compose for the Docker box.
 func UpdateBackend(boxArt string) string {
-	if boxArt == geraetesuche.BoxArtEdgeLight {
+	switch boxArt {
+	case geraetesuche.BoxArtEdgeLight:
 		return UpdateBackendLight
+	case geraetesuche.BoxArtEdgeIndustrie:
+		return UpdateBackendIndustrie
 	}
 	return UpdateBackendCompose
 }

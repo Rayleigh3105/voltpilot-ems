@@ -56,8 +56,8 @@ C="vppu-$$"
 ARBEIT="$(mktemp -d)"
 OK=0
 FEHLER=0
-ALT=edge-light-2026.11.1
-NEU=edge-light-2026.11.2
+ALT=edge-industrie-2026.11.1
+NEU=edge-industrie-2026.11.2
 LADER=/home/voltpilot/libexec/boot.sh
 LD=/home/voltpilot/fassung
 N=vp-edge-industrie-linux-arm
@@ -131,7 +131,7 @@ case "$1" in
   version)
     case '@ART@' in
       arch) echo 'exec format error' >&2; exit 126 ;;
-      fassung) echo edge-light-2099.01.0; exit 0 ;;
+      fassung) echo edge-industrie-2099.01.0; exit 0 ;;
     esac
     echo '@REL@'; exit 0 ;;
 esac
@@ -227,7 +227,7 @@ frisch
 bestaetigt "$ALT" einzeilig
 r "printf '%s\n' 'env = VP_REF=VP-1234' 'env = VP_PROBE_TEXT=zwei Worte = ja' 'env = VP_MIRROR_PORT=502' 'env = VP_LOADER_PATH=/tmp/fremd.sh' 'env = VP_WAGO_BESTELLNUMMER=750-0000' 'env = 9FALSCH=x' 'env = ohne-gleich' >>/home/voltpilot/konfig"
 lauf
-warte "die bestaetigte Fassung startet" 'grep -q "PROGRAMM edge-light-2026.11.1 GESTARTET" /probe/lauf.out'
+warte "die bestaetigte Fassung startet" 'grep -q "PROGRAMM edge-industrie-2026.11.1 GESTARTET" /probe/lauf.out'
 pruef "das Programm bekommt VP_OTA_RAM_DIR, Datenverzeichnis, Web-Adresse" "grep -q 'ota_ram=$RAM' /probe/lauf.out && grep -qx 'VP_DATA_DIR=/home/voltpilot/daten' /probe/umgebung && grep -qx 'VP_HTTP_ADDR=:8484' /probe/umgebung"
 pruef "env-Zeilen kommen an, auch mit Leerzeichen und Gleichheitszeichen im Wert" "grep -qx 'VP_REF=VP-1234' /probe/umgebung && grep -qx 'VP_PROBE_TEXT=zwei Worte = ja' /probe/umgebung"
 pruef "VP_MIRROR_PORT ist fest 1502 - eine env-Zeile aendert das nicht" "[ \"\$(grep -c '^VP_MIRROR_PORT=' /probe/umgebung)\" = 1 ] && grep -qx 'VP_MIRROR_PORT=1502' /probe/umgebung"
@@ -252,7 +252,7 @@ kandidat gut 42 z-1
 lauf
 warte "Marke start im Flash" "grep -qx 'start 42 z-1' $FEST/versuche"
 warte "Urteil bestanden -> behalten (Marke ok)" "grep -qx 'ok 42 z-1' $FEST/versuche"
-pruef "die neue Fassung lief zur Probe" 'grep -q "PROGRAMM edge-light-2026.11.2 GESTARTET" /probe/lauf.out'
+pruef "die neue Fassung lief zur Probe" 'grep -q "PROGRAMM edge-industrie-2026.11.2 GESTARTET" /probe/lauf.out'
 pruef "Pruefsummen im Flash: Programm und Kopie der neuen Fassung" \
   "[ \"\$(sed -n 1p $LD/$N.sha256 | cut -d' ' -f1)\" = \"\$(sha256sum /probe/kandidat-roh | cut -d' ' -f1)\" ] && [ \"\$(sed -n 2p $LD/$N.sha256 | cut -d' ' -f1)\" = \"\$(sha256sum $LD/$N.gz | cut -d' ' -f1)\" ]"
 pruef "groesse-Zeile im Flash (Schwelle des naechsten Starts)" \
@@ -262,7 +262,7 @@ pruef "das Programm laeuft nach dem Behalten weiter" '[ ! -f /probe/lauf.rc ]'
 stopp
 strom_aus
 lauf
-warte "nach Strom aus/an startet die neue Fassung aus dem Flash" 'grep -q "PROGRAMM edge-light-2026.11.2 GESTARTET" /probe/lauf.out'
+warte "nach Strom aus/an startet die neue Fassung aus dem Flash" 'grep -q "PROGRAMM edge-industrie-2026.11.2 GESTARTET" /probe/lauf.out'
 pruef "ohne Abbruch-Marke (die Probe war beendet)" "! grep -q '^abbruch' $FEST/versuche"
 stopp
 
@@ -271,14 +271,14 @@ frisch
 kandidat arch 43 z-2
 lauf
 warte "zurueck: Probestart gescheitert" "grep -q '^zurueck 43 z-2 Probestart gescheitert: Programm startet nicht' $FEST/versuche"
-warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-light-2026.11.1 GESTARTET" /probe/lauf.out'
+warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-industrie-2026.11.1 GESTARTET" /probe/lauf.out'
 pruef "keine Marke start (nie zur Probe gestartet)" "! grep -q '^start' $FEST/versuche"
 pruef "der Flash ist unveraendert" "[ \"\$(sha256sum $LD/$N.gz | cut -d' ' -f1)\" = \"\$(sed -n 2p $LD/$N.sha256 | cut -d' ' -f1)\" ] && gunzip -c $LD/$N.gz | grep -q $ALT"
 stopp
 frisch
 kandidat fassung 44 z-3
 lauf
-warte "zurueck: meldet eine andere Fassung" "grep -q \"^zurueck 44 z-3 Probestart gescheitert: meldet Fassung 'edge-light-2099.01.0' statt $NEU\" $FEST/versuche"
+warte "zurueck: meldet eine andere Fassung" "grep -q \"^zurueck 44 z-3 Probestart gescheitert: meldet Fassung 'edge-industrie-2099.01.0' statt $NEU\" $FEST/versuche"
 stopp
 
 schritt "3. Absturz in der Probe (P3)"
@@ -291,8 +291,8 @@ done
 pruef "nach drei Abstuerzen noch keine Ruecknahme" "! grep -q '^zurueck' $FEST/versuche"
 lauf
 warte "vierter Start: zurueck statt eines vierten Versuchs" "grep -q '^zurueck 45 z-4 in der Probezeit 3-mal abgestuerzt' $FEST/versuche"
-warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-light-2026.11.1 GESTARTET" /probe/lauf.out'
-pruef "die neue Fassung lief nicht ein viertes Mal" '! grep -q "PROGRAMM edge-light-2026.11.2" /probe/lauf.out'
+warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-industrie-2026.11.1 GESTARTET" /probe/lauf.out'
+pruef "die neue Fassung lief nicht ein viertes Mal" '! grep -q "PROGRAMM edge-industrie-2026.11.2" /probe/lauf.out'
 stopp
 
 schritt "4. Keine Cloud in der Probezeit (P4/P6)"
@@ -306,7 +306,7 @@ uhr 1601
 warte "Frist um: der Waechter beendet das Programm" '[ -f /probe/lauf.rc ]'
 lauf
 warte "zurueck mit dem Grund des offenen Urteils" "grep -q '^zurueck 46 z-5 keine Cloud-Verbindung in der Probezeit' $FEST/versuche"
-warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-light-2026.11.1 GESTARTET" /probe/lauf.out'
+warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-industrie-2026.11.1 GESTARTET" /probe/lauf.out'
 stopp
 
 schritt "5. Selbsttest durchgefallen"
@@ -317,7 +317,7 @@ warte "der Waechter beendet die Probe sofort" '[ -f /probe/lauf.rc ]'
 lauf
 # Der Grund traegt ein Anfuehrungszeichen und ein ue als \u00fc (zwei Bytes).
 warte "zurueck mit dem Grund des Selbsttests (Maskierungen aufgeloest)" "grep -q '^zurueck 47 z-6 Selbsttest nicht bestanden: \"Steuerpfad\" gepr..ft\$' $FEST/versuche"
-warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-light-2026.11.1 GESTARTET" /probe/lauf.out'
+warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-industrie-2026.11.1 GESTARTET" /probe/lauf.out'
 stopp
 
 schritt "6. Faelschung im RAM (P10)"
@@ -325,8 +325,8 @@ frisch
 kandidat gut 48 z-7 kaputt
 lauf
 warte "zurueck: Lieferung passt nicht" "grep -q '^zurueck 48 z-7 Lieferung im RAM passt nicht zur Pruefsumme' $FEST/versuche"
-warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-light-2026.11.1 GESTARTET" /probe/lauf.out'
-pruef "nie gestartet" '! grep -q "PROGRAMM edge-light-2026.11.2" /probe/lauf.out'
+warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-industrie-2026.11.1 GESTARTET" /probe/lauf.out'
+pruef "nie gestartet" '! grep -q "PROGRAMM edge-industrie-2026.11.2" /probe/lauf.out'
 stopp
 
 schritt "7. Strom weg in der Probe (P8)"
@@ -334,10 +334,10 @@ frisch
 for n in 1 2; do
   kandidat offen 49 z-8
   lauf
-  warte "Probe $n laeuft" "[ -f $RAM/probe.json ] && grep -q 'PROGRAMM edge-light-2026.11.2' /probe/lauf.out"
+  warte "Probe $n laeuft" "[ -f $RAM/probe.json ] && grep -q 'PROGRAMM edge-industrie-2026.11.2' /probe/lauf.out"
   strom_aus
   lauf
-  warte "kalter Start $n: die alte Fassung startet" 'grep -q "PROGRAMM edge-light-2026.11.1 GESTARTET" /probe/lauf.out'
+  warte "kalter Start $n: die alte Fassung startet" 'grep -q "PROGRAMM edge-industrie-2026.11.1 GESTARTET" /probe/lauf.out'
   stopp
 done
 pruef "zwei Abbruch-Marken (das Programm gibt danach auf, otalight.AbbruchMax)" "[ \"\$(grep -c '^abbruch 49 z-8' $FEST/versuche)\" = 2 ]"
@@ -354,7 +354,7 @@ for art in halb fehlt; do
   if [ "$art" = halb ]; then x "head -c 300 $LD/$N.gz >/probe/h && mv /probe/h $LD/$N.gz"; else x "rm -f $LD/$N.gz"; fi
   x 'rm -f /probe/abrufe'
   lauf
-  warte "Kopie $art: genau diese Fassung wird nachgeladen und gestartet" 'grep -q "PROGRAMM edge-light-2026.11.2 GESTARTET" /probe/lauf.out'
+  warte "Kopie $art: genau diese Fassung wird nachgeladen und gestartet" 'grep -q "PROGRAMM edge-industrie-2026.11.2 GESTARTET" /probe/lauf.out'
   pruef "Kopie $art: abgerufen nach ihrer Pruefsumme" "grep -q \"/api/v1/edge/light-programm/\$(sed -n 2p $LD/$N.sha256 | cut -d' ' -f1)\" /probe/abrufe"
   pruef "Kopie $art: die Kopie im Flash ist wiederhergestellt" "[ \"\$(sha256sum $LD/$N.gz | cut -d' ' -f1)\" = \"\$(sed -n 2p $LD/$N.sha256 | cut -d' ' -f1)\" ]"
   stopp
@@ -412,7 +412,7 @@ if [ -f "$ECHT" ]; then
   bestaetigt "$ALT"
   lauf
   warte "zurueck mit dem Grund aus dem Urteil des echten Programms" "grep -q '^zurueck 60 z-echt keine Cloud-Verbindung in der Probezeit' $FEST/versuche"
-  warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-light-2026.11.1 GESTARTET" /probe/lauf.out'
+  warte "die alte Fassung startet" 'grep -q "PROGRAMM edge-industrie-2026.11.1 GESTARTET" /probe/lauf.out'
   stopp
   ksetze version_frist 2
 else

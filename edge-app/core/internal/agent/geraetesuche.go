@@ -27,23 +27,23 @@ import (
 // mDNS/SSDP/Speedwire and the vendor list; the order in RAM only.
 
 func (a *Agent) boxArt() string {
-	if a.Cfg.BoxArt == geraetesuche.BoxArtEdgeLight {
-		return geraetesuche.BoxArtEdgeLight
+	if geraetesuche.GoKern(a.Cfg.BoxArt) {
+		return a.Cfg.BoxArt
 	}
 	return geraetesuche.BoxArtDocker
 }
 
 // geraetesucheOffenPfad is where the Docker box keeps the open order; ""
-// on Edge Light, which writes nothing to its flash.
+// on the Go core (Edge Light, Edge Industrie), which writes nothing to its flash.
 func (a *Agent) geraetesucheOffenPfad() string {
-	if a.boxArt() == geraetesuche.BoxArtEdgeLight || a.Cfg.DataDir == "" {
+	if geraetesuche.GoKern(a.boxArt()) || a.Cfg.DataDir == "" {
 		return ""
 	}
 	return filepath.Join(a.Cfg.DataDir, "geraetesuche-offen.json")
 }
 
 func (a *Agent) neueGeraetesuche() *suche.Leitung {
-	edgeLight := a.boxArt() == geraetesuche.BoxArtEdgeLight
+	edgeLight := geraetesuche.GoKern(a.boxArt())
 	offen := a.geraetesucheOffenPfad()
 	return suche.NeueLeitung(suche.LeitungOptionen{
 		BoxArt: a.boxArt(),

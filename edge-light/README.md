@@ -21,8 +21,8 @@ Benötigt Go ≥ 1.24 **oder** Docker (die Skripte wählen selbst).
 
 ```bash
 edge-light/scripts/test.sh          # Vektoren, Go-Tests (mit Race-Detector), MIPS-Build, ARMv7-Build, Loader-Abgleich Edge Industrie, Tunnel-Programm vp-wartung, Prüfregel der Schlüsselausgabe
-edge-light/scripts/build.sh         # dist/vp-edge-light-linux-{mipsle,arm64,arm,amd64} + .sha256
-edge-light/scripts/release.sh edge-light-JJJJ.MM.N <ausgabe>  # eine Fassung: mipsle, arm64, arm, Skriptstand, sha256sums (nur lokales Go)
+edge-light/scripts/build.sh         # dist/vp-edge-light-linux-{mipsle,arm64,amd64} + .sha256 (linux/arm: edge-industrie/scripts/build.sh)
+edge-light/scripts/release.sh edge-light-JJJJ.MM.N <ausgabe>  # eine Fassung: mipsle, arm64, Skriptstand, sha256sums (nur lokales Go)
 edge-light/test/qemu-smoke.sh       # MIPS-Programm unter Emulation gegen simulierten Deye
 edge-light/test/verbraucherregel-probe.sh  # Fahrplan-Slot und reaktive Verbraucherregel gegen simulierte Verbraucher
 edge-light/test/steuerlogik-probe.sh       # Steuerlogik: Logik-Dienst baut, Box laesst mitlaufen, Herzschlag-Block logik, nichts geschaltet
@@ -56,7 +56,9 @@ Eine Deye-Freigabe, die mit dem Node-RED-Ausführer der Docker-Box erworben wurd
 Für die Sitzung am Prüfstand gibt es den Prüfstand-Build, der die Freigabe für alle Familien öffnet und beim Start laut warnt:
 
 ```bash
-(cd edge-app/core && GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -tags pruefstand -o /tmp/vp-edge-light-pruefstand ./cmd/vp-edge-light)
+(cd edge-app/core && GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 go build -tags pruefstand -o /tmp/vp-edge-light-pruefstand ./cmd/vp-edge-light)
+# auf einem WAGO PFC200 (Edge Industrie, dieselbe Freigabe-Liste):
+(cd edge-app/core && GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -tags pruefstand -o /tmp/vp-edge-industrie-pruefstand ./cmd/vp-edge-industrie)
 ```
 
 Er läuft nur am Prüfgerät und wird nie ausgeliefert: `build.sh` verweigert den Tag, und `test.sh` prüft das Release-Programm.
@@ -78,7 +80,7 @@ Der Dropbear des Mango-Images kennt nur **RSA**-Schlüssel (kein Ed25519) – f�
 
 ## Edge Industrie (WAGO PFC200)
 
-Derselbe Kern für ARMv7 heißt Edge Industrie und hat seinen eigenen Ordner [edge-industrie/](../edge-industrie/README.md): Einrichtung, Loader, Dienst, Proben und die Handgriffe am Gerät.
+Derselbe Kern für ARMv7 heißt Edge Industrie (`cmd/vp-edge-industrie`, Box-Art `edge_industrie`, Backend `industrie`, eigene Release-Linie `edge-industrie-JJJJ.MM.N`) und hat seinen eigenen Ordner [edge-industrie/](../edge-industrie/README.md): Einrichtung, Loader, Dienst, Bau, Proben und die Handgriffe am Gerät.
 Sein Loader spricht wortgleich das Update-Protokoll des Mango-Loaders; `test.sh` prüft das mit `edge-industrie/scripts/loader-abgleich.sh`.
 
 ## Aufbau

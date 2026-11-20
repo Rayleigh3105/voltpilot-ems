@@ -52,14 +52,26 @@ var Erkenner = []string{"solarman", "shelly", "goe", "netztechnik", "modbus_offe
 	"mdns", "ssdp", "funkmodul"}
 
 // Wege are recognisers that produce no find of their own (multicast and the
-// neighbours' MAC addresses): they only run on Edge Light.
+// neighbours' MAC addresses): they only run on the Go core (Edge Light,
+// Edge Industrie).
 var Wege = []string{"mdns", "ssdp", "funkmodul"}
 
-// Box types as the catalog names them.
+// Box types as the catalog names them. Edge Light (the Mango) and Edge
+// Industrie (the WAGO PFC200) run the same Go core with Layer 1 ([GoKern]);
+// what the box CAN do follows that, the word names the device line.
 const (
-	BoxArtDocker    = "docker"
-	BoxArtEdgeLight = "edge_light"
+	BoxArtDocker        = "docker"
+	BoxArtEdgeLight     = "edge_light"
+	BoxArtEdgeIndustrie = "edge_industrie"
 )
+
+// GoKern says whether boxArt runs the Go core with Layer 1 (Edge Light or
+// Edge Industrie) - the neutral question behind every "native" path: device
+// search on its own interfaces, nothing in flash, the program update, the
+// Koppelbild.
+func GoKern(boxArt string) bool {
+	return boxArt == BoxArtEdgeLight || boxArt == BoxArtEdgeIndustrie
+}
 
 // Words of a find.
 const (
@@ -102,7 +114,8 @@ type KatalogZeile struct {
 	Schnitt       int
 	Communication string
 	Docker        string
-	EdgeLight     string
+	// GoKern is what the Go core reports (Edge Light and Edge Industrie).
+	GoKern string
 }
 
 // Katalog is erkennungskatalog of the vectors (the test pins both together).
@@ -139,8 +152,8 @@ func KatalogPaar(erkenner, art string) (KatalogZeile, bool) {
 
 // Anbindung is what boxArt reports for the row ("" = the pair does not occur there).
 func (z KatalogZeile) Anbindung(boxArt string) string {
-	if boxArt == BoxArtEdgeLight {
-		return z.EdgeLight
+	if GoKern(boxArt) {
+		return z.GoKern
 	}
 	return z.Docker
 }

@@ -93,7 +93,7 @@ func (a *Agent) wiederfindenQuellen() []bekannteQuelle {
 // into a real network, same discipline throughout this package.
 func (a *Agent) wiederfindenUmgebung() suche.Umgebung {
 	u := suche.Umgebung{BoxArt: a.boxArt(), Dial: a.geraetesucheDial, Takt: a.netzTakt}
-	if u.BoxArt != geraetesuche.BoxArtEdgeLight {
+	if !geraetesuche.GoKern(u.BoxArt) {
 		return u
 	}
 	u.Schnittstellen, u.Routen, u.Nachbarn = suche.SystemSchnittstellen, suche.SystemRouten, suche.SystemNachbarn
@@ -139,7 +139,7 @@ func (a *Agent) startWiederfindenWatch(ctx context.Context) {
 // already-configured device stays excluded from re-probing, the "Ein-Client-
 // Geräte" rule) and adopt what it confirms for each device found missing.
 func (a *Agent) wiederfindenTick(ctx context.Context) {
-	if a.boxArt() != geraetesuche.BoxArtEdgeLight {
+	if !geraetesuche.GoKern(a.boxArt()) {
 		return
 	}
 	quellen := a.wiederfindenQuellen()

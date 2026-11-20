@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Baut Edge Industrie fuer den WAGO PFC200 G2 (Cortex-A8, ARMv7, GOARM=7):
-# dasselbe Programm wie Edge Light (Kern edge-app/core), nur unter dem Namen
-# vp-edge-industrie.
+# derselbe Kern wie Edge Light (edge-app/core/internal/kernmain) als eigenes
+# Programm vp-edge-industrie (Box-Art edge_industrie, Backend industrie).
 #
 # Ergebnis in edge-industrie/dist/ (oder VP_INDUSTRIE_DIST): das Programm
 # (statisch, ohne Symbole) plus eine .sha256-Datei im Format von sha256sum.
 # Der Loader auf dem Geraet prueft genau diese Pruefsumme, bevor er startet.
 #
 #   edge-industrie/scripts/build.sh
-#   VP_INDUSTRIE_VERSION=edge-light-2026.11.1 edge-industrie/scripts/build.sh
+#   VP_INDUSTRIE_VERSION=edge-industrie-2026.11.1 edge-industrie/scripts/build.sh
 #
-# Bis Edge Industrie eigene Fassungen hat, traegt das Programm den Stempel der
-# Edge-Light-Linie (edge-light-JJJJ.MM.N).
+# Ohne VP_INDUSTRIE_VERSION traegt das Programm den Stempel aus dem letzten Tag
+# der Linie (edge-industrie-JJJJ.MM.N-<n>-g<commit>, industrie_version).
 # shellcheck source=edge-light/scripts/lib.sh
 source "$(dirname "$0")/../../edge-light/scripts/lib.sh"
 
@@ -28,7 +28,7 @@ if [ "$#" -gt 0 ]; then
   exit 2
 fi
 
-VERSION="${VP_INDUSTRIE_VERSION:-$(light_version)}"
+VERSION="${VP_INDUSTRIE_VERSION:-$(industrie_version)}"
 DIST="${VP_INDUSTRIE_DIST:-$REPO_ROOT/edge-industrie/dist}"
 mkdir -p "$DIST"
 
@@ -36,7 +36,7 @@ LDFLAGS="-s -w -X git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ag
 
 out="$DIST/vp-edge-industrie-linux-arm"
 echo "--- baue $out ($VERSION)"
-go_run GOOS=linux CGO_ENABLED=0 GOARCH=arm GOARM=7 -- build -trimpath -ldflags "$LDFLAGS" -o "$(core_rel "$out")" ./cmd/vp-edge-light
+go_run GOOS=linux CGO_ENABLED=0 GOARCH=arm GOARM=7 -- build -trimpath -ldflags "$LDFLAGS" -o "$(core_rel "$out")" ./cmd/vp-edge-industrie
 (cd "$DIST" && sha256sum "$(basename "$out")" >"$(basename "$out").sha256")
 awk -v b="$(wc -c <"$out")" 'BEGIN {printf "    %.1f MB\n", b / 1048576}'
 

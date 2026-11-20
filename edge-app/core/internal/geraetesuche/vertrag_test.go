@@ -38,7 +38,8 @@ type vektoren struct {
 	Gruende  map[string][]string `json:"gruende"`
 	Erkenner []string            `json:"erkenner"`
 	Wege     struct {
-		Namen []string `json:"namen"`
+		Namen    []string `json:"namen"`
+		BoxArten []string `json:"box_arten"`
 	} `json:"wege"`
 	NetztechnikArten  []string `json:"netztechnik_arten"`
 	WeitereArten      []string `json:"weitere_arten"`
@@ -48,7 +49,7 @@ type vektoren struct {
 		Schnitt       int     `json:"schnitt"`
 		Communication *string `json:"communication"`
 		Docker        *string `json:"docker"`
-		EdgeLight     *string `json:"edge_light"`
+		GoKern        *string `json:"go_kern"`
 	} `json:"erkennungskatalog"`
 	Auftrag familie `json:"auftrag"`
 	Frist   []struct {
@@ -296,6 +297,18 @@ func TestVokabularUndGrenzenSindDieDerVektoren(t *testing.T) {
 		!reflect.DeepEqual(v.Wege.Namen, Wege) || !reflect.DeepEqual(v.NetztechnikArten, NetztechnikArten) {
 		t.Fatal("vocabulary differs from the vectors")
 	}
+	// The ways run on the Go core only - on both of its device lines.
+	if !reflect.DeepEqual(v.Wege.BoxArten, []string{BoxArtEdgeLight, BoxArtEdgeIndustrie}) {
+		t.Fatalf("wege.box_arten %v", v.Wege.BoxArten)
+	}
+	for _, art := range v.Wege.BoxArten {
+		if !GoKern(art) {
+			t.Fatalf("wege.box_arten: %s is no Go core", art)
+		}
+	}
+	if GoKern(BoxArtDocker) || GoKern("") {
+		t.Fatal("the Docker box is no Go core")
+	}
 	if len(v.Erkennungskatalog) != len(Katalog) {
 		t.Fatalf("catalog: %d rows, Go %d", len(v.Erkennungskatalog), len(Katalog))
 	}
@@ -306,11 +319,11 @@ func TestVokabularUndGrenzenSindDieDerVektoren(t *testing.T) {
 		return *p
 	}
 	for i, z := range v.Erkennungskatalog {
-		got := KatalogZeile{z.Erkenner, z.Art, z.Schnitt, text(z.Communication), text(z.Docker), text(z.EdgeLight)}
+		got := KatalogZeile{z.Erkenner, z.Art, z.Schnitt, text(z.Communication), text(z.Docker), text(z.GoKern)}
 		if got != Katalog[i] {
 			t.Fatalf("catalog row %d: vectors %+v, Go %+v", i, got, Katalog[i])
 		}
-		for _, wort := range []string{got.Docker, got.EdgeLight} {
+		for _, wort := range []string{got.Docker, got.GoKern} {
 			if wort != "" && !enthaelt(Anbindungen, wort) {
 				t.Fatalf("catalog row %d: anbindung %q", i, wort)
 			}

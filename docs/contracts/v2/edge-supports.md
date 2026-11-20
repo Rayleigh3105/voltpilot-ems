@@ -151,7 +151,7 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   dem alten Weg.
 - `koppelbild` (PFC200 Stufe 4, 19.11.2026): die Box führt das [Koppelbild](koppelbild.md) einer Anlagensteuerung.
   Layer 1 liest die Quittung und schreibt das Telegramm in der Sitzung des Erzeuger-Bilds derselben Steuerung, nimmt die freigegebenen Stellplätze als Fähigkeiten (`actuate` mit `platz`), beantwortet die Probe-Art `koppel_test` und meldet den Herzschlag-Block `koppel` (Beleg `layer1/koppel_test.go`).
-  Nur Edge Light meldet es (`box_arten: ["edge_light"]`); die Cloud schickt Stellplatz-Fähigkeiten und Schalt-Tests nur an eine Box mit diesem Wort.
+  Nur der Go-Kern meldet es, Edge Light und Edge Industrie (`box_arten: ["edge_light", "edge_industrie"]`); die Cloud schickt Stellplatz-Fähigkeiten und Schalt-Tests nur an eine Box mit diesem Wort.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).
@@ -174,10 +174,12 @@ Light (`vp-edge-light`, Backend `light`) und die Docker-Box (`edge-app`, Backend
 tragen je eine eigene Liste der gebauten Fähigkeiten. Ein Wort heißt „diese Box-Art in diesem Build kann es“; die Cloud
 schließt nie von der einen Box-Art auf die andere (`ota/BoxArt`). Seit Paket 2 der Gerätesuche nennt jedes Programm seine
 Box-Art (`edgemain.Options.BoxArt`): `cloud.BuiltSupports(boxArt)` gibt die Liste je Build, `cloud.UpdateBackend(boxArt)`
-das Backend (`light` bzw. `compose`), mit dem die Box auch ein Release prüft. Eine Edge-Light-Box ab diesem Stand meldet
+das Backend (`light`, `industrie` bzw. `compose`), mit dem die Box auch ein Release prüft. Eine Edge-Light-Box ab diesem Stand meldet
 also `light`; ältere Stände melden weiter `compose`, darum bleibt die Erkennung am Versionsstempel in der API bestehen.
+Edge Industrie (WAGO PFC200, `vp-edge-industrie`) ist derselbe Go-Kern unter der Box-Art `edge_industrie` und meldet `industrie`;
+sie trägt dieselbe Liste wie Edge Light (`geraetesuche.GoKern`).
 
-Die Vektoren sagen je Wort, welche Box-Art es trägt: `box_arten` (wahlfrei; fehlt = beide).
+Die Vektoren sagen je Wort, welche Box-Art es trägt: `box_arten` (wahlfrei; fehlt = jede Box-Art: `docker`, `edge_light`, `edge_industrie`).
 `erzeuger_registerbild`, `anlagensteuerung_quelle` und seit B15 (Pi-Ablösung-Konzept) auch `measurement_config_per_component`
 melden beide Box-Arten: Edge Light liest das Erzeuger-Bild mit dem Go-Zwilling (`internal/erzeugerbild`, verdrahtet in
 `internal/layer1/erzeuger.go`), der gegen die Vertrags-Vektoren und die aus der Palette erzeugten
@@ -185,7 +187,7 @@ melden beide Box-Arten: Edge Light liest das Erzeuger-Bild mit dem Go-Zwilling (
 Punkt ebenso je Ziel einmal wie die Palette der Docker-Box. Damit bekommt eine Anlagensteuerung an einer Edge Light den
 Mess-Plan mit `entity_id` je Komponente statt des zusammengelegten Plans: zwei Anlagensteuerungen an einer Box, die sich
 Punktnamen teilen, werden einander zugeordnet statt benannt abgelehnt (`driver_unavailable`).
-`koppelbild` meldet nur Edge Light (`box_arten: ["edge_light"]`): das Koppelbild läuft in Layer 1, die Docker-Box hat keines.
+`koppelbild` meldet nur der Go-Kern (`box_arten: ["edge_light", "edge_industrie"]`): das Koppelbild läuft in Layer 1, die Docker-Box hat keines.
 Das Feld liest nur der Go-Test (`cloud/edge_supports_test.go`); Java und TS überlesen es.
 
 Auch die Tabelle `edge-capabilities.json` kennt die Box-Art nicht: `BoxFaehigkeiten.effective` ordnet nach `release_seq`

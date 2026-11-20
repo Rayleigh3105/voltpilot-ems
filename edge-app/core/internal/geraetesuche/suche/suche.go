@@ -44,7 +44,7 @@ import (
 // the kernel is a field, so the same search runs on both box types and against
 // simulators in a test.
 type Umgebung struct {
-	// BoxArt is geraetesuche.BoxArtDocker or BoxArtEdgeLight.
+	// BoxArt is geraetesuche.BoxArtDocker, BoxArtEdgeLight or BoxArtEdgeIndustrie.
 	BoxArt string
 	// LANHost is VP_LAN_HOST of the Docker box ("" = missing).
 	LANHost string
@@ -174,7 +174,7 @@ type Lauf struct {
 func ErkennerDerBox(boxArt string) []string {
 	out := make([]string, 0, len(geraetesuche.Erkenner))
 	for _, e := range geraetesuche.Erkenner {
-		if boxArt != geraetesuche.BoxArtEdgeLight && enthaelt(geraetesuche.Wege, e) {
+		if !geraetesuche.GoKern(boxArt) && enthaelt(geraetesuche.Wege, e) {
 			continue
 		}
 		out = append(out, e)
@@ -313,7 +313,7 @@ func (l *Lauf) Suche(ctx context.Context) Ausgang {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var weitere geraetesuche.Weitere
-	if l.u.BoxArt != geraetesuche.BoxArtEdgeLight {
+	if !geraetesuche.GoKern(l.u.BoxArt) {
 		// The Docker box cannot tell a phone from a computer: all is unknown.
 		weitere = geraetesuche.Weitere{Unbekannt: zahl(gezaehlt.unbekannt + gezaehlt.telefon + gezaehlt.rechner)}
 	} else {
@@ -356,7 +356,7 @@ func (l *Lauf) nachbarnFinden(ctx context.Context) []*geraet {
 		}
 		return g
 	}
-	if l.u.BoxArt != geraetesuche.BoxArtEdgeLight {
+	if !geraetesuche.GoKern(l.u.BoxArt) {
 		for _, w := range l.wahl {
 			if !w.netz.Erreichbar {
 				continue
@@ -532,7 +532,7 @@ func (l *Lauf) geraeteAnsprechen(ctx context.Context, ziele []*geraet) {
 			l.erledige(1)
 		}
 	})
-	if l.u.BoxArt != geraetesuche.BoxArtEdgeLight {
+	if !geraetesuche.GoKern(l.u.BoxArt) {
 		l.mu.Lock()
 		for i, w := range l.wahl {
 			n := 0

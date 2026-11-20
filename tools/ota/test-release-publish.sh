@@ -179,6 +179,20 @@ eq "nur Edge-Light-Tags zaehlen in der Edge-Light-Nummerierung" \
 	"$(printf 'edge-2026.11.7\nedge-light-2026.11.2\nedge-light-2026.11.02\nedge-light-2026.10.9\n' | ota_next_light_release 2026.11)"
 eq "ein Monat ohne Edge-Light-Tag beginnt bei 0" "edge-light-2026.12.0" \
 	"$(printf 'edge-2026.12.0\n' | ota_next_light_release 2026.12)"
+# Edge Industrie (WAGO PFC200): eigene Linie, eigene Nummerierung, nie im Docker-Weg.
+ota_check_industrie_release edge-industrie-2026.11.0 && ok "ein Edge-Industrie-Name geht durch den Edge-Industrie-Weg"
+fails "Edge-Industrie: fuehrende Null abgelehnt" ota_check_industrie_release edge-industrie-2026.11.01
+fails "Edge-Industrie: ein Edge-Light-Name ist keiner" ota_check_industrie_release edge-light-2026.11.0
+fails "Edge-Light: ein Edge-Industrie-Name ist keiner" ota_check_light_release edge-industrie-2026.11.0
+fails "ein Edge-Industrie-Name bricht im Docker-Weg ab" ota_check_docker_release edge-industrie-2026.11.0
+eq "…mit dem Grund Edge-Industrie-Linie" "1" \
+	"$( (ota_check_docker_release edge-industrie-2026.11.0) 2>&1 | grep -c 'Edge-Industrie-Linie')"
+eq "Edge Industrie zaehlt nur ihre eigenen Tags" "edge-industrie-2026.11.2" \
+	"$(printf 'edge-2026.11.7\nedge-light-2026.11.5\nedge-industrie-2026.11.1\nedge-industrie-2026.11.0\n' | ota_next_industrie_release 2026.11)"
+eq "…und Edge Light zaehlt Edge-Industrie-Tags nicht mit" "edge-light-2026.11.6" \
+	"$(printf 'edge-industrie-2026.11.9\nedge-light-2026.11.5\n' | ota_next_light_release 2026.11)"
+eq "…und Docker auch nicht" "edge-2026.11.8" \
+	"$(printf 'edge-industrie-2026.11.9\nedge-2026.11.7\n' | ota_next_release 2026.11)"
 
 # Der Push-Header MUSS `Basic` sein: Forgejos Basic-Methode feuert auf
 # Git-Pfaden und nimmt den Token als PASSWORT (services/auth/basic.go);
@@ -270,6 +284,12 @@ else
 	bad "ein Edge-Light-Tag wird angelegt und gepusht" "Erfolg" "$out"
 fi
 fails "ein krummer Edge-Light-Name legt nichts an" tagrun edge-light-2026.11.01 x
+if out="$(tagrun edge-industrie-2026.11.0 "PFC200-Fassung" 2>&1)"; then
+	ok "ein Edge-Industrie-Tag wird angelegt und gepusht"
+else
+	bad "ein Edge-Industrie-Tag wird angelegt und gepusht" "Erfolg" "$out"
+fi
+fails "ein krummer Edge-Industrie-Name legt nichts an" tagrun edge-industrie-2026.11.01 x
 
 # Ohne Zugangsdaten darf NICHTS entstehen - und der automatische Actions-Token
 # ist hier bewusst kein Rueckfall (er loest keinen Lauf aus).
@@ -601,7 +621,8 @@ fi
 # Ein Edge-Light-Manifest wird gegen das Backend light gegengeprueft - gegen
 # compose hiesse es "deferred", und der Lauf braeche ab.
 if grep -q -- '--root baked --backend "\$backend"' "$HERE/release-publish.sh" &&
-	grep -q '"\$OTA_LIGHT_RELEASE_PREFIX"\*) backend=light' "$HERE/release-publish.sh"; then
+	grep -q '"\$OTA_LIGHT_RELEASE_PREFIX"\*) backend=light' "$HERE/release-publish.sh" &&
+	grep -q '"\$OTA_INDUSTRIE_RELEASE_PREFIX"\*) backend=industrie' "$HERE/release-publish.sh"; then
 	ok "die Gegenpruefung waehlt das Backend nach der Release-Linie"
 else
 	bad "die Gegenpruefung waehlt das Backend nach der Release-Linie" "--backend light fuer edge-light-" "fehlt"
@@ -622,18 +643,21 @@ mkdir -p "$AENDWS"
 	export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 	export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 	git init -q .
-	mkdir -p edge-app/core edge-app/nodered edge-light frontend
+	mkdir -p edge-app/core edge-app/nodered edge-light edge-industrie frontend
 	commit() { printf '%s\n' "$2" >>"$1"; git add -A; git commit -q -m "$3"; }
 	commit edge-app/core/a.go 1 "Basis"
 	git tag edge-2026.10.6
 	git tag edge-light-2026.11.3
+	git tag edge-industrie-2026.11.0
 	commit frontend/x.ts 1 "Portal: nur das Portal"
 	commit edge-app/core/a.go 2 "Core: Heizstab je Phase"
 	commit edge-app/nodered/f.js 1 "Node-RED: Fronius-Block"
 	commit edge-light/l.sh 1 "Edge Light: Loader-Satz"
+	commit edge-industrie/install.sh 1 "Edge Industrie: Dienst-Satz"
 	commit edge-app/core/a_test.go 1 "Core: nur ein Test"
 	git tag edge-2026.10.7
 	git tag edge-light-2026.11.4
+	git tag edge-industrie-2026.11.1
 ) >/dev/null
 aend() { (cd "$AENDWS" && GIT_CONFIG_GLOBAL=/dev/null ota_aenderungen "$1" "$2"); }
 aend edge-2026.10.7 "$TMP/docker.txt"
@@ -644,6 +668,10 @@ aend edge-light-2026.11.4 "$TMP/light.txt"
 eq "Edge Light: nur edge-light und der geteilte Core, Node-RED gehoert nicht dazu" \
 	"Edge Light: Loader-Satz|Core: Heizstab je Phase" \
 	"$(sed -E 's/ \([0-9a-f]+\)$//' "$TMP/light.txt" | paste -sd'|' -)"
+aend edge-industrie-2026.11.1 "$TMP/industrie.txt"
+eq "Edge Industrie: nur edge-industrie und der geteilte Core" \
+	"Edge Industrie: Dienst-Satz|Core: Heizstab je Phase" \
+	"$(sed -E 's/ \([0-9a-f]+\)$//' "$TMP/industrie.txt" | paste -sd'|' -)"
 eq "jede Zeile traegt den Kurz-SHA" "2" "$(grep -cE ' \([0-9a-f]{7,}\)$' "$TMP/docker.txt" || true)"
 rm -f "$TMP/erst.txt"
 aend edge-2026.10.6 "$TMP/erst.txt"

@@ -30,7 +30,7 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 		t.Fatal(err)
 	}
 	// Each box type reports from its own build (edge-supports.md "Je
-	// Box-Art"): box_arten names the types that carry a word, absent = both.
+	// Box-Art"): box_arten names the types that carry a word, absent = every type.
 	erwartet := func(boxArt string) []string {
 		var out []string
 		for _, c := range vectors.Capabilities {
@@ -41,7 +41,7 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 		return out
 	}
 	expected := erwartet(geraetesuche.BoxArtDocker)
-	for _, boxArt := range []string{geraetesuche.BoxArtDocker, geraetesuche.BoxArtEdgeLight} {
+	for _, boxArt := range []string{geraetesuche.BoxArtDocker, geraetesuche.BoxArtEdgeLight, geraetesuche.BoxArtEdgeIndustrie} {
 		if got := BuiltSupports(boxArt); !reflect.DeepEqual(got, erwartet(boxArt)) {
 			t.Fatalf("%s: supports = %v; want %v", boxArt, got, erwartet(boxArt))
 		}
@@ -70,7 +70,7 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 		}
 	}
 	if UpdateBackend(geraetesuche.BoxArtEdgeLight) != "light" || UpdateBackend(geraetesuche.BoxArtDocker) != "compose" ||
-		UpdateBackend("") != "compose" {
+		UpdateBackend(geraetesuche.BoxArtEdgeIndustrie) != "industrie" || UpdateBackend("") != "compose" {
 		t.Fatal("update.backend does not name the box type")
 	}
 	// "Only what is built" is checked, not promised: every advertised capability

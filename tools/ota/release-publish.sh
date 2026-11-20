@@ -226,7 +226,8 @@ ota_register() {
 # „Was ist neu" (Geraete & Updates G4): die Box-Aenderungen seit dem letzten Tag
 # DERSELBEN Linie, eine Zeile je Commit („<Betreff> (<kurzsha>)"), neueste
 # zuerst, Merge-Commits nicht. Docker-Box: Tags edge-JJJJ.MM.N, Pfade edge-app;
-# Edge Light: Tags edge-light-JJJJ.MM.N, Pfade edge-light und edge-app/core.
+# Edge Light: Tags edge-light-JJJJ.MM.N, Pfade edge-light und edge-app/core;
+# Edge Industrie: Tags edge-industrie-JJJJ.MM.N, Pfade edge-industrie und edge-app/core.
 # Ein Commit, der dort nur Tests oder Markdown aendert, aendert die Box nicht.
 #
 # Ohne Vorgaenger-Tag (erstes Release der Linie) entsteht KEINE Datei - das ist
@@ -241,6 +242,10 @@ ota_aenderungen() {
 	"$OTA_LIGHT_RELEASE_PREFIX"*)
 		muster="${OTA_LIGHT_RELEASE_PREFIX}[0-9]*"
 		pfade=(edge-light edge-app/core)
+		;;
+	"$OTA_INDUSTRIE_RELEASE_PREFIX"*)
+		muster="${OTA_INDUSTRIE_RELEASE_PREFIX}[0-9]*"
+		pfade=(edge-industrie edge-app/core)
 		;;
 	*)
 		muster='edge-[0-9]*'
@@ -397,6 +402,9 @@ OTA_RELEASE_MONTH_RE='^[0-9]{4}\.(0[1-9]|1[0-2])$'
 # Die eigene Release-Linie von Edge Light (Entscheid E7).
 OTA_LIGHT_RELEASE_PREFIX='edge-light-'
 OTA_LIGHT_RELEASE_RE='^edge-light-[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$'
+# Die eigene Release-Linie von Edge Industrie (WAGO PFC200).
+OTA_INDUSTRIE_RELEASE_PREFIX='edge-industrie-'
+OTA_INDUSTRIE_RELEASE_RE='^edge-industrie-[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$'
 
 # ota_check_release <name> - bricht LAUT ab, wenn der Name nicht dem Schema
 # folgt. Ein erfundenes Schema waere schlimmer als eine Ablehnung: der Name
@@ -417,6 +425,9 @@ ota_check_docker_release() {
 	"$OTA_LIGHT_RELEASE_PREFIX"*)
 		ota_die "Release-Name '${1-}' gehoert zur Edge-Light-Linie - dieser Weg legt nur Docker-Releases an (edge-<JJJJ>.<MM>.<N>). Es wurde nichts angelegt."
 		;;
+	"$OTA_INDUSTRIE_RELEASE_PREFIX"*)
+		ota_die "Release-Name '${1-}' gehoert zur Edge-Industrie-Linie - dieser Weg legt nur Docker-Releases an (edge-<JJJJ>.<MM>.<N>). Es wurde nichts angelegt."
+		;;
 	esac
 	ota_check_release "${1-}"
 }
@@ -430,15 +441,24 @@ ota_check_light_release() {
 		ota_die "Release-Name '${1-}' folgt nicht dem Schema edge-light-<JJJJ>.<MM>.<N> (N ist ein laufender Zaehler je Monat, KEIN Kalendertag). Es wurde nichts angelegt."
 }
 
-# ota_next_light_release <JJJJ.MM> - wie ota_next_release, aber fuer die
-# Edge-Light-Linie: es zaehlen nur edge-light-Tags, Docker-Tags nicht.
-ota_next_light_release() {
-	local ym="${1-}" line n max=-1
+# ota_check_industrie_release <name> - das Schema der Edge-Industrie-Linie
+# edge-industrie-<JJJJ>.<MM>.<N>, gezaehlt wie Edge Light. Nur der eigene Lauf
+# (.forgejo/workflows/edge-industrie-release.yaml) legt solche Tags an.
+ota_check_industrie_release() {
+	[[ "${1-}" =~ $OTA_INDUSTRIE_RELEASE_RE ]] ||
+		ota_die "Release-Name '${1-}' folgt nicht dem Schema edge-industrie-<JJJJ>.<MM>.<N> (N ist ein laufender Zaehler je Monat, KEIN Kalendertag). Es wurde nichts angelegt."
+}
+
+# ota_next_linien_release <praefix> <JJJJ.MM> - der naechste freie Name einer
+# Programm-Linie (edge-light-, edge-industrie-) im Monat: es zaehlen nur die
+# Tags DIESER Linie.
+ota_next_linien_release() {
+	local praefix="${1-}" ym="${2-}" line n max=-1
 	[[ "$ym" =~ $OTA_RELEASE_MONTH_RE ]] ||
 		ota_die "Monat '${ym}' ist nicht JJJJ.MM"
 	while IFS= read -r line; do
 		case "$line" in
-		"edge-light-$ym."*) n="${line#"edge-light-$ym."}" ;;
+		"$praefix$ym."*) n="${line#"$praefix$ym."}" ;;
 		*) continue ;;
 		esac
 		case "$n" in
@@ -448,8 +468,15 @@ ota_next_light_release() {
 		esac
 		if [ "$n" -gt "$max" ]; then max="$n"; fi
 	done
-	printf 'edge-light-%s.%d' "$ym" "$((max + 1))"
+	printf '%s%s.%d' "$praefix" "$ym" "$((max + 1))"
 }
+
+# ota_next_light_release <JJJJ.MM> - wie ota_next_release, aber fuer die
+# Edge-Light-Linie: es zaehlen nur edge-light-Tags, Docker-Tags nicht.
+ota_next_light_release() { ota_next_linien_release "$OTA_LIGHT_RELEASE_PREFIX" "${1-}"; }
+
+# ota_next_industrie_release <JJJJ.MM> - dasselbe fuer die Edge-Industrie-Linie.
+ota_next_industrie_release() { ota_next_linien_release "$OTA_INDUSTRIE_RELEASE_PREFIX" "${1-}"; }
 
 # ota_next_release <JJJJ.MM> - liest die vorhandenen Tag-Namen von STDIN und
 # druckt den naechsten freien Namen dieses Monats. Ein Monat ohne Tag beginnt
@@ -547,10 +574,12 @@ ota_git_authed() {
 #     (dieselbe Regel wie bei ota_token).
 ota_tag_release() {
 	local release="${1-}" commit="${2-}" ann="${3-}" remote auth
-	# Beide Linien: der Docker-Weg hat vorher ota_check_docker_release geprueft,
-	# der Edge-Light-Weg ota_check_light_release.
+	# Alle Linien: der Docker-Weg hat vorher ota_check_docker_release geprueft,
+	# der Edge-Light-Weg ota_check_light_release, Edge Industrie
+	# ota_check_industrie_release.
 	case "$release" in
 	"$OTA_LIGHT_RELEASE_PREFIX"*) ota_check_light_release "$release" ;;
+	"$OTA_INDUSTRIE_RELEASE_PREFIX"*) ota_check_industrie_release "$release" ;;
 	*) ota_check_release "$release" ;;
 	esac
 	[ -n "$commit" ] || ota_die "Kein Commit angegeben, auf den der Tag zeigen soll"
@@ -641,10 +670,12 @@ ota_sign() {
 		ota_die "Signieren fehlgeschlagen"
 
 	# Gegen die Box-Art des Releases: ein Edge-Light-Manifest gilt nur fuer
-	# das Backend light (gegen compose geprueft hiesse es "deferred").
+	# das Backend light, ein Edge-Industrie-Manifest nur fuer industrie (gegen
+	# compose geprueft hiesse es "deferred").
 	local backend=compose
 	case "$(ota_json_field release <"$manifest")" in
 	"$OTA_LIGHT_RELEASE_PREFIX"*) backend=light ;;
+	"$OTA_INDUSTRIE_RELEASE_PREFIX"*) backend=industrie ;;
 	esac
 	(cd "$core" && go run ./cmd/vp-ota verify --root baked --backend "$backend" \
 		--trust-set "$trust" --manifest "$manifest") ||

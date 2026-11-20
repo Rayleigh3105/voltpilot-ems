@@ -93,7 +93,7 @@ class GeraetesucheVertragTest {
         for (JsonNode z : vektoren.path("erkennungskatalog")) {
             katalog.add(new GeraetesucheVertrag.KatalogZeile(z.path("erkenner").asText(), z.path("art").asText(),
                     z.path("schnitt").asInt(), z.path("communication").textValue(), z.path("docker").textValue(),
-                    z.path("edge_light").textValue()));
+                    z.path("go_kern").textValue()));
         }
         assertThat(katalog).isEqualTo(GeraetesucheVertrag.KATALOG);
         for (GeraetesucheVertrag.KatalogZeile z : katalog) {

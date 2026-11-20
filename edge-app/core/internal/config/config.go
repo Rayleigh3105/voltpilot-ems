@@ -48,7 +48,8 @@ type Config struct {
 	LoaderPath     string `json:"loader_path"`
 	LoaderInitPath string `json:"loader_init_path"`
 	// BoxArt is the box type of the BINARY (geraetesuche.BoxArtDocker for
-	// vp-edge-core, BoxArtEdgeLight for vp-edge-light), set by
+	// vp-edge-core, BoxArtEdgeLight for vp-edge-light, BoxArtEdgeIndustrie for
+	// vp-edge-industrie), set by
 	// edgemain.Options - never from the environment: what a build can do is
 	// a property of the build. "" = the Docker box.
 	BoxArt string `json:"-"`

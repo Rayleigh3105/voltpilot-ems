@@ -71,7 +71,7 @@ func (a *Agent) networkSummary() *cloud.NetworkSummary {
 	now := time.Now()
 	obs := a.net.Snapshot(now)
 	lanHost, hasLANHost := netinfo.AcceptLANHost(a.Cfg.LANHost)
-	if a.boxArt() == geraetesuche.BoxArtEdgeLight {
+	if geraetesuche.GoKern(a.boxArt()) {
 		eigene := suche.EigeneErreichbarkeit(a.netzUmgebung())
 		if !hasLANHost && eigene.Kundennetz.IsValid() {
 			lanHost, hasLANHost = netinfo.AcceptLANHost(net.JoinHostPort(eigene.Kundennetz.String(), a.webPort()))

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Eine Edge-Light-Fassung bauen (Release-Linie edge-light-JJJJ.MM.N, Entscheid
-# E7): die Programme fuer die Mango (mipsle), den Raspberry Pi (arm64) und den
-# WAGO PFC200 (arm, ARMv7), den Skriptstand, die Pruefsummen und den Ausschnitt
+# E7): die Programme fuer die Mango (mipsle) und den Raspberry Pi (arm64), den
+# Skriptstand, die Pruefsummen und den Ausschnitt
 # fuer die Freigabe der Werkstatt. Der Lauf .forgejo/workflows/edge-light-release.yaml haengt das an
 # das Forgejo-Release; der Werkstatt-Dienst spielt es auf
 # (services/werkstatt-dienst, Release-Anhaenge).
@@ -9,15 +9,13 @@
 #   edge-light/scripts/release.sh edge-light-2026.11.0 <ausgabe>
 #
 # In <ausgabe>:
-#   vp-edge-light-linux-mipsle, -arm64, -arm                die Programme
+#   vp-edge-light-linux-mipsle, -arm64                      die Programme
 #   vp-edge-light-linux-<arch>.gz                           je Programm die gepackte Lieferung (gzip -9 -n)
 #   edge-light-openwrt.tar.gz                               edge-light/openwrt/ als openwrt/…
-#   sha256sums                                              alle sieben, Format sha256sum
+#   sha256sums                                              alle fuenf, Format sha256sum
 #
-# Der Skriptstand ist der der Mango (OpenWrt). Die Skripte fuer den PFC200
-# (edge-industrie) gehen nicht in die Fassung: sie kommen von Hand aus dem
-# Projekt auf das Geraet (edge-industrie/install.sh), ein Update tauscht dort
-# wie auf der Mango nur das Programm.
+# Der Skriptstand ist der der Mango (OpenWrt). Den WAGO PFC200 baut seine eigene
+# Linie Edge Industrie (edge-industrie/scripts/release.sh, edge-industrie-JJJJ.MM.N).
 #
 # Die gepackte Lieferung ist das, was eine Box beim Update laedt (Konzept
 # vp-edge-light-update, Schritt 3): ~5 MB statt 16 MB in den Arbeitsspeicher.
@@ -44,8 +42,8 @@ AUS="$(cd "$AUS" && pwd -P)"
 BAU="$AUS/.bau"
 rm -rf "$BAU"
 
-VP_LIGHT_VERSION="$TAG" VP_LIGHT_DIST="$BAU" "$LIGHT_DIR/scripts/build.sh" mipsle arm64 arm
-for arch in mipsle arm64 arm; do
+VP_LIGHT_VERSION="$TAG" VP_LIGHT_DIST="$BAU" "$LIGHT_DIR/scripts/build.sh" mipsle arm64
+for arch in mipsle arm64; do
   mv -f "$BAU/vp-edge-light-linux-$arch" "$AUS/"
   # Die Fassung muss im Programm stehen (ldflags); sonst meldet /health etwas anderes.
   grep -aqF "$TAG" "$AUS/vp-edge-light-linux-$arch" || {
@@ -54,7 +52,7 @@ for arch in mipsle arm64 arm; do
   }
 done
 rm -rf "$BAU"
-for arch in mipsle arm64 arm; do
+for arch in mipsle arm64; do
   gzip -9 -n -c "$AUS/vp-edge-light-linux-$arch" >"$AUS/vp-edge-light-linux-$arch.gz"
 done
 # Groessen-Leitplanke (Mango): ein Release, dessen Programm samt Update-Bedarf
@@ -64,8 +62,8 @@ bash "$LIGHT_DIR/scripts/groessen-gate.sh" "$AUS/vp-edge-light-linux-mipsle" "$A
 python3 "$LIGHT_DIR/scripts/skripte-paket.py" "$AUS/edge-light-openwrt.tar.gz"
 
 summe() { sha256sum "$1" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$1" | awk '{print $1}'; }
-(cd "$AUS" && for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 vp-edge-light-linux-arm \
-  vp-edge-light-linux-mipsle.gz vp-edge-light-linux-arm64.gz vp-edge-light-linux-arm.gz \
+(cd "$AUS" && for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 \
+  vp-edge-light-linux-mipsle.gz vp-edge-light-linux-arm64.gz \
   edge-light-openwrt.tar.gz; do
   printf '%s  %s\n' "$(summe "$f")" "$f"
 done) >"$AUS/sha256sums"

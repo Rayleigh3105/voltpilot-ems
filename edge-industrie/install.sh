@@ -120,7 +120,7 @@ if [ -n "$MANIFEST" ]; then
     END { print s, g }' "$MANIFEST")
   MSUM="${1:-}"
   GZSUM="${2:-}"
-  case "$REL" in edge-light-*) ;; *) echo "FEHLER: $MANIFEST ist kein Edge-Light-Manifest (release '$REL')" >&2; exit 1 ;; esac
+  case "$REL" in edge-industrie-*) ;; *) echo "FEHLER: $MANIFEST ist kein Edge-Industrie-Manifest (release '$REL')" >&2; exit 1 ;; esac
   case "$SEQ" in '' | *[!0-9]*) echo "FEHLER: $MANIFEST traegt keine release_seq" >&2; exit 1 ;; esac
   case "$SCHEMA" in '' | *[!0-9]*) SCHEMA=0 ;; esac
   if [ "$MSUM" != "$SUM" ] || [ -z "$GZSUM" ]; then

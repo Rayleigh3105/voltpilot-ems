@@ -101,7 +101,7 @@
       "backend": "light",
       "erwartet": "ok",
       "erzeugbar": true,
-      "warum": "Die Fassung traegt auch das Programm fuer 32-Bit-ARM (linux/arm, gebaut mit GOARM=7: WAGO PFC200). Die Plattform ist GOOS/GOARCH ohne Zusatz, die Box waehlt genau ihren Eintrag; linux/arm und linux/arm64 sind zwei Plattformen, kein doppelter Eintrag. Der Skriptstand bleibt der der Mango - die Skripte des PFC200 (edge-industrie) reisen nicht im Manifest.",
+      "warum": "Eine Fassung darf auch ein Programm fuer 32-Bit-ARM tragen (linux/arm, GOARM=7). Die Plattform ist GOOS/GOARCH ohne Zusatz, die Box waehlt genau ihren Eintrag; linux/arm und linux/arm64 sind zwei Plattformen, kein doppelter Eintrag. Seit Edge Industrie ihre eigene Linie hat (edge-industrie-JJJJ.MM.N, Backend industrie), baut der Edge-Light-Lauf kein linux/arm mehr; die Regel bleibt.",
       "manifest": {
         "schema_version": "1.0",
         "release": "edge-light-2026.11.6",

@@ -96,6 +96,32 @@ func TestEdgeLightSuchtOhneFlashUndMeldetSichAlsLight(t *testing.T) {
 	}
 }
 
+// Edge Industrie (WAGO PFC200) is the same Go core under its own name: it
+// reports itself as industrie, carries the same capabilities as Edge Light,
+// takes the program update and writes no open order to its flash.
+func TestEdgeIndustrieIstDerGoKernUnterEigenemNamen(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.BoxArt = geraetesuche.BoxArtEdgeIndustrie
+	a := &Agent{Cfg: cfg, State: state.New("gs-ref", "test")}
+	if a.boxArt() != geraetesuche.BoxArtEdgeIndustrie {
+		t.Fatalf("box type %q", a.boxArt())
+	}
+	if a.updateSummary().Backend != "industrie" {
+		t.Fatalf("backend %q", a.updateSummary().Backend)
+	}
+	if !slices.Equal(cloud.BuiltSupports(a.boxArt()), cloud.BuiltSupports(geraetesuche.BoxArtEdgeLight)) {
+		t.Fatalf("Edge Industrie supports %v, Edge Light %v", cloud.BuiltSupports(a.boxArt()),
+			cloud.BuiltSupports(geraetesuche.BoxArtEdgeLight))
+	}
+	if !a.isLight() {
+		t.Fatal("Edge Industrie does not take the program update")
+	}
+	if a.geraetesucheOffenPfad() != "" {
+		t.Fatal("Edge Industrie would write the open order to its flash")
+	}
+}
+
 func TestBekannteGeraeteAusAuswahlQuellenUndRegistry(t *testing.T) {
 	a := &Agent{Cfg: config.Defaults(), State: state.New("gs-ref", "test")}
 	a.entRegistry = entities.Registry{Entities: []entities.Entity{

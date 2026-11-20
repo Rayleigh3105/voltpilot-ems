@@ -461,7 +461,7 @@ assert tag.get("if") == "github.event_name == 'workflow_dispatch'", tag.get("if"
 # `:latest` schiebt. Die Reihenfolge ist tragend: die LETZTE passende Regel
 # gewinnt (GitHub-/Forgejo-Semantik), also muss die Verneinung danach stehen.
 tags = trig["push"]["tags"]
-assert tags == ["edge-*", "!edge-light-*"], tags
+assert tags == ["edge-*", "!edge-light-*", "!edge-industrie-*"], tags
 import fnmatch
 def starts(ref, patterns):
     hit = False
@@ -471,14 +471,15 @@ def starts(ref, patterns):
             hit = not neg
     return hit
 for ref, want in (("edge-2026.10.4", True), ("edge-light-2026.10.1", False),
-                  ("edge-light-2027.01.0", False), ("v1.2.3", False)):
+                  ("edge-light-2027.01.0", False), ("edge-industrie-2026.11.0", False), ("v1.2.3", False)):
     assert starts(ref, tags) == want, (ref, want)
 
 # KEIN doppelter Bau: das Gate haengt am Tag-Lauf, build/manifest daran - und
 # dieselbe Bedingung haelt einen edge-light-Tag von jedem Docker-Bau fern, falls
 # ein Runner die Verneinung im Trigger nicht auswertet.
 assert jobs["test"].get("if") == (
-    "github.ref_type == 'tag' && !startsWith(github.ref_name, 'edge-light-')"), (
+    "github.ref_type == 'tag' && !startsWith(github.ref_name, 'edge-light-')"
+    " && !startsWith(github.ref_name, 'edge-industrie-')"), (
     "das Gate muss am TAG-Lauf haengen (sonst baut der manuelle Lauf doppelt) "
     "und einen edge-light-Tag ausschliessen: %r" % jobs["test"].get("if"))
 assert jobs["build"]["needs"] == "test", jobs["build"].get("needs")
@@ -533,7 +534,7 @@ for step_env in env.values():
             "der automatische Actions-Token loest keinen Lauf aus - mit ihm "
             "laege der Tag da, ohne dass je ein Release entstuende: %r" % v)
 PY
-ok "der Trigger schliesst edge-light-* aus (Verneinung nach dem Muster), das Gate ebenso"
+ok "der Trigger schliesst edge-light-* und edge-industrie-* aus (Verneinung nach dem Muster), das Gate ebenso"
 ok "der Tag-Job ist verdrahtet: nur beim manuellen Lauf, ohne needs, mit Tags und OHNE den Actions-Token"
 ok "der manuelle Lauf baut NICHTS (test haengt am Tag-Lauf, build/manifest daran)"
 ok "die drei Rumpfe sind frei von Workflow-Ausdruecken, alle Eingaben ueber env:"
@@ -559,6 +560,7 @@ git init -q --bare "$TMP/tagremote.git"
 	ym_now="$(TZ=Europe/Berlin date +%Y.%m)"
 	git tag "edge-light-2026.08.30"
 	git tag "edge-light-$ym_now.7"
+	git tag "edge-industrie-$ym_now.11"
 ) >/dev/null
 
 # run_tag_step <nr> <ausgabedatei> ; Umgebung kommt vom Aufrufer

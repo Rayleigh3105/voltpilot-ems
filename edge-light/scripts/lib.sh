@@ -84,3 +84,17 @@ light_version() {
     *) echo "edge-light-g$d" ;;
   esac
 }
+
+# industrie_version - dasselbe fuer Edge Industrie (WAGO PFC200): die eigene
+# Linie edge-industrie-JJJJ.MM.N, nie ein Edge-Light- oder Docker-Name.
+industrie_version() {
+  local d
+  d="$(git -C "$REPO_ROOT" describe --tags --match 'edge-industrie-*' --always --dirty 2>/dev/null)" || {
+    echo edge-industrie-dev
+    return
+  }
+  case "$d" in
+    edge-industrie-*) echo "$d" ;;
+    *) echo "edge-industrie-g$d" ;;
+  esac
+}

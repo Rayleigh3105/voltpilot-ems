@@ -38,7 +38,7 @@ public final class GeraetesucheVertrag {
     public static final List<String> ERKENNER = List.of("solarman", "shelly", "goe", "netztechnik", "modbus_offen",
             "sunspec", "fronius_solar_api", "kaco_aiswei", "kostal", "huawei", "sma", "victron", "opendtu_ahoy",
             "ebyte", "wago", "mdns", "ssdp", "funkmodul");
-    /** Wege erzeugen keinen eigenen Fund und laufen nur auf Edge Light. */
+    /** Wege erzeugen keinen eigenen Fund und laufen nur auf dem Go-Kern (Edge Light, Edge Industrie). */
     public static final List<String> WEGE = List.of("mdns", "ssdp", "funkmodul");
     public static final List<String> ARTEN = List.of("wechselrichter", "wallbox", "schaltaktor", "zaehler",
             "io_modul", "sps", "dtu", "modbus_geraet", "router", "zugangspunkt");
@@ -86,10 +86,11 @@ public final class GeraetesucheVertrag {
      *
      * @param communication die Kommunikationsart der Vorlage; null = kein Leser in VoltPilot
      * @param docker        was die Docker-Box meldet; null = das Paar kommt dort nicht vor
-     * @param edgeLight     was Edge Light meldet; null = das Paar kommt dort nicht vor
+     * @param goKern        was der Go-Kern meldet (Edge Light und Edge Industrie, Spalte {@code go_kern});
+     *                      null = das Paar kommt dort nicht vor
      */
     public record KatalogZeile(String erkenner, String art, int schnitt, String communication, String docker,
-            String edgeLight) {
+            String goKern) {
     }
 
     public static final List<KatalogZeile> KATALOG = List.of(

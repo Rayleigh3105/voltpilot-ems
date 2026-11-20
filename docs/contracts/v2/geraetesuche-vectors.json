@@ -63,9 +63,10 @@
       "funkmodul"
     ],
     "box_arten": [
-      "edge_light"
+      "edge_light",
+      "edge_industrie"
     ],
-    "warum": "Multicast und die MAC-Adressen der Nachbarn sieht nur Edge Light; die Docker-Box im Bridge-Netz nie (DP-2 A). Wege erzeugen keinen eigenen Fund: sie liefern Merkmale für die Erkenner und die Zählung in weitere."
+    "warum": "Multicast und die MAC-Adressen der Nachbarn sieht nur der Go-Kern (Edge Light, Edge Industrie); die Docker-Box im Bridge-Netz nie (DP-2 A). Wege erzeugen keinen eigenen Fund: sie liefern Merkmale für die Erkenner und die Zählung in weitere."
   },
   "netztechnik_arten": [
     "router",
@@ -83,7 +84,7 @@
       "schnitt": 1,
       "communication": "solarman_v5",
       "docker": "uebernehmen",
-      "edge_light": "uebernehmen",
+      "go_kern": "uebernehmen",
       "wie": "Deye hinter Solarman-Logger: TCP 8899, V5-Rahmen; Logger-Seriennummer aus dem Kopf, Typ 0x0000 und Seriennummer 0x0003-0x0007 über die Logger-Spur."
     },
     {
@@ -92,7 +93,7 @@
       "schnitt": 1,
       "communication": "shelly_http",
       "docker": "uebernehmen",
-      "edge_light": "uebernehmen",
+      "go_kern": "uebernehmen",
       "wie": "Shelly Gen1-Gen4: HTTP 80 GET /shelly ohne Anmeldung; Modell, Generation, Kanäle, Firmware, auth_en."
     },
     {
@@ -101,7 +102,7 @@
       "schnitt": 2,
       "communication": "shelly_em_http",
       "docker": "kein_leseweg",
-      "edge_light": "uebernehmen",
+      "go_kern": "uebernehmen",
       "wie": "Shelly-Zähler (Pro 3EM, Pro 3EM-400, 3EM …) über /shelly, Art aus Modell oder em-Komponente: Edge Light liest den dreiphasigen Zähler über Shelly.GetStatus (Profil triphase), die Docker-Box noch nicht."
     },
     {
@@ -110,7 +111,7 @@
       "schnitt": 1,
       "communication": "goe_http_api",
       "docker": "uebernehmen",
-      "edge_light": "uebernehmen",
+      "go_kern": "uebernehmen",
       "wie": "go-e: HTTP 80 GET /api/status?filter=sse,typ,fwv (lokale API v2 muss an sein)."
     },
     {
@@ -119,7 +120,7 @@
       "schnitt": 1,
       "communication": null,
       "docker": "nur_anzeige",
-      "edge_light": "nur_anzeige",
+      "go_kern": "nur_anzeige",
       "wie": "Router: Seitentitel (beide), SSDP fboxdesc.xml und Funkmodul-Liste (nur Edge Light). Nur Modell und Adresse."
     },
     {
@@ -128,7 +129,7 @@
       "schnitt": 1,
       "communication": null,
       "docker": "nur_anzeige",
-      "edge_light": "nur_anzeige",
+      "go_kern": "nur_anzeige",
       "wie": "Zugangspunkt/Repeater wie Router."
     },
     {
@@ -137,7 +138,7 @@
       "schnitt": 1,
       "communication": "modbus_tcp",
       "docker": "selbst_beschreiben",
-      "edge_light": "selbst_beschreiben",
+      "go_kern": "selbst_beschreiben",
       "wie": "Offener Modbus-Port (502/1502) ohne Kennung: „Modbus-Gerät selbst beschreiben“ mit vorbelegter Adresse."
     },
     {
@@ -146,7 +147,7 @@
       "schnitt": 2,
       "communication": "sunspec_tcp",
       "docker": "uebernehmen",
-      "edge_light": "uebernehmen",
+      "go_kern": "uebernehmen",
       "wie": "SunSpec: TCP 502/1502, Unit-IDs 1/2/3/71/126, „SunS“ an 40000/50000/0, Common Model 1."
     },
     {
@@ -155,7 +156,7 @@
       "schnitt": 2,
       "communication": "fronius_solar_api",
       "docker": "uebernehmen",
-      "edge_light": "nicht_mit_dieser_box",
+      "go_kern": "nicht_mit_dieser_box",
       "wie": "Fronius Solar API: GET /solar_api/GetAPIVersion.cgi, dann /solar_api/v1/GetInverterInfo.cgi."
     },
     {
@@ -164,7 +165,7 @@
       "schnitt": 2,
       "communication": "kaco_http",
       "docker": "uebernehmen",
-      "edge_light": "nicht_mit_dieser_box",
+      "go_kern": "nicht_mit_dieser_box",
       "wie": "KACO/AISWEI-Stick: HTTP 8484 GET /getdev.cgi?device=2; nie in den Modbus-Modus schalten."
     },
     {
@@ -173,7 +174,7 @@
       "schnitt": 2,
       "communication": "kostal_modbus",
       "docker": "uebernehmen",
-      "edge_light": "nicht_mit_dieser_box",
+      "go_kern": "nicht_mit_dieser_box",
       "wie": "KOSTAL PLENTICORE: TCP 1502, Unit 71; SunSpec an 40000."
     },
     {
@@ -182,7 +183,7 @@
       "schnitt": 2,
       "communication": "huawei_modbus",
       "docker": "uebernehmen",
-      "edge_light": "uebernehmen",
+      "go_kern": "uebernehmen",
       "wie": "Huawei SUN2000: TCP 502, Unit 0 bzw. 1 hinter dem Smart Dongle; Modell ab 30000, Seriennummer ab 30015. Edge Light liest ihn seit 04.11.2026 (Go-Schicht 1, internal/huaweidecode)."
     },
     {
@@ -191,7 +192,7 @@
       "schnitt": 2,
       "communication": null,
       "docker": "kein_leseweg",
-      "edge_light": "kein_leseweg",
+      "go_kern": "kein_leseweg",
       "wie": "SMA: TCP 502, SunSpec Unit 126 bzw. SMA-Profil Unit 3; nur erkennen."
     },
     {
@@ -200,7 +201,7 @@
       "schnitt": 2,
       "communication": null,
       "docker": null,
-      "edge_light": "kein_leseweg",
+      "go_kern": "kein_leseweg",
       "wie": "SMA Energy Meter / Home Manager 2.0: nur zuhören (Speedwire-Multicast), daher nur Edge Light."
     },
     {
@@ -209,7 +210,7 @@
       "schnitt": 2,
       "communication": null,
       "docker": "kein_leseweg",
-      "edge_light": "kein_leseweg",
+      "go_kern": "kein_leseweg",
       "wie": "Victron GX: TCP 502, Unit 100; nur erkennen."
     },
     {
@@ -218,7 +219,7 @@
       "schnitt": 2,
       "communication": null,
       "docker": "kein_leseweg",
-      "edge_light": "kein_leseweg",
+      "go_kern": "kein_leseweg",
       "wie": "OpenDTU/AhoyDTU (Hoymiles): HTTP 80 GET /api/system/status bzw. /api/system; nur erkennen."
     },
     {
@@ -227,7 +228,7 @@
       "schnitt": 2,
       "communication": "ebyte_modbus_tcp",
       "docker": "uebernehmen",
-      "edge_light": "uebernehmen",
+      "go_kern": "uebernehmen",
       "wie": "eByte M31: TCP 502, Unit 1, Modelltabelle 0x0C80. Seine Identität ist die MAC (0x7534) - sie verlässt die Box nicht (DP-3 A)."
     },
     {
@@ -236,11 +237,11 @@
       "schnitt": 2,
       "communication": "modbus_tcp",
       "docker": "uebernehmen",
-      "edge_light": "nicht_mit_dieser_box",
+      "go_kern": "nicht_mit_dieser_box",
       "wie": "WAGO-SPS / Anlagensteuerung: Signatur „VPRB“ bzw. „VPEZ“ an der Basisadresse."
     }
   ],
-  "$erkennungskatalog": "Je Paar (erkenner, art): Schnitt laut Konzept §6, die Kommunikationsart der Vorlage (null = kein Leser in VoltPilot) und die anbindung, die diese Box-Art meldet; null = das Paar kommt auf dieser Box-Art nicht vor. Ein Fund mit einem Paar außerhalb der Tabelle wird überlesen.",
+  "$erkennungskatalog": "Je Paar (erkenner, art): Schnitt laut Konzept §6, die Kommunikationsart der Vorlage (null = kein Leser in VoltPilot) und die anbindung, die diese Box-Art meldet (docker = Docker-Box, go_kern = der Go-Kern auf Edge Light und Edge Industrie); null = das Paar kommt auf dieser Box-Art nicht vor. Ein Fund mit einem Paar außerhalb der Tabelle wird überlesen.",
   "auftrag": {
     "gueltig": [
       {

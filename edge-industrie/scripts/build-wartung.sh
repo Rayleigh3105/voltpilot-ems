@@ -17,7 +17,7 @@
 # shellcheck source=edge-light/scripts/lib.sh
 source "$(dirname "$0")/../../edge-light/scripts/lib.sh"
 
-VERSION="${VP_INDUSTRIE_VERSION:-$(light_version)}"
+VERSION="${VP_INDUSTRIE_VERSION:-$(industrie_version)}"
 DIST="${VP_INDUSTRIE_DIST:-$REPO_ROOT/edge-industrie/dist}"
 mkdir -p "$DIST"
 

@@ -4,8 +4,9 @@ name: Build & Push Edge-App Images
 # the operator can PULL them on the edge device instead of building locally
 # (the edge docker-compose.yml already names these images). Triggered by an
 # `edge-*` tag; the manual trigger CREATES such a tag - see the paragraph below.
-# NEVER by an `edge-light-*` tag: Edge Light is its own release line with its
-# own run (Entscheid E7, Plan Edge Light Stufe 2 §2.3) - see `on.push.tags`.
+# NEVER by an `edge-light-*` or `edge-industrie-*` tag: Edge Light and Edge
+# Industrie are release lines of their own with their own runs (Entscheid E7,
+# Plan Edge Light Stufe 2 §2.3) - see `on.push.tags`.
 #
 # Builds a MULTI-ARCH manifest list (linux/amd64 + linux/arm64) under each tag
 # so a Raspberry Pi (arm64/v8) pulls the arm64 variant automatically. Runs on
@@ -99,6 +100,8 @@ on:
       # prueft dasselbe noch einmal, falls ein Runner die Verneinung nicht
       # auswertet.
       - '!edge-light-*'
+      # Ebenso die Linie von Edge Industrie (WAGO PFC200, edge-industrie-release.yaml).
+      - '!edge-industrie-*'
 
 jobs:
   # DER MANUELLE WEG. Er erzeugt GENAU EINE Sache: den annotierten `edge-*`-Tag.
@@ -214,7 +217,7 @@ jobs:
     # diese eine Bedingung, um einen doppelten Build auszuschliessen - und
     # ebenso, um einen `edge-light-*`-Tag von jedem Docker-Bau fernzuhalten
     # (die zweite Sicherung hinter dem Trigger-Ausschluss oben).
-    if: github.ref_type == 'tag' && !startsWith(github.ref_name, 'edge-light-')
+    if: github.ref_type == 'tag' && !startsWith(github.ref_name, 'edge-light-') && !startsWith(github.ref_name, 'edge-industrie-')
     runs-on: ubuntu-latest-mo
     # Race-instrumented Go + the two system rigs on a shared runner; roomy
     # enough that a slow neighbour never reds a sound release, tight enough

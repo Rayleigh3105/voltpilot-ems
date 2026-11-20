@@ -82,8 +82,9 @@ type otaLightState struct {
 	now      func() time.Time
 }
 
-// isLight sagt, ob dieses Programm Edge Light ist.
-func (a *Agent) isLight() bool { return a.boxArt() == geraetesuche.BoxArtEdgeLight }
+// isLight sagt, ob dieses Programm den Go-Kern traegt (Edge Light oder Edge
+// Industrie): ein Programm je Architektur, Update ueber den Loader.
+func (a *Agent) isLight() bool { return geraetesuche.GoKern(a.boxArt()) }
 
 // otaRAMDir ist das Verzeichnis der fluechtigen Update-Dateien: auf Edge Light
 // mit neuem Loader der RAM (Config.OtaRAMDir), sonst DataDir/ota.

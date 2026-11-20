@@ -81,7 +81,7 @@ echo "--- 5. MIPS-Build (Mango)"
 go_run GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light
 
 echo "--- 6. ARMv7-Build und Loader-Abgleich (Edge Industrie, WAGO PFC200)"
-go_run GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light
+go_run GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-industrie
 "$REPO_ROOT/edge-industrie/scripts/loader-abgleich.sh"
 
 echo "--- 7. Release-Programm ohne Pruefstand-Tag, Pruefstand-Build baut"
@@ -104,7 +104,12 @@ if GOFLAGS=-tags=pruefstand "$LIGHT_DIR/scripts/build.sh" amd64 >/dev/null 2>&1;
   echo "FEHLER: build.sh baut mit dem Pruefstand-Tag" >&2
   exit 1
 fi
+if GOFLAGS=-tags=pruefstand VP_INDUSTRIE_DIST="$rel_dist" "$REPO_ROOT/edge-industrie/scripts/build.sh" >/dev/null 2>&1; then
+  echo "FEHLER: edge-industrie/scripts/build.sh baut mit dem Pruefstand-Tag" >&2
+  exit 1
+fi
 go_run -- build -tags pruefstand -o /dev/null ./cmd/vp-edge-light
+go_run -- build -tags pruefstand -o /dev/null ./cmd/vp-edge-industrie
 echo "    Release ohne Tag, build.sh verweigert ihn, Pruefstand-Build baut"
 
 echo "--- 8. Tunnel-Programm von Edge Industrie (vp-wartung) und die Pruefregel der Schluesselausgabe"

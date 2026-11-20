@@ -125,7 +125,7 @@
       "name": "koppelbild",
       "meaning": "Die Box führt das VoltPilot-Koppelbild v1 einer Anlagensteuerung (koppelbild.md §15): sie liest die Quittung und schreibt das Telegramm in der Sitzung ihres Erzeuger-Bilds, nimmt die freigegebenen Stellplätze der Anlagensteuerung als Fähigkeiten (actuate mit platz), beantwortet die Probe-Art koppel_test und meldet den Herzschlag-Block koppel. Erst dann schickt die Cloud Stellplatz-Fähigkeiten und Schalt-Tests an diese Box (PFC200 Stufe 4).",
       "advertised": true,
-      "box_arten": ["edge_light"],
+      "box_arten": ["edge_light", "edge_industrie"],
       "evidence": "edge-app/core/internal/layer1/koppel_test.go"
     }
   ],

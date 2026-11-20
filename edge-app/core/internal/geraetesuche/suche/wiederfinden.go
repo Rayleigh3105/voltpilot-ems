@@ -41,7 +41,7 @@ type wiederfindenPlan struct {
 // planWiederfinden is nil on the Docker box: it has no ARP table, so a MAC
 // pinned there (there should be none) is left exactly as configured.
 func planWiederfinden(boxArt string, bekannt []Bekannt, geraete []*geraet) []wiederfindenPlan {
-	if boxArt != geraetesuche.BoxArtEdgeLight || len(bekannt) == 0 {
+	if !geraetesuche.GoKern(boxArt) || len(bekannt) == 0 {
 		return nil
 	}
 	macAnAdresse := map[netip.Addr]string{}

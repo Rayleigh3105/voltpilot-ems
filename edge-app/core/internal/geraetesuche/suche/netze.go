@@ -53,7 +53,7 @@ const (
 // waehleNetze forms the networks of this box type. The second result is the
 // refusal reason when there is none to search.
 func waehleNetze(u Umgebung) ([]netzwahl, string) {
-	if u.BoxArt == geraetesuche.BoxArtEdgeLight {
+	if geraetesuche.GoKern(u.BoxArt) {
 		return netzeEdgeLight(u)
 	}
 	return netzDocker(u.LANHost)

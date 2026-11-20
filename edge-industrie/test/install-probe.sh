@@ -38,7 +38,7 @@
 # ausfuehrt (das Ziel root@<container> nennt den Container) und eine
 # Schluesseldatei (-i) nur mitschreibt.
 #
-#   VP_INDUSTRIE_VERSION=edge-light-2099.01.0 edge-industrie/scripts/build.sh
+#   VP_INDUSTRIE_VERSION=edge-industrie-2099.01.0 edge-industrie/scripts/build.sh
 #   edge-industrie/test/install-probe.sh
 # shellcheck disable=SC2015,SC2016 # ok/falsch-Zeilen; die Pruefausdruecke werten im Container aus
 set -eu
@@ -73,7 +73,7 @@ pruefe() { # pruefe <beschreibung> <befehl im container...>
 summe() { sha256sum "$1" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$1" | awk '{print $1}'; }
 zeilen() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
 
-[ -f "$BIN" ] || { echo "FEHLER: erst VP_INDUSTRIE_VERSION=edge-light-2099.01.0 edge-industrie/scripts/build.sh" >&2; exit 1; }
+[ -f "$BIN" ] || { echo "FEHLER: erst VP_INDUSTRIE_VERSION=edge-industrie-2099.01.0 edge-industrie/scripts/build.sh" >&2; exit 1; }
 REPO="$(cd "$HIER/../.." && pwd -P)"
 # Das echte, root-signierte Vertrauens-Set (oeffentlich, im Repo). Nie vom
 # Portal laden: die Probe beruehrt kein Live-System.
@@ -136,15 +136,15 @@ schritt "0. Fassung und Manifest (Werkzeug vp-ota)"
 FASSUNG="$(docker run --rm --platform "$PLATTFORM" --network none -v "$BIN:/p:ro" "$BILD" /p version 2>/dev/null || true)"
 MANIFEST=""
 SEQ=77
-# Nur ein Release-Name (edge-light-JJJJ.MM.N) traegt ein Manifest; ein Bau
-# zwischen zwei Tags heisst edge-light-JJJJ.MM.N-3-g<commit> und faellt hier
+# Nur ein Release-Name (edge-industrie-JJJJ.MM.N) traegt ein Manifest; ein Bau
+# zwischen zwei Tags heisst edge-industrie-JJJJ.MM.N-3-g<commit> und faellt hier
 # mit dem Hinweis auf VP_INDUSTRIE_VERSION durch.
-case "$(printf '%s\n' "$FASSUNG" | grep -E '^edge-light-[0-9]{4}\.[0-9]{2}\.[0-9]+$' || true)" in
-  edge-light-*)
+case "$(printf '%s\n' "$FASSUNG" | grep -E '^edge-industrie-[0-9]{4}\.[0-9]{2}\.[0-9]+$' || true)" in
+  edge-industrie-*)
     ok "die ARMv7-Fassung startet im Container und nennt $FASSUNG"
     gzip -9 -n -c "$BIN" >"$ARBEIT/prog.gz"
     if (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota manifest --release "$FASSUNG" --seq "$SEQ" --commit 3bf8c038a1b2 \
-      --binary "vp-edge-light:linux/arm=$BIN,$ARBEIT/prog.gz" --state-schema 1 --key-id rel-2026-a \
+      --binary "vp-edge-industrie:linux/arm=$BIN,$ARBEIT/prog.gz" --state-schema 1 --key-id rel-2026-a \
       --out "$ARBEIT/release.json") >/dev/null 2>&1; then
       MANIFEST="$ARBEIT/release.json"
       ok "Manifest fuer $FASSUNG (Stand $SEQ) mit linux/arm erzeugt"
@@ -152,7 +152,7 @@ case "$(printf '%s\n' "$FASSUNG" | grep -E '^edge-light-[0-9]{4}\.[0-9]{2}\.[0-9
       falsch "Manifest fuer $FASSUNG erzeugt"
     fi
     ;;
-  *) falsch "Fassung '$FASSUNG' ohne Release-Namen - VP_INDUSTRIE_VERSION=edge-light-2099.01.0 edge-industrie/scripts/build.sh" ;;
+  *) falsch "Fassung '$FASSUNG' ohne Release-Namen - VP_INDUSTRIE_VERSION=edge-industrie-2099.01.0 edge-industrie/scripts/build.sh" ;;
 esac
 
 schritt "1. Verweigert, bevor etwas auf das Geraet geht"
@@ -173,10 +173,10 @@ verweigert "fehlende Schluesseldatei verweigert" "keine lesbare Schluesseldatei"
 verweigert "zweites Argument (Download-Adresse) verweigert" "nur das Ziel" "$SKRIPT" "root@$C" https://downloads.example.invalid/edge-light
 verweigert "ohne Vertrauens-Set verweigert" "Vertrauens-Set nicht ladbar" VP_TRUST_SET_DIR= VP_PORTAL_URL=http://127.0.0.1:9 "$SKRIPT" "root@$C"
 verweigert "Link-Name mit Pfad verweigert" "ist kein Dateiname" VP_PFC_RC_LINK=../S99x "$SKRIPT" "root@$C"
-printf '{\n  "release": "edge-light-2099.01.0",\n  "release_seq": 5,\n  "artifacts": [\n    {\n      "arch": "linux/arm",\n      "sha256": "%s",\n      "gz_sha256": "%s"\n    }\n  ]\n}\n' "$(printf '0%.0s' $(seq 64))" "$(printf '1%.0s' $(seq 64))" >"$ARBEIT/fremd.json"
+printf '{\n  "release": "edge-industrie-2099.01.0",\n  "release_seq": 5,\n  "artifacts": [\n    {\n      "arch": "linux/arm",\n      "sha256": "%s",\n      "gz_sha256": "%s"\n    }\n  ]\n}\n' "$(printf '0%.0s' $(seq 64))" "$(printf '1%.0s' $(seq 64))" >"$ARBEIT/fremd.json"
 verweigert "Manifest eines anderen Programms verweigert" "anderes Programm" VP_INDUSTRIE_MANIFEST="$ARBEIT/fremd.json" "$SKRIPT" "root@$C"
 # Ein Manifest, das nur die Mango kennt, beschreibt kein Programm fuer linux/arm.
-printf '{\n  "release": "edge-light-2099.01.0",\n  "release_seq": 5,\n  "artifacts": [\n    {\n      "arch": "linux/mipsle",\n      "sha256": "%s",\n      "gz_sha256": "%s"\n    }\n  ]\n}\n' "$(summe "$BIN")" "$(printf '1%.0s' $(seq 64))" >"$ARBEIT/mango.json"
+printf '{\n  "release": "edge-industrie-2099.01.0",\n  "release_seq": 5,\n  "artifacts": [\n    {\n      "arch": "linux/mipsle",\n      "sha256": "%s",\n      "gz_sha256": "%s"\n    }\n  ]\n}\n' "$(summe "$BIN")" "$(printf '1%.0s' $(seq 64))" >"$ARBEIT/mango.json"
 verweigert "Manifest ohne linux/arm verweigert" "anderes Programm" VP_INDUSTRIE_MANIFEST="$ARBEIT/mango.json" "$SKRIPT" "root@$C"
 [ "$(zeilen "$ARBEIT/ssh.log")" = 0 ] && ok "dabei kein ssh-Aufruf" || falsch "dabei kein ssh-Aufruf"
 
@@ -254,10 +254,10 @@ if grep -q '"msg":"device detected","model":"WAGO 750-8212","arch":"arm"}' "$ARB
 else
   falsch "das Programm erkennt sein Geraet: WAGO 750-8212, arm"; grep 'device detected' "$ARBEIT/log.1" | sed 's/^/    | /'
 fi
-python3 - "$ARBEIT/health" "${MANIFEST:+$SEQ}" >"$ARBEIT/bereit" 2>&1 <<'PY' && ok "/health: Box-Art light, Vertrauens-Set geprueft$( [ -n "$MANIFEST" ] && echo ", current_seq $SEQ")" || { falsch "/health meldet update-bereit"; sed 's/^/    | /' "$ARBEIT/bereit"; }
+python3 - "$ARBEIT/health" "${MANIFEST:+$SEQ}" >"$ARBEIT/bereit" 2>&1 <<'PY' && ok "/health: Box-Art industrie, Vertrauens-Set geprueft$( [ -n "$MANIFEST" ] && echo ", current_seq $SEQ")" || { falsch "/health meldet update-bereit"; sed 's/^/    | /' "$ARBEIT/bereit"; }
 import json, sys
 u = json.load(open(sys.argv[1]))["ota_update"]
-assert u["backend"] == "light", u
+assert u["backend"] == "industrie", u
 t = u["trust"]
 assert t.get("trust_set_key_ids") and not t.get("trust_set_error"), t
 if sys.argv[2]:

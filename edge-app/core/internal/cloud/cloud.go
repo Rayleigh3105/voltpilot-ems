@@ -1208,6 +1208,10 @@ const UpdateBackendCompose = "compose"
 // it from its own build (UpdateBackend).
 const UpdateBackendLight = "light"
 
+// UpdateBackendIndustrie is Edge Industrie's backend (WAGO PFC200): the same
+// program update as Edge Light, a release line of its own.
+const UpdateBackendIndustrie = "industrie"
+
 // UpdateSummary is the additive `update` block of the status heartbeat (scout
 // vp-ota-rollout-h4 §5), the device's own answer to "what am I running and
 // what am I doing about it".

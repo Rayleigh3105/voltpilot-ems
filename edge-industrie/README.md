@@ -24,8 +24,9 @@ edge-industrie/
 │       └── libexec/boot.sh                Loader: Start aus dem RAM, Tausch, Probe, Behalten, Zurück
 ├── wartung/                               vp-wartung: der Wartungstunnel als ein Programm (eigenes Go-Modul)
 ├── scripts/
-│   ├── build.sh                           baut dist/vp-edge-industrie-linux-arm
+│   ├── build.sh                           baut dist/vp-edge-industrie-linux-arm (cmd/vp-edge-industrie)
 │   ├── build-wartung.sh                   baut dist/vp-wartung-linux-arm
+│   ├── release.sh                         eine Fassung edge-industrie-JJJJ.MM.N: Programm, .gz, sha256sums
 │   └── loader-abgleich.sh                 Loader wortgleich mit dem Mango-Loader (läuft in edge-light/scripts/test.sh)
 └── test/
     ├── install-probe.sh                   install.sh, Dienst und Loader gegen BusyBox-Linux für ARMv7 im Container
@@ -65,7 +66,7 @@ Die SPS-Laufzeit, ihre Dienste, die Firewall und die Netzeinstellungen des Gerä
 
 ## Einrichten
 
-Voraussetzung: SSH als root auf das Gerät, und das Programm für ARMv7.
+Voraussetzung: SSH als root auf das Gerät, und das Programm für ARMv7 (aus einer Fassung `edge-industrie-JJJJ.MM.N` oder selbst gebaut).
 
 ```bash
 edge-industrie/scripts/build.sh        # edge-industrie/dist/vp-edge-industrie-linux-arm
@@ -153,9 +154,11 @@ Ob 8484, 8887, 1883 und 1502 am Gerät wirklich frei sind, zeigt PS-P5.
 ## Updates
 
 Dasselbe Protokoll wie Edge Light ([Updates](../edge-light/docs/boot-und-updates.md)): Das Programm prüft Manifest und Signatur, lädt die Fassung in den RAM, der Loader tauscht beim nächsten Start, die neue Fassung läuft zehn Minuten zur Probe und wird behalten oder zurückgenommen.
-Bis Edge Industrie eigene Fassungen hat, kommt das Programm aus den Fassungen der Edge-Light-Linie: Jede enthält ein Programm `vp-edge-light:linux/arm`, angehängt als `vp-edge-light-linux-arm`.
-Für `install.sh` wird es als `edge-industrie/dist/vp-edge-industrie-linux-arm` abgelegt; auf dem Gerät heißt es `vp-edge-industrie`.
-Eine ältere Fassung ohne dieses Programm wendet die Box nicht an und sagt das.
+Edge Industrie hat eine eigene Release-Linie `edge-industrie-JJJJ.MM.N` (Lauf `.forgejo/workflows/edge-industrie-release.yaml`, Bau `scripts/release.sh`).
+Jede Fassung trägt genau ein Programm `vp-edge-industrie:linux/arm`, angehängt als `vp-edge-industrie-linux-arm` samt `.gz`; ihr Manifest gilt nur für das Backend `industrie`.
+Die Box meldet sich als `industrie` und bekommt nur Fassungen dieser Linie; ein Edge-Light- oder Docker-Release stellt sie zurück, und das Portal bietet es ihr gar nicht erst an.
+Signiert und registriert wird erst mit der Repo-Variable `EDGE_INDUSTRIE_SIGNIEREN=true`.
+Für `install.sh` liegt das Programm als `edge-industrie/dist/vp-edge-industrie-linux-arm`; auf dem Gerät heißt es `vp-edge-industrie`.
 
 Ein Update tauscht nur das Programm.
 **Loader und Dienst-Skript ändern sich nur durch `install.sh`:** Das Loader-Selbstupdate der Mango gibt es auf dem PFC200 nicht.
@@ -173,7 +176,7 @@ Die Funktionen des Update-Protokolls stehen im Loader des PFC200 wortgleich wie 
 ## Was belegt ist
 
 ```bash
-VP_INDUSTRIE_VERSION=edge-light-2099.01.0 edge-industrie/scripts/build.sh   # ein Release-Name: die Probe erzeugt dazu ein Manifest
+VP_INDUSTRIE_VERSION=edge-industrie-2099.01.0 edge-industrie/scripts/build.sh   # ein Release-Name: die Probe erzeugt dazu ein Manifest
 edge-industrie/test/install-probe.sh        # install.sh, Dienst und Loader mit dem echten ARMv7-Programm
 edge-industrie/test/update-probe.sh         # das Update im Loader: dieselben Fälle wie boot-update-probe.sh der Mango
 edge-industrie/scripts/loader-abgleich.sh   # Loader wortgleich mit dem Mango-Loader; läuft in edge-light/scripts/test.sh
@@ -283,10 +286,10 @@ Weicht eine Antwort von der Tabelle oben ab, wird zuerst dieser Ordner angepasst
 
 Beschrieben, nicht ausgeführt: Das Test-Gerät ist erst mit Stufe 0 erreichbar.
 Er folgt auf Stufe 0 und setzt voraus, dass deren Antworten zur Tabelle oben passen.
-Der Test braucht eine Fassung, die nach diesem Stand gebaut ist (mit `linux/arm`), und für den Update-Teil eine zweite, neuere.
+Der Test braucht eine Fassung `edge-industrie-JJJJ.MM.N` und für den Update-Teil eine zweite, neuere.
 
 1. **Einrichten.**
-   `VP_INDUSTRIE_MANIFEST=<release.json> edge-industrie/install.sh root@<pfc>` mit dem Programm `linux/arm` der Fassung als `edge-industrie/dist/vp-edge-industrie-linux-arm`, dann `restart`.
+   `VP_INDUSTRIE_MANIFEST=<release.json> edge-industrie/install.sh root@<pfc>` mit dem Programm `vp-edge-industrie-linux-arm` der Fassung in `edge-industrie/dist/`, dann `restart`.
    Erwartet: `status` nennt Dienst und Programm; im syslog steht „device detected“ mit `"model":"WAGO 750-8212","arch":"arm"`.
 2. **Läuft es, und was kostet es (PS-P6).**
    Nach zehn Minuten: `ssh root@<pfc> 'for q in /proc/[0-9]*; do case "$(readlink $q/exe)" in */vp-edge-industrie/vp-edge-industrie | */programm/vp-edge-industrie) grep -E "VmRSS|VmHWM|Threads" $q/status ;; esac; done; top -bn1 | head -15; free -m; wget -qO- http://127.0.0.1:8484/health'`.
@@ -294,7 +297,7 @@ Der Test braucht eine Fassung, die nach diesem Stand gebaut ist (mit `linux/arm`
    Daraus folgen `gomemlimit` und `prozess_reserve_kb`.
 3. **Geräteliste.**
    Box über `http://<pfc>:8484` koppeln.
-   Erwartet im Portal unter Plattform, „Geräte & Updates“: „WAGO 750-8212 · arm“, Loader „kennt Updates (Stufe 2)“.
+   Erwartet im Portal unter Plattform, „Geräte & Updates“: Linie „Edge Industrie“, „WAGO 750-8212 · arm“, Loader „kennt Updates (Stufe 2)“.
 4. **Kaltstart (PS-P15).**
    Strom aus, 10 s warten, Strom an.
    Festhalten: Sekunden bis SYS grün und bis `/health` antwortet; der Dienst startet von selbst, die Kennung ist dieselbe.
