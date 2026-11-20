@@ -1,11 +1,16 @@
 package agent
 
-// Self-built Modbus devices with write values (Steuerlogik K3, docs/contracts/
-// v2/modbus-geraet.md): an air conditioner, a heat pump or a cold-room
-// controller the installer described register by register. The CORE owns such a
-// device end to end on both box kinds - one connection, every read and every
-// write serialized on it (the one-socket rule: many of these devices serve
-// exactly one Modbus client). Node-RED has no flow for it.
+// Self-built Modbus devices (docs/contracts/v2/modbus-geraet.md): an air
+// conditioner, a heat pump or a cold-room controller the installer described
+// register by register, with write values (Steuerlogik K3) - or, since E8, a
+// pure measurement device with no controls block at all (the self-build
+// door's Modbus-TCP-only case Edge Light cannot read any other way, having no
+// Node-RED). The CORE owns a device WITH write values end to end on both box
+// kinds - one connection, every read and every write serialized on it (the
+// one-socket rule: many of these devices serve exactly one Modbus client).
+// Node-RED has no flow for it. A controls-less device is owned here only on
+// Edge Light (syncModbusGeraete): on the Docker box its generated Node-RED
+// flow already reads it, and the Core must not open a second connection.
 //
 //   - the poll reads the channels at their interval and the read-back of the
 //     write values, publishes the channels as entity telemetry (the same
@@ -79,9 +84,11 @@ type mbGeraet struct {
 	zu bool
 }
 
-// mbDefinition reads the self-built definition of an entity when it is a
-// device with write values; ok=false for every other entity (and for a
+// mbDefinition reads the self-built Modbus definition of an entity (with or
+// without write values); ok=false for every other entity (and for a
 // definition the box's own rules refuse - the cloud is believed nothing).
+// Whether THIS agent owns a controls-less definition is a separate question
+// that only syncModbusGeraete answers (box-art gated, see package comment).
 func mbDefinition(e entities.Entity) (modbusgeraet.Definition, string, bool) {
 	def, quelle, _, ok := mbDefinitionMitFehlern(e)
 	return def, quelle, ok
@@ -110,6 +117,13 @@ func (a *Agent) syncModbusGeraete() []*mbGeraet {
 	da := map[string]bool{}
 	for _, e := range reg.Entities {
 		def, quelle, fehler, ok := mbDefinitionMitFehlern(e)
+		if ok && def.Controls == nil && !a.isLight() {
+			// E8: a pure-measurement self-built device (no controls block)
+			// keeps reading through its generated Node-RED flow on the Docker
+			// box - the Core must not also open a second connection to it.
+			// Only Edge Light, which has no flow runtime, owns it here.
+			continue
+		}
 		if !ok {
 			if len(fehler) > 0 && a.mbAbgelehnt[e.ID] != quelle {
 				// Once per definition, not every second.

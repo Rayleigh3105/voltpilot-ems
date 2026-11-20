@@ -9,10 +9,12 @@ import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.flows.FlowActivationService;
+import com.voltpilot.api.ota.BoxArt;
 import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.repo.FlowRepository;
+import com.voltpilot.api.repo.UpdateStatusRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BoxFaehigkeiten;
 import com.voltpilot.api.web.dto.SiteComponentsDto;
@@ -34,7 +36,11 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Das eigene Modbus-Gerät mit Lese- UND Schreibwerten (Steuerlogik K3,
  * {@code docs/contracts/v2/modbus-geraet.md}): anlegen, ändern, je Schreibwert
- * testen, freigeben, Freigabe zurücknehmen.
+ * testen, freigeben, Freigabe zurücknehmen. Seit E8 (Pi-Ablösung-Konzept) auch
+ * ein Gerät OHNE jeden Schreibwert (ein reines Selbstbau-Messgerät) - aber nur
+ * für eine Anlage, deren führende Box Edge Light ist (siehe {@link #speichern}):
+ * dort gibt es sonst keinen Weg, ein solches Gerät zu lesen, da Edge Light kein
+ * Node-RED für den Lese-Flow der Selbstbau-Tür hat.
  *
  * <p>Es benutzt die Maschinerie der Selbstbau-Tür - Fassungen in
  * {@code connection_json}, Verbindungstest-Pflicht, Schalt-Test über den
@@ -82,6 +88,7 @@ public class ModbusGeraetService {
     private final ConsumerAuditRepository audit;
     private final LeadDeviceService leadDevices;
     private final BoxFaehigkeiten faehigkeiten;
+    private final UpdateStatusRepository updateStatus;
     private final ObjectMapper mapper;
     private final Clock clock;
 
@@ -90,16 +97,18 @@ public class ModbusGeraetService {
             EntityRegistryService entityRegistry, ComponentDefinitionRepository definitions,
             ComponentService components, ComponentConnectionReceipts receipts, FlowRepository flows,
             FlowActivationService deployments, ProbeService probes, ConsumerAuditRepository audit,
-            LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten, ObjectMapper mapper) {
+            LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten, UpdateStatusRepository updateStatus,
+            ObjectMapper mapper) {
         this(geltungsbereich, entityRepo, entityRegistry, definitions, components, receipts, flows, deployments,
-                probes, audit, leadDevices, faehigkeiten, mapper, Clock.systemUTC());
+                probes, audit, leadDevices, faehigkeiten, updateStatus, mapper, Clock.systemUTC());
     }
 
     ModbusGeraetService(Geltungsbereich geltungsbereich, EntityRegistryRepository entityRepo,
             EntityRegistryService entityRegistry, ComponentDefinitionRepository definitions,
             ComponentService components, ComponentConnectionReceipts receipts, FlowRepository flows,
             FlowActivationService deployments, ProbeService probes, ConsumerAuditRepository audit,
-            LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten, ObjectMapper mapper, Clock clock) {
+            LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten, UpdateStatusRepository updateStatus,
+            ObjectMapper mapper, Clock clock) {
         this.geltungsbereich = geltungsbereich;
         this.entityRepo = entityRepo;
         this.entityRegistry = entityRegistry;
@@ -112,6 +121,7 @@ public class ModbusGeraetService {
         this.audit = audit;
         this.leadDevices = leadDevices;
         this.faehigkeiten = faehigkeiten;
+        this.updateStatus = updateStatus;
         this.mapper = mapper;
         this.clock = clock;
     }
@@ -119,25 +129,44 @@ public class ModbusGeraetService {
     // ---- Anlegen / Ändern -------------------------------------------------
 
     /**
-     * Legt ein Gerät mit Schreibwerten an (entityId null) oder ersetzt die
-     * Definition eines Selbstbau-Geräts - auch eines, das bisher nur gemessen
-     * hat. Bleiben die Schreibwerte gleich, bleibt die Freigabe; ändert sich
-     * einer, entfällt sie, denn sie belegte genau diese Register und Werte.
+     * Legt ein Gerät an (entityId null) oder ersetzt die Definition eines
+     * Selbstbau-Geräts - auch eines, das bisher nur gemessen hat. Bleiben die
+     * Schreibwerte gleich, bleibt die Freigabe; ändert sich einer, entfällt
+     * sie, denn sie belegte genau diese Register und Werte.
+     *
+     * <p>Seit E8 (Pi-Ablösung-Konzept) nimmt dieser Weg auch ein Gerät OHNE
+     * jeden Schreibwert an - aber nur für eine Anlage, deren führende Box
+     * Edge Light ist: nur dort liest der Core ein solches Gerät selbst
+     * ({@code AusEntity} ohne {@code controls}-Zweig); auf der Docker-Box
+     * bliebe die Entität unlesbar, denn ihr generierter Lese-Flow entsteht
+     * nur über die Selbstbau-Tür ({@link SelfBuildComponentService}), die
+     * dort weiterhin der richtige Weg ist.
      */
     @Transactional
     public SiteComponentsDto speichern(UUID siteId, UUID entityId, SpeichernRequest req, String subject) {
         geltungsbereich.requireSite(siteId);
         requirePortalManaged(siteId);
-        requireBoxKann(siteId);
+        UUID box = requireBoxKann(siteId);
         ModbusGeraetDefinition.Ergebnis e = ModbusGeraetDefinition.pruefe(
                 req == null ? null : req.definition(), mapper);
         if (!e.ok()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, String.join(" ", e.texte()));
         }
         ObjectNode def = e.definition();
-        if (!def.path("controls").isObject()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Ein Gerät ohne Schreibwerte legen Sie über „Eigenes Gerät“ an.");
+        JsonNode values = def.path("controls").path("values");
+        boolean hatSchreibwerte = values.isArray() && !values.isEmpty();
+        if (!hatSchreibwerte) {
+            if (!BoxArt.LIGHT.equals(updateStatus.boxArt(box))) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Ein Gerät ohne Schreibwerte legen Sie über „Eigenes Gerät“ an.");
+            }
+            if (!def.path("controls").isObject()) {
+                // Normalisiert: auch ohne Schreibwerte trägt die Definition
+                // einen (leeren) controls-Block, damit die alte Selbstbau-Tür
+                // dieses Gerät an "hat controls" erkennt (requireOhneSchreibwerte)
+                // und seine Signale nie versehentlich verwirft.
+                def.putObject("controls").putArray("values");
+            }
         }
         requireTested(siteId, def);
         String label = req.label() == null || req.label().isBlank() ? "Eigenes Modbus-Gerät" : req.label().trim();
@@ -326,7 +355,7 @@ public class ModbusGeraetService {
      * eine ältere Box hätte für dieses Gerät weder einen Leseplan noch einen
      * Schreibweg, und das Portal zeigte ein Gerät, das nichts liefert.
      */
-    private void requireBoxKann(UUID siteId) {
+    private UUID requireBoxKann(UUID siteId) {
         UUID box = leadDevices.fuehrendeBox(siteId).box();
         if (box == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -337,6 +366,7 @@ public class ModbusGeraetService {
                     "Die Box dieser Anlage kann Geräte mit Schreibwerten noch nicht selbst lesen und schreiben "
                             + "(Fähigkeit modbus_geraet fehlt). Bitte erst die Box aktualisieren.");
         }
+        return box;
     }
 
     private void requireTested(UUID siteId, JsonNode def) {
@@ -364,7 +394,8 @@ public class ModbusGeraetService {
 
     private JsonNode requireGeraet(EntityRow row) {
         JsonNode def = parse(row.connectionJson());
-        if (!def.path("controls").isObject()) {
+        JsonNode values = def.path("controls").path("values");
+        if (!values.isArray() || values.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dieses Gerät hat keine Schreibwerte.");
         }
         return def;

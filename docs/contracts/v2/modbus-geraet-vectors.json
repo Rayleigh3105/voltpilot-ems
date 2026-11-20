@@ -48,11 +48,37 @@
       "write_fc": 6, "scale": 0.1, "offset": -50, "min": 2, "max": 8, "step": 0.5, "rest": 4}
     ]
    }
+  },
+  "nurmessen": {
+   "$comment": "E8 (Pi-Ablösung-Konzept): ein reines Selbstbau-Messgerät ohne jeden Schreibwert - ganz ohne controls-Block.",
+   "transport": {"host": "192.168.10.70"},
+   "channels": [
+    {"slug": "raum", "label": "Raum", "unit": "°C", "signal": "room_temperature",
+     "register": {"kind": "input", "address": 0, "data_type": "s16"}, "scale": 0.1}
+   ]
+  },
+  "nurmessen_leer": {
+   "$comment": "Dieselbe Lücke, aber mit explizit leerem controls.values - beide Formen sind gültig.",
+   "transport": {"host": "192.168.10.70"},
+   "channels": [
+    {"slug": "raum", "label": "Raum", "unit": "°C", "signal": "room_temperature",
+     "register": {"kind": "input", "address": 0, "data_type": "s16"}, "scale": 0.1}
+   ],
+   "controls": {"values": []}
   }
  },
  "definitionen": [
   {"name": "Klimagerät mit drei Schreibwerten", "geraet": "klima", "fehler": []},
   {"name": "Kühlraum mit Offset, noch ohne Freigabe", "geraet": "kuehlraum", "fehler": []},
+  {"name": "Reines Messgerät ohne controls-Block (E8)", "geraet": "nurmessen", "fehler": []},
+  {"name": "Reines Messgerät mit leerem controls.values (E8)", "geraet": "nurmessen_leer", "fehler": []},
+  {"name": "Vier Schreibwerte sind zu viele", "geraet": "nurmessen_leer",
+   "aendere": {"controls.values": [
+     {"slug": "a", "label": "A", "kind": "on_off", "register": {"kind": "coil", "address": 0}, "on_value": 1, "off_value": 0, "rest": false},
+     {"slug": "b", "label": "B", "kind": "setpoint_c", "register": {"kind": "holding", "address": 1}, "min": 0, "max": 10, "rest": 5},
+     {"slug": "c", "label": "C", "kind": "mode", "register": {"kind": "holding", "address": 2}, "modes": {"normal": 1, "boost": 2}, "rest": "normal"},
+     {"slug": "d", "label": "D", "kind": "on_off", "register": {"kind": "coil", "address": 3}, "on_value": 1, "off_value": 0, "rest": false}
+   ]}, "fehler": ["control_count", "control_twice"]},
   {"name": "Ein Signal, das die Wortliste nicht kennt", "geraet": "klima", "aendere": {"channels[0].signal": "pressure"}, "fehler": ["signal"]},
   {"name": "Ein Ja/Nein-Signal auf einem ganzen Register", "geraet": "klima", "aendere": {"channels[0].signal": "fault", "channels[1].signal": "open"}, "fehler": ["signal_bool"]},
   {"name": "Eine Temperatur ohne °C", "geraet": "klima", "aendere": {"channels[0].unit": "K"}, "fehler": ["signal_unit"]},

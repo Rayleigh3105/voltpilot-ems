@@ -166,12 +166,14 @@ type Definition struct {
 	Controls *Controls `json:"controls,omitempty"`
 }
 
-// AusEntity reads the definition of a self-built device that the core owns
-// (K3: a driver block "modbus_baukasten" whose definition has controls) from a
-// registry entity. ok = the core reads and writes this device; a definition
-// that breaks the rules comes back with its errors and the raw connection (so
-// a caller can say it once per definition). Box (agent) and the service beside
-// the API (the inputs a logic may read) decide with this one function.
+// AusEntity reads the definition of a self-built Modbus device (a driver
+// block "modbus_baukasten") from a registry entity: with write values (K3) or,
+// since E8, a pure measurement device with no controls block at all. ok =
+// the definition obeys every rule; a definition that breaks one comes back
+// with its errors and the raw connection (so a caller can say it once per
+// definition). ok says nothing about WHICH devices a box owns: a caller that
+// must not read a controls-less device twice - every Docker box, whose
+// generated Node-RED flow already reads it - decides that itself.
 func AusEntity(e entities.Entity) (def Definition, quelle string, fehler []Fehler, ok bool) {
 	if len(e.Driver) == 0 {
 		return Definition{}, "", nil, false
@@ -184,9 +186,6 @@ func AusEntity(e entities.Entity) (def Definition, quelle string, fehler []Fehle
 		return Definition{}, "", nil, false
 	}
 	def, fehler = Lies(drv.Connection)
-	if def.Controls == nil {
-		return Definition{}, "", nil, false
-	}
 	if len(fehler) > 0 {
 		return Definition{}, string(drv.Connection), fehler, false
 	}
@@ -349,7 +348,7 @@ func Pruefe(d Definition) []Fehler {
 		return out
 	}
 	cs := d.Controls
-	if len(cs.Values) == 0 || len(cs.Values) > MaxControls {
+	if len(cs.Values) > MaxControls {
 		fehl(ErrControlCount, "controls.values")
 	}
 	if cs.MinChangeIntervalS != nil && (*cs.MinChangeIntervalS < MinChangeIntervalS || *cs.MinChangeIntervalS > MaxChangeIntervalS) {

@@ -405,15 +405,16 @@ public class SelfBuildComponentService {
     }
 
     /**
-     * Ein Gerät mit Schreibwerten (K3, {@link ModbusGeraetService}) wird nur
-     * über seinen eigenen Weg geändert: diese Tür kennt seine Schreibwerte und
-     * Signale nicht und würde sie beim Speichern still verwerfen.
+     * Ein Gerät der anderen Tür ({@link ModbusGeraetService}, mit ODER seit E8
+     * ohne Schreibwerte) wird nur über seinen eigenen Weg geändert: diese Tür
+     * kennt seine Signale nicht und würde sie beim Speichern still verwerfen.
+     * Erkennbar an einem vorhandenen {@code controls}-Block (auch einem
+     * leeren) - nur diese Tür schreibt ihn je in die Definition.
      */
     private void requireOhneSchreibwerte(EntityRow row) {
         if (parseJson(row.connectionJson() == null ? "{}" : row.connectionJson()).has("controls")) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Dieses Gerät hat Schreibwerte (Sollwert, Betriebsart, Ein/Aus) und wird über "
-                            + "„Gerät mit Schreibwerten“ geändert.");
+                    "Dieses Gerät gehört zur Tür „Gerät mit Schreibwerten“ und wird dort geändert.");
         }
     }
 

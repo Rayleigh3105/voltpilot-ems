@@ -21,6 +21,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logik"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logiklauf"
@@ -457,5 +458,63 @@ func TestAbgelehnteDefinitionWirdNieGelesen(t *testing.T) {
 	}
 	if a.mbAbgelehnt["fremd"] == "" {
 		t.Fatal("the refusal is remembered (logged once)")
+	}
+}
+
+// E8: a self-built Modbus device with no write values at all (a pure
+// measurement device, the self-build door's Modbus-TCP-only case). The Core
+// owns it directly only on Edge Light, which has no Node-RED to run the
+// self-build door's generated read flow; on the Docker box, where that flow
+// already reads the device, the Core must leave it alone - reading it twice
+// would double-poll the one physical connection.
+func TestSelbstbauMessgeraetNurAufEdgeLightVomCoreGelesen(t *testing.T) {
+	sim, err := geraetsim.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sim.Close()
+	sim.Input(0, uint16(int16(215))) // 21,5 °C bei Skalierung 0,1
+	host, portS, _ := net.SplitHostPort(sim.Addr())
+	port, _ := strconv.Atoi(portS)
+
+	def := map[string]any{
+		"schema_version": "1.0",
+		"transport":      map[string]any{"host": host, "port": port, "unit_id": 1},
+		"channels": []any{
+			map[string]any{"slug": "raum", "label": "Raum", "unit": "°C", "signal": "room_temperature",
+				"register": map[string]any{"kind": "input", "address": 0, "data_type": "s16"}, "scale": 0.1, "min_read_interval_s": 5},
+		},
+	}
+	conn, _ := json.Marshal(def)
+	drv, _ := json.Marshal(map[string]any{"communication": "modbus_baukasten", "connection": json.RawMessage(conn)})
+	e := entities.Entity{ID: "messgeraet", Type: "modbus-generic", Driver: drv}
+	reg := entities.Registry{Revision: "r", Entities: []entities.Entity{e}}
+
+	docker := &Agent{Cfg: config.Defaults(), entRegistry: reg}
+	if g := docker.syncModbusGeraete(); len(g) != 0 {
+		t.Fatalf("Docker-Box liest ein schreibwertloses Selbstbau-Gerät selbst: %+v", g)
+	}
+	if docker.mbAbgelehnt["messgeraet"] != "" {
+		t.Fatal("ein schreibwertloses Gerät ist keine abgelehnte Definition - auf der Docker-Box " +
+			"gehört es nur ihrem generierten Lese-Flow, nicht dem Core")
+	}
+
+	cfg := config.Defaults()
+	cfg.BoxArt = geraetesuche.BoxArtEdgeLight
+	light := &Agent{Cfg: cfg, entRegistry: reg}
+	defer func() {
+		for _, g := range light.mbGeraete {
+			g.schliesse()
+		}
+	}()
+	if g := light.syncModbusGeraete(); len(g) != 1 {
+		t.Fatalf("Edge Light liest das Gerät nicht selbst: %+v", g)
+	}
+
+	uhr := time.Now()
+	light.runModbusGeraetPoll(context.Background(), uhr)
+	w, ok := light.mbQuelle("messgeraet", "room_temperature", uhr)
+	if !ok || w.Zahl == nil || *w.Zahl != 21.5 {
+		t.Fatalf("Signal nicht gelesen: %+v ok=%v", w, ok)
 	}
 }
