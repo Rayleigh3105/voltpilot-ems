@@ -17,7 +17,11 @@ import (
 
 // schreibGeraet is a one-client Modbus TCP device with holding registers and
 // coils: FC1/FC3 read, FC5/FC6/FC16 write. `ignore` acknowledges writes
-// without applying them (the firmware that accepts and drops a frame).
+// without applying them (the firmware that accepts and drops a frame). A
+// second client is refused only while the first one is still connected: the
+// device first gives a session whose client has just closed the moment to
+// notice that (the switch test opens one session per op back to back, and
+// refusing at once raced with the end of the previous one).
 type schreibGeraet struct {
 	ln      net.Listener
 	mu      sync.Mutex
@@ -42,7 +46,7 @@ func startSchreibGeraet(t *testing.T) *schreibGeraet {
 			if err != nil {
 				return
 			}
-			if !g.busy.CompareAndSwap(0, 1) {
+			if !g.acquire() {
 				g.refused.Add(1)
 				_ = c.Close()
 				continue
@@ -55,6 +59,20 @@ func startSchreibGeraet(t *testing.T) *schreibGeraet {
 	}()
 	t.Cleanup(func() { _ = ln.Close() })
 	return g
+}
+
+// acquire takes the one client slot, waiting briefly for a session that is
+// ending; a client that stays connected keeps it and the newcomer is refused.
+func (g *schreibGeraet) acquire() bool {
+	for deadline := time.Now().Add(250 * time.Millisecond); ; {
+		if g.busy.CompareAndSwap(0, 1) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
 }
 
 func (g *schreibGeraet) port() int {

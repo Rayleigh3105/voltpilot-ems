@@ -53,7 +53,7 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 
 | Funktion | Node-RED heute | Edge Light |
 |---|---|---|
-| Deye: Fernsteuerung, ToU, Ladeseite, Wechselrichter-Automatik, netzseitiger Drossel-Slot, Rücklesen | `inverter-control-routing.js`, `deye-charge-side.js`, `deye-grid-target.js`, `unplanned-load-native.js`, `readback-verify.js` | ⬜ 🔒 |
+| Deye: Fernsteuerung, ToU, Ladeseite, Wechselrichter-Automatik, netzseitiger Drossel-Slot, Rücklesen | `inverter-control-routing.js`, `deye-charge-side.js`, `deye-grid-target.js`, `unplanned-load-native.js`, `readback-verify.js` | 🟡 Schreibplan, Rückgabe, Absturz-Wiederherstellung, Automatik, Tagesbudget und Rücklese-Urteil als Go-Zwilling (`internal/steuerplan`, gleich gegen die Vektoren `steuerplan-*-vectors.json` aus den Modulen und dem Knoten „Steuerung / Schreibplan“; Steuern in Go, Teil 1a) · ⬜ Ausführung in Schicht 1 · 🔒 |
 | Fronius: Abregelung (Model 123, FC16-Block), Speicher (Model 124, geplant) | `sunspec/curtail*.js` | ⬜ 🔒 |
 | SunSpec-Simulator / generisches Modbus schreiben | Steuer-Executor | ⬜ |
 | KOSTAL, KACO (vorbereitet, gesperrt) | Steuer-Adapter | ⬜ 🔒 |
