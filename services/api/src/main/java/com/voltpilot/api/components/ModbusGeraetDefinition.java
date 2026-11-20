@@ -95,7 +95,7 @@ public final class ModbusGeraetDefinition {
             Map.entry("signal_bool", "Tür, Fenster, Abtauung, Störung und Betrieb sind Ja/Nein-Werte: ein Bit, "
                     + "eine Spule oder ein diskreter Eingang - und umgekehrt."),
             Map.entry("read_interval", "Der Mindestabstand zwischen zwei Lesungen ist " + MIN_READ_INTERVAL_S + " s."),
-            Map.entry("control_count", "Ein Gerät hat einen bis drei Schreibwerte: Ein/Aus, Sollwert und Betriebsart."),
+            Map.entry("control_count", "Ein Gerät hat höchstens drei Schreibwerte: Ein/Aus, Sollwert und Betriebsart."),
             Map.entry("control_kind", "Ein Schreibwert ist Ein/Aus, Sollwert in °C oder Betriebsart."),
             Map.entry("control_twice", "Jede Art von Schreibwert gibt es an einem Gerät nur einmal."),
             Map.entry("control_slug", "Jeder Schreibwert braucht einen eigenen Namen, auch gegenüber den Messwerten."),
@@ -194,7 +194,7 @@ public final class ModbusGeraetDefinition {
         }
         ((ObjectNode) cs).remove("freigabe");
         JsonNode values = cs.path("values");
-        if (!values.isArray() || values.isEmpty() || values.size() > MAX_CONTROLS) {
+        if (!values.isArray() || values.size() > MAX_CONTROLS) {
             fehl(out, "control_count", "controls.values");
         }
         if (cs.has("min_change_interval_s")) {

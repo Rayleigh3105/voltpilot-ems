@@ -13,8 +13,10 @@ import com.voltpilot.api.components.SelfBuildComponentService;
 import com.voltpilot.api.components.SelfBuildDefinition;
 import com.voltpilot.api.components.SelfBuildFlowCompiler;
 import com.voltpilot.api.flows.FlowCompilerHttp;
+import com.voltpilot.api.ota.BoxArt;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
+import com.voltpilot.api.repo.UpdateStatusRepository;
 import com.voltpilot.api.uems.BoxFaehigkeiten;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -119,6 +121,9 @@ class ModbusGeraetApiTest {
 
     @MockitoSpyBean
     ProbeService probes;
+
+    @MockitoSpyBean
+    UpdateStatusRepository updateStatus;
 
     private final ObjectMapper json = new ObjectMapper();
 
@@ -240,6 +245,66 @@ class ModbusGeraetApiTest {
                     .isEqualTo(HttpStatus.NOT_FOUND);
             assertThat(post(path + "/test", stranger, Map.of("slug", "soll", "wert", 20)).getStatusCode())
                     .isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * E8 (Pi-Ablösung-Konzept): ein reines Selbstbau-Messgerät ohne jeden
+     * Schreibwert nimmt dieser Weg nur für eine Anlage an, deren führende Box
+     * Edge Light ist - denn nur dort gibt es sonst keinen Lese-Weg (kein
+     * Node-RED für den Flow der Selbstbau-Tür). Für jede andere Box-Art (und
+     * eine, deren Art noch unbekannt ist) bleibt die alte Ablehnung.
+     */
+    @Test
+    void einMessgeraetOhneSchreibwerteNimmtNurEineEdgeLightAn() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSiteWithDevice(customer, "Messgerät E8", "k3-messgeraet-01");
+        try {
+            String base = "/api/v1/sites/" + site + "/components/custom";
+            recordReceipt(site);
+            doReturn(true).when(faehigkeiten).kann(any(), eq("modbus_geraet"));
+
+            ObjectNode ohneControls = klima();
+            ohneControls.remove("controls");
+
+            // Die Box-Art ist hier (noch) unbekannt: wie eine Docker-Box bleibt es bei der alten Ablehnung.
+            ResponseEntity<String> unbekannt = post(base + "/geraet", customer,
+                    Map.of("label", "Messgerät", "definition", ohneControls));
+            assertThat(unbekannt.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(message(unbekannt)).contains("Eigenes Gerät");
+
+            // Edge Light liest ein solches Gerät selbst - hier wird es angenommen.
+            doReturn(BoxArt.LIGHT).when(updateStatus).boxArt(any());
+            ResponseEntity<String> neu = post(base + "/geraet", customer,
+                    Map.of("label", "Messgerät", "definition", ohneControls));
+            assertThat(neu.getStatusCode()).as(neu.getBody()).isEqualTo(HttpStatus.OK);
+            JsonNode zeile = componentNamed(neu.getBody(), "Messgerät");
+            UUID entity = UUID.fromString(zeile.path("id").asText());
+            assertThat(zeile.path("entityType").asText()).isEqualTo("modbus-generic");
+            assertThat(caps(entity).has("actuate")).isFalse();
+            assertThat(guards(entity).path("failsafe").path("behavior").asText()).isEqualTo("measure-only");
+            // Normalisiert: ein (leerer) controls-Block bleibt, damit die alte
+            // Selbstbau-Tür dieses Gerät nicht für ein eigenes hält (siehe unten).
+            assertThat(definition(entity).path("controls").path("values")).isEmpty();
+            assertThat(definition(entity).path("channels").get(0).path("signal").asText())
+                    .isEqualTo("room_temperature");
+            // Kein Node-RED-Leseplan: Edge Light braucht keinen, sie liest das Gerät selbst.
+            assertThat(scalar("SELECT count(*) FROM flow_definition WHERE flow_id = '"
+                    + SelfBuildFlowCompiler.generatedFlowId(entity) + "' AND lifecycle = 'active'")).isEqualTo("0");
+
+            // Test und Freigabe sind für ein Gerät ohne Schreibwerte sinnlos.
+            assertThat(post(base + "/" + entity + "/geraet/test", customer, Map.of("slug", "x", "wert", true))
+                    .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(post(base + "/" + entity + "/geraet/freigabe", customer, Map.of("physicallyConfirmed", true))
+                    .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+            // Die alte Selbstbau-Tür ändert dieses Gerät trotzdem nicht - sie kennt seine
+            // Signale nicht und würde sie beim Speichern verwerfen (cross-door E8-Lücke).
+            ResponseEntity<String> tuer = put(base + "/" + entity, customer, Map.of("label", "Messgerät",
+                    "connection", Map.of("host", HOST, "port", 502, "unitId", 1), "channels", List.of()));
+            assertThat(tuer.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         } finally {
             deleteSite(site);
         }
