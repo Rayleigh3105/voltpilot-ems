@@ -67,6 +67,7 @@ type Plan struct {
 	Adapter              string        `json:"adapter"`
 	Family               string        `json:"family"`
 	Tier                 *int          `json:"tier,omitempty"`
+	Profile              string        `json:"profile,omitempty"`
 	Mode                 string        `json:"mode,omitempty"`
 	Supported            *bool         `json:"supported,omitempty"`
 	ControlPath          string        `json:"controlPath,omitempty"`

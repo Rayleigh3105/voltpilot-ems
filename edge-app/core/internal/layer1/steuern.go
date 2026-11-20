@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/modbustcp"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/solarmanv5"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/steuerplan"
 )
@@ -139,20 +140,22 @@ func (r *Runtime) steuerTakt(ctx context.Context, sel, sp steuerplan.Obj) {
 	if ziel != "" {
 		in.Cap, in.Sticky, in.NativeCfg = a.Faehigkeit[ziel], a.Pfad[ziel], a.Geraetekonfig[ziel]
 	}
+	// The Edge Light release closes the device's own grant and the fleet-wide
+	// family certification: the plan comes out exactly as for a device without
+	// any grant (read, never written).
 	gesperrt := ""
-	if ziel != "" {
-		familie, _ := sel["family"].(string)
-		familie = strings.TrimSpace(familie)
-		pfad := steuerplan.Steuerpfad(sel, sp, in.Cap, in.Sticky, now)
-		if !steuernFreigegeben(familie, pfad) && (sp["device_certified"] == true || sp["calibration"] == true) {
-			// The Edge Light release closes the device's own grant: the plan
-			// comes out exactly as for an uncertified device.
-			gated := make(steuerplan.Obj, len(sp))
-			for k, v := range sp {
-				gated[k] = v
-			}
-			gated["device_certified"], gated["calibration"] = false, false
-			in.Setpoint = gated
+	familie, _ := sel["family"].(string)
+	familie = strings.TrimSpace(familie)
+	pfad := ""
+	switch {
+	case ziel != "":
+		pfad = steuerplan.Steuerpfad(sel, sp, in.Cap, in.Sticky, now)
+	case sel["communication"] == steuerplan.CommModbus:
+		pfad = PfadModbus
+	}
+	if pfad != "" && !steuernFreigegeben(familie, pfad) {
+		in.Gesperrt = true
+		if sp["device_certified"] == true || sp["calibration"] == true || familie == "sunspec" {
 			gesperrt = "Edge Light: Steuerung für " + familie + " (" + pfadWort(pfad) +
 				") noch nicht am Prüfstand freigegeben - es wird nur gelesen"
 		}
@@ -168,12 +171,22 @@ func (r *Runtime) steuerTakt(ctx context.Context, sel, sp steuerplan.Obj) {
 	if gesperrt != "" && len(out.Control.Writes) == 0 {
 		out.Control.Reason, out.Control.Blocked = gesperrt, true
 	}
+	if out.Control.Adapter == steuerplan.CommModbus {
+		r.steuerAusfuehrenModbus(ctx, out.Control, sp, out.NativeCapabilities, gesperrt)
+		return
+	}
 	r.steuerAusfuehren(ctx, out.Control, sp, out.NativeCapabilities, out.NativeRefusal)
 }
 
+// PfadModbus is the release path of the generic SunSpec / Modbus write.
+const PfadModbus = "modbus"
+
 func pfadWort(p string) string {
-	if p == steuerplan.DeyePathRemote {
+	switch p {
+	case steuerplan.DeyePathRemote:
 		return "Fernsteuerung"
+	case PfadModbus:
+		return "Modbus"
 	}
 	return "Zeitfenster"
 }
@@ -344,4 +357,74 @@ func (r *Runtime) steuerSpeichern() {
 	if err != nil {
 		r.log.Warn("Steuer-Ablage nicht geschrieben", "datei", r.opts.SteuerAblage, "err", err)
 	}
+}
+
+// steuerAusfuehrenModbus runs the generic executor over the device's lane (one
+// Modbus TCP session to the plan's unit) and publishes the shaped readback.
+func (r *Runtime) steuerAusfuehrenModbus(ctx context.Context, plan *steuerplan.Plan, sp steuerplan.Obj,
+	caps *steuerplan.NativeLevers, gesperrt string) {
+	now := r.opts.Now()
+	ip, _ := plan.Connection["ip"].(string)
+	port, _ := plan.Connection["port"].(float64)
+	unit, _ := plan.Connection["unit_id"].(float64)
+	addr := netJoin(ip, int(port))
+	var c *modbustcp.Client
+	release := func() {}
+	defer func() {
+		if c != nil {
+			_ = c.Close()
+		}
+		release()
+	}()
+	if gesperrt != "" {
+		r.steuerWarnung("Steuerung (" + addr + "): " + gesperrt)
+	}
+	sctx, cancel := context.WithTimeout(ctx, steuerSessionBudget)
+	defer cancel()
+	payload := steuerplan.AusfuehrenModbus(sctx, steuerplan.AusfuehrEingabe{Control: plan, Setpoint: sp,
+		NativeCapabilities: caps, Now: now}, func(context.Context) (steuerplan.ModbusSpur, error) {
+		rel, ok := r.lanes.acquire(ctx, addr, steuerLaneWait)
+		if !ok {
+			return nil, errors.New("Geraet belegt")
+		}
+		release = rel
+		cl, err := modbustcp.Dial(sctx, r.dialTCP, addr, byte(unit), r.opts.ConnectTimeout, r.opts.ReadTimeout)
+		if err != nil {
+			return nil, err
+		}
+		c = cl
+		return modbusSpur{cl}, nil
+	})
+	if payload == nil {
+		return
+	}
+	shaped := steuerplan.Form(payload, isoMillis(now))
+	if shaped == nil {
+		return
+	}
+	raw, _ := json.Marshal(shaped)
+	if err := r.bus.Publish(localbus.TopicControlReadback, raw, false); err != nil {
+		r.log.Warn("Steuer-Rueckmeldung nicht gesendet", "err", err)
+	}
+}
+
+// modbusSpur is the generic executor's view of a Modbus TCP session.
+type modbusSpur struct{ c *modbustcp.Client }
+
+func (m modbusSpur) Lies(_ context.Context, addr int) (int, error) {
+	regs, err := m.c.ReadHolding(uint16(addr), 1)
+	if err != nil {
+		return 0, abregelFehler(err)
+	}
+	if len(regs) == 0 {
+		return 0, nil
+	}
+	return int(regs[0]), nil
+}
+
+func (m modbusSpur) Schreibe(_ context.Context, addr, value int) error {
+	if err := m.c.WriteSingleRegister(uint16(addr), uint16(value)); err != nil {
+		return abregelFehler(err)
+	}
+	return nil
 }

@@ -31,6 +31,15 @@ test('die Ketten-Vektoren entsprechen Plan-Knoten und Ausfuehrer aus flows.json'
   assert.strictEqual(fs.readFileSync(gen.OUT_KETTE, 'utf8'), await gen.buildKette(), 'steuerplan-kette-vectors.json ' + veraltet);
 });
 
+test('die Modbus-Vektoren entsprechen Plan-Knoten und generischem Ausfuehrer aus flows.json', async () => {
+  assert.strictEqual(fs.readFileSync(gen.OUT_MODBUS, 'utf8'), await gen.buildModbus(), 'steuerplan-modbus-vectors.json ' + veraltet);
+  const ticks = JSON.parse(fs.readFileSync(gen.OUT_MODBUS, 'utf8')).kette.flatMap((c) => c.ticks);
+  assert.ok(ticks.some((t) => t.control && t.control.mode === 'native' && t.control.writes.length > 0), 'Uebergabe an die Automatik');
+  assert.ok(ticks.some((t) => t.control && t.control.mode === 'release' && t.control.writes.length > 0), 'Rueckgabe');
+  assert.ok(ticks.some((t) => t.shaped && t.shaped.all_match === false), 'Abweichung');
+  assert.ok(ticks.some((t) => t.ops.length > 0 && t.payload === null), 'abgebrochener Takt');
+});
+
 test('die Kette deckt Schreiben, Rueckgabe, Absturz, Budget, Fehler und Automatik ab', () => {
   const kette = JSON.parse(fs.readFileSync(gen.OUT_KETTE, 'utf8')).kette;
   const ticks = kette.flatMap((c) => c.ticks);
