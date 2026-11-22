@@ -21,7 +21,8 @@ import { Befehl } from '../../components/FernwartungSsh';
 import { mb } from '../../geraeteUpdates';
 import { fernwartungHash } from '../../nav';
 import { loeschbar, loeschtTunnelSchluessel, VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
-import type { UebersichtZeile, WerkstattFreigabe } from '../../werkstattBank';
+import type { UebersichtZeile, WerkstattFreigabe, WerkstattFreigabePfc200 } from '../../werkstattBank';
+import { CODESYS_SATZ, SPS_SATZ, ZUGAENGE_SATZ, ADMIN_PASSWORT_SATZ } from '../../werkstattPfc200';
 import {
   bindung,
   einrichtung,
@@ -174,6 +175,7 @@ export function WerkstattBoxSeite({
   zeile,
   boxen,
   freigaben,
+  freigabenPfc200 = [],
   jetzt,
   gehaeuseAuftraege,
   onZurueck,
@@ -182,6 +184,8 @@ export function WerkstattBoxSeite({
   zeile: UebersichtZeile;
   boxen: readonly WerkstattBox[];
   freigaben: readonly WerkstattFreigabe[];
+  /** Die Freigaben für den PFC200 (eigene Zeilen der Regel); leer, solange die Werkstatt keinen einrichtet. */
+  freigabenPfc200?: readonly WerkstattFreigabePfc200[];
   jetzt: Date;
   /** Offene Gehäuse-Aufträge aus der Ansicht des Dienstes (additiv); fehlt ohne Stand des Dienstes. */
   gehaeuseAuftraege?: readonly GehaeuseAuftragAnsicht[] | null;
@@ -192,6 +196,8 @@ export function WerkstattBoxSeite({
   const ref = zeile.box as string;
   const box = boxen.find((b) => b.edgeRef === ref) ?? null;
   const mango = zeile.geraet === 'Mango';
+  // Ein WAGO PFC200 (Edge Industrie): kein gedrucktes Gehäuse, eigene Prüfliste, eigene Freigaben.
+  const pfc = box ? box.boxArt === 'edge-industrie' : zeile.geraet === 'PFC200';
   const [verb, setVerb] = useState<Bindung>({ art: 'laedt' });
   const [loeschen, setLoeschen] = useState<'aus' | 'fragen' | 'laeuft'>('aus');
   const [loeschFehler, setLoeschFehler] = useState<string | null>(null);
@@ -261,7 +267,9 @@ export function WerkstattBoxSeite({
 
   const stand = STAND_BADGE[zeile.stand];
   const abnahme = zeile.abnahme;
-  const freigabe = box ? freigabeDerBox(abnahme, zeile.lauf?.freigabe, freigaben) : null;
+  const freigabe = !box ? null : pfc
+    ? freigabeDerBox(abnahme, zeile.lauf?.freigabe, freigabenPfc200)
+    : freigabeDerBox(abnahme, zeile.lauf?.freigabe, freigaben);
   const verbindung = verb.art === 'da' ? boxVerbindung(verb.box, verb.uebersicht, jetzt) : null;
   const kunde = kundenStand(box, ref);
 
@@ -290,7 +298,11 @@ export function WerkstattBoxSeite({
       {zeile.lauf?.grund && zeile.stand === 'problem' && (
         <div className="vp-alert vp-alert-warn" data-testid="ws-grund">
           {/* Erst der Schritt in Worten, dann der Grund des Dienstes als Beleg für die Technik. */}
-          <strong>{zeile.lauf.schritt ? `Stehen geblieben bei „${schrittTitel(zeile.lauf.schritt)}“` : 'Der Lauf ist stehen geblieben'}</strong>
+          <strong>
+            {zeile.lauf.schritt
+              ? `Stehen geblieben bei „${schrittTitel(zeile.lauf.schritt, zeile.lauf.stand?.box_art ?? zeile.lauf.boxArt)}“`
+              : 'Der Lauf ist stehen geblieben'}
+          </strong>
           <div className="vp-ws-technik-grund">Grund des Dienstes: <code>{zeile.lauf.grund}</code></div>
         </div>
       )}
@@ -307,7 +319,7 @@ export function WerkstattBoxSeite({
           <div className="vp-ws-spalte">
             <strong>Noch nicht vom Kunden eingerichtet.</strong>
             <span>
-              Der Kunde richtet die Box über diesen Link ein (derselbe wie der QR-Code auf dem Gehäuse); als Admin
+              Der Kunde richtet die Box über diesen Link ein (derselbe wie der QR-Code auf dem {pfc ? 'Schild' : 'Gehäuse'}); als Admin
               öffnest du ihn in einem privaten Fenster.
             </span>
             <div data-testid="ws-kunde-link">
@@ -385,6 +397,28 @@ export function WerkstattBoxSeite({
           </Card>
         )}
 
+        {pfc && (
+          <WsKarte titel="Schild für das Gerät" testId="ws-karte-schild" breit urteil="Referenz und QR-Code">
+            <BeschriftungKarte edgeRef={ref} schild />
+          </WsKarte>
+        )}
+
+        {pfc && (
+          <WsKarte titel="CODESYS und Zugänge" testId="ws-codesys" breit urteil={abnahme ? 'drei Zugänge, nur verschlüsselt' : 'erst nach der Abnahme'}>
+            <ul className="vp-wsb-saetze" style={{ margin: 0 }}>
+              <li>{ZUGAENGE_SATZ}</li>
+              <li>
+                {ADMIN_PASSWORT_SATZ} Der verschlüsselte Text steht unten unter „Abnahme und Belege“ bei „Zugänge“.
+              </li>
+              <li>
+                {CODESYS_SATZ}
+                {abnahme?.lanNetz ? ` Das Gerät hat dort die Adresse ${abnahme.lanNetz.replace(/\/\d+$/, '')}.` : ''}
+              </li>
+              <li>{SPS_SATZ}</li>
+            </ul>
+          </WsKarte>
+        )}
+
         <WsKarte titel="Einrichtung" testId="ws-einrichtung" urteil={box ? einrichtung(box, freigabe)[0]?.wert ?? undefined : 'ohne Eintrag'}>
           {box ? (
             <>
@@ -440,7 +474,7 @@ export function WerkstattBoxSeite({
         <WsKarte titel="Abnahme und Belege" testId="ws-abnahme" breit urteil={abnahme ? `abgenommen ${zeitpunkt(abnahme.erfasstAm, jetzt)}` : 'noch keine Abnahme'}>
           {abnahme ? (
             <>
-              <AbnahmeAnzeige a={abnahme} jetzt={jetzt} />
+              <AbnahmeAnzeige a={abnahme} jetzt={jetzt} geraet={pfc ? 'pfc200' : 'mango'} />
               {box && fruehereAbnahmen(box).length > 0 && (
                 <details className="vp-ws-aufklapp" data-testid="ws-fruehere">
                   <summary>Frühere Abnahmen ({fruehereAbnahmen(box).length})</summary>

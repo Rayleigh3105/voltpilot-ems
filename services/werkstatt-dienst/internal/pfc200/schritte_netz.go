@@ -643,7 +643,7 @@ echo "docker_laeuft=$(if pidof dockerd >/dev/null 2>&1; then echo ja; else echo 
 	// Ausgeliefert wird mit dem Schalter auf RUN: Auf STOP liefe beim Kunden kein Programm.
 	schalter := w["schalter"]
 	if schalter != "run" {
-		err := k.WarteBis(ctx, "schalter_run", faelle.PFCSchalterStop, schalterAufRun, l.k.Zeiten.Takt, func(ctx context.Context) (bool, error) {
+		err := k.WarteBis(ctx, "schalter_run", faelle.PFCSchalterStop, SchalterAufRun, l.k.Zeiten.Takt, func(ctx context.Context) (bool, error) {
 			aus, err := l.lies(ctx, Werkzeuge+"/get_run_stop_switch_value")
 			if err != nil {
 				return false, nil

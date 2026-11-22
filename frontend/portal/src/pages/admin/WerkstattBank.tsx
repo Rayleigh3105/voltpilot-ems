@@ -17,14 +17,18 @@ import { beschriftung, VERSAND_SATZ } from '../../werkstatt';
 import {
   bildschirm,
   fortschritt,
+  geraetVon,
+  geraetWort,
   heute,
   phasen,
   uhrzeit,
+  type Geraet,
   type LaufStand,
   type Phase,
   type WerkstattAnsicht,
   type WerkstattDienst,
   type WerkstattFreigabe,
+  type WerkstattFreigabePfc200,
   type WerkstattStand,
 } from '../../werkstattBank';
 import {
@@ -35,13 +39,27 @@ import {
   PRUEFUNGEN_WORT,
   schrittListe,
   seitText,
-  software,
+  softwareKarte,
   type Bild,
   type FallSeite,
   type Knopf,
   type PhasenZeile,
-  type Software,
+  type SoftwareKarte as Software,
 } from '../../werkstattLauf';
+import {
+  ADMIN_PASSWORT_SATZ,
+  ANSCHLIESSEN_PFC200,
+  CODESYS_SATZ,
+  EDGE_INDUSTRIE,
+  FESTE_ADRESSE_FOLGE,
+  PFC200_ANGESCHLOSSEN,
+  PFC_BILD,
+  PRUEFUNGEN_PFC200_WORT,
+  SPS_SATZ,
+  ZUGAENGE_SATZ,
+  type PfcAnsicht,
+  type PfcBild,
+} from '../../werkstattPfc200';
 import { DirektlinkQr } from './WerkstattTeile';
 
 const ORANGE = '#E65100';
@@ -108,7 +126,91 @@ function StartladerBild() {
   );
 }
 
+const SCHALTER_Y: Record<PfcAnsicht['schalter'], number> = { run: 70, stop: 88, reset: 106 };
+
+/**
+ * Die Front eines PFC200 als Schema: Leuchte SYS, Betriebsartenschalter (RUN, STOP, RESET), Reset-Taster (RST) und
+ * die zwei Netzbuchsen X1 und X2. Kein Foto und nicht maßstäblich: Es zeigt, was der Handgriff stellt.
+ */
+export function PfcZeichnung({ ansicht, titel, klein = false }: { ansicht: PfcAnsicht; titel: string; klein?: boolean }) {
+  const { schalter, rst, sys, kabel } = ansicht;
+  const marke = (pos: PfcAnsicht['schalter'], text: string) => (
+    <text x="56" y={SCHALTER_Y[pos] + 3.5} fontSize="10" fontWeight={schalter === pos ? 700 : 400} fill={schalter === pos ? (pos === 'run' ? '#2E7D4F' : '#C62828') : '#66717C'}>
+      {text}
+    </text>
+  );
+  const buchse = (name: 'x1' | 'x2', y: number) => (
+    <>
+      <rect x="34" y={y} width="22" height="16" rx="2" fill={kabel === name ? ORANGE : '#ADB5BD'} opacity="0.9" />
+      <text x="62" y={y + 12} fontSize="10" fontWeight="700" fill="#1A1A1A">{name.toUpperCase()}</text>
+      {kabel === name && <path d={`M34 ${y + 8} L6 ${y + 8}`} stroke={ORANGE} strokeWidth="6" strokeLinecap="round" />}
+    </>
+  );
+  return (
+    <svg className={`vp-wsb-bild vp-wsb-pfc${klein ? ' vp-wsb-bild-klein' : ''}`} viewBox="0 0 136 190" role="img" aria-label={titel} data-schalter={schalter} data-rst={rst ? 'ja' : 'nein'} data-sys={sys} data-kabel={kabel ?? 'keins'}>
+      <title>{titel}</title>
+      <rect x="24" y="6" width="106" height="178" rx="6" fill="#FFFFFF" stroke="#CED4DA" strokeWidth="2" />
+      <text x="77" y="22" fontSize="11" fontWeight="700" textAnchor="middle" fill="#1A1A1A">PFC200</text>
+      <text x="77" y="33" fontSize="8" textAnchor="middle" fill="#66717C">750-8212</text>
+      {sys === 'rotgruen' ? (
+        <>
+          <path d="M41 40 A6 6 0 0 0 41 52 Z" fill="#C62828" />
+          <path d="M41 40 A6 6 0 0 1 41 52 Z" fill="#2E7D4F" />
+        </>
+      ) : (
+        <circle cx="41" cy="46" r="6" fill={sys === 'orange' ? '#F59F00' : '#CED4DA'} />
+      )}
+      {sys !== 'aus' && <circle cx="41" cy="46" r="9" fill="none" stroke={sys === 'orange' ? '#F59F00' : '#C62828'} strokeWidth="1.5" strokeDasharray="3 3" />}
+      <text x="56" y="49.5" fontSize="10" fontWeight={sys === 'aus' ? 400 : 700} fill={sys === 'aus' ? '#66717C' : '#1A1A1A'}>
+        SYS{sys === 'orange' ? ' orange' : sys === 'rotgruen' ? ' rot/grün' : ''}
+      </text>
+      <rect x="34" y="62" width="14" height="52" rx="5" fill="#E9ECEF" stroke="#ADB5BD" />
+      <circle cx="41" cy={SCHALTER_Y[schalter]} r="6" fill={schalter === 'run' ? '#2E7D4F' : '#C62828'} />
+      {marke('run', 'RUN')}
+      {marke('stop', 'STOP')}
+      {marke('reset', 'RESET')}
+      <circle cx="41" cy="126" r="4" fill={rst ? '#C62828' : '#CED4DA'} stroke={rst ? '#C62828' : '#ADB5BD'} />
+      {rst && <path d="M4 126 L34 126" stroke="#1A1A1A" strokeWidth="3" strokeLinecap="round" />}
+      <text x="56" y="129.5" fontSize="10" fontWeight={rst ? 700 : 400} fill={rst ? '#C62828' : '#66717C'}>
+        RST{rst ? ' halten' : ''}
+      </text>
+      {buchse('x1', 140)}
+      {buchse('x2', 162)}
+    </svg>
+  );
+}
+
+/**
+ * Ein Handgriff am PFC200 in Bildern: je Teilschritt das Gerät, darunter in einem Satz, was zu tun ist.
+ * `inKarte`: Das Bild steht schon in einer Karte mit eigener Überschrift; dann ohne Rahmen und ohne Titel.
+ */
+function HandgriffBild({ bild, inKarte = false }: { bild: PfcBild; inKarte?: boolean }) {
+  const b = PFC_BILD[bild];
+  return (
+    <figure className={`vp-wsb-handgriff${inKarte ? '' : ' vp-wsb-karte'}`} data-testid="wsb-bild" data-bild={bild} aria-label={b.titel}>
+      {!inKarte && <figcaption>{b.titel}</figcaption>}
+      <ol>
+        {b.schritte.map((s, i) => (
+          <li key={s.kurz}>
+            <PfcZeichnung ansicht={s.bild} titel={s.text} />
+            <span>
+              {b.schritte.length > 1 && <b>{i + 1}. </b>}
+              {s.kurz}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <small>Schema der Front, nicht maßstäblich.</small>
+    </figure>
+  );
+}
+
+function istPfcBild(bild: Bild): bild is PfcBild {
+  return bild.startsWith('pfc-');
+}
+
 function FallBild({ bild }: { bild: Bild }) {
+  if (istPfcBild(bild)) return <HandgriffBild bild={bild} />;
   return (
     <div className="vp-wsb-karte vp-wsb-bildkarte" data-testid="wsb-bild" data-bild={bild}>
       {bild === 'reset' ? (
@@ -223,8 +325,8 @@ function TechnikDetails({ lauf, fall, anschluss }: { lauf: LaufStand | null; fal
 // ── Lauf-Seite: Bausteine ──────────────────────────────────────────────────
 
 function SoftwareKarte({ sw, titel, neuer, testId = 'wsb-software' }: { sw: Software; titel: string; neuer: string | null; testId?: string }) {
-  const paket = (p: Software['openwrt'], id: string) => (
-    <div className="vp-wsl-paket" data-testid={`wsb-soft-${id}`}>
+  const paket = (p: Software['pakete'][number]) => (
+    <div className="vp-wsl-paket" key={p.id} data-testid={`wsb-soft-${p.id}`}>
       <strong>
         {p.name} {p.fassung}
       </strong>
@@ -241,9 +343,17 @@ function SoftwareKarte({ sw, titel, neuer, testId = 'wsb-software' }: { sw: Soft
       <p className="frg">
         Freigabe <b>{sw.freigabe}</b>
       </p>
-      {paket(sw.openwrt, 'openwrt')}
-      {paket(sw.edgeLight, 'edge-light')}
-      {neuer && (
+      {sw.pakete.map(paket)}
+      {sw.geraet === 'pfc200' && (
+        <div className="vp-wsl-paket" data-testid="wsb-soft-firmware">
+          <strong>Firmware des PFC200</strong>
+          <span className="vp-wsl-pruef offen">bleibt, wie sie ist</span>
+          <span className="vorher">
+            {sw.firmware ?? 'noch nicht gelesen'} · Die Werkstatt liest sie nur und prüft sie nicht.
+          </span>
+        </div>
+      )}
+      {neuer && sw.geraet === 'mango' && (
         <p className="neuer" data-testid="wsb-soft-neuer">
           Neuer erschienen: Edge Light {neuer}. Diese Box bleibt bei ihrer Fassung und holt sie beim ersten Verbinden
           selbst; die nächste bekommt die neueste.
@@ -259,8 +369,9 @@ function SoftwareZeile({ sw, titel, neuer }: { sw: Software; titel: string; neue
     <details className="vp-wsl-soft-zeile" data-testid="wsb-software-zeile">
       <summary>
         <span>{titel === 'Auf dieser Box' ? 'Drauf:' : 'Kommt drauf:'}</span>
-        <b>OpenWrt {sw.openwrt.fassung}</b>
-        <b>Edge Light {sw.edgeLight.fassung}</b>
+        {sw.kurz.map((k) => (
+          <b key={k}>{k}</b>
+        ))}
       </summary>
       <SoftwareKarte sw={sw} titel={titel} neuer={neuer} testId="wsb-software-telefon" />
     </details>
@@ -278,7 +389,7 @@ function SchrittListe({ phasen: ph, testId = 'wsb-schritte' }: { phasen: PhasenZ
             </span>
             <span>
               {p.titel}
-              {p.zustand === 'offen' && <small> · {p.schritte.length} Schritte</small>}
+              {p.zustand === 'offen' && <small> · {p.schritte.length === 1 ? '1 Schritt' : `${p.schritte.length} Schritte`}</small>}
             </span>
             <small>{p.rechts}</small>
           </div>
@@ -325,7 +436,7 @@ function JetztKarte({ lauf, meist, uhr }: { lauf: LaufStand; meist: Record<strin
             läuft seit <b>{dauerText(j.seitSek)}</b>
           </span>
         )}
-        <span>meist {minuten(j.meistSek)}</span>
+        {j.meistSek != null && <span>meist {minuten(j.meistSek)}</span>}
         {j.fristSek != null && <span>Frist {minuten(j.fristSek)}</span>}
       </p>
       {j.danach && (
@@ -346,7 +457,7 @@ function BoxKarte({ lauf, ansicht }: { lauf: LaufStand; ansicht: WerkstattAnsich
       <dl className="vp-wsl-box">
         <Zeile dt="MAC" dd={antwort?.macs?.[0] ?? '–'} />
         <Zeile dt="Adresse" dd={antwort?.adresse ?? '–'} />
-        <Zeile dt="Referenz" dd={lauf.box ?? 'erscheint mit Edge Light'} />
+        <Zeile dt="Referenz" dd={lauf.box ?? `erscheint mit ${geraetVon(lauf.box_art) === 'pfc200' ? EDGE_INDUSTRIE : 'Edge Light'}`} />
         <Zeile dt="Lauf" dd={`seit ${uhrzeit(lauf.beginn)} · ${lauf.kennung}`} />
       </dl>
     </div>
@@ -470,7 +581,9 @@ function FallHaupt({
       </p>
       <h4 className="vp-wsb-h" data-testid="wsb-fall-titel">{seite.titel}</h4>
       <p className="vp-wsb-sub" data-testid="wsb-fall-was">{seite.was}</p>
-      {seite.bild && <FallBild bild={seite.bild} />}
+      {seite.bilder.map((b) => (
+        <FallBild key={b} bild={b} />
+      ))}
       <div className="vp-wsb-karte" data-testid="wsb-loesung" data-fall={seite.code}>
         <h5>Was du tun kannst</h5>
         <Schritte eintraege={seite.schritte} />
@@ -514,6 +627,7 @@ export function WerkstattBank({
   dienst,
   stand,
   freigaben = [],
+  freigabenPfc200 = [],
   neuerEdgeLight = null,
   onUebersicht,
   onBox = () => {},
@@ -525,6 +639,8 @@ export function WerkstattBank({
   stand: WerkstattStand | null;
   /** Die Freigaben als Beleg: ein Lauf zeigt die Fassungen seiner eigenen. */
   freigaben?: readonly WerkstattFreigabe[];
+  /** Dasselbe für den PFC200 (eigene Zeilen der Regel). */
+  freigabenPfc200?: readonly WerkstattFreigabePfc200[];
   /** Ein neueres signiertes Edge-Light-Release als die Freigabe des Laufs (nur Hinweis). */
   neuerEdgeLight?: string | null;
   onUebersicht: () => void;
@@ -534,12 +650,18 @@ export function WerkstattBank({
   /** E2 A: „Box zur Seite legen“ festhalten. Scheitert es, liegt sie hier trotzdem weg. */
   onZurSeite?: (lauf: string) => Promise<void>;
 }) {
-  const [gewaehlt, setGewaehlt] = useState(false);
+  /** Das Gerät, das an der Werkbank gewählt ist (M1 → M2); null: noch keines. */
+  const [gewaehlt, setGewaehlt] = useState<Geraet | null>(null);
   const [erledigt, setErledigt] = useState<Set<string>>(() => new Set());
   const [hinweis, setHinweis] = useState<string | null>(null);
   const [uhr, setUhr] = useState(() => Date.now());
-  const s = useMemo(() => bildschirm({ dienst, gewaehlt, erledigt }), [dienst, gewaehlt, erledigt]);
-  const meist = useMemo(() => meistDauer(dienst?.laeufe ?? []), [dienst]);
+  const s = useMemo(
+    () => bildschirm({ dienst, gewaehlt: gewaehlt != null, geraet: gewaehlt ?? undefined, erledigt }),
+    [dienst, gewaehlt, erledigt],
+  );
+  // Gemessene Dauern nur aus Läufen desselben Geräts: Ein Neustart der Mango sagt nichts über den des PFC200.
+  const laufGeraet = s.art === 'laeuft' || s.art === 'du' || s.art === 'fertig' || s.art === 'fall' ? s.lauf?.box_art ?? null : null;
+  const meist = useMemo(() => meistDauer(dienst?.laeufe ?? [], laufGeraet), [dienst, laufGeraet]);
   const weg = (kennung: string) => setErledigt((alt) => new Set([...alt, kennung]));
   const zweiSpalten = s.art === 'laeuft' || s.art === 'du' || s.art === 'fall' || s.art === 'fertig';
 
@@ -568,9 +690,12 @@ export function WerkstattBank({
 
   const lauf = s.art === 'laeuft' || s.art === 'du' || s.art === 'fertig' ? s.lauf : s.art === 'fall' ? s.lauf : null;
   const ansicht = dienst?.ansicht ?? null;
-  const sw = ansicht && zweiSpalten ? software(ansicht, lauf, freigaben) : null;
+  const sw = ansicht && zweiSpalten ? softwareKarte(ansicht, lauf, freigaben, freigabenPfc200, gewaehlt) : null;
   const swTitel = s.art === 'fertig' ? 'Auf dieser Box' : 'Kommt auf diese Box';
-  const krumen = s.art === 'fertig' && s.lauf.box ? `Werkstatt › ${s.lauf.box}` : gewaehlt ? 'Werkstatt › Mango' : 'Werkstatt';
+  // Das Gerät der Seite: das des Laufs, sonst das eines Falls am Anschluss, sonst das gewählte.
+  const geraet: Geraet | null = lauf ? geraetVon(lauf.box_art) : s.art === 'fall' ? s.seite.geraet : gewaehlt;
+  const krumen = s.art === 'fertig' && s.lauf.box ? `Werkstatt › ${s.lauf.box}` : geraet ? `Werkstatt › ${geraetWort(geraet)}` : 'Werkstatt';
+  const pfcBereit = ansicht?.freigabe_pfc200 != null;
 
   const kopf = (
     <div className="vp-wsb-kopf">
@@ -579,7 +704,7 @@ export function WerkstattBank({
         {lauf && s.art !== 'fertig' && s.art !== 'fall' && <> · Lauf seit {uhrzeit(lauf.beginn)}</>}
       </span>
       {gewaehlt && s.art !== 'kein-dienst' && (
-        <button type="button" className="vp-wsb-leise" onClick={() => setGewaehlt(false)}>
+        <button type="button" className="vp-wsb-leise" onClick={() => setGewaehlt(null)}>
           Zum Start
         </button>
       )}
@@ -608,7 +733,7 @@ export function WerkstattBank({
           {sw && <SoftwareZeile sw={sw} titel={swTitel} neuer={neuerEdgeLight} />}
           {(s.art === 'laeuft' || s.art === 'du') && <Laeuft lauf={s.lauf} meist={meist} uhr={uhr} phasen={phasenZeilen!} />}
           {s.art === 'fall' && <FallHaupt seite={s.seite} lauf={s.lauf} ansicht={ansicht} aktionen={aktionen} uhr={uhr} />}
-          {s.art === 'fertig' && <Fertig lauf={s.lauf} onNaechste={() => weg(s.lauf.kennung)} />}
+          {s.art === 'fertig' && <Fertig lauf={s.lauf} onNaechste={() => weg(s.lauf.kennung)} onBox={onBox} />}
         </section>
         <aside className="vp-wsl-seite" aria-label="Software und Box">
           {sw && (
@@ -679,10 +804,23 @@ export function WerkstattBank({
           </div>
           <h4 className="vp-wsb-h">Was willst du einrichten?</h4>
           <div className="vp-wsb-kacheln">
-            <button type="button" className="vp-wsb-kachel" data-testid="wsb-mango" onClick={() => setGewaehlt(true)}>
+            <button type="button" className="vp-wsb-kachel" data-testid="wsb-mango" onClick={() => setGewaehlt('mango')}>
               <MangoBild lanOrange={false} titel="Mango" />
               <strong>Mango</strong>
               <small>kleiner weißer Router</small>
+            </button>
+            {/* Ohne Freigabe für den PFC200 in der Ansicht richtet dieser Dienst keine ein: Die Kachel sagt es, statt ins Leere zu führen. */}
+            <button
+              type="button"
+              className="vp-wsb-kachel"
+              data-testid="wsb-pfc200"
+              disabled={!pfcBereit}
+              aria-disabled={!pfcBereit}
+              onClick={() => setGewaehlt('pfc200')}
+            >
+              <PfcZeichnung ansicht={{ ...PFC200_ANGESCHLOSSEN, kabel: null }} titel="WAGO PFC200" klein />
+              <strong>PFC200</strong>
+              <small>{pfcBereit ? `Steuerung von WAGO, wird ${EDGE_INDUSTRIE}` : 'der Dienst richtet hier keine PFC200 ein'}</small>
             </button>
             <button type="button" className="vp-wsb-kachel" disabled aria-disabled="true" data-testid="wsb-pi">
               <PiBild />
@@ -703,7 +841,7 @@ export function WerkstattBank({
                     ) : (
                       <Badge variant="tint">läuft {h.prozent} %</Badge>
                     )}
-                    <span>{h.box ?? 'Mango an der Werkbank'}</span>
+                    <span>{h.box ?? `${h.geraet} an der Werkbank`}</span>
                   </li>
                 ))}
               </ul>
@@ -714,7 +852,41 @@ export function WerkstattBank({
         </>
       )}
 
-      {s.art === 'anschliessen' && (
+      {s.art === 'anschliessen' && s.geraet === 'pfc200' && (
+        <>
+          <h4 className="vp-wsb-h">PFC200 anschließen</h4>
+          <p className="vp-wsb-sub">Kabel und Strom, dann einmal die feste Adresse geben. Den Rest macht der Dienst.</p>
+          {!s.freigegeben && (
+            <p className="vp-wsb-hinweis vp-wsb-warn" data-testid="wsb-nicht-freigegeben">
+              <strong>Die Werkstatt richtet gerade keinen PFC200 ein.</strong> {s.grund} In der Übersicht siehst du, worauf sie
+              wartet.
+            </p>
+          )}
+          <FallBild bild="pfc-anschluss" />
+          <Schritte eintraege={[...ANSCHLIESSEN_PFC200]} />
+          {/* Ein PFC200 ab Werk hat an der Werkbank keine Adresse: Der Handgriff steht immer da, solange er nicht antwortet. */}
+          <div className="vp-wsb-karte vp-wsb-stapel" data-testid="wsb-feste-adresse">
+            <h5>Antwortet er nicht: feste Adresse geben</h5>
+            <HandgriffBild bild="pfc-adresse" inKarte />
+            <Schritte eintraege={PFC_BILD['pfc-adresse'].schritte.map((x) => x.text)} />
+            <p className="vp-wsb-karte-fuss">{FESTE_ADRESSE_FOLGE}</p>
+          </div>
+          <div className="vp-wsb-karte">
+            <h5>Wir warten auf den PFC200 …</h5>
+            <Punktliste
+              testId="wsb-warten"
+              zeilen={[
+                { zustand: s.kabel ? 'ok' : 'lauf', text: 'Kabel steckt' },
+                { zustand: s.meldetSich ? 'ok' : s.kabel ? 'lauf' : 'offen', text: 'PFC200 meldet sich unter seiner festen Adresse' },
+                { zustand: s.meldetSich ? 'lauf' : 'offen', text: 'PFC200 erkannt' },
+              ]}
+            />
+          </div>
+          <p className="vp-wsb-sub">Der Dienst sieht alle paar Sekunden nach. Einen Knopf brauchst du nicht.</p>
+        </>
+      )}
+
+      {s.art === 'anschliessen' && s.geraet !== 'pfc200' && (
         <>
           <h4 className="vp-wsb-h">Mango anschließen</h4>
           <p className="vp-wsb-sub">Ein Kabel und Strom, dann macht der Dienst den Rest.</p>
@@ -761,8 +933,8 @@ export function WerkstattBank({
 }
 
 function Laeuft({ lauf, meist, uhr, phasen: ph }: { lauf: LaufStand; meist: Record<string, number>; uhr: number; phasen: PhasenZeile[] }) {
-  const f = fortschritt(lauf);
-  const fertigGegen = new Date(uhr + f.restMinuten * 60_000);
+  const f = fortschritt(lauf, meist);
+  const name = geraetWort(geraetVon(lauf.box_art));
   return (
     <>
       {lauf.zustand === 'wartet' && (
@@ -770,9 +942,17 @@ function Laeuft({ lauf, meist, uhr, phasen: ph }: { lauf: LaufStand; meist: Reco
           <strong>Einmal kurz du.</strong> <span data-testid="wsb-du-hinweis">{lauf.hinweis ?? 'Der Dienst wartet auf eine Eingabe.'}</span>
         </p>
       )}
-      <h4 className="vp-wsb-h">{lauf.zustand === 'wartet' ? lauf.titel ?? 'Der Dienst wartet auf dich' : 'Mango wird eingerichtet'}</h4>
+      <h4 className="vp-wsb-h">{lauf.zustand === 'wartet' ? lauf.titel ?? 'Der Dienst wartet auf dich' : `${name} wird eingerichtet`}</h4>
       <p className="vp-wsb-sub" data-testid="wsb-restzeit">
-        Noch ca. {f.restMinuten} {f.restMinuten === 1 ? 'Minute' : 'Minuten'} · fertig gegen {uhrzeit(fertigGegen.toISOString())} · du kannst weggehen
+        {f.restMinuten == null ? (
+          // Ohne gemessene Dauern aus früheren Läufen nennt die Seite keine Minutenzahl.
+          <>Wie lange es dauert, ist noch nicht gemessen · du kannst weggehen</>
+        ) : (
+          <>
+            Noch ca. {f.restMinuten} {f.restMinuten === 1 ? 'Minute' : 'Minuten'} · fertig gegen{' '}
+            {uhrzeit(new Date(uhr + f.restMinuten * 60_000).toISOString())} · du kannst weggehen
+          </>
+        )}
       </p>
       <div
         className="vp-wsb-balken"
@@ -793,9 +973,10 @@ function Laeuft({ lauf, meist, uhr, phasen: ph }: { lauf: LaufStand; meist: Reco
   );
 }
 
-function Fertig({ lauf, onNaechste }: { lauf: LaufStand; onNaechste: () => void }) {
+function Fertig({ lauf, onNaechste, onBox }: { lauf: LaufStand; onNaechste: () => void; onBox: (ref: string) => void }) {
   const ref = lauf.box ?? null;
   const dauer = lauf.ende ? Math.round((Date.parse(lauf.ende) - Date.parse(lauf.beginn)) / 60_000) : null;
+  if (geraetVon(lauf.box_art) === 'pfc200') return <FertigPfc200 lauf={lauf} dauer={dauer} onNaechste={onNaechste} onBox={onBox} />;
   return (
     <>
       <p className="vp-wsb-hinweis vp-wsb-ok" data-testid="wsb-fertig">
@@ -835,3 +1016,61 @@ function Fertig({ lauf, onNaechste }: { lauf: LaufStand; onNaechste: () => void 
   );
 }
 
+/**
+ * Die Abschlussseite für einen PFC200: Referenz und QR-Code für das Schild (ein gedrucktes Gehäuse hat er nicht), und
+ * was der Betreiber für CODESYS wissen muss: wo die drei Zugänge stehen und an welcher Buchse die Entwicklungsumgebung
+ * das Gerät erreicht. Das Portal zeigt kein Passwort; es kann sie nicht lesen.
+ */
+function FertigPfc200({ lauf, dauer, onNaechste, onBox }: { lauf: LaufStand; dauer: number | null; onNaechste: () => void; onBox: (ref: string) => void }) {
+  const ref = lauf.box ?? null;
+  return (
+    <>
+      <p className="vp-wsb-hinweis vp-wsb-ok" data-testid="wsb-fertig">
+        <strong>Fertig.</strong> Alle {PRUEFUNGEN_PFC200_WORT} Prüfungen bestanden{dauer != null && dauer > 0 ? ` · ${dauer} Min` : ''}.
+      </p>
+      {ref && (
+        <>
+          <div className="vp-wsb-ref" data-testid="wsb-ref">{beschriftung(ref).klartext}</div>
+          <div className="vp-wsb-qr">
+            <DirektlinkQr edgeRef={ref} testId="wsb-qr" />
+          </div>
+        </>
+      )}
+      <div className="vp-wsb-karte">
+        <h5>Jetzt du</h5>
+        <Schritte
+          eintraege={[
+            'Schild mit Referenz und QR-Code drucken (Vorlage auf der Seite der Box) und auf den PFC200 kleben.',
+            <>
+              QR-Code mit dem Handy prüfen: es öffnet sich <strong>{ref ? beschriftung(ref).link.replace(/^https?:\/\//, '') : 'der Direktlink'}</strong>.
+            </>,
+            <>
+              Ins Lager, Fach <strong>„Nicht versenden“</strong> (Stufe 1).
+            </>,
+          ]}
+        />
+      </div>
+      <div className="vp-wsb-karte" data-testid="wsb-codesys">
+        <h5>CODESYS und Zugänge</h5>
+        <ul className="vp-wsb-saetze">
+          <li data-testid="wsb-codesys-zugaenge">{ZUGAENGE_SATZ}</li>
+          <li data-testid="wsb-codesys-admin">{ADMIN_PASSWORT_SATZ}</li>
+          <li>{CODESYS_SATZ}</li>
+          <li>{SPS_SATZ}</li>
+        </ul>
+        {ref && (
+          <Button variant="outline" size="sm" onClick={() => onBox(ref)} data-testid="wsb-zur-box">
+            Seite der Box öffnen
+          </Button>
+        )}
+      </div>
+      <p className="vp-wsb-sub vp-wsb-versand">{VERSAND_SATZ}</p>
+      <div className="vp-wsb-fuss">
+        <Button onClick={onNaechste} data-testid="wsb-naechste">
+          Nächste Box
+        </Button>
+        <span className="vp-wsb-sub">Kabel abziehen geht jetzt</span>
+      </div>
+    </>
+  );
+}

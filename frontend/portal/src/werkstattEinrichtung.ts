@@ -12,7 +12,7 @@
  */
 import { boxOrt, type FernwartungBox } from './adminFernwartung';
 import { beschriftung, type WerkstattAbnahme, type WerkstattBox, type WerkstattGehaeuseDatei } from './werkstatt';
-import { kurzSha, type GehaeuseAuftragAnsicht, type WerkstattFreigabe } from './werkstattBank';
+import { kurzSha, type GehaeuseAuftragAnsicht, type WerkstattFreigabe, type WerkstattFreigabePfc200 } from './werkstattBank';
 import { verlaufZeile, type Fernlauf } from './werkstattFernlauf';
 
 /** Die Hardware der Mango, wie das Gehäuse-Programm sie nennt. */
@@ -97,12 +97,12 @@ export interface EinrichtungZeile {
   wert: string | null;
 }
 
-/** Die Freigabe, unter der die Box eingerichtet wurde (aus Abnahme oder Lauf). */
-export function freigabeDerBox(
+/** Die Freigabe, unter der die Box eingerichtet wurde (aus Abnahme oder Lauf); aus der Liste ihres Geräts. */
+export function freigabeDerBox<F extends { id: string; kennung: string }>(
   abnahme: WerkstattAbnahme | null,
   laufFreigabe: string | null | undefined,
-  freigaben: readonly WerkstattFreigabe[],
-): WerkstattFreigabe | null {
+  freigaben: readonly F[],
+): F | null {
   if (abnahme?.freigabeId) {
     const nachId = freigaben.find((f) => f.id === abnahme.freigabeId);
     if (nachId) return nachId;
@@ -111,7 +111,7 @@ export function freigabeDerBox(
 }
 
 /** „2026-11-mango-4 · Regel, Release 214“ oder „2026-11-mango-3 · von Hand (Alex)“. */
-function freigabeHerkunft(f: WerkstattFreigabe): string {
+function freigabeHerkunft(f: Pick<WerkstattFreigabe, 'kennung' | 'quelle' | 'edgeReleaseSeq' | 'erteiltVon'>): string {
   if (f.quelle === 'regel') return `${f.kennung} · Regel${f.edgeReleaseSeq != null ? `, Release ${f.edgeReleaseSeq}` : ''}`;
   return `${f.kennung} · von Hand (${f.erteiltVon})`;
 }
@@ -123,23 +123,48 @@ function freigabeHerkunft(f: WerkstattFreigabe): string {
  */
 export function einrichtung(
   box: WerkstattBox,
-  freigabe: WerkstattFreigabe | null,
+  freigabe: WerkstattFreigabe | WerkstattFreigabePfc200 | null,
   erstesVerbinden: ErstesVerbinden | null = null,
   fernlauf: Fernlauf | null = null,
   jetzt: Date = new Date(),
 ): EinrichtungZeile[] {
   const a = box.abnahmen[0] ?? null;
-  const industrie = box.boxArt === 'edge-industrie';
-  const hardware = box.boxArt === 'edge-light' ? MANGO_HARDWARE : industrie ? PFC200_HARDWARE : 'Docker-Box (Edge App)';
   const nachDerWerkstatt = fernlaufEinrichtungZeile(fernlauf, jetzt);
   const automatik = erstesVerbindenZeile(erstesVerbinden);
+  if (box.boxArt === 'edge-industrie') {
+    // Der PFC200: kein OpenWrt (seine Firmware fasst die Werkstatt nicht an), dafür zwei Netze und drei Angaben.
+    const f = freigabe && freigabe.openwrt == null ? freigabe : null;
+    const angaben = a?.angaben ?? null;
+    return [
+      { id: 'hardware', titel: 'Hardware', wert: PFC200_HARDWARE },
+      { id: 'edge-light', titel: 'Edge Industrie (aufgespielt)', wert: a?.fassung ?? null },
+      ...(nachDerWerkstatt ? [nachDerWerkstatt] : []),
+      ...(automatik ? [automatik] : []),
+      { id: 'firmware', titel: 'Firmware des Geräts (nur gelesen)', wert: angaben?.firmware ?? null },
+      { id: 'artikel', titel: 'Bestellnummer', wert: angaben?.artikel ?? null },
+      { id: 'seriennummer', titel: 'Seriennummer', wert: angaben?.seriennummer ?? null },
+      {
+        id: 'pruefsummen',
+        titel: 'Prüfsummen (laut Freigabe)',
+        wert: f
+          ? `Programm ${kurzSha(f.edgeLight.programmSha256)} · Skripte ${kurzSha(f.edgeLight.skripteSha256)} · Tunnel-Programm ${kurzSha(f.edgeLight.wartungSha256)}`
+          : null,
+      },
+      { id: 'freigabe', titel: 'Freigabe', wert: f ? freigabeHerkunft(f) : null },
+      { id: 'netz-x1', titel: 'Buchse X1 (Kundennetz)', wert: a ? 'Adresse aus dem Netz des Kunden (DHCP)' : null },
+      { id: 'lan', titel: 'Buchse X2 (Anlagennetz)', wert: a?.lanNetz ?? box.lanNetz },
+      { id: 'tunnel', titel: 'Tunnel-Adresse', wert: a?.tunnelAdresse ?? null },
+      { id: 'host', titel: 'Host-Schlüssel', wert: a?.hostSchluessel ?? null },
+    ];
+  }
+  const hardware = box.boxArt === 'edge-light' ? MANGO_HARDWARE : 'Docker-Box (Edge App)';
+  if (freigabe && freigabe.openwrt == null) freigabe = null; // die Zeile eines anderen Geräts sagt hier nichts
   return [
     { id: 'hardware', titel: 'Hardware', wert: hardware },
-    { id: 'edge-light', titel: industrie ? 'Edge Industrie (aufgespielt)' : 'Edge Light (aufgespielt)', wert: a?.fassung ?? null },
+    { id: 'edge-light', titel: 'Edge Light (aufgespielt)', wert: a?.fassung ?? null },
     ...(nachDerWerkstatt ? [nachDerWerkstatt] : []),
     ...(automatik ? [automatik] : []),
-    // Der PFC200 hat kein OpenWrt: Seine Firmware fasst die Werkstatt nicht an.
-    ...(industrie ? [] : [{ id: 'openwrt', titel: 'OpenWrt (laut Freigabe)', wert: freigabe ? freigabe.openwrt.fassung : null }]),
+    { id: 'openwrt', titel: 'OpenWrt (laut Freigabe)', wert: freigabe ? freigabe.openwrt.fassung : null },
     {
       id: 'pruefsummen',
       titel: 'Prüfsummen (laut Freigabe)',

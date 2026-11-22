@@ -14,24 +14,34 @@
  * nicht: Dann fehlen Belegzeilen und der Knopf „Nochmal versuchen“, und die
  * Fall-Seite liest den Fall aus `handgriff` wie bisher.
  */
-import { PRUEFUNGEN } from './werkstatt';
+import { PRUEFUNGEN, zahlwort } from './werkstatt';
 import {
   MINUTEN,
-  PHASEN,
-  SCHRITTE,
+  phasenFuer,
+  schritteFuer,
   zaehlt,
   type LaufStand,
   type Loesung,
   type PhaseZustand,
   type WerkstattAnsicht,
   type WerkstattFreigabe,
+  type WerkstattFreigabePfc200,
   type WerkstattLauf,
 } from './werkstattBank';
-
-const ZAHLWORT = ['null', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf'];
+import {
+  EDGE_INDUSTRIE,
+  edgeIndustrieKurz,
+  FALL_BILDER_PFC200,
+  istPfc200,
+  NACH_PFC200,
+  SCHRITT_TEXT_PFC200,
+  WAS_PFC200,
+  WERKSRESET_FAELLE,
+  type PfcBild,
+} from './werkstattPfc200';
 
 /** „zehn“: so viele Prüfungen hat die Abnahme (Vektor werkstatt-pruefungen.json, Zwilling `PRUEFUNGEN`). */
-export const PRUEFUNGEN_WORT = ZAHLWORT[PRUEFUNGEN.length] ?? String(PRUEFUNGEN.length);
+export const PRUEFUNGEN_WORT = zahlwort(PRUEFUNGEN.length);
 
 // ── Schritte ───────────────────────────────────────────────────────────────
 
@@ -63,8 +73,13 @@ export const SCHRITT_TEXT: Record<string, { titel: string; tut: string }> = {
   },
 };
 
-export function schrittTitel(s: string): string {
-  return SCHRITT_TEXT[s]?.titel ?? s;
+/** Titel und Satz eines Schritts an diesem Gerät (`lauf.box_art`; ohne Angabe die Mango). */
+export function schrittText(s: string, boxArt?: string | null): { titel: string; tut: string } | null {
+  return (istPfc200(boxArt) ? SCHRITT_TEXT_PFC200 : SCHRITT_TEXT)[s] ?? null;
+}
+
+export function schrittTitel(s: string, boxArt?: string | null): string {
+  return schrittText(s, boxArt)?.titel ?? s;
 }
 
 /** „1:48“ (Minuten:Sekunden) oder „12:03:10“ ab einer Stunde. */
@@ -84,24 +99,30 @@ function minutenText(sek: number): string {
 
 /** Die Schritte, die in diesem Lauf zählen (Einlösen oder Tunnel-Adresse von Hand, nie beides). */
 export function laufSchritte(s: LaufStand): string[] {
-  return SCHRITTE.filter((x) => zaehlt(s, x));
+  return schritteFuer(s.box_art).filter((x) => zaehlt(s, x));
 }
 
 /**
  * Wie lange ein Schritt meist dauert, in Sekunden: der Median der gemessenen
- * Dauern aus den Belegen der letzten Läufe (E3), sonst die feste Schätzung.
+ * Dauern aus den Belegen der letzten Läufe an diesem Gerät (E3), für die Mango
+ * sonst die feste Schätzung. Für den PFC200 gibt es keine Schätzung: Ein
+ * Schritt ohne gemessene Dauer fehlt dann, und die Seite nennt keine Zahl.
  */
-export function meistDauer(laeufe: readonly WerkstattLauf[]): Record<string, number> {
+export function meistDauer(laeufe: readonly WerkstattLauf[], boxArt?: string | null): Record<string, number> {
+  const pfc = istPfc200(boxArt);
   const je = new Map<string, number[]>();
   for (const l of laeufe) {
+    // Gleiche Schrittnamen dauern je Gerät verschieden lange (programm, neustart): nur Läufe desselben Geräts.
+    if (istPfc200(l.stand?.box_art ?? l.boxArt) !== pfc) continue;
     for (const b of l.stand?.belege ?? []) {
       if (typeof b.dauer_s === 'number' && b.dauer_s >= 0) je.set(b.schritt, [...(je.get(b.schritt) ?? []), b.dauer_s]);
     }
   }
   const aus: Record<string, number> = {};
-  for (const s of SCHRITTE) {
+  for (const s of schritteFuer(boxArt)) {
     const d = (je.get(s) ?? []).slice().sort((a, b) => a - b);
-    aus[s] = d.length ? d[Math.floor((d.length - 1) / 2)] : (MINUTEN[s] ?? 0.5) * 60;
+    if (d.length) aus[s] = d[Math.floor((d.length - 1) / 2)];
+    else if (!pfc) aus[s] = (MINUTEN[s] ?? 0.5) * 60;
   }
   return aus;
 }
@@ -150,6 +171,7 @@ export function seitText(sek: number): string {
 
 /** Alle Schritte des Laufs nach Phasen, jeder mit Belegzeile und Dauer (E3 A). */
 export function schrittListe(s: LaufStand, meist: Record<string, number>, jetztMs: number): PhasenZeile[] {
+  const pfc = istPfc200(s.box_art);
   const belege = new Map((s.belege ?? []).map((b) => [b.schritt, b]));
   const erledigt = new Set(s.erledigt);
   const zeile = (x: string): SchrittZeile => {
@@ -162,10 +184,10 @@ export function schrittListe(s: LaufStand, meist: Record<string, number>, jetztM
     else if (zustand === 'lauf') {
       const seit = seitSek(s, jetztMs);
       dauer = seit == null ? null : dauerText(seit);
-    } else if (zustand === 'offen') dauer = minutenText(meist[x] ?? 30);
-    return { schritt: x, titel: schrittTitel(x), zustand, beleg: zustand === 'ok' ? b?.zeile ?? null : null, dauer };
+    } else if (zustand === 'offen') dauer = pfc ? (meist[x] != null ? minutenText(meist[x]) : null) : minutenText(meist[x] ?? 30);
+    return { schritt: x, titel: schrittTitel(x, s.box_art), zustand, beleg: zustand === 'ok' ? b?.zeile ?? null : null, dauer };
   };
-  return PHASEN.map((p) => {
+  return phasenFuer(s.box_art).map((p) => {
     const ss = p.schritte.filter((x) => zaehlt(s, x)).map(zeile);
     const zustand: PhaseZustand = ss.every((x) => x.zustand === 'ok')
       ? 'ok'
@@ -174,8 +196,11 @@ export function schrittListe(s: LaufStand, meist: Record<string, number>, jetztM
         : ss.some((x) => x.zustand === 'lauf') || (ss.some((x) => x.zustand === 'ok') && s.zustand !== 'angehalten')
           ? 'lauf'
           : 'offen';
-    const offen = ss.filter((x) => x.zustand === 'offen').reduce((a, x) => a + (meist[x.schritt] ?? 30), 0);
-    const rechts = zustand === 'ok' ? `${ss.length} ✓` : zustand === 'offen' ? `ca. ${Math.max(1, Math.round(offen / 60))} Min` : '';
+    const offene = ss.filter((x) => x.zustand === 'offen');
+    const offen = offene.reduce((a, x) => a + (meist[x.schritt] ?? 30), 0);
+    // Am PFC200 nur mit gemessenen Dauern: keine erfundene Minutenzahl.
+    const zeit = !pfc || offene.every((x) => meist[x.schritt] != null);
+    const rechts = zustand === 'ok' ? `${ss.length} ✓` : zustand === 'offen' && zeit ? `ca. ${Math.max(1, Math.round(offen / 60))} Min` : '';
     return { id: p.id, titel: p.titel, zustand, schritte: ss, rechts };
   });
 }
@@ -188,7 +213,8 @@ export interface Jetzt {
   tut: string;
   /** Seit wann der Schritt läuft (s); null, wenn der Dienst es nicht meldet. */
   seitSek: number | null;
-  meistSek: number;
+  /** Wie lange der Schritt meist dauert (s); null am PFC200, solange kein Lauf ihn gemessen hat. */
+  meistSek: number | null;
   /** Frist des Schritts (s); null ohne Meldung. */
   fristSek: number | null;
   danach: string | null;
@@ -206,13 +232,13 @@ export function jetzt(s: LaufStand, meist: Record<string, number>, jetztMs: numb
     nummer: i + 1,
     von: liste.length,
     schritt: s.schritt,
-    titel: schrittTitel(s.schritt),
-    tut: s.zustand === 'wartet' && s.hinweis ? s.hinweis : SCHRITT_TEXT[s.schritt]?.tut ?? '',
+    titel: schrittTitel(s.schritt, s.box_art),
+    tut: s.zustand === 'wartet' && s.hinweis ? s.hinweis : schrittText(s.schritt, s.box_art)?.tut ?? '',
     seitSek: seitSek(s, jetztMs),
-    meistSek: meist[s.schritt] ?? 30,
+    meistSek: meist[s.schritt] ?? (istPfc200(s.box_art) ? null : 30),
     fristSek: s.schritt_frist_s && s.schritt_frist_s > 0 ? s.schritt_frist_s : null,
-    danach: rest[0] ? schrittTitel(rest[0]) : null,
-    dann: rest.slice(1, 3).map(schrittTitel),
+    danach: rest[0] ? schrittTitel(rest[0], s.box_art) : null,
+    dann: rest.slice(1, 3).map((x) => schrittTitel(x, s.box_art)),
   };
 }
 
@@ -284,6 +310,76 @@ export function software(a: WerkstattAnsicht, lauf: LaufStand | null, freigaben:
   };
 }
 
+/** Ein Paket der Karte, mit seinem Schlüssel für die Anzeige. */
+export interface KartenPaket extends Paket {
+  id: 'openwrt' | 'edge-light' | 'edge-industrie';
+}
+
+/**
+ * Die Karte „Kommt auf diese Box“ für das Gerät des Laufs: die Mango mit
+ * OpenWrt und Edge Light, der PFC200 mit Edge Industrie. Seine Firmware fasst
+ * die Werkstatt nicht an; `firmware` nennt, was der Schritt erkennen gelesen
+ * hat (null: noch nicht gelesen), nur zur Anzeige.
+ */
+export interface SoftwareKarte {
+  geraet: 'mango' | 'pfc200';
+  freigabe: string;
+  pakete: KartenPaket[];
+  /** Nur PFC200: Modell und Firmware-Stand, wie gelesen. */
+  firmware?: string | null;
+  /** Für die eine Zeile am Telefon: „OpenWrt 25.12.5“, „Edge Light 2026.11.1“. */
+  kurz: string[];
+}
+
+/** Was auf einen PFC200 kommt: Edge Industrie aus der Freigabe seines Laufs, sonst aus der, die gerade gilt. */
+function softwarePfc200(a: WerkstattAnsicht, lauf: LaufStand | null, freigaben: readonly WerkstattFreigabePfc200[]): SoftwareKarte | null {
+  const z = lauf?.freigabe ? freigaben.find((x) => x.kennung === lauf.freigabe) ?? null : null;
+  const d = a.freigabe_pfc200?.freigabe ?? null;
+  const f = z ? { kennung: z.kennung, fassung: z.edgeLight.fassung } : d ? { kennung: d.kennung, fassung: d.edge_industrie.fassung } : null;
+  if (!f) return null;
+  const erledigt = new Set(lauf?.erledigt ?? []);
+  const fertig = lauf?.zustand === 'fertig';
+  const v = lauf?.vorher ?? null;
+  const updateBereit = (lauf?.belege ?? []).some((b) => b.schritt === 'programm' && b.zeile.includes('update-bereit'));
+  const stand = fertig || erledigt.has('programm')
+    ? { pruef: updateBereit || fertig ? '✓ update-bereit' : '✓ läuft', ok: true }
+    : lauf?.schritt === 'programm' && lauf.zustand !== 'angehalten'
+      ? { pruef: 'wird eingespielt', ok: false }
+      : { pruef: 'noch nicht drauf', ok: false };
+  const fassung = edgeIndustrieKurz(f.fassung);
+  return {
+    geraet: 'pfc200',
+    freigabe: lauf?.freigabe || f.kennung,
+    pakete: [{ id: 'edge-industrie', name: EDGE_INDUSTRIE, fassung, ...stand, vorher: v?.edge_light ?? null, ersetzt: !!v?.ersetzt, sha: null }],
+    // Nur was erkennen wirklich gelesen hat: Bei einem Gerät, in das der Dienst nicht hineinkam, steht in `system`
+    // kein Firmware-Stand („PFC200, Werkspasswort abgewiesen“).
+    firmware: v?.system.includes('Firmware ') ? v.system : null,
+    kurz: [`${EDGE_INDUSTRIE} ${fassung}`],
+  };
+}
+
+/**
+ * Die Karte für das Gerät des Laufs; ohne Lauf (Fall am Anschluss) für das
+ * Gerät, das der Dienst am Kabel nennt oder das an der Werkbank gewählt ist.
+ */
+export function softwareKarte(
+  a: WerkstattAnsicht,
+  lauf: LaufStand | null,
+  freigaben: readonly WerkstattFreigabe[] = [],
+  freigabenPfc: readonly WerkstattFreigabePfc200[] = [],
+  geraet?: string | null,
+): SoftwareKarte | null {
+  if (istPfc200(lauf ? lauf.box_art : a.anschluss_geraet ?? geraet)) return softwarePfc200(a, lauf, freigabenPfc);
+  const sw = software(a, lauf, freigaben);
+  if (!sw) return null;
+  return {
+    geraet: 'mango',
+    freigabe: sw.freigabe,
+    pakete: [{ id: 'openwrt', ...sw.openwrt }, { id: 'edge-light', ...sw.edgeLight }],
+    kurz: [`OpenWrt ${sw.openwrt.fassung}`, `Edge Light ${sw.edgeLight.fassung}`],
+  };
+}
+
 /**
  * Ein neueres signiertes Edge-Light-Release als die Freigabe, oder null. Die Box-Art des Releases ist die der API
  * (`ota.BoxArt`: `docker` oder `light`) - bis 06.11.2026 stand hier `edge-light`, und der Hinweis kam nie.
@@ -304,7 +400,7 @@ export function neueresRelease(
 // ── Fälle ──────────────────────────────────────────────────────────────────
 
 export type FallArt = 'warten' | 'hand' | 'seite';
-export type Bild = 'reset' | 'startlader' | 'pi' | 'kabel';
+export type Bild = 'reset' | 'startlader' | 'pi' | 'kabel' | PfcBild;
 export type KnopfArt = 'nochmal' | 'zur-seite' | 'werkstatt' | 'freigabe-ansehen' | 'abbild' | 'register' | 'box-oeffnen';
 export type KnopfStil = 'primary' | 'outline' | 'leise';
 
@@ -332,7 +428,12 @@ export interface FallSeite {
   was: string;
   schritte: string[];
   selbst: boolean;
+  /** Das erste Bild der Seite (oder keines). */
   bild: Bild | null;
+  /** Alle Bilder in der Reihenfolge der Handgriffe; am PFC200 können es zwei sein (Werksreset, dann feste Adresse). */
+  bilder: Bild[];
+  /** Das Gerät, um das es geht. */
+  geraet: 'mango' | 'pfc200';
   knoepfe: Knopf[];
   /** Ein Satz nach den Schritten (etwa, was mit der alten Referenz geschieht). */
   nach: string | null;
@@ -406,6 +507,14 @@ const NICHT_FREIGEGEBEN: Loesung = {
   ],
 };
 
+const NICHT_FREIGEGEBEN_PFC200: Loesung = {
+  ...NICHT_FREIGEGEBEN,
+  schritte: [
+    'In der Übersicht steht, warum: angehalten, keine passende Edge-Industrie-Fassung oder die Tagesgrenze ist erreicht.',
+    'Läuft die Werkstatt wieder, fängt der Dienst von selbst an. Der PFC200 kann stecken bleiben.',
+  ],
+};
+
 /** Die Lösung, wenn der Dienst keine meldet (älterer Dienst): dieselben Worte wie bisher. */
 function loesungOhne(code: string): Loesung {
   if (RESET_FAELLE.has(code)) {
@@ -433,30 +542,89 @@ export interface FallEingabe {
   loesung: Loesung | null | undefined;
   wo: 'anschluss' | 'lauf';
   ansicht: WerkstattAnsicht;
-  /** Der angehaltene Lauf (bei `wo: 'lauf'`, oder der letzte am Anschluss). */
+  /** Der angehaltene oder wartende Lauf (bei `wo: 'lauf'`, oder der letzte am Anschluss). */
   lauf: LaufStand | null;
+  /** Das an der Werkbank gewählte Gerät: gilt nur, solange weder ein Lauf noch der Dienst eines nennt. */
+  geraet?: string | null;
 }
 
-function kabelPunkte(a: WerkstattAnsicht): LivePunkt[] {
+function kabelPunkte(a: WerkstattAnsicht, name = 'Mango'): LivePunkt[] {
   const kabel = a.werkbank.status?.werkstatt?.kabel ?? false;
   const meldet = (a.werkbank.status?.antworten ?? []).some((x) => (x.macs ?? []).length > 0);
   const seit = a.werkbank.status_zeit ?? null;
+  const artikel = name === 'Mango' ? 'die Mango' : `der ${name}`;
   return [
     kabel
       ? { zustand: 'ok', text: 'Kabel steckt' }
       : { zustand: 'lauf', text: 'Kabel steckt', tut: 'Wartet, bis das orange Kabel WERKSTATT eingesteckt ist.', seit },
     meldet
-      ? { zustand: 'ok', text: 'Mango meldet sich' }
+      ? { zustand: 'ok', text: `${name} meldet sich` }
       : kabel
-        ? { zustand: 'lauf', text: 'Mango meldet sich', tut: 'Prüft, ob sich die Mango meldet.', seit }
-        : { zustand: 'offen', text: 'Mango meldet sich' },
+        ? { zustand: 'lauf', text: `${name} meldet sich`, tut: `Prüft, ob sich ${artikel} meldet.`, seit }
+        : { zustand: 'offen', text: `${name} meldet sich` },
     { zustand: 'offen', text: 'Lauf beginnt von selbst' },
   ];
 }
 
+/** Woran man am PFC200 sieht, dass es weitergeht. `null`: wie bei der Mango. */
+function livePfc200(code: string, a: WerkstattAnsicht): LivePunkt[] | null {
+  const amAnschluss = a.anschluss_fall ?? null;
+  const seit = a.werkbank.status_zeit ?? null;
+  if (WERKSRESET_FAELLE.has(code)) {
+    const weg = amAnschluss === 'keine_box' || amAnschluss === 'kein_kabel';
+    const startet = amAnschluss === 'startet';
+    return [
+      weg || startet
+        ? { zustand: 'ok', text: 'Warten auf den Werksreset' }
+        : { zustand: 'lauf', text: 'Warten auf den Werksreset', tut: 'Wartet, bis der PFC200 nach dem Werksreset neu startet.', seit },
+      startet
+        ? { zustand: 'ok', text: 'PFC200 startet neu, dann die feste Adresse' }
+        : weg
+          ? {
+              zustand: 'lauf',
+              text: 'PFC200 startet neu, dann die feste Adresse',
+              tut: 'Prüft, ob der PFC200 wieder antwortet. Ohne den Handgriff „feste Adresse“ hat er keine Adresse.',
+              seit,
+            }
+          : { zustand: 'offen', text: 'PFC200 startet neu, dann die feste Adresse' },
+      startet
+        ? { zustand: 'lauf', text: 'Neuer Lauf beginnt von selbst', tut: 'Der PFC200 antwortet; der Dienst startet gleich einen neuen Lauf.', seit }
+        : { zustand: 'offen', text: 'Neuer Lauf beginnt von selbst' },
+    ];
+  }
+  // Auf diese zwei Handgriffe wartet ein Lauf; der Dienst sieht am Gerät selbst nach.
+  if (code === 'pfc_schalter_stop') {
+    return [
+      { zustand: 'lauf', text: 'Schalter auf RUN', tut: 'Der Dienst sieht selbst nach, ob der Schalter auf RUN steht.' },
+      { zustand: 'offen', text: 'Der Lauf geht von selbst weiter' },
+    ];
+  }
+  if (code === 'pfc_kabel_x1') {
+    return [
+      { zustand: 'lauf', text: 'Kabel in der Buchse X2', tut: 'Der Dienst sieht selbst nach, in welcher Buchse das Kabel steckt.' },
+      { zustand: 'offen', text: 'Der Lauf geht von selbst weiter' },
+    ];
+  }
+  if (code === 'kein_kabel' || code === 'keine_box') return kabelPunkte(a, 'PFC200');
+  if (code === 'startet') {
+    const [k, m] = kabelPunkte(a, 'PFC200');
+    return [
+      k,
+      m,
+      { zustand: 'lauf', text: 'PFC200 nimmt die Anmeldung an', tut: 'Prüft, ob der PFC200 zweimal hintereinander gleich antwortet.', seit },
+      { zustand: 'offen', text: 'Lauf beginnt von selbst' },
+    ];
+  }
+  return null;
+}
+
 /** Woran man sieht, dass es weitergeht; aus dem, was der Dienst am Anschluss sieht. */
-function live(code: string, wo: 'anschluss' | 'lauf', a: WerkstattAnsicht, selbst: boolean, nochmal: boolean): LivePunkt[] {
+function live(code: string, wo: 'anschluss' | 'lauf', a: WerkstattAnsicht, selbst: boolean, nochmal: boolean, pfc = false): LivePunkt[] {
   if (!selbst) return [];
+  if (pfc) {
+    const p = livePfc200(code, a);
+    if (p) return p;
+  }
   const amAnschluss = a.anschluss_fall ?? null;
   const seit = a.werkbank.status_zeit ?? null;
   if (RESET_FAELLE.has(code)) {
@@ -526,21 +694,26 @@ function live(code: string, wo: 'anschluss' | 'lauf', a: WerkstattAnsicht, selbs
 /** Die Seite zu einem Fall (E1 A, E2 A; Konzept Abschnitt 5). */
 export function fallSeite(e: FallEingabe): FallSeite {
   const code = e.code || (e.lauf ? fallOhneCode(e.lauf) : 'schritt_gescheitert');
-  const l = code === 'nicht_freigegeben' ? NICHT_FREIGEGEBEN : e.loesung ?? loesungOhne(code);
+  // Das Gerät: das des Laufs; ohne Lauf das, das der Dienst am Kabel nennt, sonst das an der Werkbank gewählte.
+  const pfc = istPfc200(e.wo === 'lauf' && e.lauf ? e.lauf.box_art : e.ansicht.anschluss_geraet ?? e.geraet);
+  const l = code === 'nicht_freigegeben' ? (pfc ? NICHT_FREIGEGEBEN_PFC200 : NICHT_FREIGEGEBEN) : e.loesung ?? loesungOhne(code);
   const art: FallArt = WARTEN.has(code) ? 'warten' : l.zur_seite || code === 'eingerichtet' ? 'seite' : 'hand';
-  const bild: Bild | null = RESET_FAELLE.has(code) ? 'reset' : STARTLADER.has(code) ? 'startlader' : PI.has(code) ? 'pi'
-    : code === 'kein_kabel' || code === 'keine_box' ? 'kabel' : null;
+  const bilder: Bild[] = pfc
+    ? [...(FALL_BILDER_PFC200[code] ?? (PI.has(code) ? ['pi' as const] : []))]
+    : RESET_FAELLE.has(code) ? ['reset'] : STARTLADER.has(code) ? ['startlader'] : PI.has(code) ? ['pi']
+      : code === 'kein_kabel' || code === 'keine_box' ? ['kabel'] : [];
   const lauf = e.lauf;
   const nochmal = !!lauf && lauf.zustand === 'angehalten' && lauf.nochmal_moeglich === true && !lauf.nochmal_seit;
   const knoepfe: Knopf[] = [];
   if (code === 'nicht_freigegeben') knoepfe.push({ art: 'werkstatt', stil: 'primary', text: 'Zur Übersicht' });
   if (nochmal) knoepfe.push({ art: 'nochmal', stil: art === 'seite' ? 'leise' : 'primary', text: 'Nochmal versuchen' });
-  if (STARTLADER.has(code) && e.ansicht.freigabe.freigabe) {
+  if (!pfc && STARTLADER.has(code) && e.ansicht.freigabe.freigabe) {
     knoepfe.push({ art: 'abbild', stil: 'outline', text: `OpenWrt-Abbild ${e.ansicht.freigabe.freigabe.openwrt.fassung} herunterladen` });
   }
   if (code === 'fassung_nicht_bereit' || code === 'einloesen_abgewiesen') knoepfe.push({ art: 'freigabe-ansehen', stil: 'outline', text: 'Freigabe ansehen' });
   if (code === 'eingerichtet') knoepfe.push({ art: 'register', stil: 'outline', text: 'Register öffnen' });
-  if (e.wo === 'lauf' && lauf) {
+  // Ein Lauf, der nur auf einen Handgriff wartet, arbeitet noch: Zur Seite legen gibt es erst, wenn er angehalten hat.
+  if (e.wo === 'lauf' && lauf && lauf.zustand !== 'wartet') {
     const haupt = art === 'seite' || code === 'schritt_gescheitert';
     knoepfe.push({ art: 'zur-seite', stil: haupt ? 'outline' : 'leise', text: 'Box zur Seite legen' });
   }
@@ -550,13 +723,15 @@ export function fallSeite(e: FallEingabe): FallSeite {
     wo: e.wo,
     art,
     titel: l.titel,
-    was: WAS[code] ?? 'Der Dienst hat hier angehalten.',
+    was: (pfc ? WAS_PFC200[code] : undefined) ?? WAS[code] ?? 'Der Dienst hat hier angehalten.',
     schritte: l.schritte,
     selbst: l.selbst,
-    bild,
+    bild: bilder[0] ?? null,
+    bilder,
+    geraet: pfc ? 'pfc200' : 'mango',
     knoepfe,
-    nach: NACH[code] ?? null,
-    live: live(code, e.wo, e.ansicht, l.selbst, nochmal),
+    nach: (pfc ? NACH_PFC200[code] : NACH[code]) ?? null,
+    live: live(code, e.wo, e.ansicht, l.selbst, nochmal, pfc),
   };
 }
 

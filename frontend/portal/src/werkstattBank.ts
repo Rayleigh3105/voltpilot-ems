@@ -11,6 +11,7 @@
 import { geraetName, type WerkstattAbnahme, type WerkstattBox } from './werkstatt';
 import { zeitpunkt } from './adminFernwartung';
 import { fallSeite, type FallSeite } from './werkstattLauf';
+import { istPfc200, PFC200, PFC200_NAME, PHASEN_PFC200, SCHRITTE_PFC200, type EdgeIndustrieFassung } from './werkstattPfc200';
 
 export type LaufZustand = 'laeuft' | 'wartet' | 'fertig' | 'angehalten';
 
@@ -87,6 +88,30 @@ export interface FreigabeDatei {
   edge_light: { fassung: string; quelle?: string };
 }
 
+/**
+ * Die Freigabe für den WAGO PFC200 in der Ansicht (`freigabe_pfc200.freigabe`): `edge_industrie` statt `openwrt`
+ * und `edge_light`.
+ */
+export interface FreigabeDateiPfc200 {
+  kennung: string;
+  box_art: string;
+  gueltig_bis: string;
+  edge_industrie: { fassung: string; quelle?: string; programm_sha256?: string; skripte_sha256?: string; wartung_sha256?: string };
+}
+
+/** Ein Gerät, das die Werkstatt einrichtet (`lauf.box_art`, `anschluss_geraet`). */
+export type Geraet = 'mango' | 'pfc200';
+
+/** Das Gerät eines Laufs oder einer Angabe des Dienstes: alles außer `pfc200` ist die Mango. */
+export function geraetVon(boxArt: string | null | undefined): Geraet {
+  return istPfc200(boxArt) ? PFC200 : 'mango';
+}
+
+/** Wie das Gerät an der Werkbank heißt. */
+export function geraetWort(geraet: Geraet): string {
+  return geraet === PFC200 ? PFC200_NAME : 'Mango';
+}
+
 /** Die Ansicht des Dienstes (vp-werkstatt-ansicht.v1). */
 export interface WerkstattAnsicht {
   schema: string;
@@ -106,6 +131,10 @@ export interface WerkstattAnsicht {
     status_zeit?: string;
   };
   freigabe: { laufend: boolean; grund?: string; freigabe?: FreigabeDatei | null; boxen: number };
+  /** Additiv: die Freigabe für den PFC200. Fehlt, solange der Dienst keine PFC200 einrichtet. */
+  freigabe_pfc200?: { laufend: boolean; grund?: string; freigabe?: FreigabeDateiPfc200 | null; boxen: number } | null;
+  /** Additiv: `mango` oder `pfc200`, sobald der Dienst das Gerät am Anschluss an seiner Adresse erkennt. */
+  anschluss_geraet?: string;
   anschluss?: string;
   /** Code des Zustands am Anschluss, solange kein Lauf arbeitet (Vertrag, „Fälle am Anschluss“). */
   anschluss_fall?: string;
@@ -157,6 +186,7 @@ export interface WerkstattDienst {
 export interface WerkstattFreigabe {
   id: string;
   kennung: string;
+  /** Das Gerät der Zeile: `mango` (hier immer; die Zeilen des PFC200 sind {@link WerkstattFreigabePfc200}). */
   boxArt: string;
   gueltigAb: string;
   gueltigBis: string;
@@ -173,6 +203,21 @@ export interface WerkstattFreigabe {
   /** Fehlt bei einer API vor der Regel: dann war jede von Hand. */
   quelle?: 'regel' | 'formular';
   edgeReleaseSeq?: number | null;
+}
+
+/**
+ * Eine Freigabe für den PFC200 (`/api/v1/admin/werkstatt/freigaben?geraet=pfc200`): kein OpenWrt-Abbild, und
+ * `edgeLight` trägt die Edge-Industrie-Fassung mit dem Tunnel-Programm.
+ */
+export interface WerkstattFreigabePfc200 extends Omit<WerkstattFreigabe, 'openwrt' | 'edgeLight'> {
+  openwrt: null;
+  edgeLight: EdgeIndustrieFassung;
+}
+
+/** Nur die Zeilen des PFC200: Eine API vor dem Gerät `pfc200` übergeht `?geraet=` und liefert die der Mango. */
+export function liesFreigabenPfc200(liste: unknown): WerkstattFreigabePfc200[] {
+  if (!Array.isArray(liste)) return [];
+  return (liste as { boxArt?: unknown; openwrt?: unknown }[]).filter((f) => f?.boxArt === PFC200 && f.openwrt == null) as WerkstattFreigabePfc200[];
 }
 
 /** Ein Eintrag im Protokoll von „Werkstatt anhalten“ und „Werkstatt fortsetzen“. */
@@ -309,6 +354,24 @@ export const PHASEN = [
 /** Die Schritte des Dienstes in ihrer Reihenfolge. */
 export const SCHRITTE: readonly string[] = PHASEN.flatMap((p) => p.schritte);
 
+/** Eine Phase eines Laufs: ihre Schritte stehen im Lauf hintereinander. */
+export interface PhaseDef {
+  id: string;
+  titel: string;
+  klein: string;
+  schritte: readonly string[];
+}
+
+/** Die Phasen eines Laufs an diesem Gerät (`lauf.box_art`): die Mango, oder der PFC200 mit seinen eigenen. */
+export function phasenFuer(boxArt: string | null | undefined): readonly PhaseDef[] {
+  return istPfc200(boxArt) ? PHASEN_PFC200 : PHASEN;
+}
+
+/** Die Schritte eines Laufs an diesem Gerät, in ihrer Reihenfolge. */
+export function schritteFuer(boxArt: string | null | undefined): readonly string[] {
+  return istPfc200(boxArt) ? SCHRITTE_PFC200 : SCHRITTE;
+}
+
 /** Ungefähre Dauer je Schritt in Minuten an der Mango (PS-3 misst nach); die Lauf-Seite nimmt gemessene Dauern, wenn es sie gibt. */
 export const MINUTEN: Record<string, number> = {
   erkennen: 0.5, fassungen: 1, openwrt: 2, wiedererkennen: 4, internet: 0.5, passwort: 0.5, notfall: 0.3,
@@ -318,10 +381,11 @@ export const MINUTEN: Record<string, number> = {
 
 /** Wo der Lauf steht: Index des laufenden Schritts; fertig = alles; unbekannt = nach dem letzten erledigten. */
 function stelle(s: LaufStand): number {
-  if (s.zustand === 'fertig') return SCHRITTE.length;
-  const i = s.schritt ? SCHRITTE.indexOf(s.schritt) : -1;
+  const schritte = schritteFuer(s.box_art);
+  if (s.zustand === 'fertig') return schritte.length;
+  const i = s.schritt ? schritte.indexOf(s.schritt) : -1;
   if (i >= 0) return i;
-  return Math.max(-1, ...s.erledigt.map((e) => SCHRITTE.indexOf(e))) + 1;
+  return Math.max(-1, ...s.erledigt.map((e) => schritte.indexOf(e))) + 1;
 }
 
 /** Einlösen (mit API) und die Eingabe der Tunnel-Adresse (ohne) sind zwei Wege für dasselbe; nur einer zählt. */
@@ -339,8 +403,9 @@ export interface Phase {
 
 export function phasen(s: LaufStand): Phase[] {
   const i = stelle(s);
-  return PHASEN.map((p) => {
-    const idx = p.schritte.map((x) => SCHRITTE.indexOf(x));
+  const schritte = schritteFuer(s.box_art);
+  return phasenFuer(s.box_art).map((p) => {
+    const idx = p.schritte.map((x) => schritte.indexOf(x));
     const erste = Math.min(...idx);
     const letzte = Math.max(...idx);
     let zustand: PhaseZustand = 'offen';
@@ -355,10 +420,26 @@ export function aktuellePhase(s: LaufStand): Phase | null {
   return phasen(s).find((p) => p.zustand === 'lauf' || p.zustand === 'warn') ?? null;
 }
 
-/** Restzeit in ganzen Minuten (mindestens 1, solange nicht fertig) und Anteil 0..1. */
-export function fortschritt(s: LaufStand): { restMinuten: number; anteil: number } {
+/**
+ * Restzeit in ganzen Minuten (mindestens 1, solange nicht fertig) und Anteil 0..1.
+ *
+ * Für die Mango aus den festen Schätzungen (`MINUTEN`). Für den PFC200 gibt es keine Schätzung: Der Anteil zählt
+ * die Schritte, und eine Restzeit gibt es erst, wenn `meist` für jeden offenen Schritt eine gemessene Dauer aus
+ * früheren Läufen trägt (`werkstattLauf.meistDauer`); sonst ist sie `null` und die Seite nennt keine Zahl.
+ */
+export function fortschritt(s: LaufStand, meist?: Record<string, number>): { restMinuten: number | null; anteil: number } {
   if (s.zustand === 'fertig') return { restMinuten: 0, anteil: 1 };
   const i = stelle(s);
+  if (istPfc200(s.box_art)) {
+    const liste = SCHRITTE_PFC200.filter((x) => zaehlt(s, x));
+    const offen = SCHRITTE_PFC200.filter((x, n) => n >= i && zaehlt(s, x));
+    const gemessen = offen.every((x) => typeof meist?.[x] === 'number');
+    const restSek = gemessen ? offen.reduce((a, x) => a + (meist?.[x] ?? 0), 0) : null;
+    return {
+      restMinuten: restSek == null ? null : Math.max(1, Math.ceil(restSek / 60)),
+      anteil: liste.length > 0 ? (liste.length - offen.length) / liste.length : 0,
+    };
+  }
   let fertig = 0;
   let rest = 0;
   SCHRITTE.forEach((x, n) => {
@@ -377,11 +458,12 @@ export type Bildschirm =
   | { art: 'start' }
   | {
       art: 'anschliessen';
+      /** Das Gerät, das an der Werkbank gewählt ist. */
+      geraet: Geraet;
       kabel: boolean | null;
       meldetSich: boolean;
       freigegeben: boolean;
       grund: string | null;
-      /** Lösung zum Fall am Anschluss, wenn er mehr ist als „Kabel/Strom anstecken und warten“. */
     }
   | { art: 'laeuft'; lauf: LaufStand }
   | { art: 'du'; lauf: LaufStand }
@@ -393,6 +475,8 @@ export interface BildschirmEingabe {
   dienst: WerkstattDienst | null;
   /** Hat jemand an der Werkbank sein Gerät gewählt (M1 → M2)? */
   gewaehlt: boolean;
+  /** Welches (fehlt: die Mango). Ein Lauf zeigt immer sein eigenes Gerät, gleich was gewählt ist. */
+  geraet?: Geraet;
   /** Läufe, die an der Werkbank schon weggeklickt sind („Nächste Box“) oder zur Seite liegen (E2, auch aus der API). */
   erledigt: ReadonlySet<string>;
 }
@@ -415,10 +499,15 @@ export function bildschirm(e: BildschirmEingabe): Bildschirm {
       case 'laeuft':
         return { art: 'laeuft', lauf };
       case 'wartet':
+        // Wartet der Lauf auf einen Handgriff am Gerät, nach dem er von selbst weitermacht (PFC200: Schalter auf
+        // RUN, Kabel in X2), nennt der Dienst Fall und Lösung schon jetzt: dieselbe Seite wie für einen Fall.
+        if (lauf.fall && lauf.loesung) {
+          return { art: 'fall', lauf, seite: fallSeite({ code: lauf.fall, loesung: lauf.loesung, wo: 'lauf', ansicht: a, lauf, geraet: e.geraet }) };
+        }
         return { art: 'du', lauf };
       case 'angehalten':
         if (kabel !== false) {
-          return { art: 'fall', lauf, seite: fallSeite({ code: lauf.fall, loesung: lauf.loesung, wo: 'lauf', ansicht: a, lauf }) };
+          return { art: 'fall', lauf, seite: fallSeite({ code: lauf.fall, loesung: lauf.loesung, wo: 'lauf', ansicht: a, lauf, geraet: e.geraet }) };
         }
         break;
       case 'fertig':
@@ -427,14 +516,20 @@ export function bildschirm(e: BildschirmEingabe): Bildschirm {
     }
   }
   if (a.anschluss_fall && a.anschluss_loesung && !SCHON_GEZEIGT.has(a.anschluss_fall)) {
-    return { art: 'fall', lauf: null, seite: fallSeite({ code: a.anschluss_fall, loesung: a.anschluss_loesung, wo: 'anschluss', ansicht: a, lauf: null }) };
+    return { art: 'fall', lauf: null, seite: fallSeite({ code: a.anschluss_fall, loesung: a.anschluss_loesung, wo: 'anschluss', ansicht: a, lauf: null, geraet: e.geraet }) };
   }
+  const geraet: Geraet = e.geraet ?? 'mango';
+  const antwortet = (a.werkbank.status?.antworten ?? []).some((x) => (x.macs ?? []).length > 0);
+  // Für den PFC200 gilt seine eigene Freigabe; fehlt sie, richtet der Dienst keine PFC200 ein.
+  const f = geraet === PFC200 ? a.freigabe_pfc200 ?? { laufend: false, grund: 'Der Werkstatt-Dienst richtet hier keine PFC200 ein.' } : a.freigabe;
   return {
     art: 'anschliessen',
+    geraet,
     kabel,
-    meldetSich: (a.werkbank.status?.antworten ?? []).some((x) => (x.macs ?? []).length > 0),
-    freigegeben: a.freigabe.laufend,
-    grund: a.freigabe.laufend ? null : a.freigabe.grund ?? 'Die Werkstatt richtet gerade keine Box ein.',
+    // Nennt der Dienst das Gerät am Kabel, zählt nur das gewählte: Eine Mango ist kein PFC200.
+    meldetSich: antwortet && (!a.anschluss_geraet || geraetVon(a.anschluss_geraet) === geraet),
+    freigegeben: f.laufend,
+    grund: f.laufend ? null : f.grund ?? 'Die Werkstatt richtet gerade keine Box ein.',
   };
 }
 
@@ -457,6 +552,8 @@ export function laufendeFreigabe(freigaben: readonly WerkstattFreigabe[]): Werks
 
 export interface HeuteZeile {
   kennung: string;
+  /** Das Gerät des Laufs, in Worten: „Mango“ oder „PFC200“. */
+  geraet: string;
   box: string | null;
   zustand: LaufZustand;
   prozent: number | null;
@@ -469,6 +566,7 @@ export function heute(laeufe: readonly WerkstattLauf[], jetzt: Date): HeuteZeile
     .filter((l) => tag(new Date(l.beginn)) === tag(jetzt))
     .map((l) => ({
       kennung: l.kennung,
+      geraet: geraetWort(geraetVon(l.stand.box_art ?? l.boxArt)),
       box: l.stand.box ?? null,
       zustand: l.zustand,
       prozent: l.zustand === 'laeuft' || l.zustand === 'wartet' ? Math.round(fortschritt(l.stand).anteil * 100) : null,
@@ -518,7 +616,7 @@ export function uebersicht(boxen: readonly WerkstattBox[], laeufe: readonly Werk
   const ohneKennung = laeufe.filter((l) => !l.stand.box && (l.zustand === 'laeuft' || l.zustand === 'wartet'));
   return [
     ...ohneKennung.map((l): UebersichtZeile => ({
-      box: null, geraet: 'Mango', stand: 'laeuft', text: `${aktuellePhase(l.stand)?.titel ?? 'läuft'} (${Math.round(fortschritt(l.stand).anteil * 100)} %)`,
+      box: null, geraet: geraetWort(geraetVon(l.stand.box_art ?? l.boxArt)), stand: 'laeuft', text: `${aktuellePhase(l.stand)?.titel ?? 'läuft'} (${Math.round(fortschritt(l.stand).anteil * 100)} %)`,
       seit: l.beginn, lauf: l, abnahme: null,
     })),
     ...zeilen.sort((x, y) => (y.seit > x.seit ? 1 : y.seit < x.seit ? -1 : 0)),

@@ -544,6 +544,84 @@
   max-width: 7rem;
 }
 
+/* Die Front des PFC200 ist hoch und schmal: Die Höhe begrenzt, nicht die Breite. */
+.vp-wsb-pfc {
+  width: auto;
+  max-width: 100%;
+  height: 12rem;
+}
+
+.vp-wsb-pfc.vp-wsb-bild-klein {
+  height: 7rem;
+}
+
+/* Ein Handgriff am PFC200 in Bildern: je Teilschritt das Gerät, darunter, was zu tun ist. */
+.vp-wsb-handgriff {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-wsb-handgriff > figcaption {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-wsb-handgriff > ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  gap: var(--vp-space-2);
+}
+
+.vp-wsb-handgriff > ol > li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  text-align: center;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.vp-wsb-handgriff > small {
+  color: var(--vp-text-muted);
+  font-size: 12px;
+}
+
+/* Eine Karte mit mehreren Teilen untereinander: gleicher Abstand statt der Ränder der Teile. */
+.vp-wsb-stapel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+
+.vp-wsb-stapel > h5 {
+  margin: 0;
+}
+
+.vp-wsb-karte-fuss {
+  margin: 0;
+  color: var(--vp-text-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* Sätze, die keine Reihenfolge haben (Abschlussseite des PFC200). */
+.vp-wsb-saetze {
+  margin: 0 0 var(--vp-space-3);
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  overflow-wrap: anywhere;
+}
+
 .vp-wsb-hinweis {
   margin: 0;
   padding: var(--vp-space-2) var(--vp-space-3);
@@ -658,7 +736,8 @@
 
 .vp-wsb-kacheln {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* Drei Geräte: nebeneinander, wo der Platz reicht; am Telefon zwei und eins. */
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
   gap: var(--vp-space-3);
 }
 

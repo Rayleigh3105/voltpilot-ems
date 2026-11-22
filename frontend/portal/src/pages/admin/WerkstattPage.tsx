@@ -31,10 +31,13 @@ import {
   type UebersichtZeile,
   type WerkstattDienst,
   type WerkstattFreigabe,
+  type WerkstattFreigabePfc200,
+  type WerkstattLauf,
   type WerkstattRegel,
   type WerkstattStand,
   type ZurSeite,
 } from '../../werkstattBank';
+import { EDGE_INDUSTRIE, istPfc200, pfc200Zeile, type WerkstattRegelPfc200 } from '../../werkstattPfc200';
 import { zeitpunkt } from '../../adminFernwartung';
 import { AdminPageHead } from './AdminPageHead';
 import { WerkstattBank } from './WerkstattBank';
@@ -52,11 +55,26 @@ function fehlerText(e: unknown, sonst: string): string {
   return e instanceof ApiError ? e.message : sonst;
 }
 
+/**
+ * Hat diese Werkstatt mit dem PFC200 zu tun? Der Dienst richtet welche ein (er meldet eine Freigabe dafür), im
+ * Register steht einer, oder ein Lauf lief an einem. Sonst fragt die Seite seinen Stand gar nicht erst ab, und eine
+ * Werkstatt nur mit Mangos sieht nichts davon.
+ */
+function pfc200ImSpiel(dienst: WerkstattDienst | null, boxen: readonly WerkstattBox[] | null): boolean {
+  return (
+    dienst?.ansicht?.freigabe_pfc200 != null ||
+    (boxen ?? []).some((b) => b.boxArt === 'edge-industrie') ||
+    (dienst?.laeufe ?? []).some((l) => istPfc200(l.stand?.box_art ?? l.boxArt))
+  );
+}
+
 export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
   const [boxen, setBoxen] = useState<WerkstattBox[] | null>(null);
   const [dienst, setDienst] = useState<WerkstattDienst | null>(null);
   const [freigaben, setFreigaben] = useState<WerkstattFreigabe[] | null>(null);
   const [regel, setRegel] = useState<WerkstattRegel | null>(null);
+  const [freigabenPfc, setFreigabenPfc] = useState<WerkstattFreigabePfc200[]>([]);
+  const [regelPfc, setRegelPfc] = useState<WerkstattRegelPfc200 | null>(null);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const [aktionsFehler, setAktionsFehler] = useState<string | null>(null);
   const [werkbank, setWerkbank] = useState(() => istWerkstattWerkbank(window.location.hash));
@@ -80,6 +98,13 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
     const erster = [b, d, f, r].find((x) => x.status === 'rejected') as PromiseRejectedResult | undefined;
     setLadeFehler(erster ? fehlerText(erster.reason, 'Die Werkstatt ließ sich nicht laden. Bitte erneut versuchen.') : null);
     setJetzt(new Date());
+    // Der PFC200 hat seine eigene Zeile der Regel und eigene Freigaben. Scheitert das, bleibt der letzte Stand:
+    // Die Seite der Mango hängt nicht daran.
+    if (pfc200ImSpiel(d.status === 'fulfilled' ? liesDienst(d.value) : dienst, b.status === 'fulfilled' ? b.value : boxen)) {
+      const [pf, pr] = await Promise.allSettled([adminApi.werkstattFreigabenPfc200(), adminApi.werkstattRegelPfc200()]);
+      if (pf.status === 'fulfilled') setFreigabenPfc(pf.value);
+      if (pr.status === 'fulfilled') setRegelPfc(pr.value);
+    }
   }
 
   useEffect(() => {
@@ -164,6 +189,7 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
           dienst={dienst}
           stand={stand}
           freigaben={freigaben}
+          freigabenPfc200={freigabenPfc}
           neuerEdgeLight={neuerEdgeLight}
           onUebersicht={() => { window.location.hash = werkstattHash(null); }}
           onBox={(ref) => { window.location.hash = werkstattHash(ref); }}
@@ -207,6 +233,8 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
                   stand={stand}
                   regel={regel}
                   freigaben={freigaben}
+                  pfc200={regelPfc}
+                  freigabenPfc200={freigabenPfc}
                   jetzt={jetzt}
                   busy={busy}
                   onAnhalten={() => setAnhalten(true)}
@@ -215,7 +243,7 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
               )}
               <BrueckeKarte dienst={dienst} />
               <BoxTabelle zeilen={zeilen} auswahl={auswahl} onWaehle={waehle} />
-              {dienst?.zurSeite && <ZurSeiteKarte liste={dienst.zurSeite} onWaehle={waehle} />}
+              {dienst?.zurSeite && <ZurSeiteKarte liste={dienst.zurSeite} laeufe={dienst.laeufe} onWaehle={waehle} />}
             </div>
           ) : !gewaehlt ? (
             <div className="vp-ws-box" data-testid="ws-box">
@@ -227,6 +255,7 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
               zeile={gewaehlt}
               boxen={boxen}
               freigaben={freigaben}
+              freigabenPfc200={freigabenPfc}
               jetzt={jetzt}
               gehaeuseAuftraege={dienst?.ansicht?.gehaeuse}
               onZurueck={() => waehle(null)}
@@ -292,6 +321,8 @@ function WerkstattStandKarte({
   stand,
   regel,
   freigaben,
+  pfc200,
+  freigabenPfc200,
   jetzt,
   busy,
   onAnhalten,
@@ -300,12 +331,17 @@ function WerkstattStandKarte({
   stand: WerkstattStand;
   regel: WerkstattRegel | null;
   freigaben: readonly WerkstattFreigabe[];
+  /** Der Stand für den PFC200; null, solange die Werkstatt keinen einrichtet oder die API ihn nicht kennt. */
+  pfc200: WerkstattRegelPfc200 | null;
+  freigabenPfc200: readonly WerkstattFreigabePfc200[];
   jetzt: Date;
   busy: boolean;
   onAnhalten: () => void;
   onFortsetzen: () => void;
 }) {
   const e = regel?.edgeLight ?? null;
+  const pfcZeile = pfc200 ? pfc200Zeile(pfc200) : null;
+  const pe = pfc200?.edgeLight ?? null;
   return (
     <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-werkstatt" data-zustand={stand.zustand}>
       <div className="vp-ws-karte-zeile">
@@ -315,6 +351,12 @@ function WerkstattStandKarte({
             <Badge variant={stand.badge.variant}>{stand.badge.text}</Badge>
           </div>
           <p className="vp-muted" style={{ margin: '2px 0 0' }} data-testid="ws-werkstatt-zeile">{stand.zeile}</p>
+          {/* Der PFC200 hat seine eigene Fassung. Wartet die Werkstatt für ihn, steht hier, worauf; die Mango läuft daneben weiter. */}
+          {pfcZeile && (
+            <p className="vp-muted" style={{ margin: '2px 0 0' }} data-testid="ws-werkstatt-pfc200" data-ton={pfcZeile.ton}>
+              {pfcZeile.ton === 'warn' && <Badge variant="warn">wartet</Badge>} {pfcZeile.text}
+            </p>
+          )}
         </div>
         {stand.knopf === 'fortsetzen' ? (
           <Button size="sm" onClick={onFortsetzen} disabled={busy} data-testid="ws-fortsetzen">
@@ -352,6 +394,28 @@ function WerkstattStandKarte({
             </dd>
             <dt>Freigabe</dt>
             <dd>{regel.freigabe ? `${regel.freigabe}${regel.vonHand ? ' (von Hand, bis sie abläuft)' : ' (Regel)'}` : '–'}</dd>
+            {pfc200 && (
+              <>
+                <dt>{EDGE_INDUSTRIE} (PFC200)</dt>
+                <dd data-testid="ws-werkstatt-pfc200-technik">
+                  {pe ? (
+                    <>
+                      {pe.fassung} (Release {pfc200.releaseSeq}) · Programm <code>{kurzSha(pe.programmSha256)}</code> · Skripte{' '}
+                      <code>{kurzSha(pe.skripteSha256)}</code> · Tunnel-Programm <code>{kurzSha(pe.wartungSha256)}</code>
+                      <small>
+                        aus dem signierten Manifest; Quelle {pe.quelle}. Freigabe {pfc200.freigabe ?? '–'} (Regel). Die Firmware
+                        des Geräts fasst die Werkstatt nicht an.
+                      </small>
+                    </>
+                  ) : (
+                    <>
+                      {pfc200.neueste ? `neueste: ${pfc200.neueste} (passt nicht)` : 'keine signierte Fassung'}
+                      {pfc200.grund && <small>{pfc200.grund}</small>}
+                    </>
+                  )}
+                </dd>
+              </>
+            )}
             <dt>Heute</dt>
             <dd>{regel.heute} von {regel.tagesgrenze} Boxen (Tagesgrenze)</dd>
           </dl>
@@ -375,6 +439,20 @@ function WerkstattStandKarte({
                 {freigaben.slice(0, 12).map((f) => (
                   <li key={f.id}>
                     <strong>{f.kennung}</strong> · {freigabeListenZeile(f)}
+                    {f.zustand !== 'laufend' ? ` · ${f.zustand}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {freigabenPfc200.length > 0 && (
+            <>
+              <p className="vp-ws-stand-h">Freigaben für den PFC200 (Beleg, neueste zuerst)</p>
+              <ul className="vp-ws-stand-verlauf" data-testid="ws-freigaben-pfc200">
+                {freigabenPfc200.slice(0, 12).map((f) => (
+                  <li key={f.id}>
+                    <strong>{f.kennung}</strong> · Regel · {EDGE_INDUSTRIE} {f.edgeLight.fassung.replace(/^edge-industrie-/, '')}
+                    {f.edgeReleaseSeq != null ? ` · Release ${f.edgeReleaseSeq}` : ''}
                     {f.zustand !== 'laufend' ? ` · ${f.zustand}` : ''}
                   </li>
                 ))}
@@ -455,7 +533,12 @@ function BoxTabelle({ zeilen, auswahl, onWaehle }: { zeilen: UebersichtZeile[]; 
 }
 
 /** Die zur Seite gelegten Boxen (E2 A): mit Fall, Lösung, Grund und Zeit, neueste zuerst. */
-function ZurSeiteKarte({ liste, onWaehle }: { liste: ZurSeite[]; onWaehle: (ref: string) => void }) {
+function ZurSeiteKarte({ liste, laeufe, onWaehle }: { liste: ZurSeite[]; laeufe: readonly WerkstattLauf[]; onWaehle: (ref: string) => void }) {
+  // Das Gerät sagt der Lauf, solange die Ansicht ihn noch hält; sonst gelten die Worte der Mango wie bisher.
+  const geraet = (z: ZurSeite) => {
+    const l = laeufe.find((x) => x.kennung === z.lauf);
+    return l ? l.stand?.box_art ?? l.boxArt : null;
+  };
   return (
     <Card padding="md" radius="lg" className="vp-ws-karte vp-ws-zurseite" data-testid="ws-zur-seite">
       <strong>Zur Seite gelegt</strong>
@@ -469,13 +552,13 @@ function ZurSeiteKarte({ liste, onWaehle }: { liste: ZurSeite[]; onWaehle: (ref:
                 {z.box ? (
                   <button type="button" className="vp-wsb-leise" onClick={() => onWaehle(z.box!)}>{z.box}</button>
                 ) : (
-                  <span>Mango ohne Referenz</span>
+                  <span>{istPfc200(geraet(z)) ? 'PFC200 ohne Referenz' : 'Mango ohne Referenz'}</span>
                 )}
                 <span className="vp-muted">{new Date(z.gelegtAm).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               <strong>{z.loesungTitel ?? 'Ohne Lösung des Dienstes'}</strong>
               {/* Klartext vorn (Schritt mit seinem Namen), die Rohwörter des Dienstes aufklappbar für die Technik. */}
-              {z.schritt && <small>Beim Schritt „{schrittTitel(z.schritt)}“</small>}
+              {z.schritt && <small>Beim Schritt „{schrittTitel(z.schritt, geraet(z))}“</small>}
               {(z.fall || z.grund) && (
                 <details className="vp-ws-technik">
                   <summary>Für die Technik</summary>

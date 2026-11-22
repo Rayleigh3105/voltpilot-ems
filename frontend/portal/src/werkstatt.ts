@@ -62,8 +62,16 @@ export interface WerkstattAbnahme {
   belege?: Record<string, string> | null;
   freigabeId?: string | null;
   einloesungId?: string | null;
-  /** Das Root-Passwort, mit age verschlüsselt; nur der Betreiber kann es lesen. */
+  /**
+   * Das Root-Passwort, mit age verschlüsselt; nur der Betreiber kann es lesen. Bei einem PFC200 die drei
+   * Zugänge (root, admin, user) in einem age-Text, entschlüsselt je Zugang eine Zeile.
+   */
   passwortAge?: string | null;
+  /**
+   * Was an der Abnahme steht, ohne eine Prüfung zu sein: beim PFC200 `artikel`, `firmware`, `seriennummer`.
+   * Fehlt ohne Angaben und bei einer API vor diesem Feld.
+   */
+  angaben?: Record<string, string> | null;
   /**
    * true: ein Werkstatt-Dienst vor S1 (PR #1885) hat ohne den Beleg
    * `einrichtung_wlan_bereit` abgenommen (Übergangsfrist bis 13.12.2026);
@@ -135,6 +143,13 @@ export function loeschbar(box: WerkstattBox | null): boolean {
 /** Ob mit der Box ein Tunnel-Schlüssel geht (die API nennt ihn in `loeschtMit`). */
 export function loeschtTunnelSchluessel(box: WerkstattBox): boolean {
   return (box.loeschtMit ?? []).some((w) => w.includes('Tunnel-Schlüssel'));
+}
+
+const ZAHLWORT = ['null', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf'];
+
+/** „zehn“ für 10; ab dreizehn die Ziffern. */
+export function zahlwort(n: number): string {
+  return ZAHLWORT[n] ?? String(n);
 }
 
 // ── Die Prüfungen der Werkstatt-Regel ──────────────────────────────────────

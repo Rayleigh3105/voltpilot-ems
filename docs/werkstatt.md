@@ -12,7 +12,7 @@ Seite zeigt, was er tut; Handschritte, Passwort-Generator und Probe-Knöpfe gibt
 
 | Teil | Was | Wo |
 |---|---|---|
-| Werkbank (M1–M6) | Die geführten Bildschirme für die Person an der Werkbank: Box-Art wählen (Raspberry Pi kommt mit V2), Mango anschließen, Fertig mit Referenz und QR-Code. Kein „Weiter“-Knopf: Der Dienst merkt Handgriffe selbst. Fachwörter stehen nur unter „Details für Technik“. | `WerkstattBank.tsx`, `werkstattBank.ts` |
+| Werkbank (M1–M6) | Die geführten Bildschirme für die Person an der Werkbank: Gerät wählen (Mango oder, wenn der Dienst welche einrichtet, [WAGO PFC200](#wago-pfc200-edge-industrie-an-der-werkbank); Raspberry Pi kommt mit V2), anschließen, Fertig mit Referenz und QR-Code. Kein „Weiter“-Knopf: Der Dienst merkt Handgriffe selbst. Fachwörter stehen nur unter „Details für Technik“. | `WerkstattBank.tsx`, `werkstattBank.ts` |
 | Lauf-Seite (Konzept `vp-werkstatt-lauf-seite`, E1–E4 A, 05.11.2026) | Während des Laufs: „Jetzt“ (Schritt, seit wann, wie lange er meist dauert – Median der gemessenen Dauern der letzten Läufe –, Frist, was danach kommt), alle Schritte nach Phasen mit einer Zeile Beleg und Dauer (`lauf.belege`, E3) und die Software-Karte „Kommt auf diese Box“ (Freigabe, OpenWrt mit Prüfsumme, Edge Light, je „vorher“ aus `lauf.vorher`, ein neueres signiertes Release nur als Hinweis). Am Rechner zwei Spalten, am Telefon eine (E4). Hält der Lauf an oder steht am Anschluss ein Fall, zeigt sie eine Seite je Code (`lauf.fall`/`anschluss_fall`, [Vertrag](contracts/werkstatt-ansicht-v1.md#fälle)) in drei Arten: „Der Dienst wartet“, „Einmal kurz du“, „Zur Seite legen“; Titel und Schritte aus `loesung`, ob der Dienst von selbst weitermacht, ein Bild bei Reset, Startlader, Kabel oder Pi. Den Reset nennt sie nur bei `gl_passwort` und `halb_eigene`. „Nochmal versuchen“ (E1) ist ein Auftrag an den Dienst, nur wenn er den Lauf als `nochmal_moeglich` meldet (kein Handgriff an der Box); er tut, was das Abziehen des Kabels täte. „Box zur Seite legen“ (E2) hält Fall, Lösung und Zeit in der API fest; die Übersicht listet sie. Kein Knopf löscht etwas an einer Box. Ein Dienst ohne diese Felder: keine Belegzeilen, kein „Nochmal“, der Fall aus `handgriff` wie bisher. | `WerkstattBank.tsx`, `werkstattLauf.ts` |
 | Übersicht (D1) | Oben der Stand der Werkstatt: läuft (was gerade aufgespielt wird, wie viele Boxen heute), angehalten (wer, wann, warum) oder wartet (warum), mit „Werkstatt anhalten“ bzw. „Werkstatt fortsetzen“; unter „Details für Technik“ die Prüfsummen, das Protokoll von Anhalten und Fortsetzen und die Freigaben als Beleg. Darunter Werkbank-Brücke und die Boxen mit ihrem Stand (läuft, Problem, abgenommen, nur im Register). Eine Box in der Liste öffnet ihre Detailseite. | `WerkstattPage.tsx`, `werkstattStand` |
 | Einrichtungs-Detailseite (`?box=<referenz>`) | Alles zu einer Box an einem Ort, nur Anzeige. Oben steht, ob ein Kunde die Box schon eingerichtet hat (`kunde` der Box: Claim über den QR-Einstieg, Zeile in `device`; die Vorab-Registrierung zählt nicht; fehlt das Feld, „nicht bekannt“); wenn nicht, stehen dort der Direktlink des Gehäuse-QR-Codes (`https://portal.voltpilot.de/k/<referenz>`, siehe unten) mit „Link kopieren“ und derselbe QR-Code: Der Kunde richtet die Box darüber ein, ein Admin öffnet ihn in einem privaten Fenster (angemeldet führt er zurück in die Werkstatt). Dann Einrichtung (Hardware, Edge-Light-Fassung, OpenWrt und Freigabe, LAN-Netz, Tunnel-Adresse, Host-Schlüssel), Bindung und Fernwartung (Tunnel-Schlüssel, Zugang, Kunde und Anlage, Verbindung laut Tunnel-Dienst; ohne Tunnel-Schlüssel steht dort „noch nicht gekoppelt“), die Phasen des Laufs, die Abnahme mit den Belegen samt früheren Abnahmen, die Beschriftung und der Download der Gehäuse-Druckdatei und des Zubehörs (3MF, siehe unten). Fehlt die Abnahme, bleiben ihre Felder leer („–“): Unbekannt ist keine Angabe. Das Root-Passwort steht nur verschlüsselt da, wie an der Abnahme. | `WerkstattBoxSeite.tsx`, `werkstattEinrichtung.ts` |
@@ -84,8 +84,25 @@ Der Werkstatt-Dienst richtet neben der Mango auch einen WAGO PFC200 750-8212 ein
 Schritte, Belege und Einstellungen stehen im [README des Dienstes](../services/werkstatt-dienst/README.md#ein-lauf-am-wago-pfc200-edge-industrie); hier steht, was ein Mensch dafür tut und was der Lauf nicht tut.
 
 **Stand.**
-Der Dienst kann den Lauf (ausgeschaltet, bis `VP_WERKSTATT_GERAETE=mango,pfc200` gesetzt ist), und die API kennt das Gerät `pfc200`: Freigabe, Einmal-Code und Abnahme.
-Die Bildschirme im Portal (Kachel, Lauf-Seite mit den Handgriffen, Box-Seite) fehlen noch; bis dahin zeigt die Seite einen Lauf am PFC200 nur über die Ansicht des Dienstes.
+Der Dienst kann den Lauf (ausgeschaltet, bis `VP_WERKSTATT_GERAETE=mango,pfc200` gesetzt ist), die API kennt das Gerät `pfc200` (Freigabe, Einmal-Code, Abnahme), und das Portal führt durch den Lauf.
+Fernlauf und Nachtlauf für eine Edge-Industrie-Box fehlen noch.
+
+**Im Portal.**
+Alle Worte und Bilder zum PFC200 stehen an einer Stelle, in `frontend/portal/src/werkstattPfc200.ts`.
+
+| Teil | Was |
+|---|---|
+| Werkbank, Start | Kachel „PFC200“ neben „Mango“. Meldet der Dienst keine Freigabe für den PFC200 (`freigabe_pfc200` fehlt in der Ansicht), ist sie gesperrt und sagt, dass der Dienst hier keine einrichtet |
+| Werkbank, Anschließen | Endklemme, oranges Kabel in X2, Strom. Der Handgriff „feste Adresse“ steht immer da, in drei Sätzen und drei Zeichnungen (Schalter auf STOP, Reset-Taster länger als 8 Sekunden bis SYS orange blinkt, Schalter zurück auf RUN): Ein PFC200 ab Werk hat an der Werkbank sonst keine Adresse. Wartet die Werkstatt für den PFC200, steht der Grund darüber |
+| Lauf-Seite | Sechs Phasen: Erkannt, Absichern, Software, Bei VoltPilot anmelden, Netze trennen und Probe, Abnahme. Keine Phase und kein Schritt für die SPS oder die Firmware. Die Karte „Kommt auf diese Box“ nennt Edge Industrie und, nur zur Anzeige, die gelesene Firmware („bleibt, wie sie ist“). Eine Minutenzahl nennt die Seite erst, wenn frühere Läufe an einem PFC200 jeden offenen Schritt gemessen haben; eine Schätzung gibt es nicht |
+| Fall-Seiten | Wartet der Lauf auf einen Handgriff (`pfc_schalter_stop`, `pfc_kabel_x1`), zeigt die Seite ihn mit Zeichnung und macht von selbst weiter; „zur Seite legen“ gibt es erst, wenn ein Lauf angehalten hat. Den Werksreset zeigt nur `pfc_passwort`, mit Zeichnung, danach die feste Adresse. Für jedes fremde Gerät (`passwort_fremd`, `pfc_schon_eingerichtet`, …) gibt es kein Bild eines Resets |
+| Abschlussseite | Referenz und QR-Code für das Schild (ein gedrucktes Gehäuse hat der PFC200 nicht), dazu „CODESYS und Zugänge“: Die drei Passwörter stehen nur verschlüsselt an der Abnahme, das von `admin` entschlüsselt der Betreiber selbst, CODESYS erreicht das Gerät nur an X2, die Werkstatt hat kein SPS-Programm geladen |
+| Übersicht | In der Karte „Werkstatt“ eine Zeile zum PFC200: seine Edge-Industrie-Fassung, oder worauf die Werkstatt für ihn wartet. Nur wenn der Dienst PFC200 einrichtet, einer im Register steht oder ein Lauf an einem lief; sonst fragt die Seite den Stand nicht ab |
+| Seite der Box | Schild statt Druckdatei, „CODESYS und Zugänge“, Firmware, Bestellnummer und Seriennummer als Angabe („nur gelesen“), die Netze der zwei Buchsen, die zehn Prüfungen des PFC200 mit Beleg, die drei Zugänge in einem verschlüsselten Text |
+
+Die Zeichnungen sind ein Schema der Front (Leuchte SYS, Betriebsartenschalter, Reset-Taster, Buchsen X1 und X2), kein Foto und nicht maßstäblich.
+Geprüft wird das Portal gegen den Vektor [werkstatt-ansicht-v1.zustaende-pfc200.json](contracts/werkstatt-ansicht-v1.zustaende-pfc200.json): die Ansicht in jedem Zustand eines Laufs am PFC200, erzeugt aus dem Dienst selbst.
+Die Bühne dazu: `frontend/portal/e2e/werkstatt-pfc200.html?zustand=<name>`.
 
 **Freigabe, Code und Abnahme in der API.**
 Die Werkstatt-Regel hat je Gerät eine eigene Zeile (`werkstatt_freigabe.box_art`: `mango` oder `pfc200`, Kennung `JJJJ-MM-pfc200-N`).
@@ -105,8 +122,8 @@ Anhalten, Fortsetzen und die Tagesgrenze gelten für beide Geräte zusammen (ein
 Die Prüfliste des PFC200 steht im selben Vektor wie die der Mango, unter `geraete.pfc200` in [werkstatt-pruefungen.json](contracts/werkstatt-pruefungen.json): `zugaenge`, `notfall_schluessel`, `tunnel_status`, `anmeldeprobe`, `host_schluessel`, `fenster_zu`, `netze`, `dienste_zu`, `neustart`, `update_bereit`.
 Sie hat keine Prüfung für die SPS und keine für die Firmware, und kein Einrichtungs-WLAN.
 Welche Liste für eine Abnahme gilt, sagt die Box-Art im Register, nicht der Dienst.
-Zwillinge: `WerkstattPruefungen.PFC200` (API), `PRUEFUNGEN_PFC200` in `werkstatt.ts` (Portal), `pfc200.Pruefungen` (Dienst); alle vier gemeinsam ändern.
 Fernlauf und Nachtlauf gibt es für eine Edge-Industrie-Box noch nicht: Die Fernlauf-Regel gilt nur für eine Edge-Light-Box (Box-Art im Register oder gemeldete Fassung der Linie `edge-light-`).
+Zwillinge der Prüfliste: `WerkstattPruefungen.PFC200` (API), `PRUEFUNGEN_PFC200` in `werkstatt.ts` (Portal), `pfc200.Pruefungen` (Dienst); alle vier gemeinsam ändern.
 
 **Handgriffe am Gerät.**
 

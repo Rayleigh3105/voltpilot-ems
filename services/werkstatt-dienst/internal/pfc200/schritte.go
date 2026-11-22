@@ -107,7 +107,7 @@ func (l *Lauf) erkennen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, 
 	// Ende des Laufs stünde sonst ein Gerät ohne brauchbaren Notfall-Zugang.
 	if l.notfallFehler != nil {
 		return protokoll.Beleg{}.Mit("notfall_schluessel", l.notfallFehler.Error()),
-			lauf.Handgriff{Was: zurSeite, Fall: faelle.PFCNotfallSchluessel, Grund: l.notfallFehler.Error() + ". Am Gerät ist nichts geändert."}
+			lauf.Handgriff{Was: ZurSeite, Fall: faelle.PFCNotfallSchluessel, Grund: l.notfallFehler.Error() + ". Am Gerät ist nichts geändert."}
 	}
 	s, err := l.k.Werkbank.Status(ctx)
 	if err != nil {
@@ -123,7 +123,7 @@ func (l *Lauf) erkennen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, 
 	l.mac = mac
 	b := protokoll.Beleg{}.Mit("mac", mac).Mit("adresse", adresse.String())
 	if !IstWago(mac) {
-		return b, lauf.Handgriff{Was: zurSeite, Fall: faelle.PFCFalschesGeraet, Grund: fmt.Sprintf("Unter %s antwortet kein Gerät von WAGO (MAC %s).", adresse, mac)}
+		return b, lauf.Handgriff{Was: ZurSeite, Fall: faelle.PFCFalschesGeraet, Grund: fmt.Sprintf("Unter %s antwortet kein Gerät von WAGO (MAC %s).", adresse, mac)}
 	}
 	ziel := netip.AddrPortFrom(FesteAdresse, 22)
 	v, err := l.verbinde(ctx, ziel, l.anmeldung(), 2*l.k.Zeiten.Verbinden)
@@ -138,7 +138,7 @@ func (l *Lauf) erkennen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, 
 			return b.Mit("lauf_vorher", sp.Lauf).Mit("referenz_vorher", sp.Ref).Mit("zuruecksetzen", "ja"),
 				lauf.Handgriff{Was: Werksreset, Fall: faelle.PFCPasswort, Grund: halbGrund(sp)}
 		}
-		return b.Mit("zuruecksetzen", "nein - "+nein), lauf.Handgriff{Was: zurSeite, Fall: fall,
+		return b.Mit("zuruecksetzen", "nein - "+nein), lauf.Handgriff{Was: ZurSeite, Fall: fall,
 			Grund: "Der PFC200 nimmt das Werkspasswort nicht an: Er ist schon eingerichtet. Der Dienst fasst eingerichtete Geräte nicht an (" + nein + ")."}
 	}
 	if err != nil {
@@ -159,7 +159,7 @@ func (l *Lauf) erkennen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, 
 		Mit("docker", w["docker_install"]+", "+w["docker_aktiv"]+", Dienst läuft: "+w["docker_laeuft"]).
 		Mit("bruecken", w["bruecken"]).Mit("firewall", w["firewall"]).Mit("uhr_vorher", uhr).
 		Mit("vorhandene_schluessel", orNull(w["schluessel"])+" (der Lauf lässt nur den Notfall-Schlüssel stehen)")
-	h := lauf.Handgriff{Was: zurSeite}
+	h := lauf.Handgriff{Was: ZurSeite}
 	switch {
 	case w["artikel"] != Artikel:
 		h.Fall, h.Grund = faelle.PFCFalschesGeraet, fmt.Sprintf("Das Gerät ist kein PFC200 %s (Bestellnummer %q).", Artikel, w["artikel"])
@@ -171,7 +171,7 @@ func (l *Lauf) erkennen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, 
 	case w["ssh_passwort"] != "enabled":
 		h.Fall, h.Grund = faelle.NichtNachweisbar, fmt.Sprintf("Die Anmeldung mit Passwort ist %q, ab Werk ist sie an.", w["ssh_passwort"])
 	case w["docker_aktiv"] == "active" || w["docker_laeuft"] == "ja":
-		h.Was, h.Fall, h.Grund = dockerAus, faelle.PFCDockerAn, "Auf dem Gerät läuft Docker ("+w["docker_install"]+", "+w["docker_aktiv"]+"). Der Dienst beendet keine fremden Container; mit Docker stimmen Weiterleitung und Firewall des Geräts nicht."
+		h.Was, h.Fall, h.Grund = DockerAus, faelle.PFCDockerAn, "Auf dem Gerät läuft Docker ("+w["docker_install"]+", "+w["docker_aktiv"]+"). Der Dienst beendet keine fremden Container; mit Docker stimmen Weiterleitung und Firewall des Geräts nicht."
 	}
 	if h.Grund != "" {
 		return b, h
@@ -192,11 +192,11 @@ func (l *Lauf) erkennen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, 
 	// Buchsen, und nur X2 bekommt die Adresse, unter der der Dienst weitermacht.
 	kabel, err := kabelIn(w["buchsen"])
 	if err != nil {
-		return b, lauf.Handgriff{Was: zurSeite, Fall: faelle.NichtNachweisbar, Grund: err.Error() + ": Der Dienst kann nicht sagen, in welcher Buchse das Kabel steckt. Am Gerät ist nichts geändert."}
+		return b, lauf.Handgriff{Was: ZurSeite, Fall: faelle.NichtNachweisbar, Grund: err.Error() + ": Der Dienst kann nicht sagen, in welcher Buchse das Kabel steckt. Am Gerät ist nichts geändert."}
 	}
 	if kabel != "X2" {
 		k.Log.Info("Kabel nicht in X2, der Lauf wartet", "kabel", kabel)
-		err := k.WarteBis(ctx, "kabel_x2", faelle.PFCKabelX1, kabelInX2+" (Kabel jetzt: "+kabel+")", l.k.Zeiten.Takt, func(ctx context.Context) (bool, error) {
+		err := k.WarteBis(ctx, "kabel_x2", faelle.PFCKabelX1, KabelInX2+" (Kabel jetzt: "+kabel+")", l.k.Zeiten.Takt, func(ctx context.Context) (bool, error) {
 			roh, err := l.lies(ctx, Werkzeuge+"/network_config --interface-status --get -f json")
 			if err != nil {
 				return false, nil // beim Umstecken ist das Gerät kurz weg
@@ -215,7 +215,7 @@ func (l *Lauf) erkennen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, 
 	schalter := w["schalter"]
 	if schalter != "run" {
 		k.Log.Info("Betriebsartenschalter nicht auf RUN, der Lauf wartet", "schalter", schalter)
-		err := k.WarteBis(ctx, "schalter_run", faelle.PFCSchalterStop, schalterAufRun, l.k.Zeiten.Takt, func(ctx context.Context) (bool, error) {
+		err := k.WarteBis(ctx, "schalter_run", faelle.PFCSchalterStop, SchalterAufRun, l.k.Zeiten.Takt, func(ctx context.Context) (bool, error) {
 			aus, err := l.lies(ctx, Werkzeuge+"/get_run_stop_switch_value")
 			if err != nil {
 				return false, nil
@@ -274,13 +274,13 @@ func (l *Lauf) erkennenHalbImLan(ctx context.Context, _ *lauf.Kontext) (protokol
 	default:
 		host := v.HostFingerabdruck()
 		v.Schliesse()
-		return b.Mit("host_schluessel", host), lauf.Handgriff{Was: zurSeite, Fall: faelle.NichtNachweisbar,
+		return b.Mit("host_schluessel", host), lauf.Handgriff{Was: ZurSeite, Fall: faelle.NichtNachweisbar,
 			Grund: "Das Gerät im Anlagennetz nimmt root ohne Passwort an: Das ist kein Stand, den ein Lauf dieser Werkstatt hinterlässt."}
 	}
 	sp, nein, fall := l.k.HalbEigene(ctx, mac, ab.Host, l.kennung)
 	b = b.Mit("lauf_vorher", orKeins(sp.Lauf)).Mit("referenz_vorher", orKeins(sp.Ref))
 	if nein != "" {
-		return b.Mit("zuruecksetzen", "nein - "+nein), lauf.Handgriff{Was: zurSeite, Fall: fall,
+		return b.Mit("zuruecksetzen", "nein - "+nein), lauf.Handgriff{Was: ZurSeite, Fall: fall,
 			Grund: "Im Anlagennetz steht ein eingerichteter PFC200; der Dienst lässt ihn nicht zurücksetzen: " + nein + "."}
 	}
 	return b.Mit("zuruecksetzen", "ja"), lauf.Handgriff{Was: Werksreset, Fall: faelle.PFCPasswort, Grund: halbGrund(sp)}

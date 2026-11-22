@@ -23,7 +23,8 @@ import type {
 } from '../adminFernwartung';
 import type { WerkstattBox } from '../werkstatt';
 import type { ErstesVerbinden } from '../werkstattEinrichtung';
-import type { WerkstattDienst, WerkstattFreigabe, WerkstattRegel, ZurSeite } from '../werkstattBank';
+import { liesFreigabenPfc200, type WerkstattDienst, type WerkstattFreigabe, type WerkstattRegel, type ZurSeite } from '../werkstattBank';
+import { liesRegelPfc200 } from '../werkstattPfc200';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -1097,6 +1098,12 @@ export const adminApi = {
   werkstattFreigaben: () => request<WerkstattFreigabe[]>('/api/v1/admin/werkstatt/freigaben'),
 
   /**
+   * Die Freigaben für den WAGO PFC200 (eigene Zeilen der Regel, ohne OpenWrt). Eine API vor dem Gerät `pfc200`
+   * übergeht `?geraet=` und liefert die der Mango: Die bleiben draußen, die Liste ist dann leer.
+   */
+  werkstattFreigabenPfc200: () => request<unknown>('/api/v1/admin/werkstatt/freigaben?geraet=pfc200').then(liesFreigabenPfc200),
+
+  /**
    * „Nochmal versuchen“ (Lauf-Seite E1 A): ein Auftrag an den Werkstatt-Dienst, den angehaltenen Lauf neu
    * anzustoßen; er holt ihn mit seiner nächsten Meldung ab. 201/200; 409 mit Grund (kein Nochmal für diesen Fall).
    */
@@ -1111,6 +1118,12 @@ export const adminApi = {
 
   /** Der Stand der Werkstatt: läuft sie, was spielt sie auf (die neueste Fassung), wie viele Boxen heute. */
   werkstattRegel: () => request<WerkstattRegel>('/api/v1/admin/werkstatt/regel'),
+
+  /**
+   * Der Stand der Werkstatt für den WAGO PFC200: die neueste Edge-Industrie-Fassung, oder worauf sie wartet.
+   * `null`, wenn die API das Gerät noch nicht kennt (sie antwortete dann mit dem Stand der Mango).
+   */
+  werkstattRegelPfc200: () => request<unknown>('/api/v1/admin/werkstatt/regel?geraet=pfc200').then(liesRegelPfc200),
 
   /** Werkstatt anhalten (Notfall): ab jetzt kein neuer Lauf, keine Anmeldung einer Box. Steht mit dir im Protokoll. */
   werkstattAnhalten: (grund: string | null) =>

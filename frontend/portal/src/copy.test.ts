@@ -337,6 +337,9 @@ const EXCLUDED = [
   '/werkstattEinrichtung.ts',
   // Die Lauf-Seite der Werkbank (Fall-Seiten, Schritte mit Belegen, Software): dieselbe Admin-Seite, dasselbe Vokabular.
   '/werkstattLauf.ts',
+  // Der WAGO PFC200 an der Werkbank (Phasen, Handgriffe, Sätze der Abschlussseite): dieselbe Admin-Seite, dasselbe
+  // Vokabular („Edge Industrie“ ist der technische Name der Box-Art).
+  '/werkstattPfc200.ts',
   // Die reine Schicht der Admin-Seite „Geräte & Updates" (`pages/admin/EdgeUpdatesPage`
   // und `GeraeteUpdates`, Geräte & Updates G5) — sie spricht legitim Betreiber-Vokabular
   // (Release, Version, Docker-Box, Edge Light).
@@ -882,6 +885,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'werkstattEinrichtung',
       // Die Lauf-Seite der Werkbank.
       'werkstattLauf',
+      // Der WAGO PFC200 an der Werkbank: Worte und Bilder der Werkstatt-Bildschirme.
+      'werkstattPfc200',
       // Die Geräte-Liste (Scheibe S2): eine Zeile je Box in jedem Lebensabschnitt.
       'geraeteListe',
       // Plattform › Übersicht (Scheibe S4): bündelt die anderen reinen

@@ -1,0 +1,3934 @@
+{
+  "angehalten_beim_neustart": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "neustart",
+      "titel": "Neustart-Probe",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "einloesen",
+        "tunnel",
+        "netze"
+      ],
+      "grund": "kein frischer Handshake am Tunnel nach dem Neustart",
+      "fall": "schritt_gescheitert",
+      "loesung": {
+        "titel": "Hier hat etwas nicht geklappt.",
+        "schritte": [
+          "Das orange Kabel kurz abziehen und wieder in die Buchse X2 stecken. Der Dienst versucht es noch einmal.",
+          "Klappt es wieder nicht: Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einloesen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "netze",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      },
+      "nochmal_moeglich": true
+    }
+  },
+  "angehalten_passwort_fremd": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "PFC200 erkennen",
+      "erledigt": [],
+      "grund": "Das Werkspasswort wird abgewiesen, und kein Lauf dieser Werkstatt kennt das Gerät.",
+      "handgriff": "PFC200 abziehen und zur Seite legen; den Grund im Portal oder beim Betreiber melden.",
+      "fall": "passwort_fremd",
+      "loesung": {
+        "titel": "Dieser PFC200 gehört nicht zur Werkstatt.",
+        "schritte": [
+          "Nicht zurücksetzen: Ein Werksreset löscht das SPS-Programm auf dem Gerät.",
+          "Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen."
+        ],
+        "selbst": false,
+        "zur_seite": true
+      },
+      "vorher": {
+        "system": "PFC200, Werkspasswort abgewiesen",
+        "edge_light": "unbekannt"
+      }
+    }
+  },
+  "angehalten_pfc_docker_an": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "PFC200 erkennen",
+      "erledigt": [],
+      "grund": "Auf dem Gerät läuft Docker (installiert, aktiv). Der Dienst beendet keine fremden Container; mit Docker stimmen Weiterleitung und Firewall des Geräts nicht.",
+      "handgriff": "In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten, wenn die Container nicht gebraucht werden. Dann das orange Kabel kurz abziehen.",
+      "fall": "pfc_docker_an",
+      "loesung": {
+        "titel": "Auf diesem PFC200 läuft Docker.",
+        "schritte": [
+          "Der Dienst beendet keine fremden Container. In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten, wenn die Container nicht gebraucht werden.",
+          "Das orange Kabel kurz abziehen und wieder in die Buchse X2 stecken. Der Dienst fängt neu an."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      },
+      "nochmal_moeglich": true
+    }
+  },
+  "angehalten_pfc_falsches_geraet": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "PFC200 erkennen",
+      "erledigt": [],
+      "grund": "Das Gerät ist kein PFC200 750-8212 (Bestellnummer \"750-8101\").",
+      "handgriff": "PFC200 abziehen und zur Seite legen; den Grund im Portal oder beim Betreiber melden.",
+      "fall": "pfc_falsches_geraet",
+      "loesung": {
+        "titel": "Das ist kein PFC200 750-8212.",
+        "schritte": [
+          "Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen."
+        ],
+        "selbst": false,
+        "zur_seite": true
+      }
+    }
+  },
+  "angehalten_pfc_notfall_schluessel": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "PFC200 erkennen",
+      "erledigt": [],
+      "grund": "Der Notfall-Schlüssel ist von der Art ssh-ed25519; der SSH-Dienst des PFC200 nimmt nur RSA und ECDSA.",
+      "handgriff": "PFC200 abziehen und zur Seite legen; den Grund im Portal oder beim Betreiber melden.",
+      "fall": "pfc_notfall_schluessel",
+      "loesung": {
+        "titel": "Der Notfall-Schlüssel passt nicht zum PFC200.",
+        "schritte": [
+          "Der PFC200 ist noch unverändert. Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen.",
+          "Die Technik hinterlegt einen Notfall-Schlüssel der Art RSA oder ECDSA: Ed25519 nimmt der PFC200 nicht."
+        ],
+        "selbst": false,
+        "zur_seite": true
+      }
+    }
+  },
+  "angehalten_pfc_passwort": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "PFC200 erkennen",
+      "erledigt": [],
+      "grund": "Diesen PFC200 hat der Lauf 2026-11-04-092800-ab12 begonnen und nicht fertig gemacht.",
+      "handgriff": "Werksreset: Den Reset-Taster (RST) gedrückt halten, dabei den Betriebsartenschalter auf RESET drücken und beides halten, bis die Leuchte SYS abwechselnd rot und grün blinkt; dann loslassen. Der PFC200 startet neu und ist danach wie ab Werk. Danach die feste Adresse geben: Betriebsartenschalter auf STOP, Reset-Taster (RST) länger als 8 Sekunden halten, bis die Leuchte SYS orange blinkt, dann den Schalter wieder auf RUN.",
+      "fall": "pfc_passwort",
+      "loesung": {
+        "titel": "Dieser PFC200 ist nur halb eingerichtet.",
+        "schritte": [
+          "Werksreset: Den Reset-Taster (RST) gedrückt halten, dabei den Betriebsartenschalter auf RESET drücken und beides halten, bis die Leuchte SYS abwechselnd rot und grün blinkt. Dann loslassen.",
+          "Der PFC200 startet neu und ist danach wie ab Werk. Ein SPS-Programm auf dem Gerät ist damit gelöscht.",
+          "Den Betriebsartenschalter am PFC200 auf STOP stellen.",
+          "Den Reset-Taster (RST) mit einem Stift länger als 8 Sekunden gedrückt halten, bis die Leuchte SYS orange blinkt. Dann loslassen.",
+          "Den Betriebsartenschalter wieder auf RUN stellen.",
+          "Der PFC200 hat jetzt vorübergehend die Adresse 192.168.1.17. Strom und Kabel bleiben stecken: Nach einem Neustart wäre die Adresse wieder weg."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "vorher": {
+        "system": "PFC200 mit Zugängen dieser Werkstatt",
+        "edge_light": "edge-zz9988g, halb eingerichtet (Lauf 2026-11-04-092800-ab12)",
+        "ersetzt": true
+      }
+    }
+  },
+  "angehalten_pfc_schon_eingerichtet": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "PFC200 erkennen",
+      "erledigt": [],
+      "grund": "Auf dem Gerät liegt schon ein Dienst von VoltPilot: kein Werkszustand.",
+      "handgriff": "PFC200 abziehen und zur Seite legen; den Grund im Portal oder beim Betreiber melden.",
+      "fall": "pfc_schon_eingerichtet",
+      "loesung": {
+        "titel": "Auf diesem PFC200 ist schon Edge Industrie.",
+        "schritte": [
+          "Nicht zurücksetzen.",
+          "Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen."
+        ],
+        "selbst": false,
+        "zur_seite": true
+      },
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "Edge Industrie, ohne Lauf dieser Werkstatt"
+      }
+    }
+  },
+  "fertig": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "fertig",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "einloesen",
+        "tunnel",
+        "netze",
+        "neustart",
+        "probe",
+        "internet_weg",
+        "uebergabe"
+      ],
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einloesen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "netze",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        },
+        {
+          "schritt": "probe",
+          "dauer_s": 0,
+          "zeile": "vom Betreiber im Portal erledigt"
+        },
+        {
+          "schritt": "internet_weg",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "uebergabe",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_einloesen": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "einloesen",
+      "titel": "Einmal-Code einlösen",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_erkennen": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "erkennen",
+      "titel": "PFC200 erkennen",
+      "erledigt": [],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600
+    }
+  },
+  "laeuft_fassungen": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "fassungen",
+      "titel": "Fassungen der Freigabe bereitlegen",
+      "erledigt": [
+        "erkennen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_internet": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "internet",
+      "titel": "Internet über die Brücke (befristet) und Uhr stellen",
+      "erledigt": [
+        "erkennen",
+        "fassungen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_internet_weg": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "internet_weg",
+      "titel": "Werkstatt-Internet und Lauf-Schlüssel entfernen",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "einloesen",
+        "tunnel",
+        "netze",
+        "neustart",
+        "probe"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einloesen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "netze",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        },
+        {
+          "schritt": "probe",
+          "dauer_s": 0,
+          "zeile": "vom Betreiber im Portal erledigt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_netze": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "netze",
+      "titel": "Netze trennen und Firewall einschalten",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "einloesen",
+        "tunnel"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einloesen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_neustart": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "neustart",
+      "titel": "Neustart-Probe",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "einloesen",
+        "tunnel",
+        "netze"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einloesen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "netze",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_notfall": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "notfall",
+      "titel": "Notfall-Schlüssel",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_probe": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "probe",
+      "titel": "Probe im Fenster",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "einloesen",
+        "tunnel",
+        "netze",
+        "neustart"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einloesen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "netze",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_programm": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "programm",
+      "titel": "Edge Industrie einspielen",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_tunnel": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "tunnel",
+      "titel": "Tunnel einrichten",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "einloesen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einloesen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_tunnel_schluessel": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "tunnel_schluessel",
+      "titel": "Tunnel-Schlüssel erzeugen",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_uebergabe": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "uebergabe",
+      "titel": "Belege für die Abnahme",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "einloesen",
+        "tunnel",
+        "netze",
+        "neustart",
+        "probe",
+        "internet_weg"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einloesen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "netze",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        },
+        {
+          "schritt": "probe",
+          "dauer_s": 0,
+          "zeile": "vom Betreiber im Portal erledigt"
+        },
+        {
+          "schritt": "internet_weg",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_zugaenge": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "zugaenge",
+      "titel": "Zugänge: drei Passwörter, Anmeldung nur noch mit Schlüssel",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "ohne_antwort": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": []
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss": "Am orangen Kabel steckt keine Box (oder sie startet noch). Ein PFC200 ab Werk antwortet erst nach dem Handgriff „feste Adresse“: Betriebsartenschalter auf STOP, Reset-Taster (RST) länger als 8 Sekunden halten, bis die Leuchte SYS orange blinkt, dann den Schalter wieder auf RUN.",
+    "anschluss_fall": "keine_box",
+    "anschluss_loesung": {
+      "titel": "Am Kabel antwortet noch kein Gerät.",
+      "schritte": [
+        "Mango: Strom anstecken, die Leuchte geht an. Bis zu einer Minute warten.",
+        "PFC200: Strom anstecken und bis zu zwei Minuten warten. Antwortet er dann nicht, braucht er die feste Adresse.",
+        "PFC200, feste Adresse: Den Betriebsartenschalter am PFC200 auf STOP stellen.",
+        "Den Reset-Taster (RST) mit einem Stift länger als 8 Sekunden gedrückt halten, bis die Leuchte SYS orange blinkt. Dann loslassen.",
+        "Den Betriebsartenschalter wieder auf RUN stellen.",
+        "Der PFC200 hat jetzt vorübergehend die Adresse 192.168.1.17. Strom und Kabel bleiben stecken: Nach einem Neustart wäre die Adresse wieder weg."
+      ],
+      "selbst": true,
+      "zur_seite": false
+    }
+  },
+  "startet": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "anschluss": "PFC200 erkannt unter 192.168.1.17; der Dienst wartet, bis er fertig gestartet ist. Nicht abziehen.",
+    "anschluss_fall": "startet",
+    "anschluss_loesung": {
+      "titel": "Der PFC200 startet noch.",
+      "schritte": [
+        "Nichts tun und nicht abziehen. Der Dienst fängt an, sobald er fertig gestartet ist."
+      ],
+      "selbst": true,
+      "zur_seite": false
+    }
+  },
+  "wartet_kabel_x2": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "wartet",
+      "schritt": "erkennen",
+      "titel": "PFC200 erkennen",
+      "erledigt": [],
+      "wartet_auf": "kabel_x2",
+      "hinweis": "Das orange Kabel WERKSTATT in die Buchse X2 des PFC200 stecken, die Buchse X1 bleibt leer. Der Dienst macht von selbst weiter. (Kabel jetzt: X1)",
+      "fall": "pfc_kabel_x1",
+      "loesung": {
+        "titel": "Das orange Kabel steckt nicht in der Buchse X2.",
+        "schritte": [
+          "Das orange Kabel WERKSTATT in die Buchse X2 des PFC200 stecken. Die Buchse X1 bleibt leer.",
+          "Sonst nichts tun: Der Dienst macht von selbst weiter."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600
+    }
+  },
+  "wartet_schalter_run": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "wartet",
+      "schritt": "erkennen",
+      "titel": "PFC200 erkennen",
+      "erledigt": [],
+      "wartet_auf": "schalter_run",
+      "hinweis": "Den Betriebsartenschalter des PFC200 auf RUN stellen. Der Dienst macht von selbst weiter.",
+      "fall": "pfc_schalter_stop",
+      "loesung": {
+        "titel": "Der Betriebsartenschalter steht auf STOP.",
+        "schritte": [
+          "Den Betriebsartenschalter wieder auf RUN stellen.",
+          "Sonst nichts tun: Der Dienst macht von selbst weiter."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600
+    }
+  },
+  "wartet_schalter_run_nach_neustart": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "box": "edge-k7m2xq3",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "wartet",
+      "schritt": "neustart",
+      "titel": "Neustart-Probe",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "einloesen",
+        "tunnel",
+        "netze"
+      ],
+      "wartet_auf": "schalter_run",
+      "hinweis": "Den Betriebsartenschalter des PFC200 auf RUN stellen. Der Dienst macht von selbst weiter.",
+      "fall": "pfc_schalter_stop",
+      "loesung": {
+        "titel": "Der Betriebsartenschalter steht auf STOP.",
+        "schritte": [
+          "Den Betriebsartenschalter wieder auf RUN stellen.",
+          "Sonst nichts tun: Der Dienst macht von selbst weiter."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einloesen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "netze",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  }
+}

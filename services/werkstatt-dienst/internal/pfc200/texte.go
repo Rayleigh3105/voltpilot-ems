@@ -28,9 +28,11 @@ const (
 )
 
 // Handgriffe, wie sie im Lauf stehen (lauf.handgriff). Die Lösung in
-// Alltagsworten steht in internal/faelle.
+// Alltagsworten steht in internal/faelle. Exportiert, weil der Vektor der
+// Ansicht (internal/dienst, Zustände eines Laufs am PFC200) dieselben Sätze
+// zeigt wie der echte Lauf.
 const (
-	zurSeite = "PFC200 abziehen und zur Seite legen; den Grund im Portal oder beim Betreiber melden."
+	ZurSeite = "PFC200 abziehen und zur Seite legen; den Grund im Portal oder beim Betreiber melden."
 	// Werksreset ist der eine Handgriff für einen PFC200, in den der Dienst
 	// nicht hineinkommt, den er aber zurücksetzen lassen darf: ein Gerät, das
 	// diese Werkstatt begonnen und nicht fertig gemacht hat. Danach ist das
@@ -39,9 +41,9 @@ const (
 		"Der PFC200 startet neu und ist danach wie ab Werk. Danach die feste Adresse geben: " + FesteAdresseHandgriff
 	// FesteAdresseHandgriff gibt dem PFC200 vorübergehend die Adresse 192.168.1.17.
 	FesteAdresseHandgriff = "Betriebsartenschalter auf STOP, Reset-Taster (RST) länger als 8 Sekunden halten, bis die Leuchte SYS orange blinkt, dann den Schalter wieder auf RUN."
-	schalterAufRun        = "Den Betriebsartenschalter des PFC200 auf RUN stellen. Der Dienst macht von selbst weiter."
-	kabelInX2             = "Das orange Kabel WERKSTATT in die Buchse X2 des PFC200 stecken, die Buchse X1 bleibt leer. Der Dienst macht von selbst weiter."
-	dockerAus             = "In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten, wenn die Container nicht gebraucht werden. Dann das orange Kabel kurz abziehen."
+	SchalterAufRun        = "Den Betriebsartenschalter des PFC200 auf RUN stellen. Der Dienst macht von selbst weiter."
+	KabelInX2             = "Das orange Kabel WERKSTATT in die Buchse X2 des PFC200 stecken, die Buchse X1 bleibt leer. Der Dienst macht von selbst weiter."
+	DockerAus             = "In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten, wenn die Container nicht gebraucht werden. Dann das orange Kabel kurz abziehen."
 )
 
 // Sätze an der Abnahme und auf der Abschlussseite.
