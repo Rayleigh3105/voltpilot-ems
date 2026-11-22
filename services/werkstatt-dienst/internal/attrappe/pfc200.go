@@ -22,6 +22,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/passwort"
 )
 
@@ -83,7 +84,8 @@ type PFC200 struct {
 	host    ssh.Signer
 	sshLn   net.Listener
 	webLn   net.Listener
-	conns   map[*ssh.ServerConn][]*exec.Cmd
+	// conns: je SSH-Verbindung die Prozessgruppen ihrer laufenden Befehle.
+	conns   map[*ssh.ServerConn][]int
 	befehle []string
 	ende    chan struct{}
 }
@@ -161,7 +163,7 @@ case "$1" in
     cat >"$Z/programm"
     mkdir -p "$W/home/voltpilot/daten" "$W/tmp/vp-edge-industrie"
     cat "$Z/ref" >"$W/home/voltpilot/daten/ref"
-    printf '#!/bin/sh\n# werkstatt-anmelden: Anfrage ablegen, auf die Antwort der Attrappe warten\n[ "$1" = werkstatt-anmelden ] || exit 2\nZ="%s"\ncat >"$Z/anmelden.code"\necho "$*" >"$Z/anmelden.args"\ni=0\nwhile [ ! -e "$Z/anmelden.rc" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done\ncat "$Z/anmelden.aus" 2>/dev/null\nrc=$(cat "$Z/anmelden.rc" 2>/dev/null || echo 9)\nrm -f "$Z/anmelden.rc" "$Z/anmelden.aus"\n[ "$rc" = 0 ] || echo "abgewiesen" >&2\nexit "$rc"\n' "$Z" >"$W/tmp/vp-edge-industrie/vp-edge-industrie"
+    printf '#!/bin/sh\n# werkstatt-anmelden: Anfrage ablegen, auf die Antwort der Attrappe warten\n[ "$1" = werkstatt-anmelden ] || exit 2\nZ="%s"\ncat >"$Z/anmelden.code"\necho "$*" >"$Z/anmelden.args"\ni=0\nwhile [ ! -e "$Z/anmelden.rc" ] && [ "$i" -lt 2400 ]; do sleep 0.05; i=$((i + 1)); done\ncat "$Z/anmelden.aus" 2>/dev/null\nrc=$(cat "$Z/anmelden.rc" 2>/dev/null || echo 9)\nrm -f "$Z/anmelden.rc" "$Z/anmelden.aus"\n[ "$rc" = 0 ] || echo "abgewiesen" >&2\nexit "$rc"\n' "$Z" >"$W/tmp/vp-edge-industrie/vp-edge-industrie"
     chmod 0755 "$W/tmp/vp-edge-industrie/vp-edge-industrie"
     dienst vp-edge-industrie edge.laeuft
     rm -f "$Z/edge.laeuft"
@@ -238,11 +240,22 @@ func SkripteTarGzPFC200(t testing.TB) []byte {
 }
 
 // ManifestPFC200 ist ein Manifest wie [Manifest], für linux/arm und die
-// genannte Update-Linie.
-func ManifestPFC200(fassung string, seq int64, programmSha, backend string) []byte {
+// genannte Update-Linie, mit Skriptstand und Tunnel-Programm (leere
+// Prüfsumme: das Feld fehlt, wie bei einer Fassung vor diesen Feldern).
+func ManifestPFC200(fassung string, seq int64, programmSha, backend, skripteSha, wartungSha string) []byte {
 	m, _ := Manifest(fassung, seq, programmSha)
 	s := strings.Replace(string(m), `"linux/mipsle"`, `"linux/arm"`, 1)
 	s = strings.Replace(s, `"light"`, `"`+backend+`"`, 1)
+	zusatz := ""
+	if skripteSha != "" {
+		zusatz += `,
+  "skripte": {"name": "` + fassungen.IndustrieSkripteDatei + `", "sha256": "` + skripteSha + `", "size": 1}`
+	}
+	if wartungSha != "" {
+		zusatz += `,
+  "wartung": {"name": "` + fassungen.WartungProgramm + `", "sha256": "` + wartungSha + `", "size": 1}`
+	}
+	s = strings.Replace(s, `"signing_key_id": "rel-2026-a"`, `"signing_key_id": "rel-2026-a"`+zusatz, 1)
 	return []byte(s)
 }
 
@@ -256,7 +269,7 @@ func NeuerPFC200(t testing.TB) *PFC200 {
 	}
 	p := &PFC200{Ref: "edge-k7m2xq3", Version: "edge-industrie-2026.11.1", WgPub: "c2Vydm9wdWJ2b3JiaWxkZXJ3aXJlZ3VhcmRrZXk0NDE=",
 		Backend: "industrie", BestaetigterStand: 77, Neustartdauer: 150 * time.Millisecond,
-		t: t, w: w, z: filepath.Join(w, "var/lib/pfc-attrappe"), conns: map[*ssh.ServerConn][]*exec.Cmd{}, ende: make(chan struct{})}
+		t: t, w: w, z: filepath.Join(w, "var/lib/pfc-attrappe"), conns: map[*ssh.ServerConn][]int{}, ende: make(chan struct{})}
 	for name, inhalt := range PFCWerkzeuge() {
 		p.schreibe(filepath.Join(w, "etc/config-tools", name), string(inhalt), 0o755)
 	}
@@ -514,13 +527,11 @@ func (p *PFC200) verbindung(c net.Conn, cfg *ssh.ServerConfig) {
 		// Die Sitzung endet: Was an ihr hängt, bekommt SIGHUP. Was sich mit
 		// nohup gelöst hat, läuft weiter.
 		p.mu.Lock()
-		cmds := p.conns[sc]
+		gruppen := p.conns[sc]
 		delete(p.conns, sc)
 		p.mu.Unlock()
-		for _, cmd := range cmds {
-			if cmd.Process != nil {
-				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP)
-			}
+		for _, pgid := range gruppen {
+			_ = syscall.Kill(-pgid, syscall.SIGHUP)
 		}
 		_ = sc.Close()
 	}()
@@ -568,14 +579,34 @@ func (p *PFC200) exec(sc *ssh.ServerConn, ch ssh.Channel, befehl string) int {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = ch, ch, ch.Stderr()
 	cmd.WaitDelay = 2 * time.Second
+	// Start und Eintrag unter der Sperre: Endet die Verbindung in diesem
+	// Augenblick, ist der Befehl entweder noch nicht gestartet (dann startet
+	// er nicht mehr) oder seine Prozessgruppe steht schon in der Liste.
 	p.mu.Lock()
 	if _, ok := p.conns[sc]; !ok {
 		p.mu.Unlock()
 		return 255
 	}
-	p.conns[sc] = append(p.conns[sc], cmd)
+	if err := cmd.Start(); err != nil {
+		p.mu.Unlock()
+		return 127
+	}
+	pgid := cmd.Process.Pid
+	p.conns[sc] = append(p.conns[sc], pgid)
 	p.mu.Unlock()
-	err := cmd.Run()
+	err := cmd.Wait()
+	// Der Befehl ist zu Ende: Seine Gruppe gehört nicht mehr zur Verbindung
+	// (was sich mit nohup gelöst hat, soll ihr Ende ohnehin überleben).
+	p.mu.Lock()
+	if liste, ok := p.conns[sc]; ok {
+		for i, g := range liste {
+			if g == pgid {
+				p.conns[sc] = append(liste[:i:i], liste[i+1:]...)
+				break
+			}
+		}
+	}
+	p.mu.Unlock()
 	if ee, ok := err.(*exec.ExitError); ok {
 		if ee.ExitCode() < 0 {
 			return 255
@@ -583,7 +614,12 @@ func (p *PFC200) exec(sc *ssh.ServerConn, ch ssh.Channel, befehl string) int {
 		return ee.ExitCode()
 	}
 	if err != nil && cmd.ProcessState == nil {
-		return 127
+		return 255
+	}
+	// Auch wenn das Warten auf die Ausgabe an WaitDelay endete: Es gilt der
+	// Ausgang des Befehls.
+	if cmd.ProcessState != nil && cmd.ProcessState.ExitCode() > 0 {
+		return cmd.ProcessState.ExitCode()
 	}
 	return 0
 }

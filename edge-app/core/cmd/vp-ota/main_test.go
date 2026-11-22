@@ -335,6 +335,64 @@ func TestManifestCarriesTheSignedSkriptstand(t *testing.T) {
 	}
 }
 
+// Ein Edge-Industrie-Release traegt signiert mit, was die Werkstatt beim
+// Einrichten eines WAGO PFC200 auflegt: seinen Skriptstand und das
+// Tunnel-Programm vp-wartung. Beides ist kein Bestandteil des Updates - das
+// Manifest verifiziert auf industrie wie ohne.
+func TestManifestCarriesTheWerkstattFilesOfEdgeIndustrie(t *testing.T) {
+	dir := ceremony(t)
+	p := func(n string) string { return filepath.Join(dir, n) }
+	arm := writeProgram(t, dir, "vp-edge-industrie-linux-arm", []byte("armv7-programm"))
+	skripte := writeProgram(t, dir, "skripte", []byte("edge-industrie/install.sh"))
+	wartung := filepath.Join(dir, "vp-wartung-linux-arm")
+	if err := os.WriteFile(wartung, []byte("\x7fELF tunnel-programm"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	args := func(extra ...string) []string {
+		return append([]string{
+			"--release", "edge-industrie-2026.11.1", "--seq", "16", "--commit", "3bf8c038a1b2",
+			"--binary", "vp-edge-industrie:linux/arm=" + arm,
+			"--state-schema", "3", "--key-id", "rel-2026-a", "--out", p("industrie.json"),
+		}, extra...)
+	}
+	must(t, cmdManifest(args("--skripte", skripte+".gz", "--wartung", wartung)))
+	raw, _ := os.ReadFile(p("industrie.json"))
+	m, err := otaverify.ParseManifestStrict(raw)
+	if err != nil {
+		t.Fatalf("Manifest mit Skriptstand und Tunnel-Programm ist nicht streng gueltig: %v", err)
+	}
+	gz, _ := os.ReadFile(skripte + ".gz")
+	prog, _ := os.ReadFile(wartung)
+	if m.Skripte == nil || m.Skripte.Name != otaverify.IndustrieSkripteDatei || m.Skripte.SHA256 != sumOf(gz) {
+		t.Fatalf("Skriptstand falsch: %+v", m.Skripte)
+	}
+	if m.Wartung == nil || m.Wartung.Name != otaverify.WartungDatei || m.Wartung.SHA256 != sumOf(prog) ||
+		m.Wartung.Size != int64(len(prog)) {
+		t.Fatalf("Tunnel-Programm falsch: %+v", m.Wartung)
+	}
+	// Nie als Bestandteil des Updates: ein unbekannter Bestandteil liesse
+	// Boxen das ganze Release zurueckstellen.
+	if len(m.Artifacts) != 1 || m.Artifacts[0].Type != otaverify.ArtifactBinary {
+		t.Fatalf("Bestandteile: %+v", m.Artifacts)
+	}
+	must(t, cmdSign([]string{"--key", p("rel-2026-a.key"), "--domain", "release", "--in", p("industrie.json")}))
+	must(t, cmdVerify([]string{
+		"--root", p("root-2026-a.pub"), "--trust-set", p("trust-set.json"), "--manifest", p("industrie.json"),
+		"--backend", "industrie",
+	}))
+
+	if err := cmdManifest(args("--wartung", skripte+".gz")); err == nil {
+		t.Error("ein Tunnel-Programm, das kein Programm ist, wurde angenommen")
+	}
+	mips := writeProgram(t, dir, "vp-edge-light-linux-mipsle", []byte("mipsle-programm"))
+	light := []string{"--release", "edge-light-2026.11.1", "--seq", "17", "--commit", "3bf8c038a1b2",
+		"--binary", "vp-edge-light:linux/mipsle=" + mips,
+		"--state-schema", "3", "--key-id", "rel-2026-a", "--out", p("light.json"), "--wartung", wartung}
+	if err := cmdManifest(light); err == nil {
+		t.Error("ein Edge-Light-Release mit Tunnel-Programm wurde erzeugt")
+	}
+}
+
 // Die Lieferung muss genau das Programm entpacken - sonst scheiterte jedes
 // Update erst auf der Box (Download gegen gz_sha256 gut, Programm gegen sha256
 // schlecht).

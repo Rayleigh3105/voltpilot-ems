@@ -237,7 +237,7 @@
       "backend": "industrie",
       "erwartet": "ok",
       "erzeugbar": false,
-      "warum": "Einen Skriptstand traegt nur ein Edge-Light-Release (die Skripte der Mango); die Box liest ihn tolerant und wendet ihn nicht an, erzeugbar ist so ein Edge-Industrie-Manifest nicht.",
+      "warum": "Ein Edge-Industrie-Release traegt SEINEN Skriptstand (edge-industrie-skripte.tar.gz), nicht den der Mango (edge-light-openwrt.tar.gz); die Box liest das Feld tolerant und wendet es nicht an, erzeugbar ist so ein Manifest nicht.",
       "manifest": {
         "schema_version": "1.0",
         "release": "edge-industrie-2026.11.0",
@@ -662,6 +662,122 @@
         "state_schema": 3,
         "compat": {"backends": ["compose"]},
         "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "industrie-release-mit-skriptstand-und-tunnel-programm-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": true,
+      "warum": "Ein Edge-Industrie-Release traegt, was die Werkstatt beim Einrichten eines WAGO PFC200 auflegt, signiert mit: seinen Skriptstand (edge-industrie-skripte.tar.gz) und das Tunnel-Programm (wartung, vp-wartung-linux-arm). Beides ist kein Bestandteil des Updates: Die Box wendet es nicht an und verifiziert wie ohne.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-industrie-skripte.tar.gz", "sha256": "5555555555555555555555555555555555555555555555555555555555555555", "size": 20480},
+        "wartung": {"name": "vp-wartung-linux-arm", "sha256": "6666666666666666666666666666666666666666666666666666666666666666", "size": 7340032}
+      }
+    },
+    {
+      "name": "industrie-tunnel-programm-ohne-pruefsumme-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Ein Tunnel-Programm ohne gueltige Pruefsumme darf nicht erzeugt werden; die Box ignoriert das Feld und wendet das Release trotzdem an (tolerant annehmen).",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a",
+        "wartung": {"name": "vp-wartung-linux-arm", "sha256": "kaputt", "size": 7340032}
+      }
+    },
+    {
+      "name": "industrie-tunnel-programm-mit-anderem-namen-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Das Tunnel-Programm heisst am Release vp-wartung-linux-arm; ein anderer Name ist nicht erzeugbar, die Box ignoriert das Feld.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a",
+        "wartung": {"name": "vp-wartung-linux-arm64", "sha256": "6666666666666666666666666666666666666666666666666666666666666666", "size": 7340032}
+      }
+    },
+    {
+      "name": "light-release-mit-tunnel-programm-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Das Tunnel-Programm traegt nur ein Edge-Industrie-Release (die Mango richtet ihren Tunnel mit Skripten ein); die Box ignoriert das Feld.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "size": 31744},
+        "wartung": {"name": "vp-wartung-linux-arm", "sha256": "6666666666666666666666666666666666666666666666666666666666666666", "size": 7340032}
+      }
+    },
+    {
+      "name": "light-release-mit-industrie-skriptstand-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Ein Edge-Light-Release traegt den Skriptstand der Mango (edge-light-openwrt.tar.gz), nicht den von Edge Industrie; die Box ignoriert das Feld.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-industrie-skripte.tar.gz", "sha256": "5555555555555555555555555555555555555555555555555555555555555555", "size": 20480}
       }
     }
   ]

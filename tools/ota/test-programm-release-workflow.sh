@@ -83,9 +83,16 @@ for arch in ARCHS:
     assert f'--binary "{PROG}:linux/{arch}=${{RUNNER_TEMP}}/fassung/{PROG}-linux-{arch}"' in man, arch
 assert man.count("--binary") == len(ARCHS), man
 assert "--artifact" not in man
-# Der Skriptstand (der der Mango) reist signiert im Edge-Light-Manifest: die
-# Werkstatt prueft dagegen. Edge Industrie traegt keinen.
-assert ('--skripte "${RUNNER_TEMP}/fassung/edge-light-openwrt.tar.gz"' in man) == LIGHT, man
+# Was die Werkstatt beim Einrichten auflegt, reist signiert im Manifest, als
+# eigene Felder und nie als Bestandteil des Updates: jede Linie ihren
+# Skriptstand, Edge Industrie dazu das Tunnel-Programm vp-wartung.
+SKRIPTE = "edge-light-openwrt.tar.gz" if LIGHT else "edge-industrie-skripte.tar.gz"
+ANDERE_SKRIPTE = "edge-industrie-skripte.tar.gz" if LIGHT else "edge-light-openwrt.tar.gz"
+WARTUNG = "vp-wartung-linux-arm"
+assert f'--skripte "${{RUNNER_TEMP}}/fassung/{SKRIPTE}"' in man, man
+assert man.count("--skripte") == 1 and ANDERE_SKRIPTE not in text, man
+assert (f'--wartung "${{RUNNER_TEMP}}/fassung/{WARTUNG}"' in man) == (not LIGHT), man
+assert man.count("--wartung") == (0 if LIGHT else 1), man
 assert "ota_sign " in steps["Signieren + gegen die eingebackene Wurzel pruefen"]["run"]
 assert "ota_publish " in steps["Manifest anhaengen + ins Register eintragen"]["run"]
 # K2: die Programme ins Portal NACH dem Register (das Portal prueft gegen das Manifest dort)
@@ -106,10 +113,13 @@ m = re.search(r"for f in ([^;]+); do", runs)
 anh = m.group(1).split()
 for f in anh:
     assert f in rel, f
-erwartet = {f"{PROG}-linux-{a}" for a in ARCHS} | {f"{PROG}-linux-{a}.gz" for a in ARCHS} | {"sha256sums"}
-if LIGHT:
-    erwartet.add("edge-light-openwrt.tar.gz")
-assert set(anh) == erwartet, anh
+erwartet = {f"{PROG}-linux-{a}" for a in ARCHS} | {f"{PROG}-linux-{a}.gz" for a in ARCHS} | {"sha256sums", SKRIPTE}
+if not LIGHT:
+    erwartet.add(WARTUNG)
+assert set(anh) == erwartet and len(anh) == len(erwartet), anh
+# Das Tunnel-Programm geht nie ins Portal und nie unter die Bestandteile des
+# Updates: ein unbekannter Bestandteil liesse Boxen das ganze Release zurueckstellen.
+assert WARTUNG not in up and SKRIPTE not in up, up
 # Kein Freigabe-Block mehr zum Abschreiben: die Werkstatt liest das signierte Manifest.
 assert "freigabe-edge-light" not in text and "freigabe-edge-light" not in rel
 print("ok")

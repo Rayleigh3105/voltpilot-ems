@@ -146,11 +146,18 @@ case "$(printf '%s\n' "$FASSUNG" | grep -E '^edge-industrie-[0-9]{4}\.[0-9]{2}\.
   edge-industrie-*)
     ok "die ARMv7-Fassung startet im Container und nennt $FASSUNG"
     gzip -9 -n -c "$BIN" >"$ARBEIT/prog.gz"
+    # Wie der Release-Lauf: das Manifest traegt auch den Skriptstand und das
+    # Tunnel-Programm (eigene Felder fuer die Werkstatt). install.sh muss ein
+    # solches Manifest lesen wie eines ohne; als Tunnel-Programm genuegt hier
+    # eine Datei, die wie ein Programm beginnt.
+    python3 "$HIER/../scripts/skripte-paket.py" "$ARBEIT/edge-industrie-skripte.tar.gz" >/dev/null
+    printf '\177ELF probe' >"$ARBEIT/vp-wartung-linux-arm"
     if (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota manifest --release "$FASSUNG" --seq "$SEQ" --commit 3bf8c038a1b2 \
       --binary "vp-edge-industrie:linux/arm=$BIN,$ARBEIT/prog.gz" --state-schema 1 --key-id rel-2026-a \
-      --out "$ARBEIT/release.json") >/dev/null 2>&1; then
+      --skripte "$ARBEIT/edge-industrie-skripte.tar.gz" --wartung "$ARBEIT/vp-wartung-linux-arm" \
+      --out "$ARBEIT/release.json") >/dev/null 2>&1 && grep -q '"wartung"' "$ARBEIT/release.json" && grep -q '"skripte"' "$ARBEIT/release.json"; then
       MANIFEST="$ARBEIT/release.json"
-      ok "Manifest fuer $FASSUNG (Stand $SEQ) mit linux/arm erzeugt"
+      ok "Manifest fuer $FASSUNG (Stand $SEQ) mit linux/arm, Skriptstand und Tunnel-Programm erzeugt"
     else
       falsch "Manifest fuer $FASSUNG erzeugt"
     fi

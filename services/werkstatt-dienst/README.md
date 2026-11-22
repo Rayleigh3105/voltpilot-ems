@@ -120,8 +120,10 @@ Release-Anhänge einer Edge-Industrie-Fassung (Linie `edge-industrie-JJJJ.MM.N`)
 | `edge-industrie-skripte.tar.gz` | `edge-industrie/` als `edge-industrie/…` (`install.sh`, `wartung.sh`, `files/`) | `skripte_sha256` |
 | `vp-wartung-linux-arm` | das Tunnel-Programm | `wartung_sha256` |
 
-Die beiden letzten hängt der Release-Lauf noch nicht an; das und die Freigabe aus dem Portal kommen mit dem nächsten Schritt (API, Gerät `pfc200`).
-Bis dahin läuft ein PFC200 nur mit einer Freigabe-Datei (`VP_WERKSTATT_FREIGABE_PFC200`) und von Hand bereitgelegten Dateien in der Ablage (`<daten>/fassungen/<sha256>`).
+Der Release-Lauf `edge-industrie-release.yaml` hängt alle drei an; die Prüfsummen der beiden letzten stehen signiert im Manifest (Felder `skripte` und `wartung`).
+Der Dienst verlangt sie dort: Im Schritt `fassungen` prüft er die Signaturkette des Manifests und dass es genau das Programm, den Skriptstand und das Tunnel-Programm der Freigabe beschreibt.
+Eine Fassung ohne signiertes Manifest oder ohne diese Felder richtet er auf einem PFC200 nicht ein (anders als bei der Mango, wo eine nicht signierte Fassung läuft und nur keine Abnahme bekommt): Das Tunnel-Programm läuft als root und öffnet den Fernzugang.
+Die Freigabe aus dem Portal kommt mit dem nächsten Schritt (API, Gerät `pfc200`); bis dahin läuft ein PFC200 nur mit einer Freigabe-Datei (`VP_WERKSTATT_FREIGABE_PFC200`).
 
 Getestet gegen die Attrappe „PFC200 ab Werk“ (`internal/attrappe/pfc200.go`): Sie führt jeden Befehl des Dienstes mit einem echten `sh` aus, gegen Nachbauten der Werkzeuge der WAGO-Firmware (`internal/attrappe/pfc200/config-tools`, gebaut nach den Hilfetexten und Skripten eines 750-8212 mit Firmware 03.10.08(22), dort nur gelesen).
 Nicht an einem echten Gerät gelaufen: alles ab `zugaenge`, weil es das Gerät ändert.

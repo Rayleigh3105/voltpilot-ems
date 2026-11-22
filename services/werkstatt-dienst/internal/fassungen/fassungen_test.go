@@ -149,6 +149,51 @@ func TestEchterSkriptstand(t *testing.T) {
 	}
 }
 
+// Der echte Skriptstand von Edge Industrie, wie der Lauf
+// edge-industrie-release.yaml ihn anhängt (edge-industrie/scripts/skripte-paket.py):
+// auspackbar mit AuspackenPFC200, die Skripte ausführbar, gleicher Stand ergibt
+// dieselbe Prüfsumme, und nichts im Paket, was nicht auf das Gerät gehört.
+func TestEchterSkriptstandPFC200(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 fehlt")
+	}
+	dir := t.TempDir()
+	var summen []string
+	for _, n := range []string{"a.tar.gz", "b.tar.gz"} {
+		p := filepath.Join(dir, n)
+		if out, err := exec.Command("python3", "../../../../edge-industrie/scripts/skripte-paket.py", p).CombinedOutput(); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		s, err := Summe(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		summen = append(summen, s)
+	}
+	if summen[0] != summen[1] {
+		t.Fatal("gleicher Stand, andere Prüfsumme")
+	}
+	ziel := t.TempDir()
+	if err := AuspackenPFC200(filepath.Join(dir, "a.tar.gz"), ziel); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"install.sh", "wartung.sh", "files/etc/init.d/vp-wartung", "files/etc/init.d/vp-edge-industrie", "files/home/voltpilot/libexec/boot.sh"} {
+		st, err := os.Stat(filepath.Join(ziel, IndustrieWurzel, p))
+		if err != nil || st.Mode().Perm()&0o100 == 0 {
+			t.Errorf("%s fehlt oder ist nicht ausführbar (%v)", p, err)
+		}
+	}
+	for _, p := range []string{"wartung", "test", "scripts", "README.md", "dist"} {
+		if _, err := os.Stat(filepath.Join(ziel, IndustrieWurzel, p)); err == nil {
+			t.Errorf("%s gehört nicht in den Skriptstand", p)
+		}
+	}
+	// Der Skriptstand der Mango gilt nicht als der des PFC200.
+	if err := Auspacken(filepath.Join(dir, "a.tar.gz"), t.TempDir()); err == nil {
+		t.Error("der Skriptstand von Edge Industrie gilt als der der Mango")
+	}
+}
+
 // Der Skriptstand des PFC200 liegt unter edge-industrie/ und braucht
 // install.sh, wartung.sh und das Dienst-Skript des Tunnels; der der Mango
 // gilt dafür nicht.

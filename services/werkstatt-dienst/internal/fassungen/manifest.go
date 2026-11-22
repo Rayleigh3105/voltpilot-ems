@@ -61,6 +61,16 @@ type manifestForm struct {
 		SHA256 string `json:"sha256"`
 	} `json:"artifacts"`
 	SigningKeyID string `json:"signing_key_id"`
+	// Was nur die Werkstatt braucht (additive Felder des Manifests, kein
+	// Bestandteil des Updates): der Skriptstand und, bei Edge Industrie, das
+	// Tunnel-Programm.
+	Skripte *beilage `json:"skripte"`
+	Wartung *beilage `json:"wartung"`
+}
+
+type beilage struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
 }
 
 // PruefeManifest prueft, dass das Manifest genau die Fassung der Freigabe und
@@ -73,6 +83,41 @@ func PruefeManifest(manifest, signatur []byte, fassung, bauart, programmSha stri
 // BackendsPFC200 sind die Update-Linien, die ein Manifest für den PFC200
 // nennen darf: Edge Industrie (eigene Release-Linie edge-industrie-JJJJ.MM.N).
 var BackendsPFC200 = []string{"industrie"}
+
+// PruefeManifestPFC200 bindet das Manifest einer Edge-Industrie-Fassung an die
+// Freigabe für den PFC200: genau diese Fassung, genau dieses Programm für
+// linux/arm, und dazu genau dieser Skriptstand und genau dieses Tunnel-Programm.
+// Das Tunnel-Programm läuft auf dem Gerät als root und öffnet den Fernzugang;
+// seine Prüfsumme und die der Skripte nimmt der Dienst darum nicht allein aus
+// der Freigabe, sondern verlangt sie im signierten Manifest. Eine Fassung,
+// deren Manifest sie nicht nennt, richtet er nicht ein.
+func PruefeManifestPFC200(manifest, signatur []byte, fassung, programmSha, skripteSha, wartungSha string) (Stand, error) {
+	st, err := PruefeManifestFuer(manifest, signatur, fassung, "arm", programmSha, BackendsPFC200...)
+	if err != nil {
+		return Stand{}, err
+	}
+	var m manifestForm
+	if err := json.Unmarshal(manifest, &m); err != nil {
+		return Stand{}, fmt.Errorf("release.json ist kein gueltiges JSON: %w", err)
+	}
+	for _, b := range []struct {
+		was, name, soll string
+		ist             *beilage
+	}{
+		{"den Skriptstand", IndustrieSkripteDatei, skripteSha, m.Skripte},
+		{"das Tunnel-Programm", WartungProgramm, wartungSha, m.Wartung},
+	} {
+		switch {
+		case b.ist == nil:
+			return Stand{}, fmt.Errorf("release.json nennt %s nicht (%s): Die Werkstatt richtet nur mit einer Fassung ein, die ihn signiert mitfuehrt", b.was, b.name)
+		case b.ist.Name != b.name:
+			return Stand{}, fmt.Errorf("release.json nennt fuer %s die Datei %q statt %s", b.was, b.ist.Name, b.name)
+		case b.ist.SHA256 != b.soll:
+			return Stand{}, fmt.Errorf("release.json beschreibt %s mit einer anderen Pruefsumme (%s) als die Freigabe (%s)", b.was, orKein(b.ist.SHA256), b.soll)
+		}
+	}
+	return st, nil
+}
 
 // PruefeManifestFuer ist PruefeManifest für ein Manifest, das genau eine der
 // genannten Update-Linien trägt.

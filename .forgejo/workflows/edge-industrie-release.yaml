@@ -6,12 +6,16 @@ name: Edge-Industrie-Fassung
 # Der Tag-Lauf prueft den Kern und den Loader-Abgleich (edge-light/scripts/test.sh,
 # darin der ARMv7-Bau von vp-edge-industrie), baut das Programm fuer linux/arm
 # mit genau dieser Fassung, packt es (gzip -9 -n) und haengt es samt
-# Pruefsummen an das Forgejo-Release:
+# Pruefsummen an das Forgejo-Release, dazu was die Werkstatt beim Einrichten
+# eines Geraets auflegt (Skriptstand und Tunnel-Programm):
 #
-#   vp-edge-industrie-linux-arm, vp-edge-industrie-linux-arm.gz, sha256sums
+#   vp-edge-industrie-linux-arm, vp-edge-industrie-linux-arm.gz,
+#   edge-industrie-skripte.tar.gz, vp-wartung-linux-arm, sha256sums
 #
-# SIGNIERT UND REGISTRIERT wie Edge Light: Manifest (`vp-ota manifest --binary`,
-# Backend industrie), Signatur mit dem Release-Schluessel, Gegenpruefung an der
+# SIGNIERT UND REGISTRIERT wie Edge Light: Manifest (`vp-ota manifest --binary
+# --skripte --wartung`, Backend industrie; Skriptstand und Tunnel-Programm als
+# eigene Felder, nie als Bestandteil des Updates), Signatur mit dem
+# Release-Schluessel, Gegenpruefung an der
 # eingebackenen Wurzel (Backend industrie), Register, dann das Programm ins
 # Portal. Erst danach kann das Portal ein Edge-Industrie-Release zuweisen.
 #
@@ -144,7 +148,7 @@ jobs:
             ota_die "Keine Forgejo-Zugangsdaten zum Anhaengen (VP_OTA_FORGEJO_TOKEN oder FORGEJO_USERNAME/FORGEJO_PASSWORD)."
           base="${GITHUB_SERVER_URL:-https://git.tecmaxx.de}"
           rel="$(ota_forgejo_release_id "$base" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$auth")"
-          for f in vp-edge-industrie-linux-arm vp-edge-industrie-linux-arm.gz sha256sums; do
+          for f in vp-edge-industrie-linux-arm vp-edge-industrie-linux-arm.gz edge-industrie-skripte.tar.gz vp-wartung-linux-arm sha256sums; do
             ota_forgejo_upload "$base" "$GITHUB_REPOSITORY" "$rel" "$RUNNER_TEMP/fassung/$f" "$auth"
           done
         env:
@@ -230,6 +234,8 @@ jobs:
             --seq "${SEQ}" \
             --commit "${GITHUB_SHA::12}" \
             --binary "vp-edge-industrie:linux/arm=${RUNNER_TEMP}/fassung/vp-edge-industrie-linux-arm" \
+            --skripte "${RUNNER_TEMP}/fassung/edge-industrie-skripte.tar.gz" \
+            --wartung "${RUNNER_TEMP}/fassung/vp-wartung-linux-arm" \
             --min-from-seq "${MIN_FROM}" \
             --state-schema "${STATE_SCHEMA}" \
             --key-id "${SIGNING_KEY_ID}" \

@@ -98,6 +98,9 @@
     "skripte": {
       "$ref": "#/$defs/skripte"
     },
+    "wartung": {
+      "$ref": "#/$defs/wartung"
+    },
     "urgent": {
       "type": "boolean",
       "default": false,
@@ -106,25 +109,27 @@
   },
   "allOf": [
     {
-      "$comment": "EIN MANIFEST JE BOX-ART: edge-light-JJJJ.MM.N gilt nur fuer light, edge-industrie-JJJJ.MM.N nur fuer industrie, beide tragen nur binary; einen Skriptstand traegt nur edge-light-JJJJ.MM.N; jedes andere Release traegt weder light noch industrie noch ein binary.",
+      "$comment": "EIN MANIFEST JE BOX-ART: edge-light-JJJJ.MM.N gilt nur fuer light, edge-industrie-JJJJ.MM.N nur fuer industrie, beide tragen nur binary. Jede der beiden Linien traegt IHREN Skriptstand (edge-light-openwrt.tar.gz bzw. edge-industrie-skripte.tar.gz); das Tunnel-Programm (wartung) traegt nur edge-industrie-JJJJ.MM.N. Jedes andere Release traegt weder light noch industrie noch ein binary, keinen Skriptstand und kein Tunnel-Programm.",
       "if": { "required": ["release"], "properties": { "release": { "pattern": "^edge-light-" } } },
       "then": {
+        "not": { "required": ["wartung"] },
         "properties": {
           "compat": { "properties": { "backends": { "items": { "const": "light" } } } },
-          "artifacts": { "items": { "properties": { "type": { "const": "binary" } } } }
+          "artifacts": { "items": { "properties": { "type": { "const": "binary" } } } },
+          "skripte": { "properties": { "name": { "const": "edge-light-openwrt.tar.gz" } } }
         }
       },
       "else": {
         "if": { "required": ["release"], "properties": { "release": { "pattern": "^edge-industrie-" } } },
         "then": {
-          "not": { "required": ["skripte"] },
           "properties": {
             "compat": { "properties": { "backends": { "items": { "const": "industrie" } } } },
-            "artifacts": { "items": { "properties": { "type": { "const": "binary" } } } }
+            "artifacts": { "items": { "properties": { "type": { "const": "binary" } } } },
+            "skripte": { "properties": { "name": { "const": "edge-industrie-skripte.tar.gz" } } }
           }
         },
         "else": {
-          "not": { "required": ["skripte"] },
+          "not": { "anyOf": [ { "required": ["skripte"] }, { "required": ["wartung"] } ] },
           "properties": {
             "compat": { "properties": { "backends": { "items": { "not": { "enum": ["light", "industrie"] } } } } },
             "artifacts": { "items": { "properties": { "type": { "not": { "const": "binary" } } } } }
@@ -138,9 +143,20 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "sha256", "size"],
-      "description": "ADDITIV (schema_version bleibt 1.0), nur Edge Light. Der Skriptstand des Release (edge-light/openwrt als edge-light-openwrt.tar.gz): Install- und Tunnel-Skripte, die der Werkstatt-Dienst beim Einrichten einer Box auflegt. Die Box wendet ihn beim Update NICHT an; er steht hier, damit die Pruefsumme, gegen die die Werkstatt prueft, signiert ist und nie aus einer unsignierten Liste kommt (docs/werkstatt.md, Werkstatt nimmt die neueste Fassung). Ein aelterer Geraetestand ignoriert das Feld.",
+      "description": "ADDITIV (schema_version bleibt 1.0), nur Edge Light und Edge Industrie. Der Skriptstand des Release: Install- und Tunnel-Skripte, die der Werkstatt-Dienst beim Einrichten einer Box auflegt (Edge Light: edge-light/openwrt als edge-light-openwrt.tar.gz; Edge Industrie: install.sh, wartung.sh und files/ aus edge-industrie als edge-industrie-skripte.tar.gz). Die Box wendet ihn beim Update NICHT an; er steht hier, damit die Pruefsumme, gegen die die Werkstatt prueft, signiert ist und nie aus einer unsignierten Liste kommt (docs/werkstatt.md, Werkstatt nimmt die neueste Fassung). Ein aelterer Geraetestand ignoriert das Feld.",
       "properties": {
-        "name": { "type": "string", "const": "edge-light-openwrt.tar.gz" },
+        "name": { "type": "string", "enum": ["edge-light-openwrt.tar.gz", "edge-industrie-skripte.tar.gz"] },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "wartung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256", "size"],
+      "description": "ADDITIV (schema_version bleibt 1.0), nur Edge Industrie. Das Tunnel-Programm vp-wartung des Release (edge-industrie/wartung, fuer linux/arm): Der Werkstatt-Dienst legt es beim Einrichten eines WAGO PFC200 auf das Geraet. Es ist KEIN Bestandteil des Updates (kein Eintrag in artifacts: ein unbekannter Bestandteil liesse Boxen das ganze Release zurueckstellen), die Box wendet es nicht an; es steht hier, damit seine Pruefsumme signiert ist. Ein aelterer Geraetestand ignoriert das Feld.",
+      "properties": {
+        "name": { "type": "string", "const": "vp-wartung-linux-arm" },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "size": { "type": "integer", "minimum": 1 }
       }

@@ -53,7 +53,7 @@ func beideGeraete(t *testing.T) (*dienst.Dienst, *attrappe.Bruecke, *protokoll.A
 		Status: attrappe.Schluessel(t), Weiterleitung: attrappe.Schluessel(t), Pflege: attrappe.Schluessel(t), Einrichten: imager,
 		Netz: "wlan0", Werkstatt: "eth0",
 		WerkstattAdressen: []netip.Prefix{netip.MustParsePrefix("192.168.8.2/24"), netip.MustParsePrefix("192.168.1.2/24"), netip.MustParsePrefix("10.213.0.2/24")},
-		Ziele:             ziele, SSHQuellen: []netip.Prefix{netip.MustParsePrefix("192.168.178.241/32")}, Zeitlimit: 5 * time.Second,
+		Ziele:             ziele, SSHQuellen: []netip.Prefix{netip.MustParsePrefix("192.168.178.241/32")}, Zeitlimit: 30 * time.Second,
 	}, log)
 	if err != nil {
 		t.Fatal(err)
@@ -76,11 +76,11 @@ func beideGeraete(t *testing.T) (*dienst.Dienst, *attrappe.Bruecke, *protokoll.A
 	mk := &mango.Konfig{Werkbank: wb, Fassungen: ablageF, Arbeit: arbeit, LanNetz: lan, LanBruecke: bruecke,
 		Notfall: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(attrappe.Schluessel(t).PublicKey()))), Empfaenger: id.Recipient(),
 		BoxNetz: netip.MustParsePrefix("10.10.16.0/20"), Bauart: "mipsle", Spuren: ablage,
-		Zeiten: mango.Zeiten{Takt: 10 * time.Millisecond, Verbinden: 2 * time.Second}, Log: log}
+		Zeiten: mango.Zeiten{Takt: 10 * time.Millisecond, Verbinden: 20 * time.Second}, Log: log}
 	pk := &pfc200.Konfig{Werkbank: wb, Fassungen: ablageF, Arbeit: arbeit, LanNetz: lan, LanBruecke: bruecke,
 		Notfall: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(notfallPub))), Empfaenger: id.Recipient(),
 		BoxNetz: netip.MustParsePrefix("10.10.16.0/20"), Spuren: ablage,
-		Zeiten: pfc200.Zeiten{Takt: 10 * time.Millisecond, Verbinden: 2 * time.Second, Schalter: time.Second}, Log: log}
+		Zeiten: pfc200.Zeiten{Takt: 10 * time.Millisecond, Verbinden: 20 * time.Second, Schalter: time.Minute}, Log: log}
 	reg := metriken.Neu()
 	jetzt := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
 	d := dienst.Neu(&dienst.Dienst{Log: log, Werkbank: wb, Adresse: b.Adresse, Ablage: ablage,
@@ -90,17 +90,23 @@ func beideGeraete(t *testing.T) (*dienst.Dienst, *attrappe.Bruecke, *protokoll.A
 	return d, b, ablage
 }
 
+// bisEnde wartet, bis der Lauf am Anschluss zu Ende ist: auf den Zustand,
+// nicht auf eine Zeit. Die Frist begrenzt nur den Fehlerfall.
 func bisEnde(t *testing.T, d *dienst.Dienst) lauf.Stand {
 	t.Helper()
-	for i := 0; ; i++ {
+	ende := time.Now().Add(5 * time.Minute)
+	for {
 		if s := d.Ansicht().Lauf; s != nil && (s.Zustand == lauf.Angehalten || s.Zustand == lauf.Fertig) {
-			for j := 0; j < 200 && strings.Contains(d.Ansicht().Anschluss, "arbeitet"); j++ {
+			for strings.Contains(d.Ansicht().Anschluss, "arbeitet") {
+				if time.Now().After(ende) {
+					t.Fatalf("der Lauf ist zu Ende, der Anschluss sagt weiter „arbeitet“: %+v", d.Ansicht())
+				}
 				d.Runde(context.Background())
 				time.Sleep(5 * time.Millisecond)
 			}
 			return *s
 		}
-		if i > 1500 {
+		if time.Now().After(ende) {
 			t.Fatalf("Lauf endet nicht: %+v", d.Ansicht())
 		}
 		time.Sleep(10 * time.Millisecond)

@@ -47,8 +47,15 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-var kurz = pfc200.Zeiten{Takt: 20 * time.Millisecond, Verbinden: 3 * time.Second, Neustart: 8 * time.Second, Netz: 4 * time.Second, Programm: 4 * time.Second,
-	Tunnel: 3 * time.Second, Schalter: 4 * time.Second, SSHDienst: 8 * time.Second, Firewall: 4 * time.Second}
+// Die Zeiten der Tests: ein kurzer Takt, aber großzügige Fristen. Eine Frist
+// begrenzt nur den Fehlerfall; im guten Fall endet jedes Warten mit dem
+// Zustand, auf den es wartet. Knappe Fristen ließen die Tests unter Last
+// wackeln (ein Test, der eine Frist wirklich ablaufen lässt, setzt sie selbst).
+var kurz = pfc200.Zeiten{Takt: 20 * time.Millisecond, Verbinden: 20 * time.Second, Neustart: 2 * time.Minute, Netz: time.Minute, Programm: time.Minute,
+	Tunnel: time.Minute, Schalter: 2 * time.Minute, SSHDienst: 2 * time.Minute, Firewall: 2 * time.Minute}
+
+// testFrist begrenzt einen ganzen Lauf im Test (nur der Fehlerfall erreicht sie).
+const testFrist = 10 * time.Minute
 
 const fassung = "edge-industrie-2026.11.1"
 
@@ -65,6 +72,10 @@ type aufbau struct {
 	log    *bytes.Buffer
 	// ohneManifest: das Release trägt kein release.json.
 	ohneManifest bool
+	// manifestStatt ersetzt das Manifest des Release (mit seiner Signatur).
+	manifestStatt, signaturStatt                 []byte
+	manifestOhneTunnel, signaturOhneTunnel       []byte
+	manifestAnderesTunnel, signaturAnderesTunnel []byte
 }
 
 func summe(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
@@ -85,7 +96,7 @@ func neu(t *testing.T) *aufbau {
 		Status: attrappe.Schluessel(t), Weiterleitung: attrappe.Schluessel(t), Pflege: attrappe.Schluessel(t), Einrichten: imager,
 		Netz: "wlan0", Werkstatt: "eth0",
 		WerkstattAdressen: []netip.Prefix{netip.MustParsePrefix("192.168.8.2/24"), netip.MustParsePrefix("192.168.1.2/24"), netip.MustParsePrefix("10.213.0.2/24")},
-		Ziele:             ziele, SSHQuellen: []netip.Prefix{netip.MustParsePrefix("192.168.178.241/32")}, Zeitlimit: 5 * time.Second,
+		Ziele:             ziele, SSHQuellen: []netip.Prefix{netip.MustParsePrefix("192.168.178.241/32")}, Zeitlimit: 30 * time.Second,
 	}, log)
 	if err != nil {
 		t.Fatal(err)
@@ -99,9 +110,13 @@ func neu(t *testing.T) *aufbau {
 	programm := []byte("\x7fELF vp-edge-industrie attrappe")
 	tunnel := []byte("\x7fELF vp-wartung attrappe")
 	skripte := attrappe.SkripteTarGzPFC200(t)
-	manifest := attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie")
+	manifest := attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie", summe(skripte), summe(tunnel))
 	wurzel := attrappe.NeueSignierteWurzel(t)
 	signatur := wurzel.SigniereManifest(t, manifest)
+	a.manifestOhneTunnel = attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie", summe(skripte), "")
+	a.signaturOhneTunnel = wurzel.SigniereManifest(t, a.manifestOhneTunnel)
+	a.manifestAnderesTunnel = attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie", summe(skripte), strings.Repeat("0", 64))
+	a.signaturAnderesTunnel = wurzel.SigniereManifest(t, a.manifestAnderesTunnel)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/edge/trust-set/trust-set.json":
@@ -109,12 +124,16 @@ func neu(t *testing.T) *aufbau {
 		case "/api/v1/edge/trust-set/trust-set.json.sig":
 			_, _ = w.Write(wurzel.TrustSetSig)
 		case "/edge/release.json", "/edge/release.json.sig":
+			m, s := manifest, signatur
+			if a.manifestStatt != nil {
+				m, s = a.manifestStatt, a.signaturStatt
+			}
 			if a.ohneManifest {
 				http.NotFound(w, r)
 			} else if strings.HasSuffix(r.URL.Path, ".sig") {
-				_, _ = w.Write(signatur)
+				_, _ = w.Write(s)
 			} else {
-				_, _ = w.Write(manifest)
+				_, _ = w.Write(m)
 			}
 		case "/edge/" + fassungen.IndustrieProgramm:
 			_, _ = w.Write(programm)
@@ -174,7 +193,7 @@ func (a *aufbau) fahre(t *testing.T, e pfc200.Einstieg) (*lauf.Lauf, lauf.Zustan
 		t.Fatal(err)
 	}
 	defer pl.Schliesse()
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testFrist)
 	defer cancel()
 	fertig := make(chan lauf.Zustand, 1)
 	go func() { fertig <- a.r.Fahre(ctx, l, nil, pl.Schritte(e)) }()
@@ -244,6 +263,7 @@ func (a *aufbau) entschluessle(t *testing.T, text string) string {
 // Ein ganzer Lauf ab Werk ohne API: vom Erkennen bis zu den Belegen für die
 // Abnahme. Danach steht das Gerät so da, wie es ausgeliefert wird.
 func TestLaufAbWerk(t *testing.T) {
+	t.Parallel()
 	a := neu(t)
 	// Ein fremder Schlüssel, der ab Werk schon da ist, darf nicht bleiben.
 	a.p.SchreibeDatei("/root/.ssh/authorized_keys", rsaZeile(t)+" fremd\n")
@@ -420,6 +440,7 @@ const antwortEinloesung = `{"schema":"vp-werkstatt-einloesung.v1","edgeRef":"edg
 // den Tunnel und schreibt die Abnahme mit Gerät, Angaben und den drei
 // verschlüsselten Passwörtern.
 func TestLaufMitApiUndProbeUeberDenTunnel(t *testing.T) {
+	t.Parallel()
 	a := neu(t)
 	ptl := &falschesPortal{}
 	a.k.Portal = ptl
@@ -490,7 +511,9 @@ func (a *aufbau) unveraendert(t *testing.T) {
 }
 
 func TestErkennenHaeltAnOhneZuAendern(t *testing.T) {
+	t.Parallel()
 	t.Run("Docker läuft", func(t *testing.T) {
+		t.Parallel()
 		a := neu(t)
 		a.p.Setze("docker/install", "installed")
 		a.p.Setze("docker/aktiv", "active")
@@ -502,6 +525,7 @@ func TestErkennenHaeltAnOhneZuAendern(t *testing.T) {
 		}
 	})
 	t.Run("kein 750-8212", func(t *testing.T) {
+		t.Parallel()
 		a := neu(t)
 		a.p.Setze("artikel", "750-8100")
 		s := a.halt(t, "erkennen", faelle.PFCFalschesGeraet)
@@ -511,12 +535,14 @@ func TestErkennenHaeltAnOhneZuAendern(t *testing.T) {
 		}
 	})
 	t.Run("schon Edge Industrie", func(t *testing.T) {
+		t.Parallel()
 		a := neu(t)
 		a.p.SchreibeDatei("/etc/init.d/vp-edge-industrie", "#!/bin/sh\n")
 		a.halt(t, "erkennen", faelle.PFCSchonEingerichtet)
 		a.unveraendert(t)
 	})
 	t.Run("Notfall-Schlüssel Ed25519", func(t *testing.T) {
+		t.Parallel()
 		a := neu(t)
 		a.k.Notfall = strings.TrimSpace(string(ssh.MarshalAuthorizedKey(attrappe.Schluessel(t).PublicKey())))
 		s := a.halt(t, "erkennen", faelle.PFCNotfallSchluessel)
@@ -526,6 +552,7 @@ func TestErkennenHaeltAnOhneZuAendern(t *testing.T) {
 		}
 	})
 	t.Run("ein Passwort nicht mehr ab Werk", func(t *testing.T) {
+		t.Parallel()
 		a := neu(t)
 		a.p.Setze("benutzer/admin.hash", "$6$fremd$"+strings.Repeat("a", 86))
 		a.halt(t, "erkennen", faelle.PasswortFremd)
@@ -534,6 +561,7 @@ func TestErkennenHaeltAnOhneZuAendern(t *testing.T) {
 		}
 	})
 	t.Run("Werkspasswort abgewiesen, fremdes Gerät", func(t *testing.T) {
+		t.Parallel()
 		a := neu(t)
 		a.k.Spuren = a.ablage
 		a.p.Setze("benutzer/root.hash", "$6$fremd$"+strings.Repeat("a", 86))
@@ -544,34 +572,51 @@ func TestErkennenHaeltAnOhneZuAendern(t *testing.T) {
 	})
 }
 
-// Der Schalter steht nach dem Handgriff „feste Adresse“ noch auf STOP: Der
-// Lauf zeigt den Fall, wartet und macht von selbst weiter.
-func TestErkennenWartetAufDenSchalter(t *testing.T) {
-	a := neu(t)
-	a.p.Setze("schalter", "stop")
+// erkennenBisZumWarten startet den Schritt erkennen und wartet, bis der Lauf
+// mit dem Fall wartet. Gewartet wird auf den Zustand, nicht auf eine Zeit:
+// Die Schleife endet, wenn der Lauf wartet, wenn er vorher endet (dann ist
+// der Test gescheitert) oder mit der Frist des ganzen Tests. Wie lange
+// erkennen bis dahin braucht, spielt keine Rolle.
+func (a *aufbau) erkennenBisZumWarten(t *testing.T, fall string) (*lauf.Lauf, <-chan lauf.Zustand, lauf.Stand) {
+	t.Helper()
 	l := lauf.Neu(time.Now(), a.f.Kennung, freigabe.PFC200)
 	pl, err := pfc200.NeuerLauf(a.k, a.f, l.Kennung())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pl.Schliesse()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), testFrist)
+	t.Cleanup(func() { cancel(); pl.Schliesse() })
 	fertig := make(chan lauf.Zustand, 1)
 	go func() { fertig <- a.r.Fahre(ctx, l, nil, pl.Schritte(pfc200.AbWerk)[:1]) }()
-	gesehen := false
-	for i := 0; i < 500 && !gesehen; i++ {
-		time.Sleep(10 * time.Millisecond)
-		s := l.Stand()
-		if s.Zustand == lauf.Wartet && s.WartetAuf == "schalter_run" {
-			if s.Fall != faelle.PFCSchalterStop || s.Loesung == nil || !s.Loesung.Selbst || !strings.Contains(s.Loesung.Schritte[0], "RUN") {
-				t.Fatalf("Stand beim Warten: %+v", s)
+	takt := time.NewTicker(5 * time.Millisecond)
+	defer takt.Stop()
+	for {
+		select {
+		case z := <-fertig:
+			t.Fatalf("der Lauf endete (%s), ohne mit %s zu warten: %+v\n%s", z, fall, l.Stand(), a.log.String())
+		case <-ctx.Done():
+			t.Fatalf("der Lauf wartet nach %s nicht mit %s: %+v\n%s", testFrist, fall, l.Stand(), a.log.String())
+		case <-takt.C:
+			if s := l.Stand(); s.Zustand == lauf.Wartet && s.Fall == fall {
+				return l, fertig, s
 			}
-			gesehen = true
 		}
 	}
-	if !gesehen {
-		t.Fatalf("der Lauf hat nicht auf den Schalter gewartet: %+v", l.Stand())
+}
+
+// Der Schalter steht nach dem Handgriff „feste Adresse“ noch auf STOP: Der
+// Lauf zeigt den Fall, wartet und macht von selbst weiter.
+func TestErkennenWartetAufDenSchalter(t *testing.T) {
+	t.Parallel()
+	a := neu(t)
+	a.p.Setze("schalter", "stop")
+	l, fertig, s := a.erkennenBisZumWarten(t, faelle.PFCSchalterStop)
+	if s.WartetAuf != "schalter_run" || s.Loesung == nil || !s.Loesung.Selbst || !strings.Contains(s.Loesung.Schritte[0], "RUN") {
+		t.Fatalf("Stand beim Warten: %+v", s)
+	}
+	// Solange der Schalter auf STOP steht, bleibt der Lauf im Warten.
+	if z := l.Stand().Zustand; z != lauf.Wartet {
+		t.Fatalf("Zustand %s, obwohl der Schalter noch auf STOP steht", z)
 	}
 	a.p.Setze("schalter", "run")
 	if z := <-fertig; z != lauf.Fertig || l.Stand().Fall != "" {
@@ -583,56 +628,81 @@ func TestErkennenWartetAufDenSchalter(t *testing.T) {
 // Das Kabel steckt in X1: Der Lauf wartet, bis es in X2 steckt. Nach dem
 // Trennen der Buchsen wäre das Gerät an X1 sonst weg.
 func TestErkennenWartetAufDasKabelInX2(t *testing.T) {
+	t.Parallel()
 	a := neu(t)
 	a.p.Setze("netz/kabel", "X1")
-	l := lauf.Neu(time.Now(), a.f.Kennung, freigabe.PFC200)
-	pl, err := pfc200.NeuerLauf(a.k, a.f, l.Kennung())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pl.Schliesse()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	fertig := make(chan lauf.Zustand, 1)
-	go func() { fertig <- a.r.Fahre(ctx, l, nil, pl.Schritte(pfc200.AbWerk)[:1]) }()
-	for i := 0; ; i++ {
-		time.Sleep(10 * time.Millisecond)
-		if s := l.Stand(); s.Zustand == lauf.Wartet && s.Fall == faelle.PFCKabelX1 {
-			break
-		}
-		if i > 500 {
-			t.Fatalf("der Lauf hat nicht auf das Kabel gewartet: %+v", l.Stand())
-		}
+	l, fertig, s := a.erkennenBisZumWarten(t, faelle.PFCKabelX1)
+	if s.WartetAuf != "kabel_x2" || s.Loesung == nil || !s.Loesung.Selbst || !strings.Contains(s.Loesung.Schritte[0], "X2") {
+		t.Fatalf("Stand beim Warten: %+v", s)
 	}
 	a.p.Setze("netz/kabel", "X2")
-	if z := <-fertig; z != lauf.Fertig {
-		t.Fatalf("Zustand %s: %+v", z, l.Stand())
+	if z := <-fertig; z != lauf.Fertig || l.Stand().Fall != "" {
+		t.Fatalf("Zustand %s, Fall %q: %+v", z, l.Stand().Fall, l.Stand())
 	}
 	a.unveraendert(t)
 }
 
 // Ohne Weg ins Internet hält der Lauf an, bevor ein Zugang geändert ist.
 func TestKeinInternetHaeltVorDenZugaengenAn(t *testing.T) {
+	t.Parallel()
 	a := neu(t)
 	a.p.Setze("internet", "nein")
+	// Dieser Test lässt die Frist für das Netz wirklich ablaufen: kurz.
+	a.k.Zeiten.Netz = 2 * time.Second
 	a.halt(t, "internet", faelle.KeinInternet)
 	if !a.p.NimmtAn("root", "wago") || a.p.Lies("ssh/password-request-state") == "disabled" {
 		t.Fatal("ein Zugang wurde geändert")
 	}
 }
 
-// Eine nicht signierte Fassung: Der Lauf richtet ein, gibt aber keine Abnahme
-// (Entscheid 5c).
-func TestNichtSignierteFassungBekommtKeineAbnahme(t *testing.T) {
+// Eine nicht signierte Fassung richtet der Dienst auf einem PFC200 gar nicht
+// erst ein: Der Lauf hält an, bevor sich am Gerät etwas ändert.
+func TestNichtSignierteFassungWirdNichtEingerichtet(t *testing.T) {
+	t.Parallel()
 	a := neu(t)
 	a.ohneManifest = true
+	s := a.halt(t, "fassungen", faelle.FassungNichtBereit)
+	if !strings.Contains(s.Grund, "nicht signiert") {
+		t.Fatalf("Grund %q", s.Grund)
+	}
+	a.unveraendert(t)
+}
+
+// Das Gerät meldet nach dem Einspielen nicht den bestätigten Stand der
+// Fassung: eingerichtet, aber keine Abnahme (Entscheid 5c).
+func TestNichtUpdateBereitBekommtKeineAbnahme(t *testing.T) {
+	t.Parallel()
+	a := neu(t)
 	ptl := &falschesPortal{}
 	a.k.Portal = ptl
+	a.k.Probe = &falscheProbe{p: a.p, host: a.p.Host()}
 	a.p.Anmelden = func(string, string, string) (string, int) { return strings.ReplaceAll(antwortEinloesung, "\n", ""), 0 }
 	a.p.BestaetigterStand = 0
 	s := a.halt(t, "uebergabe", faelle.NichtUpdateBereit)
-	if len(ptl.abnahmen) != 0 || !strings.Contains(s.Grund, "nicht signiert") {
+	if len(ptl.abnahmen) != 0 || !strings.Contains(s.Grund, "nicht update-bereit") {
 		t.Fatalf("Abnahmen %d, Grund %q", len(ptl.abnahmen), s.Grund)
+	}
+}
+
+// Das Tunnel-Programm läuft als root und öffnet den Fernzugang: Seine
+// Prüfsumme muss im SIGNIERTEN Manifest stehen und zur Freigabe passen, sonst
+// hält der Lauf an, bevor irgendetwas auf das Gerät geht.
+func TestTunnelProgrammNurAusDemSigniertenManifest(t *testing.T) {
+	t.Parallel()
+	for name, waehle := range map[string]func(a *aufbau){
+		"Manifest ohne Tunnel-Programm":        func(a *aufbau) { a.manifestStatt, a.signaturStatt = a.manifestOhneTunnel, a.signaturOhneTunnel },
+		"Manifest mit anderem Tunnel-Programm": func(a *aufbau) { a.manifestStatt, a.signaturStatt = a.manifestAnderesTunnel, a.signaturAnderesTunnel },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			a := neu(t)
+			waehle(a)
+			s := a.halt(t, "fassungen", faelle.FassungNichtBereit)
+			if !strings.Contains(s.Grund, "Tunnel-Programm") {
+				t.Fatalf("Grund %q", s.Grund)
+			}
+			a.unveraendert(t)
+		})
 	}
 }
 
@@ -641,6 +711,7 @@ func TestNichtSignierteFassungBekommtKeineAbnahme(t *testing.T) {
 // Werkspasswort abgewiesen), nennt der Dienst den Werksreset; für ein fremdes
 // Gerät nie.
 func TestHalbEingerichtetNenntDenWerksreset(t *testing.T) {
+	t.Parallel()
 	a := neu(t)
 	a.k.Spuren = a.ablage
 	// Der erste Lauf scheitert nach den Zugängen (die Fassung meldet eine andere Version).
@@ -664,6 +735,7 @@ func TestHalbEingerichtetNenntDenWerksreset(t *testing.T) {
 
 // Die Probe über den Tunnel scheitert am Host-Schlüssel: keine Abnahme.
 func TestAndererHostSchluesselImTunnelHaeltAn(t *testing.T) {
+	t.Parallel()
 	a := neu(t)
 	ptl := &falschesPortal{}
 	a.k.Portal = ptl
