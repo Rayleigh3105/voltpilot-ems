@@ -45,6 +45,15 @@ const nachtlaufSchalter = () => ({
   naechsterLauf: naechsteNacht(), imFenster: false, angelegt: 0, grenze: 20, stand: iso(0),
 });
 const AUS = 'Nachts von selbst ist angehalten; es bleibt der Knopf.';
+/** `?pfc200=1`: in der Liste „Ohne Kundenkonto" steht dazu ein WAGO PFC200 (Edge Industrie) mit seiner Linie. */
+const MIT_PFC200 = new URLSearchParams(window.location.search).get('pfc200') === '1';
+const PFC200_ZEILE = {
+  edgeRef: 'edge-zz9988g', laeuft: 'edge-industrie-2026.11.5', laeuftGemeldetAm: iso(-200_000),
+  fragtZuletztAm: iso(-12_000), neueste: 'edge-industrie-2026.11.20', werkstattFassung: 'edge-industrie-2026.11.5',
+  werkstattAm: iso(-2 * 86_400_000), moeglich: true, gruende: [],
+  haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true }, verlauf: [],
+  nachtlauf: { dran: true, grund: null }, stand: iso(0),
+};
 
 /** Wofür die Spec `ohne-kundenkonto.spec.ts` liest, ob und mit welchen Werten „Aufspielen" die API rief. */
 const fernlaufAufspielenAufrufe: { ref: string; fassung: string }[] = [];
@@ -153,6 +162,7 @@ Object.assign(adminApi, {
         + 'diese Fassung hier nicht noch einmal („Noch einmal“ von Hand gibt sie frei).' },
       stand: iso(0),
     },
+    ...(MIT_PFC200 ? [PFC200_ZEILE] : []),
   ],
   geraeteFernlauf: async () => ({
     edgeRef: 'edge-cyhchfr', laeuft: 'edge-light-2026.11.15', laeuftGemeldetAm: iso(0), fragtZuletztAm: iso(0),

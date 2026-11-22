@@ -247,7 +247,8 @@ Gegen den echten Wartungsserver, mit einem echten Fenster aus dem Portal, als ei
   Steht die Uhr des PFC200 nach einem Neustart in der Vergangenheit, steht der Tunnel erst, wenn sie gestellt ist; `status` nennt dann „seit dem Start KEINER“.
   Fristen der Fenster-Schlüssel hängen nicht an der Uhr.
 - **Kein Update aus dem Portal tauscht das Programm.**
-  Es ändert sich nur durch `wartung.sh` (Werkstatt, Fernlauf).
+  Es ändert sich nur durch `wartung.sh` an der Werkbank.
+  Auch der Fernlauf durch den Tunnel fasst es nicht an: Er bringt nur Edge Industrie auf einen neuen Stand ([Vertrag](contracts/werkstatt-fernlauf-v1.md#zwei-geräte-eine-linie-je-gerät)).
 - **Die SPS-Laufzeit, die Firewall, die Netzeinstellungen und der Dropbear des Geräts** bleiben unberührt; bei Speichernot trifft der Kernel erst das Box-Programm, dann den Tunnel, nie die Laufzeit (`oom_score_adj` 300).
 
 ## Web-App der Box im Fenster

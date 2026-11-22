@@ -1,8 +1,9 @@
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
+import { BOX_ART_LABELS } from '../../adminEdgeUpdates';
 import {
-  bereitZumAufspielen, brauchtDichFernlauf, fassungKurz, heuteNacht, nachtlaufZeile, ohneKundenkontoKopf,
+  bereitZumAufspielen, brauchtDichFernlauf, fassungKurz, heuteNacht, nachtlaufZeile, ohneKundenkontoKopf, zeilenLinie,
   type AlleAufspielenStand, type FernlaufStand, type NachtlaufSchalter,
 } from '../../werkstattFernlauf';
 import './GeraeteUpdates.css';
@@ -10,7 +11,7 @@ import './OhneKundenkontoKarte.css';
 
 /**
  * Plattform › Geräte › Updates, Karte „Ohne Kundenkonto" (Konzept vp-update-vor-zuordnung, S2): alle
- * Edge-Light-Boxen mit Tunnel-Zugang, die noch kein Kundenkonto haben - Stand, Vorprüfung (Grund, wenn nicht
+ * Boxen mit Tunnel-Zugang (Edge Light und Edge Industrie), die noch kein Kundenkonto haben - Stand, Vorprüfung (Grund, wenn nicht
  * möglich), „Aufspielen" je Box und „Alle n aufspielen" für die Reihe. Reine Anzeige der Ableitung aus
  * `werkstattFernlauf.ts`; „Aufspielen" ist überall derselbe Auftrag wie in der Akte (S1).
  *
@@ -107,6 +108,9 @@ export function OhneKundenkontoKarte({ liste, jetzt, ...a }: {
               <button type="button" className="vp-gu-link vp-gu-ok-ref" onClick={() => a.onBox(s.edgeRef)}>
                 {s.edgeRef}
               </button>
+              {zeilenLinie(s) && (
+                <Badge variant="tint" data-testid="ohne-kundenkonto-linie">{BOX_ART_LABELS.industrie}</Badge>
+              )}
               {heuteNacht(s, a.nachtlauf) && (
                 <Badge variant="tint" data-testid="ohne-kundenkonto-heute-nacht">heute Nacht</Badge>
               )}

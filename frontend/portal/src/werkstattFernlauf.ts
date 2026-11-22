@@ -101,10 +101,13 @@ export const FERNLAUF_GRUPPEN: { id: string; titel: string }[] = [
 
 export const FERNLAUF_ERGEBNISSE = ['fertig', 'zurueck', 'unveraendert', 'offen'] as const;
 
-/** „edge-light-2026.11.5" → „2026.11.5" (die Linie steht auf der Karte). */
+/**
+ * „edge-light-2026.11.5" → „2026.11.5", ebenso für `edge-industrie-`. Die Linie steht auf der Karte, in der Liste
+ * „Ohne Kundenkonto" als Marke an der Zeile ({@link zeilenLinie}).
+ */
 export function fassungKurz(f: string | null | undefined): string {
   if (!f) return 'unbekannt';
-  return f.replace(/^edge-light-/, '');
+  return f.replace(/^edge-(light|industrie)-/, '');
 }
 
 /** Die Linien wie `BoxArt` in `adminEdgeUpdates` (hier ohne Import: diese Schicht hängt nicht an der Update-Seite). */
@@ -120,6 +123,15 @@ export function fernlaufLinie(werkstattBoxArt: Linie | null, laeuft: string | nu
   if (laeuft == null) return null;
   if (laeuft.startsWith('edge-industrie-')) return 'industrie';
   return laeuft.startsWith('edge-light-') ? 'light' : 'docker';
+}
+
+/**
+ * Die Linie einer Zeile der Liste „Ohne Kundenkonto", wenn sie nicht Edge Light ist: Dort stehen Mango und
+ * PFC200 nebeneinander, und „2026.11.5" allein sagt nicht, welche Linie gemeint ist. Edge Light bleibt ohne
+ * Marke (so sah die Liste aus, bevor es den PFC200 gab).
+ */
+export function zeilenLinie(s: Pick<FernlaufStand, 'laeuft' | 'neueste'>): 'industrie' | null {
+  return fernlaufLinie(null, s.laeuft ?? s.neueste) === 'industrie' ? 'industrie' : null;
 }
 
 function gruppeVon(schritt: string | null): string | null {
@@ -256,15 +268,34 @@ function schrittName(id: string | null | undefined): string {
   return s ? `Schritt „${s.titel}"` : 'Ohne Schritt';
 }
 
-/** Der Bestätigungsdialog (§4.5): Frage, Satz und Folgen. */
+/**
+ * Der Satz über dem Knopf. Für den PFC200 ohne Dauer (es gibt keine gemessene) und mit dem, was dort zählt: Neu
+ * startet nur das Programm.
+ */
+export function knopfSatz(linie: Linie | null): string {
+  return linie === 'industrie'
+    ? 'Wie in der Werkstatt. Neu startet nur das Programm von VoltPilot; das Gerät und die SPS laufen weiter.'
+    : 'Wie in der Werkstatt. Etwa 5 Min., startet einmal neu.';
+}
+
+/**
+ * Der Bestätigungsdialog (§4.5): Frage, Satz und Folgen. Am PFC200 (Edge Industrie) läuft neben dem Programm
+ * von VoltPilot die Steuerung: Der Dialog sagt, dass nur das Programm neu startet.
+ */
 export function bestaetigung(ref: string, s: FernlaufStand): { titel: string; intro: string; folgen: string[] } {
+  const industrie = fernlaufLinie(null, s.neueste ?? s.laeuft) === 'industrie';
   return {
     titel: `${ref} von ${fassungKurz(s.laeuft)} auf ${fassungKurz(s.neueste)} bringen?`,
-    intro: 'Der Werkstatt-Dienst bekommt ein Fenster für 30 Min. Die Box startet einmal neu.',
+    intro: industrie
+      ? 'Der Werkstatt-Dienst bekommt ein Fenster für 30 Min. Neu startet nur das Programm von VoltPilot; '
+        + 'das Gerät und die SPS laufen weiter.'
+      : 'Der Werkstatt-Dienst bekommt ein Fenster für 30 Min. Die Box startet einmal neu.',
     folgen: [
       'Vorher sichert er die bisherige Fassung; scheitert danach eine Prüfung, spielt er sie zurück.',
       'Er prüft die Signatur der Fassung, bevor er etwas ändert.',
-      'Tunnel, Identität und Einstellungen der Box bleiben, wie sie sind.',
+      industrie
+        ? 'Tunnel, Identität, Firmware und SPS-Programm bleiben, wie sie sind.'
+        : 'Tunnel, Identität und Einstellungen der Box bleiben, wie sie sind.',
       'Das Fenster steht mit deinem Namen im Fernwartungs-Protokoll.',
     ],
   };
@@ -311,9 +342,12 @@ export function ohneKundenkontoKopf(liste: FernlaufStand[]): string {
   if (liste.length === 0) return 'Keine Box wartet gerade auf ihr Kundenkonto.';
   const satz = `${liste.length} ${liste.length === 1 ? 'Box wartet' : 'Boxen warten'} auf ihr Kundenkonto`;
   const bereit = bereitZumAufspielen(liste);
-  const ziel = liste.find((s) => s.neueste)?.neueste ?? null;
-  if (bereit.length === 0 || !ziel) return satz;
-  return `${satz} · ${bereit.length} ${bereit.length === 1 ? 'läuft' : 'laufen'} älter als ${fassungKurz(ziel)}`;
+  if (bereit.length === 0) return satz;
+  // Mango und PFC200 haben je ihre neueste Fassung: Eine Nummer nennt der Kopf nur, wenn es für alle dieselbe ist.
+  const ziele = new Set(bereit.map((s) => s.neueste).filter((z): z is string => z != null));
+  if (ziele.size === 0) return satz;
+  const als = ziele.size === 1 ? fassungKurz([...ziele][0]) : 'die neueste Fassung ihrer Linie';
+  return `${satz} · ${bereit.length} ${bereit.length === 1 ? 'läuft' : 'laufen'} älter als ${als}`;
 }
 
 export interface BrauchtDichFernlaufEintrag {

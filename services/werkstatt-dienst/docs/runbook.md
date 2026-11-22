@@ -241,6 +241,14 @@ mit Grund, und die Akte nennt ihn statt des Knopfs. Neue Konfiguration gibt es n
   Auftrag geht, sobald die Vorprüfung es zulässt.
 - **Metriken:** keine neuen; der Fernlauf steht in der Ansicht (`fernlauf.aktiv`, `fernlauf.letzter`) und im Log
   (`logger=fernlauf`).
+- **WAGO PFC200 (Edge Industrie):** derselbe Auftrag, dieselben Schritte, keine eigene Einstellung
+  (`VP_WERKSTATT_GERAETE` schaltet nur die Werkbank).
+  Der Dienst erkennt das Gerät an der Linie der Fassung des Auftrags.
+  Neu startet nur der Dienst `vp-edge-industrie`; Gerät, SPS-Laufzeit und Tunnel-Programm bleiben, wie sie sind.
+  Endet ein Lauf im Schritt `fassungen` mit „bringt fernlauf.sh nicht mit“, ist die Fassung vor dem Fernlauf gebaut:
+  Am Gerät ist nichts geändert, und der Weg ist eine neuere Fassung.
+  Endet er im Schritt `bestand` mit „andere Linie“, meldet das Gerät keine Edge-Industrie-Fassung; auch dann ist
+  nichts geändert.
 
 ## Werkstatt anhalten und fortsetzen
 

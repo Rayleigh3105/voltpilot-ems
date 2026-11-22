@@ -4,8 +4,9 @@
     edge-industrie/scripts/skripte-paket.py <ausgabe.tar.gz>
 
 Packt die von Git verwalteten Dateien, die der Werkstatt-Dienst beim Einrichten
-eines WAGO PFC200 braucht, als edge-industrie/... in ein tar.gz: install.sh,
-wartung.sh und alles unter files/. Gleicher Stand ergibt dieselben Bytes
+eines WAGO PFC200 und für einen Fernlauf durch den Wartungstunnel braucht, als
+edge-industrie/... in ein tar.gz: install.sh, wartung.sh, fernlauf.sh und alles
+unter files/. Gleicher Stand ergibt dieselben Bytes
 (sortiert, Zeit 0, Besitzer 0, gzip ohne Namen und Zeit): die Prüfsumme im
 signierten Manifest ist damit wiederholbar. Keine ungetrackten Dateien, keine
 Verweise, keine ._-Dateien von macOS. Nicht im Paket: der Quelltext des
@@ -26,6 +27,7 @@ import tarfile
 PFLICHT = (
     "edge-industrie/install.sh",
     "edge-industrie/wartung.sh",
+    "edge-industrie/fernlauf.sh",
     "edge-industrie/files/etc/init.d/vp-edge-industrie",
     "edge-industrie/files/etc/init.d/vp-wartung",
     "edge-industrie/files/home/voltpilot/libexec/boot.sh",
@@ -41,7 +43,8 @@ def main() -> int:
     repo = os.path.dirname(industrie)
     namen = subprocess.run(
         ["git", "-C", repo, "ls-files", "-z", "--",
-         "edge-industrie/install.sh", "edge-industrie/wartung.sh", "edge-industrie/files"],
+         "edge-industrie/install.sh", "edge-industrie/wartung.sh", "edge-industrie/fernlauf.sh",
+         "edge-industrie/files"],
         check=True, capture_output=True,
     ).stdout.decode().split("\0")
     namen = sorted(n for n in namen if n)

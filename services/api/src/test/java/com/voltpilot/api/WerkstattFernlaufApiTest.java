@@ -70,6 +70,11 @@ class WerkstattFernlaufApiTest {
     private static final String ALT = "edge-light-2026.11.5";
     private static final String NEU = "edge-light-2026.11.15";
     private static final String HOST = "SHA256:" + "a".repeat(43);
+    /** Ein WAGO PFC200 (Edge Industrie) aus der Werkstatt, und eine Box, deren Meldung dem Register widerspricht. */
+    private static final String PFC = "edge-zz9988g";
+    private static final String WIDERSPRUCH = "edge-h4n7wp7";
+    private static final String ALT_I = "edge-industrie-2026.11.5";
+    private static final String NEU_I = "edge-industrie-2026.11.15";
     private static final String DIENST = "/api/v1/werkstatt-dienst";
 
     @Container
@@ -390,6 +395,83 @@ class WerkstattFernlaufApiTest {
                 .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(send(HttpMethod.POST, DIENST + "/fernlaeufe/" + UUID.randomUUID() + "/beginnen", dienst, null)
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Ein PFC200 ohne Kundenkonto bekommt die neueste Fassung SEINER Linie (Edge Industrie), eine Mango weiter nur
+     * Edge Light - auch wenn die andere Linie den höheren Stand hat. Widersprechen sich Werkstatt-Register und
+     * gemeldete Fassung, gibt es keinen Knopf.
+     */
+    @Test
+    @Order(4)
+    void pfc200BekommtNurEdgeIndustrie() throws Exception {
+        String admin = token("admin", "admin");
+        String dienst = dienstToken();
+        // Beide Fassungen von Edge Industrie haben einen höheren Stand als jede von Edge Light.
+        WerkstattTestFassung.anlegenIndustrie(adminJdbc, ALT_I, 910_105, true);
+        WerkstattTestFassung.anlegenIndustrie(adminJdbc, NEU_I, 910_115, true);
+        send(HttpMethod.PUT, DIENST + "/ansicht", dienst, ansicht(true));
+
+        UUID boxId = werkstatt.boxAnlegen(PFC, "edge-industrie", "{}", null, "test", "Test");
+        werkstatt.abnahmeAnlegen(boxId, PFC, HOST, ALT_I, "10.10.16.7", "192.168.1.0/24", "[]", "{}", null, "test",
+                "Test");
+        KeyPair k = TestPki.ecKeyPair("secp256r1");
+        assertThat(send(HttpMethod.POST, "/api/v1/enrollment/" + PFC + "/csr", null, Map.of("csrPem",
+                TestPki.csrPem(k, "CN=" + PFC), "deviceInfo", "vp-edge-core " + ALT_I)).getStatusCode())
+                .isEqualTo(HttpStatus.ACCEPTED);
+        UUID zugang = UUID.randomUUID();
+        adminJdbc.update("INSERT INTO fernwartung_zugang (id, art, edge_ref, public_key, tunnel_adresse, angelegt_von, "
+                + "geaendert_von) VALUES (?, 'box', ?, ?, '10.10.16.7/32', 'test', 'test')", zugang, PFC,
+                "cGZjMjAwLXdhcnRldC1hdWYtemlubm9yZG51bmctZmw=");
+        rueckmeldung(zugang, Instant.now().minusSeconds(120), Instant.now().minusSeconds(20));
+
+        JsonNode s = lies(send(HttpMethod.GET, akte(PFC), admin, null));
+        assertThat(s.get("moeglich").asBoolean()).as(s.toString()).isTrue();
+        assertThat(s.get("laeuft").asText()).isEqualTo(ALT_I);
+        assertThat(s.get("neueste").asText()).isEqualTo(NEU_I);
+
+        // Eine Edge-Light-Fassung kommt nie auf den PFC200, auch nicht auf Zuruf.
+        ResponseEntity<String> light = send(HttpMethod.POST, akte(PFC), admin, Map.of("fassung", NEU));
+        assertThat(light.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(light)).contains("Inzwischen ist " + NEU_I);
+
+        UUID id = UUID.fromString(lies(send(HttpMethod.POST, akte(PFC), admin, Map.of("fassung", NEU_I)))
+                .get("id").asText());
+        JsonNode b = lies(send(HttpMethod.POST, DIENST + "/fernlaeufe/" + id + "/beginnen", dienst, null));
+        assertThat(b.get("edgeRef").asText()).isEqualTo(PFC);
+        assertThat(b.get("tunnelAdresse").asText()).startsWith("10.10.16.7");
+        assertThat(b.get("hostSchluessel").asText()).isEqualTo(HOST);
+        // Der Dienst erkennt das Gerät an der Linie dieser Fassung (internal/fernlauf: IstIndustrie).
+        assertThat(b.get("ziel").get("fassung").asText()).isEqualTo(NEU_I);
+        assertThat(b.get("ziel").get("programm_sha256").asText()).isEqualTo(WerkstattTestFassung.INDUSTRIE_PROGRAMM_SHA);
+        assertThat(b.get("ziel").get("skripte_sha256").asText()).isEqualTo(WerkstattTestFassung.INDUSTRIE_SKRIPTE_SHA);
+        assertThat(b.get("ziel").get("release_seq").asLong()).isEqualTo(910_115);
+        assertThat(b.get("ziel").get("quelle").asText()).endsWith("/" + NEU_I + "/");
+
+        // Die Mango aus dem ersten Test läuft die neueste Edge-Light-Fassung: Für sie ist weiter nichts neuer.
+        JsonNode mango = lies(send(HttpMethod.GET, akte(BOX), admin, null));
+        assertThat(mango.get("neueste").asText()).isEqualTo(NEU);
+        assertThat(codes(mango)).containsExactly("schon_neueste");
+
+        // Im Register eine Mango, gemeldet wird Edge Industrie: Die API rät nicht, welche Linie auf das Gerät gehört.
+        UUID fremdId = werkstatt.boxAnlegen(WIDERSPRUCH, "edge-light", "{}", null, "test", "Test");
+        werkstatt.abnahmeAnlegen(fremdId, WIDERSPRUCH, HOST, ALT, "10.10.16.8", "10.213.0.1/24", "[]", "{}", null,
+                "test", "Test");
+        send(HttpMethod.POST, "/api/v1/enrollment/" + WIDERSPRUCH + "/csr", null, Map.of("csrPem",
+                TestPki.csrPem(TestPki.ecKeyPair("secp256r1"), "CN=" + WIDERSPRUCH), "deviceInfo",
+                "vp-edge-core " + ALT_I));
+        UUID zugang2 = UUID.randomUUID();
+        adminJdbc.update("INSERT INTO fernwartung_zugang (id, art, edge_ref, public_key, tunnel_adresse, angelegt_von, "
+                + "geaendert_von) VALUES (?, 'box', ?, ?, '10.10.16.8/32', 'test', 'test')", zugang2, WIDERSPRUCH,
+                "d2lkZXJzcHJ1Y2gtd2FydGV0LWF1Zi1lbnRzY2hlaWQ=");
+        rueckmeldung(zugang2, Instant.now().minusSeconds(120), Instant.now().minusSeconds(20));
+        JsonNode w = lies(send(HttpMethod.GET, akte(WIDERSPRUCH), admin, null));
+        assertThat(w.get("moeglich").asBoolean()).isFalse();
+        assertThat(codes(w)).contains("keine_edge_light");
+        assertThat(send(HttpMethod.POST, akte(WIDERSPRUCH), admin, Map.of("fassung", NEU_I)).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        assertThat(send(HttpMethod.POST, akte(WIDERSPRUCH), admin, Map.of("fassung", NEU)).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
     }
 
     // ── Hilfen ────────────────────────────────────────────────────────────

@@ -177,7 +177,9 @@ func TestEchterSkriptstandPFC200(t *testing.T) {
 	if err := AuspackenPFC200(filepath.Join(dir, "a.tar.gz"), ziel); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{"install.sh", "wartung.sh", "files/etc/init.d/vp-wartung", "files/etc/init.d/vp-edge-industrie", "files/home/voltpilot/libexec/boot.sh"} {
+	// fernlauf.sh braucht der Fernlauf (internal/fernlauf): ohne ihn im
+	// signierten Skriptstand spielt er die Fassung nicht auf.
+	for _, p := range []string{"install.sh", "wartung.sh", "fernlauf.sh", "files/etc/init.d/vp-wartung", "files/etc/init.d/vp-edge-industrie", "files/home/voltpilot/libexec/boot.sh"} {
 		st, err := os.Stat(filepath.Join(ziel, IndustrieWurzel, p))
 		if err != nil || st.Mode().Perm()&0o100 == 0 {
 			t.Errorf("%s fehlt oder ist nicht ausführbar (%v)", p, err)

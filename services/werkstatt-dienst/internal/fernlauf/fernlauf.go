@@ -18,6 +18,10 @@
 // Funkmodul nimmt sie nur das Land (nie ein WLAN-Kennwort), und kein
 // Schlüssel und kein Passwort steht in Log oder Beleg. Ein Fernlauf zur Zeit;
 // die Werkbank läuft daneben.
+//
+// Dieselben Schritte fährt er für eine Edge-Industrie-Box (WAGO PFC200); was
+// dort anders ist, steht in fernlauf_industrie.go. Welches Gerät es ist, sagt
+// die Linie der Fassung des Auftrags.
 package fernlauf
 
 import (
@@ -39,6 +43,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -331,6 +336,10 @@ type laufZustand struct {
 	v    *box.Verbindung
 	ziel netip.AddrPort
 	dr   *durchreiche.Server
+	// klient ist die Verbindung, wie die Durchreiche sie sieht. Ihre Anfragen
+	// kommen aus einem anderen Goroutine als der Lauf, der zwischendurch neu
+	// anmeldet: Darum liest sie nie l.v, sondern nur diesen Zeiger.
+	klient atomic.Pointer[ssh.Client]
 
 	vorher       string // Fassung laut /health vor dem Lauf
 	seq          *int64 // Stand laut current.json vor dem Lauf
@@ -354,6 +363,9 @@ type laufZustand struct {
 }
 
 func (l *laufZustand) schritte() []schritt {
+	if IstIndustrie(l.a.Ziel.Fassung) {
+		return l.schritteIndustrie()
+	}
 	z := l.k.Zeiten
 	return []schritt{
 		{"anmelden", z.Anmelden + time.Minute, l.anmelden},
@@ -365,6 +377,17 @@ func (l *laufZustand) schritte() []schritt {
 		{"meldet_sich", z.MeldetSich + time.Minute, l.meldetSich},
 		{"tunnel", 3 * time.Minute, l.tunnel},
 	}
+}
+
+// setzeVerbindung merkt die Verbindung zur Box (nil: keine) für den Lauf und
+// für die Durchreiche.
+func (l *laufZustand) setzeVerbindung(v *box.Verbindung) {
+	l.v = v
+	if v == nil {
+		l.klient.Store(nil)
+		return
+	}
+	l.klient.Store(v.Client())
 }
 
 // fahre gibt das Ergebnis zurück (fertig, zurueck, unveraendert, offen).
@@ -387,7 +410,11 @@ func (l *laufZustand) fahre(ctx context.Context) string {
 				// Die Rücknahme läuft auch, wenn der Lauf an seiner Frist endete:
 				// begrenzt nur durch das Fenster.
 				rctx, rcancel := context.WithDeadline(context.WithoutCancel(ctx), l.a.FensterEnde.Add(-10*time.Second))
-				if rerr := l.schritt(rctx, schritt{"zurueck", 10 * time.Minute, l.zurueck}); rerr != nil {
+				zurueck := l.zurueck
+				if IstIndustrie(l.a.Ziel.Fassung) {
+					zurueck = l.zurueckIndustrie
+				}
+				if rerr := l.schritt(rctx, schritt{"zurueck", 10 * time.Minute, zurueck}); rerr != nil {
 					ergebnis, grund = "offen", grund+"; Rücknahme gescheitert: "+rerr.Error()
 				} else {
 					ergebnis = "zurueck"
@@ -537,7 +564,7 @@ func (l *laufZustand) verbinde(ctx context.Context, s wartung.Server, b *protoko
 	for n := 1; ; n++ {
 		v, err := box.VerbindeMitSchluessel(ctx, l.weg, l.ziel, l.k.SSH, box.GenauDieser(l.a.HostSchluessel), l.k.Zeiten.Versuch)
 		if err == nil {
-			l.v = v
+			l.setzeVerbindung(v)
 			if b != nil {
 				*b = b.Mit("anmeldung", fmt.Sprintf("gelungen nach %d Versuchen in %s", n, time.Since(beginn).Round(time.Second))).
 					Mit("host_schluessel", v.HostArt()+" "+v.HostFingerabdruck())
@@ -805,6 +832,11 @@ func (l *laufZustand) sichern(ctx context.Context) (protokoll.Beleg, string, err
 	return b, fmt.Sprintf("Gesichert: %d Pfade, %d Bytes, sha256 %s (ohne Identität)", len(da), len(daten), kurz(summe, 16)), nil
 }
 
+func sha256Summe(daten []byte) []byte {
+	s := sha256.Sum256(daten)
+	return s[:]
+}
+
 func sortiert(m map[string]bool) []string {
 	var s []string
 	for k := range m {
@@ -859,12 +891,7 @@ func (l *laufZustand) skripte() (*durchreiche.Server, string, error) {
 		if err := os.WriteFile(filepath.Join(basis, "dist", fassungen.ProgrammPraefix+l.k.Bauart), inhalt, 0o755); err != nil {
 			return nil, "", err
 		}
-		dr, err := durchreiche.Starte(filepath.Join(dir, "d"), func() *ssh.Client {
-			if l.v == nil {
-				return nil
-			}
-			return l.v.Client()
-		}, l.log)
+		dr, err := durchreiche.Starte(filepath.Join(dir, "d"), l.klient.Load, l.log)
 		if err != nil {
 			return nil, "", err
 		}
@@ -907,7 +934,7 @@ func (l *laufZustand) aufspielen(ctx context.Context) (protokoll.Beleg, string, 
 	// (an der echten Box noch zu belegen): dann einmal neu anmelden.
 	if _, err := l.v.Fuehre(ctx, "true", nil); err != nil {
 		l.v.Schliesse()
-		l.v = nil
+		l.setzeVerbindung(nil)
 		if err := l.verbinde(ctx, wartung.Server{}, nil); err != nil {
 			return b, "", fmt.Errorf("nach install.sh: %w", err)
 		}
@@ -1082,7 +1109,7 @@ func (l *laufZustand) zurueck(ctx context.Context) (protokoll.Beleg, string, err
 		}
 	} else if _, err := l.v.Fuehre(ctx, "true", nil); err != nil {
 		l.v.Schliesse()
-		l.v = nil
+		l.setzeVerbindung(nil)
 		if err := l.verbinde(ctx, wartung.Server{}, nil); err != nil {
 			return nil, "", err
 		}

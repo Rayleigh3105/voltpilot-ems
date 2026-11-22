@@ -716,6 +716,24 @@ describe('EdgeUpdatesPage', () => {
       expect(within(zeilen[1]).queryByRole('button', { name: /bringen/ })).toBeNull();
     });
 
+    it('ein PFC200 steht in derselben Liste, mit der Marke „Edge Industrie" und seiner eigenen Fassung', async () => {
+      geraeteOhneKundenkonto.mockResolvedValue([
+        fernlaufStand(),
+        fernlaufStand({ edgeRef: 'edge-zz9988g', laeuft: 'edge-industrie-2026.11.5',
+          neueste: 'edge-industrie-2026.11.20', werkstattFassung: 'edge-industrie-2026.11.5' }),
+      ]);
+      geraeteFernlaufAufspielen.mockResolvedValue({});
+      render(<EdgeUpdatesPage />);
+      const karte = await screen.findByTestId('ohne-kundenkonto');
+      expect(karte).toHaveTextContent('2 laufen älter als die neueste Fassung ihrer Linie');
+      const zeilen = within(karte).getAllByTestId('ohne-kundenkonto-zeile');
+      expect(within(zeilen[0]).queryByTestId('ohne-kundenkonto-linie')).toBeNull();
+      expect(within(zeilen[1]).getByTestId('ohne-kundenkonto-linie')).toHaveTextContent('Edge Industrie');
+      fireEvent.click(within(zeilen[1]).getByRole('button', { name: 'Auf 2026.11.20 bringen' }));
+      await waitFor(() => expect(geraeteFernlaufAufspielen)
+        .toHaveBeenCalledWith('edge-zz9988g', 'edge-industrie-2026.11.20'));
+    });
+
     it('„Aufspielen" je Box legt denselben Auftrag wie die Akte an (S1, keine zweite Logik)', async () => {
       geraeteOhneKundenkonto.mockResolvedValue([fernlaufStand()]);
       geraeteFernlaufAufspielen.mockResolvedValue({});

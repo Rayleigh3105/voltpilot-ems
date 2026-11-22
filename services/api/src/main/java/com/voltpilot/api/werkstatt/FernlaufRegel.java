@@ -40,6 +40,34 @@ public final class FernlaufRegel {
     /** {@code deviceInfo} der Zertifikatsanfrage ist {@code "vp-edge-core " + Fassung} ({@code agent.go}). */
     public static final String DEVICE_INFO_PRAEFIX = "vp-edge-core ";
     public static final String EDGE_LIGHT_PRAEFIX = "edge-light-";
+    public static final String EDGE_INDUSTRIE_PRAEFIX = "edge-industrie-";
+
+    /**
+     * Welches Gerät der Werkstatt die Box ist ({@link WerkstattRegel#MANGO} oder {@link WerkstattRegel#PFC200}):
+     * nach dem Werkstatt-Register und nach der Linie der gemeldeten Fassung. Nur diese zwei haben den
+     * Wartungstunnel. {@code null}, wenn keins von beiden es sagt - oder wenn sie sich widersprechen: Steht die Box
+     * als Edge Light im Register und meldet eine Edge-Industrie-Fassung (oder umgekehrt), rät die API nicht,
+     * welche Linie auf das Gerät gehört.
+     *
+     * @param registerArt die Box-Art im Werkstatt-Register, {@code null} wenn die Box dort nicht steht
+     * @param laeuft      die zuletzt gemeldete Fassung, {@code null} wenn keine
+     */
+    public static String geraet(String registerArt, String laeuft) {
+        String register = WerkstattService.EDGE_LIGHT.equals(registerArt) ? WerkstattRegel.MANGO
+                : WerkstattService.EDGE_INDUSTRIE.equals(registerArt) ? WerkstattRegel.PFC200 : null;
+        String gemeldet = laeuft == null ? null : laeuft.startsWith(EDGE_LIGHT_PRAEFIX) ? WerkstattRegel.MANGO
+                : laeuft.startsWith(EDGE_INDUSTRIE_PRAEFIX) ? WerkstattRegel.PFC200 : null;
+        if (register != null && gemeldet != null && !register.equals(gemeldet)) {
+            return null;
+        }
+        return register != null ? register : gemeldet;
+    }
+
+    /** „2026.11.5“ aus dem Namen einer Fassung, gleich welcher Linie. */
+    public static String kurz(String fassung) {
+        return fassung == null ? null : fassung.replaceFirst("^(" + EDGE_LIGHT_PRAEFIX + "|" + EDGE_INDUSTRIE_PRAEFIX
+                + ")", "");
+    }
 
     /** Die laufende Fassung aus der letzten Zertifikatsanfrage, {@code null} wenn keine genannt ist. */
     public static String laeuft(String deviceInfo) {
@@ -73,7 +101,7 @@ public final class FernlaufRegel {
      *
      * @param gekoppelt        eine Gerätezeile gibt es (die Box hat ein Kundenkonto)
      * @param zertifikat       für die Referenz ist ein Zertifikat ausgestellt
-     * @param werkstattLight   im Werkstatt-Register als Edge Light
+     * @param tunnelBox        eine Edge-Light- oder Edge-Industrie-Box ({@link #geraet} nennt ein Gerät)
      * @param laeuft           die zuletzt gemeldete Fassung (aus {@code deviceInfo})
      * @param laeuftSeq        ihr Stand im Register, {@code null} wenn sie dort nicht steht
      * @param neueste          die neueste zuweisbare Fassung der Linie mit Skriptstand, {@code null} wenn keine passt
@@ -91,7 +119,7 @@ public final class FernlaufRegel {
      * @param hostSchluessel   der Host-Schlüssel aus Abnahme oder Einlösung ist bekannt
      * @param offen            für die Referenz ist ein Auftrag offen
      */
-    public record Eingabe(boolean gekoppelt, boolean zertifikat, boolean werkstattLight, String laeuft, Long laeuftSeq,
+    public record Eingabe(boolean gekoppelt, boolean zertifikat, boolean tunnelBox, String laeuft, Long laeuftSeq,
             String neueste, Long neuesteSeq, String neuesteGrund, boolean tunnelZugang, boolean tunnelAktiv,
             Instant rueckmeldungAm, Instant verbundenSeit, Instant gefragtUm, boolean technikerZugang,
             Instant dienstGemeldetAm, Boolean dienstFernlauf, String dienstGrund, boolean hostSchluessel,
@@ -112,10 +140,11 @@ public final class FernlaufRegel {
             g.add(new Grund("zertifikat", "Für die Box ist schon ein Zertifikat ausgestellt; sie holt Updates über das "
                     + "erste Verbinden."));
         }
-        boolean light = e.werkstattLight() || (e.laeuft() != null && e.laeuft().startsWith(EDGE_LIGHT_PRAEFIX));
-        if (!light) {
-            g.add(new Grund("keine_edge_light", "Nur eine Edge-Light-Box hat den Wartungstunnel; diese ist keine "
-                    + "oder meldet ihre Bauart nicht."));
+        // Der Code stammt aus der Zeit, als nur Edge Light den Tunnel hatte; er bleibt, der Satz nennt beide.
+        if (!e.tunnelBox()) {
+            g.add(new Grund("keine_edge_light", "Nur eine Edge-Light- oder Edge-Industrie-Box hat den "
+                    + "Wartungstunnel; diese ist keine, meldet ihre Bauart nicht oder meldet eine andere als im "
+                    + "Werkstatt-Register."));
         }
         if (e.laeuft() == null) {
             g.add(new Grund("fassung_unbekannt", "Die Box hat noch keine Fassung gemeldet (keine Zertifikatsanfrage)."));
@@ -125,7 +154,7 @@ public final class FernlaufRegel {
         }
         if (e.neueste() == null) {
             g.add(new Grund("keine_neueste", e.neuesteGrund() == null || e.neuesteGrund().isBlank()
-                    ? "Es gibt keine neueste zuweisbare Edge-Light-Fassung mit Skriptstand."
+                    ? "Für diese Box gibt es keine neueste zuweisbare Fassung mit Skriptstand."
                     : e.neuesteGrund()));
         } else if (e.laeuftSeq() != null && e.neuesteSeq() != null && e.laeuftSeq() >= e.neuesteSeq()) {
             g.add(new Grund("schon_neueste", "Die Box läuft schon " + e.laeuft() + "; neuer ist nichts."));

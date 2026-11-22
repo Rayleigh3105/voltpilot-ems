@@ -51,8 +51,14 @@ var kurz = fernlauf.Zeiten{Takt: 10 * time.Millisecond, Versuch: 2 * time.Second
 
 // ---- Portal-Attrappe ---------------------------------------------------------
 
+// meldend ist, was die Portal-Attrappe von einer Box braucht: was die
+// Plattform von ihr hört (Mango im Feld oder PFC200 im Feld).
+type meldend interface {
+	Meldung() (deviceInfo string, start time.Time, zertifikat bool)
+}
+
 type portalAttrappe struct {
-	box *attrappe.FeldBox
+	box meldend
 	a   portal.FernlaufAuftrag
 
 	mu       sync.Mutex

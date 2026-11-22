@@ -216,6 +216,28 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
       await waitFor(() => expect(geraeteFernlaufAufspielen).toHaveBeenCalledWith('edge-k7m2xq3', 'edge-light-2026.11.15'));
     });
 
+    it('ein wartender PFC200 (Edge Industrie): eigene Linie, und Karte wie Dialog sagen, dass die SPS weiterläuft', async () => {
+      geraeteFernlauf.mockResolvedValue({ ...stand, edgeRef: 'edge-zz9988g', laeuft: 'edge-industrie-2026.11.5',
+        neueste: 'edge-industrie-2026.11.15', werkstattFassung: 'edge-industrie-2026.11.5' });
+      geraeteFernlaufAufspielen.mockResolvedValue({});
+      render(<GeraeteAktePage boxRef="edge-zz9988g" reiter="software" />);
+      const karte = await screen.findByTestId('akte-fernlauf-stand');
+      expect(karte).toHaveTextContent('Edge Industrie');
+      expect(karte).toHaveTextContent('Läuft2026.11.5');
+      expect(screen.getByTestId('akte-fernlauf-satz')).toHaveTextContent(
+        'Neu startet nur das Programm von VoltPilot; das Gerät und die SPS laufen weiter.');
+      expect(screen.getByTestId('akte-fernlauf-satz')).not.toHaveTextContent('5 Min');
+      fireEvent.click(screen.getByTestId('akte-fernlauf-knopf'));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent('edge-zz9988g von 2026.11.5 auf 2026.11.15 bringen?');
+      expect(dialog).toHaveTextContent('das Gerät und die SPS laufen weiter');
+      expect(dialog).toHaveTextContent('Tunnel, Identität, Firmware und SPS-Programm bleiben, wie sie sind.');
+      expect(dialog).not.toHaveTextContent('Die Box startet einmal neu');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aufspielen' }));
+      await waitFor(() => expect(geraeteFernlaufAufspielen)
+        .toHaveBeenCalledWith('edge-zz9988g', 'edge-industrie-2026.11.15'));
+    });
+
     it('gesperrt: der Knopf bleibt aus und nennt den ersten Grund; kein „Aktualisieren" ohne Auftrag', async () => {
       geraeteFernlauf.mockResolvedValue({ ...stand, moeglich: false,
         gruende: [{ code: 'dienst_stumm', text: 'Der Werkstatt-Dienst meldet sich nicht.' }] });
