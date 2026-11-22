@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -386,11 +387,15 @@ type falschesPortal struct {
 	mu          sync.Mutex
 	abnahmen    []portal.Abnahme
 	geschlossen []string
+	codeFuer    []string // für welches Gerät der Dienst einen Code holte
 	stand       portal.BoxStand
 	standFehler error
 }
 
-func (p *falschesPortal) CodeHolen(_ context.Context, ref string, _ bool) (portal.Code, error) {
+func (p *falschesPortal) CodeHolenFuer(_ context.Context, ref string, _ bool, geraet string) (portal.Code, error) {
+	p.mu.Lock()
+	p.codeFuer = append(p.codeFuer, geraet)
+	p.mu.Unlock()
 	return portal.Code{Code: geheimCode, EdgeRef: ref, Freigabe: "2026-11-pfc200-1", GueltigBis: time.Now().Add(10 * time.Minute)}, nil
 }
 
@@ -469,6 +474,9 @@ func TestLaufMitApiUndProbeUeberDenTunnel(t *testing.T) {
 	if len(ptl.abnahmen) != 1 {
 		t.Fatalf("%d Abnahmen", len(ptl.abnahmen))
 	}
+	if len(ptl.codeFuer) != 1 || ptl.codeFuer[0] != "pfc200" {
+		t.Fatalf("Code geholt für %v, erwartet einmal für pfc200", ptl.codeFuer)
+	}
 	an := ptl.abnahmen[0]
 	if an.Geraet != "pfc200" || an.Angaben["firmware"] != "03.10.08(22)" || an.Angaben["artikel"] != "750-8212" || an.Angaben["seriennummer"] == "" ||
 		an.Fassung != fassung || an.HostSchluessel != a.p.Host() || an.LanNetz != "10.213.0.1/24" {
@@ -479,6 +487,26 @@ func TestLaufMitApiUndProbeUeberDenTunnel(t *testing.T) {
 	}
 	if n := strings.Count(strings.TrimSpace(a.entschluessle(t, an.PasswortAge)), "\n"); n != 2 {
 		t.Fatalf("an der Abnahme stehen %d Passwörter", n+1)
+	}
+	// Was die API an einer Abnahme annimmt (WerkstattService): der age-Text
+	// höchstens 4000 Zeichen, höchstens 12 Angaben mit einfachem Namen und
+	// höchstens 200 Zeichen, je Beleg höchstens 2000.
+	if len(an.PasswortAge) > 4000 {
+		t.Fatalf("der age-Text der drei Zugänge hat %d Zeichen, die API nimmt 4000", len(an.PasswortAge))
+	}
+	if len(an.Angaben) > 12 {
+		t.Fatalf("%d Angaben", len(an.Angaben))
+	}
+	name := regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
+	for k, v := range an.Angaben {
+		if !name.MatchString(k) || len(v) > 200 || strings.Contains(v, "-----BEGIN") {
+			t.Fatalf("Angabe %q = %q nimmt die API nicht", k, v)
+		}
+	}
+	for k, v := range an.Belege {
+		if len(v) > 2000 || strings.TrimSpace(v) == "" {
+			t.Fatalf("Beleg %q hat %d Zeichen", k, len(v))
+		}
 	}
 	if l.Stand().Box != "edge-k7m2xq3" {
 		t.Fatalf("Stand nennt die Box nicht: %+v", l.Stand())

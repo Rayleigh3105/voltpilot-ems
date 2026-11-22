@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.fernwartung.Akteur;
@@ -45,6 +46,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -91,12 +93,15 @@ public class AdminWerkstattController {
      * {@code dienstFassungVorEinrichtungWlan}: true, wenn ein Werkstatt-Dienst
      * vor S1 (PR #1885) ohne den Beleg {@code einrichtung_wlan_bereit}
      * angenommen wurde (Übergangsfrist, aus {@code belege} abgeleitet, keine
-     * eigene Spalte).
+     * eigene Spalte). {@code angaben} (additiv, fehlt ohne): was an der Abnahme
+     * steht, ohne eine Prüfung zu sein (beim PFC200 Bestellnummer, Firmware,
+     * Seriennummer).
      */
     public record AbnahmeDto(UUID id, String edgeRef, String hostSchluessel, String fassung, String tunnelAdresse,
             String lanNetz, List<String> pruefungen, JsonNode probe, String notiz, Instant erfasstAm,
             String erfasstVon, String quelle, JsonNode belege, UUID freigabeId, UUID einloesungId,
-            String passwortAge, boolean dienstFassungVorEinrichtungWlan) {
+            String passwortAge, boolean dienstFassungVorEinrichtungWlan,
+            @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode angaben) {
     }
 
     /**
@@ -171,7 +176,8 @@ public class AdminWerkstattController {
             WerkstattRegel.Soll soll = st.soll();
             FreigabeRepository.Freigabe f = st.freigabe();
             return new RegelDto(st.zustand().name().toLowerCase(java.util.Locale.ROOT), st.grund(), st.neueste(),
-                    soll == null ? WerkstattOpenWrt.MANGO : soll.openwrt(), soll == null ? null : soll.edgeLight(),
+                    soll == null ? (st.pfc200() ? null : WerkstattOpenWrt.MANGO) : soll.openwrt(),
+                    soll == null ? null : soll.edgeLight(),
                     soll == null ? null : soll.releaseSeq(), f == null ? null : f.kennung(), st.vonHand(),
                     st.heute(), st.tagesgrenze(), st.angehalten() == null ? null : BetriebDto.of(st.angehalten()),
                     verlauf.stream().map(BetriebDto::of).toList());
@@ -463,10 +469,16 @@ public class AdminWerkstattController {
     /** Wie viele Einträge von Anhalten und Fortsetzen die Seite zeigt. */
     private static final int VERLAUF = 10;
 
-    /** Läuft die Werkstatt, und was spielt sie auf? Legt nichts an. */
+    /**
+     * Läuft die Werkstatt, und was spielt sie auf? Legt nichts an. Ohne
+     * {@code geraet}: für die Mango, wie bisher. Mit {@code geraet=pfc200}
+     * (additiv): für den WAGO PFC200; {@code openwrt} fehlt dann, und
+     * {@code edgeLight} trägt die Edge-Industrie-Fassung mit {@code wartungSha256}.
+     * Anhalten, Fortsetzen und die Tagesgrenze gelten für beide Geräte.
+     */
     @GetMapping("/regel")
-    public RegelDto regel() {
-        return RegelDto.of(regel.stand(), regel.verlauf(VERLAUF));
+    public RegelDto regel(@RequestParam(name = "geraet", required = false) String geraet) {
+        return RegelDto.of(regel.stand(WerkstattRegel.geraet(geraet)), regel.verlauf(VERLAUF));
     }
 
     /** Werkstatt anhalten (Notfall): 200 mit dem Stand; ist sie schon angehalten, ändert sich nichts. */
@@ -483,10 +495,16 @@ public class AdminWerkstattController {
         return RegelDto.of(regel.fortsetzen(Akteur.aus(caller)), regel.verlauf(VERLAUF));
     }
 
-    /** Alle Freigaben (Regel und von Hand), neueste zuerst: der Beleg, was wann galt. */
+    /**
+     * Die Freigaben eines Geräts (Regel und von Hand), neueste zuerst: der
+     * Beleg, was wann galt. Ohne {@code geraet}: die der Mango, wie bisher
+     * (jede Zeile trägt {@code openwrt}). Mit {@code geraet=pfc200} (additiv):
+     * die des PFC200; dort fehlt {@code openwrt}.
+     */
     @GetMapping("/freigaben")
-    public List<FreigabeDto> freigaben() {
-        return freigaben.alle().stream().map(FreigabeDto::of).toList();
+    public List<FreigabeDto> freigaben(@RequestParam(name = "geraet", required = false) String geraet) {
+        String g = WerkstattRegel.geraet(geraet);
+        return freigaben.alle().stream().filter(st -> g.equals(st.freigabe().boxArt())).map(FreigabeDto::of).toList();
     }
 
     // ── intern ────────────────────────────────────────────────────────────
@@ -503,13 +521,16 @@ public class AdminWerkstattController {
 
     private AbnahmeDto abnahmeDto(Abnahme a) {
         JsonNode belege = a.belegeJson() == null ? null : lies(a.belegeJson());
+        // Nur wo die Prüfliste der Abnahme die Prüfung kennt (Mango): Dem PFC200 fehlt sie nicht, er hat sie nicht.
+        List<String> pruefungen = liste(a.pruefungenJson());
         boolean vorEinrichtungWlan = "dienst".equals(a.quelle()) && belege != null
+                && pruefungen.contains(WerkstattPruefungen.EINRICHTUNG_WLAN_BEREIT)
                 && !belege.has(WerkstattPruefungen.EINRICHTUNG_WLAN_BEREIT);
         return new AbnahmeDto(a.id(), a.edgeRef(), a.hostSchluessel(), a.fassung(), a.tunnelAdresse(), a.lanNetz(),
-                liste(a.pruefungenJson()), lies(a.probeJson()), a.notiz(), a.erfasstAm(),
+                pruefungen, lies(a.probeJson()), a.notiz(), a.erfasstAm(),
                 name(a.erfasstVonName(), a.erfasstVon()), a.quelle(),
                 belege, a.freigabeId(), a.einloesungId(),
-                a.passwortAge(), vorEinrichtungWlan);
+                a.passwortAge(), vorEinrichtungWlan, a.angabenJson() == null ? null : lies(a.angabenJson()));
     }
 
     private JsonNode lies(String text) {

@@ -152,7 +152,9 @@ type Probe interface {
 
 // Portal ist, was ein Lauf vom Dienst-Baum der API braucht (internal/portal).
 type Portal interface {
-	CodeHolen(ctx context.Context, edgeRef string, tausch bool) (portal.Code, error)
+	// CodeHolenFuer: Der Code gilt für das Gerät pfc200 (eigene Freigabe,
+	// eigene Box-Art im Register).
+	CodeHolenFuer(ctx context.Context, edgeRef string, tausch bool, geraet string) (portal.Code, error)
 	FensterSchliessen(ctx context.Context, fensterID string) (schonZu bool, err error)
 	AbnahmeSchreiben(ctx context.Context, edgeRef string, a portal.Abnahme) (portal.Angenommen, error)
 	BoxStandLesen(ctx context.Context, edgeRef string) (portal.BoxStand, error)

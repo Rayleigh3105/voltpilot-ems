@@ -17,6 +17,8 @@ import { verlaufZeile, type Fernlauf } from './werkstattFernlauf';
 
 /** Die Hardware der Mango, wie das Gehäuse-Programm sie nennt. */
 export const MANGO_HARDWARE = 'GL.iNet GL-MT300N-V2 („Mango“)';
+/** Der zweite Gerätetyp der Werkstatt: läuft als Box „Edge Industrie“. */
+export const PFC200_HARDWARE = 'WAGO PFC200 750-8212 (Edge Industrie)';
 
 /**
  * Der Stand der Box-Druckdatei für die Karte (automatisch nachholen,
@@ -127,15 +129,17 @@ export function einrichtung(
   jetzt: Date = new Date(),
 ): EinrichtungZeile[] {
   const a = box.abnahmen[0] ?? null;
-  const hardware = box.boxArt === 'edge-light' ? MANGO_HARDWARE : 'Docker-Box (Edge App)';
+  const industrie = box.boxArt === 'edge-industrie';
+  const hardware = box.boxArt === 'edge-light' ? MANGO_HARDWARE : industrie ? PFC200_HARDWARE : 'Docker-Box (Edge App)';
   const nachDerWerkstatt = fernlaufEinrichtungZeile(fernlauf, jetzt);
   const automatik = erstesVerbindenZeile(erstesVerbinden);
   return [
     { id: 'hardware', titel: 'Hardware', wert: hardware },
-    { id: 'edge-light', titel: 'Edge Light (aufgespielt)', wert: a?.fassung ?? null },
+    { id: 'edge-light', titel: industrie ? 'Edge Industrie (aufgespielt)' : 'Edge Light (aufgespielt)', wert: a?.fassung ?? null },
     ...(nachDerWerkstatt ? [nachDerWerkstatt] : []),
     ...(automatik ? [automatik] : []),
-    { id: 'openwrt', titel: 'OpenWrt (laut Freigabe)', wert: freigabe ? freigabe.openwrt.fassung : null },
+    // Der PFC200 hat kein OpenWrt: Seine Firmware fasst die Werkstatt nicht an.
+    ...(industrie ? [] : [{ id: 'openwrt', titel: 'OpenWrt (laut Freigabe)', wert: freigabe ? freigabe.openwrt.fassung : null }]),
     {
       id: 'pruefsummen',
       titel: 'Prüfsummen (laut Freigabe)',

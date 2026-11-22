@@ -1,6 +1,7 @@
 package freigabe
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -116,6 +117,30 @@ func TestBeispielDateiImRepo(t *testing.T) {
 	}
 	if _, err := Lies(b); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Was die API schreibt (services/api hält dieselbe Datei in
+// WerkstattDienstVertragTest fest), nimmt der strenge Leser an, für beide
+// Geräte. Ein Feld mehr in der API, und die Werkstatt stünde still.
+func TestFreigabeDerAPI(t *testing.T) {
+	b, err := os.ReadFile("../../../../docs/contracts/werkstatt-freigabe-v1.beispiele.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]json.RawMessage
+	if err := json.Unmarshal(b, &v); err != nil {
+		t.Fatal(err)
+	}
+	m, err := Lies(v["mango"])
+	if err != nil || m.BoxArt != Mango || m.OpenWrt.Fassung != "25.12.5" || m.EdgeLight.Fassung != "edge-light-2026.11.0" ||
+		m.EdgeIndustrie != (Industrie{}) || m.BeendetAm == nil {
+		t.Fatalf("Mango: %+v %v", m, err)
+	}
+	p, err := Lies(v["pfc200"])
+	if err != nil || p.BoxArt != PFC200 || p.EdgeIndustrie.Fassung != "edge-industrie-2026.11.0" ||
+		len(p.EdgeIndustrie.WartungSha256) != 64 || p.OpenWrt != (Abbild{}) || p.EdgeLight != (Programm{}) {
+		t.Fatalf("PFC200: %+v %v", p, err)
 	}
 }
 

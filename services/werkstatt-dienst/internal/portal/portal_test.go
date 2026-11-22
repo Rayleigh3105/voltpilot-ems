@@ -85,6 +85,20 @@ func TestClient(t *testing.T) {
 	if req["edgeRef"] != "edge-k7m2xq3" || req["tausch"] != false {
 		t.Fatalf("Anfrage %v", req)
 	}
+	// Die Mango nennt kein Gerät (wie bisher); der PFC200 nennt seines.
+	if _, da := req["boxArt"]; da {
+		t.Fatalf("Anfrage für die Mango nennt ein Gerät: %v", req)
+	}
+	pfc, err := c.CodeHolenFuer(ctx, "edge-k7m2xq3", true, "pfc200")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pfc.Code.Vergessen()
+	req = nil
+	_ = json.Unmarshal([]byte(gesehen["POST /api/v1/werkstatt-dienst/codes"]), &req)
+	if req["edgeRef"] != "edge-k7m2xq3" || req["tausch"] != true || req["boxArt"] != "pfc200" {
+		t.Fatalf("Anfrage für den PFC200 %v", req)
+	}
 	if zu, err := c.FensterSchliessen(ctx, "f-1"); err != nil || zu {
 		t.Fatalf("f-1: %v %v", zu, err)
 	}

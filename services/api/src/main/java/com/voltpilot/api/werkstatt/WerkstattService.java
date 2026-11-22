@@ -45,7 +45,19 @@ public class WerkstattService {
 
     public static final String EDGE_LIGHT = "edge-light";
     public static final String EDGE_APP = "edge-app";
-    private static final List<String> BOX_ARTEN = List.of(EDGE_LIGHT, EDGE_APP);
+    /** Der WAGO PFC200 im Register (Gerät {@code pfc200} der Werkstatt-Regel). */
+    public static final String EDGE_INDUSTRIE = "edge-industrie";
+    private static final List<String> BOX_ARTEN = List.of(EDGE_LIGHT, EDGE_APP, EDGE_INDUSTRIE);
+
+    /** Das Gerät der Werkstatt-Regel zu einer Box-Art des Registers. */
+    public static String geraet(String boxArt) {
+        return EDGE_INDUSTRIE.equals(boxArt) ? WerkstattRegel.PFC200 : WerkstattRegel.MANGO;
+    }
+
+    /** Die Box-Art des Registers zu einem Gerät der Werkstatt-Regel. */
+    public static String boxArt(String geraet) {
+        return WerkstattRegel.PFC200.equals(geraet) ? EDGE_INDUSTRIE : EDGE_LIGHT;
+    }
 
     private static final Pattern SCHRITT = Pattern.compile("^[a-z][a-z0-9_]{1,39}$");
     private static final int MAX_SCHRITTE = 40;
@@ -92,8 +104,19 @@ public class WerkstattService {
 
     /** Was der Werkstatt-Dienst zur Abnahme einer Box schickt. */
     public record AbnahmeDesDienstes(String fassung, String hostSchluessel, String lanNetz, Map<String, String> belege,
-            String passwortAge, String notiz) {
+            String passwortAge, String notiz, String geraet, Map<String, String> angaben) {
+
+        /** Die Abnahme einer Mango, wie bisher. */
+        public AbnahmeDesDienstes(String fassung, String hostSchluessel, String lanNetz, Map<String, String> belege,
+                String passwortAge, String notiz) {
+            this(fassung, hostSchluessel, lanNetz, belege, passwortAge, notiz, null, null);
+        }
     }
+
+    /** Höchstens so viele Angaben trägt eine Abnahme, und so lang ist jede. */
+    static final int MAX_ANGABEN = 12;
+    static final int MAX_ANGABE = 200;
+    private static final java.util.regex.Pattern ANGABE_NAME = java.util.regex.Pattern.compile("^[a-z][a-z0-9_]{0,39}$");
 
     /** Höchstens so lang ist ein Beleg einer Prüfung. */
     static final int MAX_BELEG = 2000;
@@ -304,6 +327,12 @@ public class WerkstattService {
         }
         String text = notiz(notiz);
         Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
+        if (EDGE_INDUSTRIE.equals(b.boxArt())) {
+            // Die Prüfliste von Hand ist die der Mango; die des PFC200 belegt nur der Dienst.
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Die Abnahme eines PFC200 (Edge Industrie) schreibt nur der Werkstatt-Dienst, mit einem Beleg je "
+                            + "Prüfung. Von Hand gibt es sie nicht.");
+        }
         if (!EDGE_LIGHT.equals(b.boxArt())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Eine Abnahme gibt es bisher nur für das Edge Light. Für die Docker-Box fehlt der Wartungstunnel "
@@ -336,24 +365,41 @@ public class WerkstattService {
      * dort festgehalten.
      */
     public Abnahme abnahmeDesDienstes(String edgeRef, AbnahmeDesDienstes a, Akteur dienst) {
+        // Das Gerät sagt das Register (dort trug der Dienst die Box beim Code ein).
+        // Die Prüfliste ist die dieses Geräts; nennt der Dienst ein anderes, stimmt etwas nicht.
+        Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
+        if (!EDGE_LIGHT.equals(b.boxArt()) && !EDGE_INDUSTRIE.equals(b.boxArt())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Eine Abnahme gibt es bisher nur für das Edge Light und für Edge Industrie.");
+        }
+        String geraet = geraet(b.boxArt());
+        if (a.geraet() != null && !a.geraet().isBlank() && !geraet.equals(a.geraet().trim())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Der Dienst nennt das Gerät " + a.geraet().trim()
+                    + ", im Register steht " + edgeRef + " als " + b.boxArt() + ".");
+        }
+        List<String> liste = WerkstattPruefungen.fuer(geraet);
         Map<String, String> belege = a.belege() == null ? Map.of() : a.belege();
-        List<String> unbekannt = WerkstattPruefungen.unbekannt(List.copyOf(belege.keySet()));
+        List<String> unbekannt = WerkstattPruefungen.unbekannt(geraet, List.copyOf(belege.keySet()));
         if (!unbekannt.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Unbekannte Prüfung: " + String.join(", ", unbekannt) + ".");
         }
-        List<String> leer = WerkstattPruefungen.ALLE.stream()
+        List<String> leer = liste.stream()
                 .filter(p -> belege.get(p) == null || belege.get(p).isBlank()).toList();
         // Übergangsfrist (Entscheid des Kapitäns vom 15.11.2026 zu PR #1885): ein Dienst vor
         // Einrichtungs-WLAN liefert alle Belege außer einrichtung_wlan_bereit; bis zur Frist
         // geht die Abnahme trotzdem durch (dienstFassungVorEinrichtungWlan kennzeichnet sie).
-        if (!leer.isEmpty() && !WerkstattPruefungen.uebergangGilt(leer, fernwartung.jetzt())) {
+        // Nur für die Mango: Die Liste des PFC200 kennt die Prüfung nicht.
+        boolean uebergang = WerkstattRegel.MANGO.equals(geraet)
+                && WerkstattPruefungen.uebergangGilt(leer, fernwartung.jetzt());
+        if (!leer.isEmpty() && !uebergang) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Abnahme braucht für jede Prüfung der Werkstatt-Regel einen Beleg. Es fehlt: "
                             + String.join(", ", leer) + ".");
         }
+        String angabenJson = angaben(a.angaben());
         Map<String, String> geordnet = new LinkedHashMap<>();
-        for (String p : WerkstattPruefungen.ALLE) {
+        for (String p : liste) {
             String roh = belege.get(p);
             if (roh == null) {
                 continue; // nur einrichtung_wlan_bereit kann hier fehlen (s.o., Übergangsfrist)
@@ -373,11 +419,6 @@ public class WerkstattService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
         }
         String text = notiz(a.notiz());
-        Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
-        if (!EDGE_LIGHT.equals(b.boxArt())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "Eine Abnahme gibt es bisher nur für das Edge Light.");
-        }
         EinloesungRepository.Einloesung e = einloesungen.einloesungen(edgeRef).stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         edgeRef + " hat keinen Einmal-Code eingelöst; ohne Einlösung keine Abnahme des Dienstes."));
@@ -397,7 +438,7 @@ public class WerkstattService {
         }
         Fenster probe = probeFensterZu(edgeRef, e.fensterId());
         String probeJson = schreibe(probeBeleg(probe));
-        String pruefungenJson = schreibe(WerkstattPruefungen.ALLE);
+        String pruefungenJson = schreibe(liste);
         String belegeJson = schreibe(geordnet);
         return repo.schreibend(() -> {
             if (!lan.text().equals(b.lanNetz())) {
@@ -405,7 +446,7 @@ public class WerkstattService {
             }
             UUID id = repo.abnahmeDesDienstesAnlegen(b.id(), edgeRef, a.hostSchluessel(), a.fassung(),
                     tunnel.adresse(), lan.text(), pruefungenJson, probeJson, belegeJson, e.freigabeId(), e.id(),
-                    passwort, text, dienst.sub(), dienst.name());
+                    passwort, angabenJson, text, dienst.sub(), dienst.name());
             return repo.abnahme(id).orElseThrow();
         });
     }
@@ -500,6 +541,36 @@ public class WerkstattService {
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("schritte von " + b.edgeRef() + " ist kein JSON-Objekt", e);
         }
+    }
+
+    /**
+     * Die Angaben einer Abnahme als JSON ({@code null}, wenn es keine gibt):
+     * was an der Abnahme steht, ohne eine Prüfung zu sein (beim PFC200
+     * Bestellnummer, Firmware, Seriennummer). Wenige kurze Werte unter
+     * einfachen Namen; kein Schlüsselmaterial.
+     */
+    private String angaben(Map<String, String> roh) {
+        if (roh == null || roh.isEmpty()) {
+            return null;
+        }
+        if (roh.size() > MAX_ANGABEN) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Eine Abnahme trägt höchstens " + MAX_ANGABEN + " Angaben.");
+        }
+        Map<String, String> geordnet = new java.util.TreeMap<>();
+        for (Map.Entry<String, String> e : roh.entrySet()) {
+            String wert = e.getValue() == null ? "" : e.getValue().trim();
+            if (e.getKey() == null || !ANGABE_NAME.matcher(e.getKey()).matches() || wert.length() > MAX_ANGABE
+                    || wert.contains("PRIVATE KEY") || wert.contains("AGE-SECRET-KEY") || wert.contains("-----BEGIN")) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Die Angabe „" + e.getKey()
+                        + "“ hat keinen einfachen Namen, ist länger als " + MAX_ANGABE
+                        + " Zeichen oder trägt Schlüsselmaterial.");
+            }
+            if (!wert.isEmpty()) {
+                geordnet.put(e.getKey(), wert);
+            }
+        }
+        return geordnet.isEmpty() ? null : schreibe(geordnet);
     }
 
     private String schreibe(Object wert) {

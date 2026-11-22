@@ -16,7 +16,14 @@ import { kennungWieGedruckt, koppelLink } from './koppelLink';
 
 // ── Formen der API (/api/v1/admin/werkstatt) ────────────────────────────────
 
-export type BoxArt = 'edge-light' | 'edge-app';
+export type BoxArt = 'edge-light' | 'edge-app' | 'edge-industrie';
+
+/** Wie das Gerät einer Box des Registers kurz heißt (Listen): die Mango, der WAGO PFC200 (Edge Industrie), sonst die Docker-Box. */
+export function geraetName(boxArt: string): string {
+  if (boxArt === 'edge-light') return 'Mango';
+  if (boxArt === 'edge-industrie') return 'PFC200';
+  return 'Docker-Box';
+}
 
 export interface WerkstattSchrittStand {
   /** ISO-Zeit, zu der der Haken gesetzt wurde. */
@@ -150,6 +157,28 @@ export const PRUEFUNGEN = [
 ] as const;
 
 export type PruefungId = (typeof PRUEFUNGEN)[number]['id'];
+
+/**
+ * Die Prüfungen für den WAGO PFC200 (Edge Industrie): `geraete.pfc200` im selben Vektor, Zwilling von
+ * `WerkstattPruefungen.PFC200`. Ohne Prüfung der SPS und der Firmware; ihr Stand steht als Angabe an der Abnahme.
+ */
+export const PRUEFUNGEN_PFC200 = [
+  { id: 'zugaenge', text: 'Drei eigene Passwörter gesetzt (root, admin, user), jedes Werkspasswort abgewiesen, Anmeldung mit Passwort aus' },
+  { id: 'notfall_schluessel', text: 'Genau ein dauerhafter Schlüssel auf dem Gerät, und sein Fingerabdruck ist der des Notfall-Schlüssels' },
+  { id: 'tunnel_status', text: 'Tunnel eingerichtet: Handshake, Port 2222 nur im Tunnel, Abholer läuft' },
+  { id: 'anmeldeprobe', text: 'Anmeldung über Portal und Tunnel im Fenster der Werkstatt-Probe gelungen' },
+  { id: 'host_schluessel', text: 'Host-Schlüssel auf zwei Wegen gelesen und gleich' },
+  { id: 'fenster_zu', text: 'Fenster geschlossen, der neue Versuch endet mit Connection timed out' },
+  { id: 'netze', text: 'Buchsen getrennt: X1 Kundennetz, X2 Anlagennetz, keine Weiterleitung' },
+  { id: 'dienste_zu', text: 'Firewall ein, nur die Soll-Dienste offen, Docker aus, Start nur vom internen Speicher' },
+  { id: 'neustart', text: 'Neustart-Probe: Tunnel wieder oben, dieselbe Referenz, derselbe Host-Schlüssel, Schalter auf RUN' },
+  { id: 'update_bereit', text: 'Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Industrie' },
+] as const;
+
+/** Die Prüfliste eines Geräts der Werkstatt (`pfc200`; sonst die Mango). */
+export function pruefungenFuer(geraet: string | null | undefined): readonly { id: string; text: string }[] {
+  return geraet === 'pfc200' ? PRUEFUNGEN_PFC200 : PRUEFUNGEN;
+}
 
 // ── Beschriftung des Gehäuses (Entscheid 8, geändert am 26.10.2026) ─────────
 

@@ -309,8 +309,8 @@ func dienstLaufen(log *slog.Logger) error {
 			Zeiten:     pfc200.VorgabeZeiten,
 			Log:        log.With("logger", "pfc200"),
 		}
-		if ptl != nil {
-			pk.Portal = ptl
+		if c, ok := ptl.(portal.Client); ok {
+			pk.Portal = c
 		}
 		if probe != nil {
 			pk.Probe = probe

@@ -84,8 +84,29 @@ Der Werkstatt-Dienst richtet neben der Mango auch einen WAGO PFC200 750-8212 ein
 Schritte, Belege und Einstellungen stehen im [README des Dienstes](../services/werkstatt-dienst/README.md#ein-lauf-am-wago-pfc200-edge-industrie); hier steht, was ein Mensch dafür tut und was der Lauf nicht tut.
 
 **Stand.**
-Der Dienst kann den Lauf (ausgeschaltet, bis `VP_WERKSTATT_GERAETE=mango,pfc200` gesetzt ist), mit einer Freigabe als Datei.
-Die Freigabe aus dem Portal, die Abnahme mit der Prüfliste des PFC200 und die Bildschirme im Portal fehlen noch.
+Der Dienst kann den Lauf (ausgeschaltet, bis `VP_WERKSTATT_GERAETE=mango,pfc200` gesetzt ist), und die API kennt das Gerät `pfc200`: Freigabe, Einmal-Code und Abnahme.
+Die Bildschirme im Portal (Kachel, Lauf-Seite mit den Handgriffen, Box-Seite) fehlen noch; bis dahin zeigt die Seite einen Lauf am PFC200 nur über die Ansicht des Dienstes.
+
+**Freigabe, Code und Abnahme in der API.**
+Die Werkstatt-Regel hat je Gerät eine eigene Zeile (`werkstatt_freigabe.box_art`: `mango` oder `pfc200`, Kennung `JJJJ-MM-pfc200-N`).
+Für den PFC200 nimmt sie die neueste zuweisbare signierte Edge-Industrie-Fassung (Linie `edge-industrie-JJJJ.MM.N`, Programm für linux/arm), deren signiertes Manifest den Skriptstand (`skripte`) und das Tunnel-Programm (`wartung`) nennt.
+Nennt die neueste Fassung eines davon nicht, wartet die Werkstatt für den PFC200 mit diesem Grund; eine ältere Fassung nimmt sie nicht, und die Mango läuft weiter.
+Ein OpenWrt-Abbild hat die Zeile nicht: Die Firmware des PFC200 fasst die Werkstatt nicht an.
+Anhalten, Fortsetzen und die Tagesgrenze gelten für beide Geräte zusammen (ein Schalter, ein Zähler).
+
+| Route | Für den PFC200 |
+|---|---|
+| `GET /api/v1/werkstatt-dienst/freigabe?boxArt=pfc200` | die laufende Zeile mit `edge_industrie` (Fassung, Quelle, Prüfsummen von Programm, Skriptstand, Tunnel-Programm), ohne `openwrt` und `edge_light` |
+| `POST /api/v1/werkstatt-dienst/codes` mit `boxArt: pfc200` | Code unter dieser Zeile; die Box steht als `edge-industrie` im Register. Steht die Referenz dort schon als anderes Gerät: 409 |
+| `POST /api/v1/werkstatt/einloesen` | unverändert; eingelöst wird nur unter einer Zeile des Geräts, für das der Code ausgegeben wurde |
+| `POST /api/v1/werkstatt-dienst/abnahmen/{ref}` | die zehn Prüfungen des PFC200 (unten), jede mit Beleg, ohne Übergangsfrist; `passwortAge` trägt die drei Zugänge; `angaben` trägt Bestellnummer, Firmware und Seriennummer als Angabe |
+| `GET /api/v1/admin/werkstatt/regel?geraet=pfc200`, `…/freigaben?geraet=pfc200` | Stand und Zeilen für den PFC200; ohne `geraet` bleibt beides bei der Mango |
+
+Die Prüfliste des PFC200 steht im selben Vektor wie die der Mango, unter `geraete.pfc200` in [werkstatt-pruefungen.json](contracts/werkstatt-pruefungen.json): `zugaenge`, `notfall_schluessel`, `tunnel_status`, `anmeldeprobe`, `host_schluessel`, `fenster_zu`, `netze`, `dienste_zu`, `neustart`, `update_bereit`.
+Sie hat keine Prüfung für die SPS und keine für die Firmware, und kein Einrichtungs-WLAN.
+Welche Liste für eine Abnahme gilt, sagt die Box-Art im Register, nicht der Dienst.
+Zwillinge: `WerkstattPruefungen.PFC200` (API), `PRUEFUNGEN_PFC200` in `werkstatt.ts` (Portal), `pfc200.Pruefungen` (Dienst); alle vier gemeinsam ändern.
+Fernlauf und Nachtlauf gibt es für eine Edge-Industrie-Box noch nicht: Die Fernlauf-Regel gilt nur für eine Edge-Light-Box (Box-Art im Register oder gemeldete Fassung der Linie `edge-light-`).
 
 **Handgriffe am Gerät.**
 

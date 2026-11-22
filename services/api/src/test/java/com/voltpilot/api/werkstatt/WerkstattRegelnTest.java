@@ -33,6 +33,26 @@ class WerkstattRegelnTest {
         assertThat(ids).isNotEmpty().isEqualTo(WerkstattPruefungen.ALLE);
     }
 
+    /** Die Liste des PFC200 steht im selben Vektor unter {@code geraete.pfc200}. */
+    @Test
+    void diePruefungenDesPfc200SindDieDesVektors() throws Exception {
+        JsonNode v = new ObjectMapper().readTree(Files.readString(
+                Path.of("..", "..", "docs", "contracts", "werkstatt-pruefungen.json")));
+        List<String> ids = new ArrayList<>();
+        v.path("geraete").path("pfc200").path("pruefungen").forEach(p -> ids.add(p.path("id").asText()));
+        assertThat(ids).isNotEmpty().isEqualTo(WerkstattPruefungen.PFC200);
+        assertThat(WerkstattPruefungen.fuer(WerkstattRegel.PFC200)).isEqualTo(WerkstattPruefungen.PFC200);
+        assertThat(WerkstattPruefungen.fuer(WerkstattRegel.MANGO)).isEqualTo(WerkstattPruefungen.ALLE);
+        // Keine Prüfung für SPS oder Firmware, kein Einrichtungs-WLAN.
+        assertThat(WerkstattPruefungen.PFC200).noneMatch(p -> p.contains("sps") || p.contains("koppel")
+                || p.contains("firmware") || p.contains("wlan"));
+        assertThat(WerkstattPruefungen.fehlend(WerkstattRegel.PFC200, List.of("zugaenge", "neustart")))
+                .containsExactly("notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel",
+                        "fenster_zu", "netze", "dienste_zu", "update_bereit");
+        assertThat(WerkstattPruefungen.unbekannt(WerkstattRegel.PFC200, List.of("zugaenge", "root_passwort",
+                "lan_netz"))).containsExactly("lan_netz", "root_passwort");
+    }
+
     @Test
     void fehlendUndUnbekanntInDerReihenfolgeDerRegel() {
         assertThat(WerkstattPruefungen.fehlend(List.of("neustart", "root_passwort")))

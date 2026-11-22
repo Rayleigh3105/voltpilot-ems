@@ -25,6 +25,42 @@ public final class WerkstattPruefungen {
             "update_bereit",
             "einrichtung_wlan_bereit");
 
+    /**
+     * Die Prüfungen für den WAGO PFC200 (Edge Industrie), in der Reihenfolge
+     * seiner Regel ({@code geraete.pfc200} im Vektor). Ohne Prüfung der SPS
+     * (Programm, Koppelprobe) und ohne Prüfung der Firmware: Ihr Stand steht
+     * als Angabe an der Abnahme. Statt des einen Root-Passworts die drei
+     * Zugänge, statt des LAN-Netzes die zwei getrennten Netze und die Dienste
+     * je Buchse; ein Einrichtungs-WLAN hat das Gerät nicht.
+     */
+    public static final List<String> PFC200 = List.of(
+            "zugaenge",
+            "notfall_schluessel",
+            "tunnel_status",
+            "anmeldeprobe",
+            "host_schluessel",
+            "fenster_zu",
+            "netze",
+            "dienste_zu",
+            "neustart",
+            "update_bereit");
+
+    /** Die Prüfliste eines Geräts ({@code pfc200}; jedes andere Wort: die Mango). */
+    public static List<String> fuer(String geraet) {
+        return WerkstattRegel.PFC200.equals(geraet) ? PFC200 : ALLE;
+    }
+
+    /** Was in {@code abgehakt} für das Gerät fehlt, in der Reihenfolge seiner Regel. */
+    public static List<String> fehlend(String geraet, Collection<String> abgehakt) {
+        return fuer(geraet).stream().filter(p -> !abgehakt.contains(p)).toList();
+    }
+
+    /** Kennungen, die es in der Liste des Geräts nicht gibt. */
+    public static List<String> unbekannt(String geraet, Collection<String> abgehakt) {
+        List<String> liste = fuer(geraet);
+        return abgehakt.stream().filter(p -> !liste.contains(p)).distinct().sorted().toList();
+    }
+
     /** Die jüngste Prüfung (PR #1885, S1); die einzige, die während der Übergangsfrist fehlen darf. */
     public static final String EINRICHTUNG_WLAN_BEREIT = "einrichtung_wlan_bereit";
 

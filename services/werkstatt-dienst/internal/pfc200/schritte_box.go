@@ -18,6 +18,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/durchreiche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
@@ -292,7 +293,7 @@ func (l *Lauf) einloesen(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg,
 	if !pubMuster.MatchString(l.tunnelPub) || l.host == "" {
 		return nil, errors.New("Tunnel-Schlüssel oder Host-Schlüssel fehlen (Schritte tunnel_schluessel, erkennen)")
 	}
-	c, err := l.k.Portal.CodeHolen(ctx, l.ref, false)
+	c, err := l.k.Portal.CodeHolenFuer(ctx, l.ref, false, freigabe.PFC200)
 	if err != nil {
 		return nil, fmt.Errorf("Einmal-Code: %w", err)
 	}

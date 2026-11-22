@@ -770,8 +770,10 @@ export function releaseBoxArt(release: Pick<EdgeUpdatesRelease, 'boxArt'>): BoxA
  * N2 (Nebenfund vp-erstverbindung-update-konzept): die Werkstatt nennt die
  * Bauart `edge-light`/`edge-app` (`WerkstattBox.boxArt`), das Register
  * `light`/`docker` - bislang bildete nichts das eine auf das andere ab.
+ * Der WAGO PFC200 steht in der Werkstatt als `edge-industrie`, im Register als `industrie`.
  */
-export function werkstattBoxArt(art: 'edge-light' | 'edge-app'): BoxArt {
+export function werkstattBoxArt(art: 'edge-light' | 'edge-app' | 'edge-industrie'): BoxArt {
+  if (art === 'edge-industrie') return 'industrie';
   return art === 'edge-light' ? 'light' : 'docker';
 }
 

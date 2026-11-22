@@ -8393,7 +8393,14 @@ paths:
   /api/v1/admin/werkstatt/freigaben:
     get:
       tags: [werkstatt]
-      summary: Alle Freigaben der Werkstatt, neueste zuerst.
+      summary: Die Freigaben eines Geräts der Werkstatt, neueste zuerst.
+      description: >
+        Ohne `geraet` die Freigaben der Mango, wie bisher (jede Zeile trägt
+        `openwrt`). Mit `geraet=pfc200` die des WAGO PFC200 (Edge Industrie):
+        Dort ist `openwrt` null, und `edgeLight` trägt die
+        Edge-Industrie-Fassung mit `wartungSha256` (Tunnel-Programm).
+      parameters:
+        - { name: geraet, in: query, required: false, schema: { type: string, enum: [mango, pfc200], default: mango } }
       responses:
         "200": { description: Die Freigaben., content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/WerkstattFreigabe" } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -8406,7 +8413,13 @@ paths:
         Läuft die Werkstatt, ist sie angehalten oder wartet sie (keine passende
         Fassung, Tagesgrenze)? Was sie aufspielt: Edge Light als neueste
         zuweisbare signierte Fassung mit Prüfsummen aus dem signierten Manifest,
-        OpenWrt fest im Code. Legt nichts an.
+        OpenWrt fest im Code. Legt nichts an. Mit `geraet=pfc200` der Stand für
+        den WAGO PFC200: die neueste Edge-Industrie-Fassung, deren Manifest
+        Skriptstand und Tunnel-Programm nennt; `openwrt` ist dann null, und
+        `edgeLight` trägt diese Fassung mit `wartungSha256`. Anhalten,
+        Fortsetzen und die Tagesgrenze gelten für beide Geräte zusammen.
+      parameters:
+        - { name: geraet, in: query, required: false, schema: { type: string, enum: [mango, pfc200], default: mango } }
       responses:
         "200": { description: Der Stand., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattRegel" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -8451,9 +8464,14 @@ paths:
         Regel legt sie je Berliner Tag und Fassung selbst an (neueste zuweisbare
         signierte Edge-Light-Fassung, OpenWrt fest im Code, Obergrenze = Rest der
         Tagesgrenze); im Übergang gilt eine laufende Freigabe von Hand. Nur die
-        Rolle `werkstatt-dienst`.
+        Rolle `werkstatt-dienst`. Je Gerät eine eigene Zeile: Mit
+        `boxArt=pfc200` (WAGO PFC200, Edge Industrie) fehlen `openwrt` und
+        `edge_light`, dafür trägt `edge_industrie` die neueste zuweisbare
+        signierte Edge-Industrie-Fassung, deren Manifest Skriptstand und
+        Tunnel-Programm nennt. Die Mango bekommt `openwrt` und `edge_light` und
+        kein `edge_industrie`.
       parameters:
-        - { name: boxArt, in: query, required: false, schema: { type: string, enum: [mango], default: mango } }
+        - { name: boxArt, in: query, required: false, schema: { type: string, enum: [mango, pfc200], default: mango } }
       responses:
         "200":
           description: Die laufende Freigabe.
@@ -8461,11 +8479,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [schema, kennung, box_art, erteilt_von, erteilt_am, gueltig_bis, obergrenze, openwrt, edge_light]
+                required: [schema, kennung, box_art, erteilt_von, erteilt_am, gueltig_bis, obergrenze]
                 properties:
                   schema: { type: string, enum: [vp-werkstatt-freigabe.v1] }
                   kennung: { type: string, example: 2026-11-mango-1 }
-                  box_art: { type: string, enum: [mango] }
+                  box_art: { type: string, enum: [mango, pfc200] }
                   erteilt_von: { type: string }
                   erteilt_am: { type: string, format: date-time }
                   gueltig_bis: { type: string, format: date-time }
@@ -8481,16 +8499,16 @@ paths:
                       skripte_sha256: { type: string }
                   edge_industrie:
                     type: object
-                    description: "Feld des Formats für eine Freigabe an den WAGO PFC200 (dort statt openwrt und edge_light); fehlt hier immer, die Route liefert bisher nur Freigaben für die Mango."
+                    description: Nur bei box_art pfc200 (dann Pflicht); openwrt und edge_light sind Pflicht bei box_art mango.
                     properties:
                       fassung: { type: string, example: edge-industrie-2026.11.0 }
                       quelle: { type: string }
                       programm_sha256: { type: string }
                       skripte_sha256: { type: string }
-                      wartung_sha256: { type: string, description: "Das Tunnel-Programm vp-wartung-linux-arm." }
+                      wartung_sha256: { type: string, description: "Das Tunnel-Programm vp-wartung-linux-arm, aus dem signierten Manifest (wartung)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Keine Freigabe: angehalten, keine passende Fassung oder Tagesgrenze erreicht (Grund in `message`); oder eine andere Box-Art als mango." }
+        "404": { description: "Keine Freigabe: angehalten, keine passende Fassung oder Tagesgrenze erreicht (Grund in `message`); oder eine andere Box-Art als mango und pfc200." }
   /api/v1/werkstatt-dienst/codes:
     post:
       tags: [werkstatt-dienst]
@@ -8504,6 +8522,10 @@ paths:
         Dann darf die Einlösung den festgehaltenen Geräteschlüssel und den
         Tunnel-Schlüssel ersetzen. Die Box kommt ins Werkstatt-Register. Braucht
         einen eingerichteten Techniker-Zugang `voltpilot.werkstatt.techniker-zugang`.
+        `boxArt` nennt das Gerät: Der Code gilt unter der laufenden Freigabe
+        dieses Geräts, und die Box kommt mit seiner Box-Art ins Register
+        (`mango`: edge-light, `pfc200`: edge-industrie). Steht sie dort schon als
+        ein anderes Gerät, gibt es keinen Code.
       requestBody:
         required: true
         content:
@@ -8514,6 +8536,7 @@ paths:
               properties:
                 edgeRef: { type: string, example: edge-k7m2xq3 }
                 tausch: { type: boolean, default: false }
+                boxArt: { type: string, enum: [mango, pfc200], default: mango }
       responses:
         "201":
           description: Der Code - nur in dieser Antwort (Cache-Control no-store).
@@ -8529,7 +8552,8 @@ paths:
                   tausch: { type: boolean }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { description: Nicht freigegeben, gekoppelt, Zertifikat schon ausgestellt, Obergrenze erreicht oder kein Techniker-Zugang. }
+        "400": { description: Unbekanntes Gerät in boxArt. }
+        "409": { description: "Nicht freigegeben, gekoppelt, Zertifikat schon ausgestellt, Obergrenze erreicht, kein Techniker-Zugang, oder die Box steht im Register als ein anderes Gerät." }
         "422": { description: Keine erzeugte Kennung mit gültigem Prüfzeichen. }
   /api/v1/werkstatt-dienst/einloesungen/{edgeRef}:
     get:
@@ -8617,6 +8641,13 @@ paths:
         die letzte Einlösung der Box: Host-Schlüssel und Fassung wie beim
         Einlösen gemeldet, Tunnel-Schlüssel wie hinterlegt, das Probe-Fenster der
         Einlösung war offen und ist zu. Append-only, quelle=dienst.
+        Welche Prüfliste gilt, sagt die Box-Art im Register: Für eine
+        Edge-Industrie-Box (WAGO PFC200) sind es die zehn Prüfungen unter
+        `geraete.pfc200` in werkstatt-pruefungen.json, ohne Übergangsfrist;
+        `passwortAge` trägt dann die drei Zugänge in einem age-Text. `geraet`
+        ist nur Gegenprobe (weicht es vom Register ab: 409). `angaben` steht an
+        der Abnahme, ohne Prüfung zu sein (beim PFC200 Bestellnummer, Firmware,
+        Seriennummer).
       parameters:
         - { name: edgeRef, in: path, required: true, schema: { type: string } }
       requestBody:
@@ -8633,8 +8664,13 @@ paths:
                 belege: { type: object, additionalProperties: { type: string, maxLength: 2000 } }
                 passwortAge: { type: string, maxLength: 4000 }
                 notiz: { type: string, maxLength: 500, nullable: true }
-                geraet: { type: string, nullable: true, description: "Schickt der Dienst nur für einen PFC200 (pfc200). Bisher nimmt die API nur Abnahmen einer Mango an: ein anderes Gerät als mango ergibt 422." }
-                angaben: { type: object, nullable: true, additionalProperties: { type: string }, description: "Schickt der Dienst nur für einen PFC200 (Bestellnummer, Firmware, Seriennummer). Bisher hält die API sie nicht fest: nicht leer ergibt 422." }
+                geraet: { type: string, enum: [mango, pfc200], nullable: true }
+                angaben:
+                  type: object
+                  nullable: true
+                  maxProperties: 12
+                  propertyNames: { pattern: "^[a-z][a-z0-9_]{0,39}$" }
+                  additionalProperties: { type: string, maxLength: 200 }
       responses:
         "201":
           description: Die Abnahme (ohne das verschlüsselte Passwort).
@@ -8654,8 +8690,8 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Nicht im Register. }
-        "409": { description: Ohne Einlösung, anderer Host-Schlüssel, andere Fassung, anderer Tunnel-Schlüssel oder Probe-Fenster noch offen. }
-        "422": { description: "Beleg fehlt oder zu lang, Passwort nicht mit age verschlüsselt, LAN-Netz abgelehnt, keine Edge-Light-Box, ein anderes Gerät als mango oder Angaben." }
+        "409": { description: "Ohne Einlösung, anderer Host-Schlüssel, andere Fassung, anderer Tunnel-Schlüssel, Probe-Fenster noch offen, oder `geraet` nennt ein anderes Gerät als das Register." }
+        "422": { description: "Beleg fehlt oder zu lang, Passwort nicht mit age verschlüsselt, LAN-Netz abgelehnt, Angabe abgelehnt, weder Edge-Light- noch Edge-Industrie-Box." }
   /api/v1/werkstatt-dienst/gehaeuse/{edgeRef}:
     put:
       tags: [werkstatt-dienst]

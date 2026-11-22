@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { qrCode } from './qrCode';
-import { beschriftung, PRUEFUNGEN, VERSAND_SATZ } from './werkstatt';
+import { beschriftung, geraetName, PRUEFUNGEN, PRUEFUNGEN_PFC200, pruefungenFuer, VERSAND_SATZ } from './werkstatt';
 
 describe('Prüfungen der Werkstatt-Regel', () => {
   it('sind dieselben wie im Vektor, den auch die API liest', () => {
@@ -11,6 +11,26 @@ describe('Prüfungen der Werkstatt-Regel', () => {
     ) as { pruefungen: { id: string; text: string }[] };
     expect(PRUEFUNGEN.map((p) => p.id)).toEqual(v.pruefungen.map((p) => p.id));
     expect(PRUEFUNGEN.map((p) => p.text)).toEqual(v.pruefungen.map((p) => p.text));
+  });
+
+  it('hat für den PFC200 die Liste des Vektors, ohne SPS, Firmware und Einrichtungs-WLAN', () => {
+    const v = JSON.parse(
+      readFileSync(resolve(__dirname, '../../../docs/contracts/werkstatt-pruefungen.json'), 'utf8'),
+    ) as { geraete: { pfc200: { pruefungen: { id: string; text: string }[] } } };
+    expect(PRUEFUNGEN_PFC200.map((p) => p.id)).toEqual(v.geraete.pfc200.pruefungen.map((p) => p.id));
+    expect(PRUEFUNGEN_PFC200.map((p) => p.text)).toEqual(v.geraete.pfc200.pruefungen.map((p) => p.text));
+    expect(PRUEFUNGEN_PFC200.some((p) => /sps|koppel|firmware|wlan/.test(p.id))).toBe(false);
+    expect(pruefungenFuer('pfc200')).toBe(PRUEFUNGEN_PFC200);
+    expect(pruefungenFuer('mango')).toBe(PRUEFUNGEN);
+    expect(pruefungenFuer(undefined)).toBe(PRUEFUNGEN);
+  });
+});
+
+describe('Gerät einer Box des Registers', () => {
+  it('heißt Mango, PFC200 oder Docker-Box; ein PFC200 ist nie eine Docker-Box', () => {
+    expect(geraetName('edge-light')).toBe('Mango');
+    expect(geraetName('edge-industrie')).toBe('PFC200');
+    expect(geraetName('edge-app')).toBe('Docker-Box');
   });
 });
 

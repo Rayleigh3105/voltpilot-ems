@@ -1,5 +1,6 @@
 package com.voltpilot.api.werkstatt;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -27,7 +28,7 @@ public class FreigabeRepository {
     private static final String SPALTEN = "id, kennung, box_art, gueltig_ab, gueltig_bis, obergrenze, "
             + "openwrt_fassung, openwrt_datei, openwrt_sha256, openwrt_quelle, edge_fassung, edge_quelle, "
             + "edge_programm_sha256, edge_skripte_sha256, notiz, erteilt_am, erteilt_von, erteilt_von_name, "
-            + "beendet_am, beendet_von, beendet_von_name, quelle, edge_release_seq ";
+            + "beendet_am, beendet_von, beendet_von_name, quelle, edge_release_seq, edge_wartung_sha256 ";
 
     /** Eine Zeile von Hand (bis 16.11.2026, „Werkstatt freigeben“). */
     public static final String VON_HAND = "formular";
@@ -38,12 +39,27 @@ public class FreigabeRepository {
     public record Abbild(String fassung, String datei, String sha256, String quelle) {
     }
 
-    /** Die Edge-Light-Fassung einer Freigabe: Programm (Bauart der Box) und Skriptstand. */
-    public record Programm(String fassung, String quelle, String programmSha256, String skripteSha256) {
+    /**
+     * Die Fassung der Box-Software einer Freigabe: Programm (Bauart der Box) und
+     * Skriptstand - Edge Light für die Mango, Edge Industrie für den PFC200.
+     * {@code wartungSha256}: das Tunnel-Programm {@code vp-wartung}, nur beim
+     * PFC200 (die Mango richtet ihren Tunnel mit Skripten ein; dort {@code null}
+     * und nicht in der Antwort).
+     */
+    public record Programm(String fassung, String quelle, String programmSha256, String skripteSha256,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String wartungSha256) {
+
+        /** Eine Edge-Light-Fassung (ohne Tunnel-Programm). */
+        public Programm(String fassung, String quelle, String programmSha256, String skripteSha256) {
+            this(fassung, quelle, programmSha256, skripteSha256, null);
+        }
     }
 
     /**
-     * Eine Zeile. {@code quelle}: {@link #VON_HAND} oder {@link #REGEL};
+     * Eine Zeile. {@code boxArt}: das Gerät ({@code mango} oder {@code pfc200});
+     * {@code openwrt} ist beim PFC200 {@code null} (kein Abbild: die Firmware
+     * des Geräts fasst die Werkstatt nicht an), {@code edgeLight} trägt dann die
+     * Edge-Industrie-Fassung. {@code quelle}: {@link #VON_HAND} oder {@link #REGEL};
      * {@code edgeReleaseSeq} das Release im Register, aus dessen signiertem
      * Manifest die Regel Edge Light genommen hat (von Hand: {@code null}).
      */
@@ -116,17 +132,22 @@ public class FreigabeRepository {
                 praefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
     }
 
-    /** Eine Zeile der Regel anlegen ({@link #REGEL}); erteilt am {@code gueltigAb}. */
+    /**
+     * Eine Zeile der Regel anlegen ({@link #REGEL}); erteilt am {@code gueltigAb}.
+     * {@code o} ist beim PFC200 {@code null}.
+     */
     public UUID anlegen(String kennung, String boxArt, Instant gueltigAb, Instant gueltigBis, int obergrenze,
             Abbild o, Programm e, long edgeReleaseSeq, String notiz, String akteur, String akteurName) {
         return jdbc.queryForObject("INSERT INTO werkstatt_freigabe (kennung, box_art, gueltig_ab, gueltig_bis, "
                         + "obergrenze, openwrt_fassung, openwrt_datei, openwrt_sha256, openwrt_quelle, edge_fassung, "
                         + "edge_quelle, edge_programm_sha256, edge_skripte_sha256, notiz, erteilt_am, erteilt_von, "
-                        + "erteilt_von_name, quelle, edge_release_seq) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '" + REGEL + "', ?) RETURNING id",
+                        + "erteilt_von_name, quelle, edge_release_seq, edge_wartung_sha256) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '" + REGEL + "', ?, ?) RETURNING id",
                 UUID.class, kennung, boxArt, Timestamp.from(gueltigAb), Timestamp.from(gueltigBis), obergrenze,
-                o.fassung(), o.datei(), o.sha256(), o.quelle(), e.fassung(), e.quelle(), e.programmSha256(),
-                e.skripteSha256(), notiz, Timestamp.from(gueltigAb), akteur, akteurName, edgeReleaseSeq);
+                o == null ? null : o.fassung(), o == null ? null : o.datei(), o == null ? null : o.sha256(),
+                o == null ? null : o.quelle(), e.fassung(), e.quelle(), e.programmSha256(),
+                e.skripteSha256(), notiz, Timestamp.from(gueltigAb), akteur, akteurName, edgeReleaseSeq,
+                e.wartungSha256());
     }
 
     // ── Anhalten und Fortsetzen (werkstatt_betrieb, nur anhängen) ─────────
@@ -160,10 +181,12 @@ public class FreigabeRepository {
                 instant(rs, "gueltig_ab"),
                 instant(rs, "gueltig_bis"),
                 rs.getInt("obergrenze"),
-                new Abbild(rs.getString("openwrt_fassung"), rs.getString("openwrt_datei"),
-                        rs.getString("openwrt_sha256"), rs.getString("openwrt_quelle")),
+                rs.getString("openwrt_fassung") == null ? null
+                        : new Abbild(rs.getString("openwrt_fassung"), rs.getString("openwrt_datei"),
+                                rs.getString("openwrt_sha256"), rs.getString("openwrt_quelle")),
                 new Programm(rs.getString("edge_fassung"), rs.getString("edge_quelle"),
-                        rs.getString("edge_programm_sha256"), rs.getString("edge_skripte_sha256")),
+                        rs.getString("edge_programm_sha256"), rs.getString("edge_skripte_sha256"),
+                        rs.getString("edge_wartung_sha256")),
                 rs.getString("notiz"),
                 instant(rs, "erteilt_am"),
                 rs.getString("erteilt_von"),

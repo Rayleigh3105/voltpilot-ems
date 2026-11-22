@@ -431,6 +431,8 @@ class WerkstattEinloesenApiTest {
         ohneNeustart.remove("neustart");
         Map<String, String> mitFremder = new HashMap<>(belege());
         mitFremder.put("kaffee", "gekocht");
+        Map<String, String> mitZugaenge = new HashMap<>(belege());
+        mitZugaenge.put("zugaenge", "gesetzt");
         for (Fall f : List.of(
                 new Fall("Beleg fehlt", Map.of("belege", ohneNeustart), HttpStatus.UNPROCESSABLE_CONTENT, "neustart"),
                 new Fall("unbekannte Prüfung", Map.of("belege", mitFremder), HttpStatus.BAD_REQUEST, "kaffee"),
@@ -441,10 +443,10 @@ class WerkstattEinloesenApiTest {
                 new Fall("anderer Host-Schlüssel", Map.of("hostSchluessel", Box.neu(BOX2).host()), HttpStatus.CONFLICT,
                         "Einlösen"),
                 new Fall("andere Fassung", Map.of("fassung", "edge-light-2026.11.9"), HttpStatus.CONFLICT, "Einlösen"),
-                // Was der Dienst nur für einen PFC200 schickt, übergeht die API nicht: Sie lehnt es ab.
-                new Fall("Gerät PFC200", Map.of("geraet", "pfc200"), HttpStatus.UNPROCESSABLE_CONTENT, "pfc200"),
-                new Fall("Angaben", Map.of("angaben", Map.of("firmware", "03.10.08(22)")),
-                        HttpStatus.UNPROCESSABLE_CONTENT, "Angaben"),
+                // Das Gerät sagt das Register: Nennt der Dienst für eine Mango den PFC200, stimmt etwas nicht.
+                new Fall("Gerät PFC200", Map.of("geraet", "pfc200"), HttpStatus.CONFLICT, "edge-light"),
+                new Fall("unbekannte Prüfung des PFC200", Map.of("belege", mitZugaenge), HttpStatus.BAD_REQUEST,
+                        "zugaenge"),
                 new Fall("Heimnetz", Map.of("lanNetz", "192.168.1.1/24"), HttpStatus.UNPROCESSABLE_CONTENT, "übliches"))) {
             ResponseEntity<String> r = send(HttpMethod.POST, abnahme, dienst, abnahmeAntrag(box, f.aenderung()));
             assertThat(r.getStatusCode()).as(f.name()).isEqualTo(f.status());

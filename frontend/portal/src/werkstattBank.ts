@@ -8,7 +8,7 @@
  * merkt Handgriffe selbst (kein „Weiter“-Knopf), jede Störung sagt, was
  * passiert ist und was zu tun ist, Fachwörter nur unter „Details für Technik“.
  */
-import type { WerkstattAbnahme, WerkstattBox } from './werkstatt';
+import { geraetName, type WerkstattAbnahme, type WerkstattBox } from './werkstatt';
 import { zeitpunkt } from './adminFernwartung';
 import { fallSeite, type FallSeite } from './werkstattLauf';
 
@@ -500,7 +500,7 @@ export function uebersicht(boxen: readonly WerkstattBox[], laeufe: readonly Werk
   const zeilen: UebersichtZeile[] = boxen.map((b) => {
     const lauf = jeBox.get(b.edgeRef) ?? null;
     const abnahme = b.abnahmen[0] ?? null;
-    const geraet = b.boxArt === 'edge-light' ? 'Mango' : 'Docker-Box';
+    const geraet = geraetName(b.boxArt);
     if (lauf && (lauf.zustand === 'laeuft' || lauf.zustand === 'wartet')) {
       return { box: b.edgeRef, geraet, stand: 'laeuft', text: `${aktuellePhase(lauf.stand)?.titel ?? 'läuft'} (${Math.round(fortschritt(lauf.stand).anteil * 100)} %)`, seit: lauf.beginn, lauf, abnahme };
     }

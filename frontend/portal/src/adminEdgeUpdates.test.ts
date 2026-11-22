@@ -15,6 +15,7 @@ import {
   kpiUnknownNote,
   loudBanner,
   releaseBoxArt,
+  werkstattBoxArt,
   releaseSperre,
   rolloutsLaufend,
   signatureLabel,
@@ -490,6 +491,12 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
     expect(boxArtLabel(undefined).art).toBeNull();
     // Ein Wort, das dieser Portal-Stand nicht kennt, wird NICHT zur Docker-Box.
     expect(boxArtLabel('ostree').label).toBe('Box-Art unbekannt');
+  });
+
+  it('bildet die Box-Art der Werkstatt auf die des Registers ab, den PFC200 auf Edge Industrie', () => {
+    expect(werkstattBoxArt('edge-light')).toBe('light');
+    expect(werkstattBoxArt('edge-app')).toBe('docker');
+    expect(werkstattBoxArt('edge-industrie')).toBe('industrie');
   });
 
   it('nimmt ein Release ohne Kennzeichnung als Docker-Release (wie die API)', () => {

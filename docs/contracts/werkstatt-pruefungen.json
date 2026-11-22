@@ -1,5 +1,5 @@
 {
-  "beschreibung": "Die Prüfungen der Werkstatt-Regel (edge-light/docs/mango.md, Abschnitt „Bevor eine Box die Werkstatt verlässt“) und der Entscheide 3a und 6a vom 26.10.2026, als geschlossene Liste. Die Abnahme einer Box nimmt die API nur an, wenn jede Kennung abgehakt ist (AdminWerkstattController, POST /api/v1/admin/werkstatt/boxen/{ref}/abnahme). Zwillinge: WerkstattPruefungen.java (API) und werkstatt.ts (Portal); beide Tests lesen diese Datei.",
+  "beschreibung": "Die Prüfungen der Werkstatt-Regel (edge-light/docs/mango.md, Abschnitt „Bevor eine Box die Werkstatt verlässt“) und der Entscheide 3a und 6a vom 26.10.2026, als geschlossene Liste. Die Abnahme einer Box nimmt die API nur an, wenn jede Kennung abgehakt ist (AdminWerkstattController, POST /api/v1/admin/werkstatt/boxen/{ref}/abnahme). Zwillinge: WerkstattPruefungen.java (API) und werkstatt.ts (Portal); beide Tests lesen diese Datei. Die Liste unter \"pruefungen\" gilt für die Mango (Edge Light); weitere Geräte haben ihre eigene Liste unter \"geraete\".",
   "pruefungen": [
     {
       "id": "root_passwort",
@@ -51,5 +51,62 @@
       "regel": "Entscheid E6=B vom 13.11.2026, Konzept vp-edge-light-wlan Abschnitt 6.1",
       "text": "Einrichtungs-WLAN bereit: Funkmodul auf Land DE, Paket relayd auf der Box"
     }
-  ]
+  ],
+  "geraete": {
+    "pfc200": {
+      "beschreibung": "Die Prüfungen für den WAGO PFC200 750-8212 (Edge Industrie), PFC200-Konzept Abschnitt 6.5, ohne Prüfung der SPS (Programm, Koppelprobe) und ohne Prüfung der Firmware: Ihr Stand steht als Angabe an der Abnahme (angaben.firmware). Statt des einen Root-Passworts die drei Zugänge, statt des LAN-Netzes die zwei getrennten Netze und die Dienste je Buchse; ein Einrichtungs-WLAN hat das Gerät nicht. Die Abnahme des Werkstatt-Dienstes für ein Gerät dieser Art nimmt die API nur an, wenn jede dieser Kennungen einen Beleg trägt. Zwillinge: WerkstattPruefungen.PFC200 (API), PRUEFUNGEN_PFC200 in werkstatt.ts (Portal) und pfc200.Pruefungen (Werkstatt-Dienst).",
+      "pruefungen": [
+        {
+          "id": "zugaenge",
+          "regel": "Konzept PFC200 6.5, 4.6",
+          "text": "Drei eigene Passwörter gesetzt (root, admin, user), jedes Werkspasswort abgewiesen, Anmeldung mit Passwort aus"
+        },
+        {
+          "id": "notfall_schluessel",
+          "regel": "Werkstatt-Regel 2",
+          "text": "Genau ein dauerhafter Schlüssel auf dem Gerät, und sein Fingerabdruck ist der des Notfall-Schlüssels"
+        },
+        {
+          "id": "tunnel_status",
+          "regel": "Werkstatt-Regel 3",
+          "text": "Tunnel eingerichtet: Handshake, Port 2222 nur im Tunnel, Abholer läuft"
+        },
+        {
+          "id": "anmeldeprobe",
+          "regel": "Werkstatt-Regel 4",
+          "text": "Anmeldung über Portal und Tunnel im Fenster der Werkstatt-Probe gelungen"
+        },
+        {
+          "id": "host_schluessel",
+          "regel": "Werkstatt-Regel 5",
+          "text": "Host-Schlüssel auf zwei Wegen gelesen und gleich"
+        },
+        {
+          "id": "fenster_zu",
+          "regel": "Werkstatt-Regel 6",
+          "text": "Fenster geschlossen, der neue Versuch endet mit Connection timed out"
+        },
+        {
+          "id": "netze",
+          "regel": "Konzept PFC200 6.5, Entscheid E5 A",
+          "text": "Buchsen getrennt: X1 Kundennetz, X2 Anlagennetz, keine Weiterleitung"
+        },
+        {
+          "id": "dienste_zu",
+          "regel": "Konzept PFC200 6.5, 4.6",
+          "text": "Firewall ein, nur die Soll-Dienste offen, Docker aus, Start nur vom internen Speicher"
+        },
+        {
+          "id": "neustart",
+          "regel": "Werkstatt-Regel 8",
+          "text": "Neustart-Probe: Tunnel wieder oben, dieselbe Referenz, derselbe Host-Schlüssel, Schalter auf RUN"
+        },
+        {
+          "id": "update_bereit",
+          "regel": "Entscheid 5c, Konzept vp-edge-light-update K5",
+          "text": "Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Industrie"
+        }
+      ]
+    }
+  }
 }

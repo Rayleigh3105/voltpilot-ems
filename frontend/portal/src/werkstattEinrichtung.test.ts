@@ -86,6 +86,16 @@ describe('einrichtung', () => {
     expect(wert(einrichtung(box(), null), 'hardware')).toContain('GL-MT300N-V2');
     expect(wert(einrichtung(box({ boxArt: 'edge-app' }), null), 'hardware')).toContain('Docker');
   });
+
+  it('nennt den PFC200 beim Namen, als Edge Industrie und ohne OpenWrt', () => {
+    const zeilen = einrichtung(box({ boxArt: 'edge-industrie' }), null);
+    expect(wert(zeilen, 'hardware')).toBe('WAGO PFC200 750-8212 (Edge Industrie)');
+    expect(zeilen.find((z) => z.id === 'edge-light')?.titel).toBe('Edge Industrie (aufgespielt)');
+    expect(zeilen.some((z) => z.id === 'openwrt')).toBe(false);
+    // Die Mango behält ihre Zeilen.
+    expect(einrichtung(box(), null).find((z) => z.id === 'edge-light')?.titel).toBe('Edge Light (aufgespielt)');
+    expect(einrichtung(box(), null).some((z) => z.id === 'openwrt')).toBe(true);
+  });
 });
 
 describe('fernlaufEinrichtungZeile (Fernlauf S3, §4.6: „Nach der Werkstatt")', () => {

@@ -24,7 +24,7 @@ import type { BoxVerbindung } from './adminFleet';
 import { boxZeile, LINIEN, type BoxZeile } from './geraeteUpdates';
 import { pendingRows } from './onboardingFunnel';
 import { fmtRelative } from './format';
-import { loeschbar, type WerkstattBox } from './werkstatt';
+import { geraetName, loeschbar, type WerkstattBox } from './werkstatt';
 
 export type Lebensabschnitt = 'gedruckt' | 'wartet' | 'werkstatt' | 'verbunden' | 'ausgebaut';
 
@@ -115,7 +115,7 @@ export function geraeteListeZeilen(args: {
   for (const b of werkstattBoxen) {
     if (verbunden.has(b.edgeRef) || wartend.has(b.edgeRef)) continue;
     werkstattRef.add(b.edgeRef);
-    const geraet = b.boxArt === 'edge-light' ? 'Mango' : 'Docker-Box';
+    const geraet = geraetName(b.boxArt);
     rows.push({
       lebensabschnitt: 'werkstatt',
       ref: b.edgeRef,

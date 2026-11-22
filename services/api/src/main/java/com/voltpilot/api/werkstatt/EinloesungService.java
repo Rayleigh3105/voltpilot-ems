@@ -111,19 +111,34 @@ public class EinloesungService {
     // ── Code ausgeben ─────────────────────────────────────────────────────
 
     public Ausgabe codeAusgeben(String edgeRef, boolean tausch, Akteur dienst) {
+        return codeAusgeben(edgeRef, tausch, WerkstattRegel.MANGO, dienst);
+    }
+
+    /**
+     * Einen Code für eine Box des Geräts {@code geraet} ausgeben ({@code mango}
+     * oder {@code pfc200}): unter der laufenden Freigabe dieses Geräts, und mit
+     * seiner Box-Art im Register. Steht die Box dort schon als ein anderes
+     * Gerät, gibt es keinen Code.
+     */
+    public Ausgabe codeAusgeben(String edgeRef, boolean tausch, String geraet, Akteur dienst) {
         if (edgeRef == null || !EdgeRef.isValid(edgeRef)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Einen Code gibt es nur für eine Kennung der Box mit gültigem Prüfzeichen (edge-…).");
         }
         technikerZugang();
-        Freigabe f = regel.laufendOderGrund();
+        Freigabe f = regel.laufendOderGrund(geraet);
         boxFrei(edgeRef);
         obergrenze(f, edgeRef);
         regel.tagesgrenze(edgeRef);
         // Ins Register, bevor die Sperre genommen wird: anlegen nimmt sie selbst
         // (eigene Verbindung), verschachtelt warteten beide aufeinander.
-        werkstatt.anlegen(edgeRef, WerkstattService.EDGE_LIGHT, List.of(),
+        String boxArt = WerkstattService.boxArt(geraet);
+        WerkstattService.Angelegt eintrag = werkstatt.anlegen(edgeRef, boxArt, List.of(),
                 "Vom Werkstatt-Dienst aufgenommen, Freigabe " + f.kennung(), dienst);
+        if (!boxArt.equals(eintrag.stand().box().boxArt())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, edgeRef + " steht im Register als "
+                    + eintrag.stand().box().boxArt() + ", der Dienst richtet sie als " + boxArt + " ein.");
+        }
         String code = neuerCode();
         Instant ab = uhr.instant();
         Instant bis = ab.plus(CODE_DAUER);
@@ -251,13 +266,14 @@ public class EinloesungService {
      * Die Zeile, unter der die Box eingelöst wird: die ihres Codes, oder - war
      * der Code eine Zeile der Regel und meldet die Box eine andere Fassung - die
      * laufende Zeile der Regel mit ihrer Fassung (der Lauf begann, bevor eine
-     * neuere Fassung galt).
+     * neuere Fassung galt). Nie die Zeile eines anderen Geräts: Ein Code für
+     * den PFC200 löst keine Fassung der Mango ein, und umgekehrt.
      */
     private Freigabe zeileDerFassung(Freigabe vomCode, String fassung) {
         if (fassung.equals(vomCode.edgeLight().fassung()) || !vomCode.vonDerRegel()) {
             return vomCode;
         }
-        return regel.regelZeileMitFassung(fassung).orElse(vomCode);
+        return regel.regelZeileMitFassung(fassung).filter(f -> f.boxArt().equals(vomCode.boxArt())).orElse(vomCode);
     }
 
     /** Nicht gekoppelt und ohne Zertifikat: nur dann gibt es einen Code und eine Einlösung. */

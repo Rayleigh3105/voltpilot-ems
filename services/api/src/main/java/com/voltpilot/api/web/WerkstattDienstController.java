@@ -80,23 +80,9 @@ public class WerkstattDienstController {
     }
 
     /**
-     * Die Edge-Industrie-Fassung einer Freigabe für den WAGO PFC200 im Format
-     * des Dienstes (Go: {@code freigabe.Industrie}): Programm, Skriptstand und
-     * Tunnel-Programm.
-     */
-    public record IndustrieDto(String fassung, String quelle,
-            @JsonProperty("programm_sha256") String programmSha256,
-            @JsonProperty("skripte_sha256") String skripteSha256,
-            @JsonProperty("wartung_sha256") String wartungSha256) {
-    }
-
-    /**
      * Die laufende Freigabe, Feld für Feld wie die Datei der Werkstatt in V1a
      * ({@code freigabe.json}, Schema {@value #SCHEMA}): {@code erteilt_am} ist
-     * der Beginn der Gültigkeit. {@code edge_industrie} gehört zum Format (eine
-     * Freigabe für den PFC200 trägt es statt {@code openwrt} und
-     * {@code edge_light}); diese Route gibt bisher nur Freigaben für die Mango
-     * aus, dort fehlt es.
+     * der Beginn der Gültigkeit.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record FreigabeDto(String schema, String kennung, @JsonProperty("box_art") String boxArt,
@@ -106,6 +92,14 @@ public class WerkstattDienstController {
             @JsonProperty("edge_industrie") IndustrieDto edgeIndustrie) {
         static FreigabeDto of(Freigabe f) {
             String von = f.erteiltVonName() == null || f.erteiltVonName().isBlank() ? f.erteiltVon() : f.erteiltVonName();
+            if (WerkstattRegel.PFC200.equals(f.boxArt())) {
+                // Der PFC200: kein OpenWrt, kein Edge Light; dafür Edge Industrie mit dem Tunnel-Programm.
+                return new FreigabeDto(SCHEMA, f.kennung(), f.boxArt(), von, f.gueltigAb(), f.gueltigBis(),
+                        f.beendetAm(), f.obergrenze(), null, null,
+                        new IndustrieDto(f.edgeLight().fassung(), f.edgeLight().quelle(),
+                                f.edgeLight().programmSha256(), f.edgeLight().skripteSha256(),
+                                f.edgeLight().wartungSha256()));
+            }
             return new FreigabeDto(SCHEMA, f.kennung(), f.boxArt(), von, f.gueltigAb(), f.gueltigBis(), f.beendetAm(),
                     f.obergrenze(),
                     new AbbildDto(f.openwrt().fassung(), f.openwrt().datei(), f.openwrt().sha256(), f.openwrt().quelle()),
@@ -114,8 +108,22 @@ public class WerkstattDienstController {
         }
     }
 
-    /** Code holen: für genau diese Box; {@code tausch} nur für eine neu aufgespielte, ungekoppelte Box. */
-    public record CodeRequest(String edgeRef, Boolean tausch) {
+    /**
+     * Die Edge-Industrie-Fassung einer Freigabe für den PFC200 (Go:
+     * {@code freigabe.Industrie}): Programm, Skriptstand und Tunnel-Programm.
+     */
+    public record IndustrieDto(String fassung, String quelle,
+            @JsonProperty("programm_sha256") String programmSha256,
+            @JsonProperty("skripte_sha256") String skripteSha256,
+            @JsonProperty("wartung_sha256") String wartungSha256) {
+    }
+
+    /**
+     * Code holen: für genau diese Box; {@code tausch} nur für eine neu
+     * aufgespielte, ungekoppelte Box. {@code boxArt} (additiv): das Gerät,
+     * {@code mango} oder {@code pfc200}; fehlt es, die Mango.
+     */
+    public record CodeRequest(String edgeRef, Boolean tausch, String boxArt) {
     }
 
     /** Der Code steht nur in dieser Antwort und nur einmal. */
@@ -152,13 +160,7 @@ public class WerkstattDienstController {
             Instant geschlossenAm) {
     }
 
-    /**
-     * Die Abnahme mit Belegen: je Prüfung der Werkstatt-Regel ein Beleg, das
-     * Passwort mit age verschlüsselt. {@code geraet} und {@code angaben} schickt
-     * der Dienst nur für einen PFC200 (Go: {@code portal.Abnahme}); bisher nimmt
-     * die API nur Abnahmen einer Mango an und lehnt beides ab, statt es zu
-     * übergehen.
-     */
+    /** Die Abnahme mit Belegen: je Prüfung der Werkstatt-Regel ein Beleg, das Passwort mit age verschlüsselt. */
     public record AbnahmeRequest(String fassung, String hostSchluessel, String lanNetz, Map<String, String> belege,
             String passwortAge, String notiz, String geraet, Map<String, String> angaben) {
     }
@@ -314,18 +316,20 @@ public class WerkstattDienstController {
      */
     @GetMapping("/freigabe")
     public FreigabeDto freigabe(@RequestParam(name = "boxArt", defaultValue = WerkstattRegel.MANGO) String boxArt) {
-        if (!WerkstattRegel.MANGO.equals(boxArt)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Die Werkstatt richtet nur die Mango ein.");
+        if (!WerkstattRegel.GERAETE.contains(boxArt)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Die Werkstatt richtet ein: " + String.join(", ", WerkstattRegel.GERAETE) + ".");
         }
-        return regel.fuerDenDienst().map(FreigabeDto::of).orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, regel.stand().grund()));
+        return regel.fuerDenDienst(boxArt).map(FreigabeDto::of).orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, regel.stand(boxArt).grund()));
     }
 
     /** Einmal-Code holen: 201; 409 ohne laufende Freigabe, gekoppelt, mit Zertifikat, Obergrenze; 422 Kennung. */
     @PostMapping("/codes")
     public ResponseEntity<CodeDto> code(@RequestBody CodeRequest req, @AuthenticationPrincipal Jwt caller) {
         EinloesungService.Ausgabe a = einloesung.codeAusgeben(req == null ? null : req.edgeRef(),
-                req != null && Boolean.TRUE.equals(req.tausch()), Akteur.aus(caller));
+                req != null && Boolean.TRUE.equals(req.tausch()), WerkstattRegel.geraet(req == null ? null : req.boxArt()),
+                Akteur.aus(caller));
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                 .body(new CodeDto(a.code(), a.edgeRef(), a.freigabe(), a.gueltigBis(), a.tausch()));
     }
@@ -360,17 +364,9 @@ public class WerkstattDienstController {
         if (req == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Kein Inhalt.");
         }
-        // Nichts stillschweigend übergehen: Was die API nicht festhalten kann, lehnt sie ab.
-        if (req.geraet() != null && !req.geraet().isBlank() && !WerkstattRegel.MANGO.equals(req.geraet().trim())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Die API nimmt bisher nur Abnahmen "
-                    + "für die Mango an, nicht für das Gerät " + req.geraet().trim() + ".");
-        }
-        if (req.angaben() != null && !req.angaben().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "Angaben an einer Abnahme hält die API bisher nicht fest.");
-        }
         WerkstattRepository.Abnahme a = werkstatt.abnahmeDesDienstes(edgeRef, new WerkstattService.AbnahmeDesDienstes(
-                req.fassung(), req.hostSchluessel(), req.lanNetz(), req.belege(), req.passwortAge(), req.notiz()),
+                req.fassung(), req.hostSchluessel(), req.lanNetz(), req.belege(), req.passwortAge(), req.notiz(),
+                req.geraet(), req.angaben()),
                 Akteur.aus(caller));
         return ResponseEntity.status(HttpStatus.CREATED).body(new AbnahmeDto(a.id(), a.edgeRef(), a.freigabeId(),
                 a.einloesungId(), a.lanNetz(), a.tunnelAdresse(), a.erfasstAm()));

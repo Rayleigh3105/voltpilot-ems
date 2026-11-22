@@ -123,7 +123,11 @@ Release-Anhänge einer Edge-Industrie-Fassung (Linie `edge-industrie-JJJJ.MM.N`)
 Der Release-Lauf `edge-industrie-release.yaml` hängt alle drei an; die Prüfsummen der beiden letzten stehen signiert im Manifest (Felder `skripte` und `wartung`).
 Der Dienst verlangt sie dort: Im Schritt `fassungen` prüft er die Signaturkette des Manifests und dass es genau das Programm, den Skriptstand und das Tunnel-Programm der Freigabe beschreibt.
 Eine Fassung ohne signiertes Manifest oder ohne diese Felder richtet er auf einem PFC200 nicht ein (anders als bei der Mango, wo eine nicht signierte Fassung läuft und nur keine Abnahme bekommt): Das Tunnel-Programm läuft als root und öffnet den Fernzugang.
-Die Freigabe aus dem Portal kommt mit dem nächsten Schritt (API, Gerät `pfc200`); bis dahin läuft ein PFC200 nur mit einer Freigabe-Datei (`VP_WERKSTATT_FREIGABE_PFC200`).
+Die Freigabe für den PFC200 kommt aus dem Portal wie die der Mango: `GET /api/v1/werkstatt-dienst/freigabe?boxArt=pfc200`.
+Die Regel der API legt sie selbst an, aus der neuesten zuweisbaren signierten Edge-Industrie-Fassung, deren Manifest Skriptstand und Tunnel-Programm nennt; fehlt eine solche Fassung, wartet die Werkstatt für dieses Gerät, und die Mango läuft weiter.
+Den Einmal-Code holt der Dienst mit `boxArt: pfc200`; die Box steht damit als `edge-industrie` im Register, und die API nimmt ihre Abnahme nur mit der Prüfliste des PFC200 (`geraete.pfc200` in `docs/contracts/werkstatt-pruefungen.json`, Zwilling `pfc200.Pruefungen`).
+Anhalten und die Tagesgrenze gelten für beide Geräte zusammen.
+Ohne API (`VP_WERKSTATT_API_URL` leer) liest der Dienst die Freigabe aus der Datei `VP_WERKSTATT_FREIGABE_PFC200`.
 
 Getestet gegen die Attrappe „PFC200 ab Werk“ (`internal/attrappe/pfc200.go`): Sie führt jeden Befehl des Dienstes mit einem echten `sh` aus, gegen Nachbauten der Werkzeuge der WAGO-Firmware (`internal/attrappe/pfc200/config-tools`, gebaut nach den Hilfetexten und Skripten eines 750-8212 mit Firmware 03.10.08(22), dort nur gelesen).
 Nicht an einem echten Gerät gelaufen: alles ab `zugaenge`, weil es das Gerät ändert.
@@ -165,7 +169,7 @@ Aus der Umgebung (ConfigMap `werkstatt-dienst-konfig`), Schlüssel aus Dateien (
 | `VP_WERKSTATT_DNS` | `9.9.9.9,1.1.1.1` | DNS für das Werkstatt-Internet der Box (öffentlich) |
 | `VP_WERKSTATT_EDGE_BAUART` | `mipsle` | Bauart des Programms (Mango) |
 | `VP_WERKSTATT_GERAETE` | `mango` | `mango,pfc200`: Der Dienst richtet auch WAGO PFC200 ein. Die Brücke bekommt dann zwei Ziele mehr (192.168.1.17:22, LAN:502) und damit eine neue Fassung; der Dienst spielt sie selbst auf |
-| `VP_WERKSTATT_FREIGABE_PFC200` | `/etc/vp-werkstatt/freigabe/freigabe-pfc200.json` | die Freigabe für den PFC200 als Datei (ohne API) |
+| `VP_WERKSTATT_FREIGABE_PFC200` | `/etc/vp-werkstatt/freigabe/freigabe-pfc200.json` | die Freigabe für den PFC200 als Datei, nur ohne API; mit API kommt sie aus dem Portal (`freigabe?boxArt=pfc200`) |
 | `VP_WERKSTATT_NOTFALL_PUB_PFC200` | `VP_WERKSTATT_NOTFALL_PUB` | Notfall-Schlüssel für den PFC200 (Datei). Der SSH-Dienst des PFC200 nimmt nur RSA und ECDSA; ist der allgemeine Schlüssel Ed25519, startet der Dienst mit eingeschaltetem PFC200 nicht, bis hier ein passender steht |
 | `VP_WERKSTATT_ZEITSERVER` | `ptbtime1.ptb.de,ptbtime2.ptb.de,ptbtime3.ptb.de` | Zeitserver, die der Lauf im PFC200 einträgt (höchstens vier); der Zeitabgleich bleibt nach dem Lauf an |
 | `VP_WERKSTATT_STEUERUNG` | `/tmp/vp-werkstatt-dienst.sock` | Unix-Socket für Eingaben (`vp-werkstatt-dienst eingabe`) |

@@ -79,8 +79,16 @@ func (a Abgelehnt) Error() string {
 	return fmt.Sprintf("Portal: HTTP %d: %s", a.Status, a.Message)
 }
 
-// CodeHolen holt einen Einmal-Code (POST /codes).
+// CodeHolen holt einen Einmal-Code für eine Mango (POST /codes).
 func (c Client) CodeHolen(ctx context.Context, edgeRef string, tausch bool) (Code, error) {
+	return c.CodeHolenFuer(ctx, edgeRef, tausch, "")
+}
+
+// CodeHolenFuer holt einen Einmal-Code für eine Box des genannten Geräts
+// (boxArt der Freigabe, etwa "pfc200"; leer: die Mango). Die API gibt ihn
+// unter der laufenden Freigabe dieses Geräts aus und trägt die Box mit seiner
+// Box-Art ins Register ein.
+func (c Client) CodeHolenFuer(ctx context.Context, edgeRef string, tausch bool, geraet string) (Code, error) {
 	var out struct {
 		Code       string    `json:"code"`
 		EdgeRef    string    `json:"edgeRef"`
@@ -88,7 +96,11 @@ func (c Client) CodeHolen(ctx context.Context, edgeRef string, tausch bool) (Cod
 		GueltigBis time.Time `json:"gueltigBis"`
 		Tausch     bool      `json:"tausch"`
 	}
-	if err := c.rufe(ctx, http.MethodPost, "/codes", map[string]any{"edgeRef": edgeRef, "tausch": tausch}, http.StatusCreated, &out); err != nil {
+	anfrage := map[string]any{"edgeRef": edgeRef, "tausch": tausch}
+	if geraet != "" {
+		anfrage["boxArt"] = geraet
+	}
+	if err := c.rufe(ctx, http.MethodPost, "/codes", anfrage, http.StatusCreated, &out); err != nil {
 		return Code{}, err
 	}
 	if out.EdgeRef != edgeRef || out.Code == "" {

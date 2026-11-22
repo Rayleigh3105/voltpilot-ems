@@ -65,13 +65,26 @@ class WerkstattDienstVertragTest {
                 "notiz", t, "sub", "Admin", t.plusSeconds(60), "sub", "Admin", FreigabeRepository.REGEL, 42L);
         ObjectMapper m = new ObjectMapper().registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        // Die volle Form des Formats trägt auch den Block für den PFC200, den of() für die Mango nie setzt.
-        WerkstattDienstController.FreigabeDto d = WerkstattDienstController.FreigabeDto.of(f);
-        assertThat(d.edgeIndustrie()).as("eine Freigabe für die Mango trägt kein edge_industrie").isNull();
-        return m.valueToTree(new WerkstattDienstController.FreigabeDto(d.schema(), d.kennung(), d.boxArt(),
-                d.erteiltVon(), d.erteiltAm(), d.gueltigBis(), d.beendetAm(), d.obergrenze(), d.openwrt(),
-                d.edgeLight(), new WerkstattDienstController.IndustrieDto("edge-industrie-2026.11.0",
-                        "https://x.example/", sha, sha, sha)));
+        return m.valueToTree(WerkstattDienstController.FreigabeDto.of(f));
+    }
+
+    /** Die volle Form für den PFC200: ohne OpenWrt und Edge Light, mit Edge Industrie und Tunnel-Programm. */
+    private static JsonNode javaVollPfc200() {
+        String sha = "a".repeat(64);
+        Instant t = Instant.parse("2026-11-02T10:00:00Z");
+        FreigabeRepository.Freigabe f = new FreigabeRepository.Freigabe(UUID.randomUUID(), "2026-11-pfc200-1", "pfc200",
+                t, t.plusSeconds(86400), 5, null,
+                new FreigabeRepository.Programm("edge-industrie-2026.11.0", "https://x.example/", sha, sha, sha),
+                "notiz", t, "sub", "Admin", t.plusSeconds(60), "sub", "Admin", FreigabeRepository.REGEL, 42L);
+        ObjectMapper m = new ObjectMapper().registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return m.valueToTree(WerkstattDienstController.FreigabeDto.of(f));
+    }
+
+    private static Set<String> beide(Set<String> a, Set<String> b) {
+        Set<String> s = new TreeSet<>(a);
+        s.addAll(b);
+        return s;
     }
 
     private static Set<String> felder(JsonNode n) {
@@ -99,28 +112,45 @@ class WerkstattDienstVertragTest {
     @Test
     void javaUndGoHabenDieselbenFelder() {
         JsonNode j = javaVoll();
-        assertThat(felder(j)).isEqualTo(goFelder("Freigabe"));
+        JsonNode p = javaVollPfc200();
+        // Go liest beide Formen mit einer Struktur; je Gerät fehlt, was es nicht hat.
+        assertThat(beide(felder(j), felder(p))).isEqualTo(goFelder("Freigabe"));
+        assertThat(felder(j)).doesNotContain("edge_industrie").contains("openwrt", "edge_light");
+        assertThat(felder(p)).doesNotContain("openwrt", "edge_light").contains("edge_industrie");
         assertThat(felder(j.get("openwrt"))).isEqualTo(goFelder("Abbild"));
         assertThat(felder(j.get("edge_light"))).isEqualTo(goFelder("Programm"));
-        assertThat(felder(j.get("edge_industrie"))).isEqualTo(goFelder("Industrie"));
+        assertThat(felder(p.get("edge_industrie"))).isEqualTo(goFelder("Industrie"));
         assertThat(j.get("schema").asText()).isEqualTo(WerkstattDienstController.SCHEMA)
                 .isEqualTo(goSchema());
+    }
+
+    /**
+     * Felder allein genügen nicht: Was die API schreibt, ist genau das Beispiel
+     * im Vertrag, und dasselbe Beispiel liest der strenge Leser des Dienstes
+     * ({@code TestFreigabeDerAPI} in {@code internal/freigabe}).
+     */
+    @Test
+    void dieApiSchreibtGenauDieBeispieleDesVertrags() throws IOException {
+        JsonNode beispiele = new ObjectMapper().readTree(Files.readString(
+                Path.of("..", "..", "docs", "contracts", "werkstatt-freigabe-v1.beispiele.json")));
+        assertThat(javaVoll()).isEqualTo(beispiele.get("mango"));
+        assertThat(javaVollPfc200()).isEqualTo(beispiele.get("pfc200"));
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void openapiNenntDieselbenFelder() {
         JsonNode j = javaVoll();
-        assertThat(openapiFelder(antwort)).isEqualTo(felder(j));
+        JsonNode p = javaVollPfc200();
+        assertThat(openapiFelder(antwort)).isEqualTo(beide(felder(j), felder(p)));
         Map<String, Object> props = (Map<String, Object>) antwort.get("properties");
         assertThat(openapiFelder((Map<String, Object>) props.get("edge_light"))).isEqualTo(felder(j.get("edge_light")));
         assertThat(openapiFelder((Map<String, Object>) props.get("edge_industrie")))
-                .isEqualTo(felder(j.get("edge_industrie")));
-        // Pflicht ist alles außer beendet_am (die Route liefert nur eine laufende Freigabe)
-        // und edge_industrie (die Route liefert bisher nur Freigaben für die Mango).
+                .isEqualTo(felder(p.get("edge_industrie")));
+        // Pflicht ist, was beide Geräte tragen, außer beendet_am (die Route liefert nur eine laufende Freigabe).
         Set<String> pflicht = new TreeSet<>(felder(j));
+        pflicht.retainAll(felder(p));
         pflicht.remove("beendet_am");
-        pflicht.remove("edge_industrie");
         assertThat(new TreeSet<>((java.util.List<String>) antwort.get("required"))).isEqualTo(pflicht);
     }
 
