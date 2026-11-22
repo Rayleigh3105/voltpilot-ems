@@ -65,7 +65,13 @@ class WerkstattDienstVertragTest {
                 "notiz", t, "sub", "Admin", t.plusSeconds(60), "sub", "Admin", FreigabeRepository.REGEL, 42L);
         ObjectMapper m = new ObjectMapper().registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        return m.valueToTree(WerkstattDienstController.FreigabeDto.of(f));
+        // Die volle Form des Formats trägt auch den Block für den PFC200, den of() für die Mango nie setzt.
+        WerkstattDienstController.FreigabeDto d = WerkstattDienstController.FreigabeDto.of(f);
+        assertThat(d.edgeIndustrie()).as("eine Freigabe für die Mango trägt kein edge_industrie").isNull();
+        return m.valueToTree(new WerkstattDienstController.FreigabeDto(d.schema(), d.kennung(), d.boxArt(),
+                d.erteiltVon(), d.erteiltAm(), d.gueltigBis(), d.beendetAm(), d.obergrenze(), d.openwrt(),
+                d.edgeLight(), new WerkstattDienstController.IndustrieDto("edge-industrie-2026.11.0",
+                        "https://x.example/", sha, sha, sha)));
     }
 
     private static Set<String> felder(JsonNode n) {
@@ -96,6 +102,7 @@ class WerkstattDienstVertragTest {
         assertThat(felder(j)).isEqualTo(goFelder("Freigabe"));
         assertThat(felder(j.get("openwrt"))).isEqualTo(goFelder("Abbild"));
         assertThat(felder(j.get("edge_light"))).isEqualTo(goFelder("Programm"));
+        assertThat(felder(j.get("edge_industrie"))).isEqualTo(goFelder("Industrie"));
         assertThat(j.get("schema").asText()).isEqualTo(WerkstattDienstController.SCHEMA)
                 .isEqualTo(goSchema());
     }
@@ -107,9 +114,13 @@ class WerkstattDienstVertragTest {
         assertThat(openapiFelder(antwort)).isEqualTo(felder(j));
         Map<String, Object> props = (Map<String, Object>) antwort.get("properties");
         assertThat(openapiFelder((Map<String, Object>) props.get("edge_light"))).isEqualTo(felder(j.get("edge_light")));
-        // Pflicht ist alles außer beendet_am (die Route liefert nur eine laufende Freigabe).
+        assertThat(openapiFelder((Map<String, Object>) props.get("edge_industrie")))
+                .isEqualTo(felder(j.get("edge_industrie")));
+        // Pflicht ist alles außer beendet_am (die Route liefert nur eine laufende Freigabe)
+        // und edge_industrie (die Route liefert bisher nur Freigaben für die Mango).
         Set<String> pflicht = new TreeSet<>(felder(j));
         pflicht.remove("beendet_am");
+        pflicht.remove("edge_industrie");
         assertThat(new TreeSet<>((java.util.List<String>) antwort.get("required"))).isEqualTo(pflicht);
     }
 

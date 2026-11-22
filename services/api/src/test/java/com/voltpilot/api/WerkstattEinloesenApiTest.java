@@ -441,6 +441,10 @@ class WerkstattEinloesenApiTest {
                 new Fall("anderer Host-Schlüssel", Map.of("hostSchluessel", Box.neu(BOX2).host()), HttpStatus.CONFLICT,
                         "Einlösen"),
                 new Fall("andere Fassung", Map.of("fassung", "edge-light-2026.11.9"), HttpStatus.CONFLICT, "Einlösen"),
+                // Was der Dienst nur für einen PFC200 schickt, übergeht die API nicht: Sie lehnt es ab.
+                new Fall("Gerät PFC200", Map.of("geraet", "pfc200"), HttpStatus.UNPROCESSABLE_CONTENT, "pfc200"),
+                new Fall("Angaben", Map.of("angaben", Map.of("firmware", "03.10.08(22)")),
+                        HttpStatus.UNPROCESSABLE_CONTENT, "Angaben"),
                 new Fall("Heimnetz", Map.of("lanNetz", "192.168.1.1/24"), HttpStatus.UNPROCESSABLE_CONTENT, "übliches"))) {
             ResponseEntity<String> r = send(HttpMethod.POST, abnahme, dienst, abnahmeAntrag(box, f.aenderung()));
             assertThat(r.getStatusCode()).as(f.name()).isEqualTo(f.status());
@@ -471,7 +475,8 @@ class WerkstattEinloesenApiTest {
         assertThat(aUebergang.get("dienstFassungVorEinrichtungWlan").asBoolean()).isTrue();
         assertThat(aUebergang.get("belege").has("einrichtung_wlan_bereit")).isFalse();
 
-        ResponseEntity<String> ok = send(HttpMethod.POST, abnahme, dienst, abnahmeAntrag(box, Map.of()));
+        // Das Gerät mango darf der Dienst nennen; es ändert nichts.
+        ResponseEntity<String> ok = send(HttpMethod.POST, abnahme, dienst, abnahmeAntrag(box, Map.of("geraet", "mango")));
         assertThat(ok.getStatusCode()).as(ok.getBody()).isEqualTo(HttpStatus.CREATED);
         JsonNode a = json.readTree(ok.getBody());
         assertThat(a.get("lanNetz").asText()).isEqualTo("10.213.0.1/24");

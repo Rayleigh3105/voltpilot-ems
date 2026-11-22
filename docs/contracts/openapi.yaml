@@ -8479,6 +8479,15 @@ paths:
                       quelle: { type: string }
                       programm_sha256: { type: string }
                       skripte_sha256: { type: string }
+                  edge_industrie:
+                    type: object
+                    description: "Feld des Formats für eine Freigabe an den WAGO PFC200 (dort statt openwrt und edge_light); fehlt hier immer, die Route liefert bisher nur Freigaben für die Mango."
+                    properties:
+                      fassung: { type: string, example: edge-industrie-2026.11.0 }
+                      quelle: { type: string }
+                      programm_sha256: { type: string }
+                      skripte_sha256: { type: string }
+                      wartung_sha256: { type: string, description: "Das Tunnel-Programm vp-wartung-linux-arm." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: "Keine Freigabe: angehalten, keine passende Fassung oder Tagesgrenze erreicht (Grund in `message`); oder eine andere Box-Art als mango." }
@@ -8624,6 +8633,8 @@ paths:
                 belege: { type: object, additionalProperties: { type: string, maxLength: 2000 } }
                 passwortAge: { type: string, maxLength: 4000 }
                 notiz: { type: string, maxLength: 500, nullable: true }
+                geraet: { type: string, nullable: true, description: "Schickt der Dienst nur für einen PFC200 (pfc200). Bisher nimmt die API nur Abnahmen einer Mango an: ein anderes Gerät als mango ergibt 422." }
+                angaben: { type: object, nullable: true, additionalProperties: { type: string }, description: "Schickt der Dienst nur für einen PFC200 (Bestellnummer, Firmware, Seriennummer). Bisher hält die API sie nicht fest: nicht leer ergibt 422." }
       responses:
         "201":
           description: Die Abnahme (ohne das verschlüsselte Passwort).
@@ -8644,7 +8655,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Nicht im Register. }
         "409": { description: Ohne Einlösung, anderer Host-Schlüssel, andere Fassung, anderer Tunnel-Schlüssel oder Probe-Fenster noch offen. }
-        "422": { description: Beleg fehlt oder zu lang, Passwort nicht mit age verschlüsselt, LAN-Netz abgelehnt, keine Edge-Light-Box. }
+        "422": { description: "Beleg fehlt oder zu lang, Passwort nicht mit age verschlüsselt, LAN-Netz abgelehnt, keine Edge-Light-Box, ein anderes Gerät als mango oder Angaben." }
   /api/v1/werkstatt-dienst/gehaeuse/{edgeRef}:
     put:
       tags: [werkstatt-dienst]
