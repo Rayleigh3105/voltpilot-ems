@@ -64,10 +64,45 @@ class FernlaufRegelTest {
         assertThat(u.haken()).isEqualTo(new FernlaufRegel.Haken(true, true, true));
     }
 
+    /** Das Gerät entscheidet die Linie; ein Widerspruch zwischen Register und Meldung ist kein Gerät. */
+    @Test
+    void geraetNachRegisterUndGemeldeterLinie() {
+        assertThat(FernlaufRegel.geraet("edge-light", "edge-light-2026.11.5")).isEqualTo(WerkstattRegel.MANGO);
+        assertThat(FernlaufRegel.geraet("edge-industrie", "edge-industrie-2026.11.5")).isEqualTo(WerkstattRegel.PFC200);
+        // Nur eine der zwei Quellen: Sie gilt.
+        assertThat(FernlaufRegel.geraet(null, "edge-industrie-2026.11.5")).isEqualTo(WerkstattRegel.PFC200);
+        assertThat(FernlaufRegel.geraet(null, "edge-light-2026.11.5")).isEqualTo(WerkstattRegel.MANGO);
+        assertThat(FernlaufRegel.geraet("edge-industrie", null)).isEqualTo(WerkstattRegel.PFC200);
+        assertThat(FernlaufRegel.geraet("edge-light", "edge-light-labor")).isEqualTo(WerkstattRegel.MANGO);
+        // Widerspruch: nie raten.
+        assertThat(FernlaufRegel.geraet("edge-light", "edge-industrie-2026.11.5")).isNull();
+        assertThat(FernlaufRegel.geraet("edge-industrie", "edge-light-2026.11.5")).isNull();
+        // Eine Docker-Box oder gar nichts: kein Tunnel.
+        assertThat(FernlaufRegel.geraet(null, "edge-2026.11.2")).isNull();
+        assertThat(FernlaufRegel.geraet("docker", null)).isNull();
+        assertThat(FernlaufRegel.geraet(null, null)).isNull();
+
+        assertThat(FernlaufRegel.kurz("edge-industrie-2026.11.15")).isEqualTo("2026.11.15");
+        assertThat(FernlaufRegel.kurz("edge-light-2026.11.15")).isEqualTo("2026.11.15");
+        assertThat(FernlaufRegel.kurz(null)).isNull();
+    }
+
+    /** Der Satz gegen den Knopf nennt beide Linien mit Tunnel (der Code bleibt der alte). */
+    @Test
+    void ohneTunnelBoxNenntDerSatzBeideLinien() {
+        FernlaufRegel.Eingabe g = gut();
+        FernlaufRegel.Urteil u = FernlaufRegel.vorpruefen(new FernlaufRegel.Eingabe(false, false, false,
+                "edge-industrie-2026.11.5", 5L, g.neueste(), 15L, null, true, true, g.rueckmeldungAm(),
+                g.verbundenSeit(), g.gefragtUm(), true, g.dienstGemeldetAm(), true, null, true, false), JETZT);
+        assertThat(u.moeglich()).isFalse();
+        assertThat(u.gruende()).extracting(FernlaufRegel.Grund::code).containsExactly("keine_edge_light");
+        assertThat(u.gruende().get(0).text()).contains("Edge-Light- oder Edge-Industrie-Box", "Werkstatt-Register");
+    }
+
     @Test
     void jederGrundHatSeinenCode() {
         FernlaufRegel.Eingabe g = gut();
-        assertThat(codes(new FernlaufRegel.Eingabe(true, g.zertifikat(), g.werkstattLight(), g.laeuft(), g.laeuftSeq(),
+        assertThat(codes(new FernlaufRegel.Eingabe(true, g.zertifikat(), g.tunnelBox(), g.laeuft(), g.laeuftSeq(),
                 g.neueste(), g.neuesteSeq(), null, true, true, g.rueckmeldungAm(), g.verbundenSeit(), g.gefragtUm(),
                 true, g.dienstGemeldetAm(), true, null, true, false))).containsExactly("kundenkonto");
         assertThat(codes(new FernlaufRegel.Eingabe(false, true, true, g.laeuft(), g.laeuftSeq(), g.neueste(),

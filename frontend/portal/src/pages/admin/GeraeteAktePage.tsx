@@ -50,7 +50,7 @@ import { AdminPageHead } from './AdminPageHead';
 import { Zeitleiste } from './Zeitleiste';
 import { WerkstattBoxSeite } from './WerkstattBoxSeite';
 import {
-  bestaetigung, fassungKurz, fernlaufLinie, FERNLAUF_SCHRITTE, fragtSatz, haken as fernlaufHaken, schrittleiste,
+  bestaetigung, fassungKurz, fernlaufLinie, FERNLAUF_SCHRITTE, knopfSatz, fragtSatz, haken as fernlaufHaken, schrittleiste,
   sonstHeuteNacht, standZeilen, tunnelKarte, verlaufZeile,
   type Fernlauf, type FernlaufStand,
 } from '../../werkstattFernlauf';
@@ -740,7 +740,7 @@ function WartendeSoftware({ boxRef, stand, jetzt, busy, werkstattBoxArt, onAufsp
             )}
             {knopf?.label != null && (
               <>
-                {karte.art === 'knopf' && <p style={{ marginTop: 0 }}>Wie in der Werkstatt. Etwa 5 Min., startet einmal neu.</p>}
+                {karte.art === 'knopf' && <p style={{ marginTop: 0 }} data-testid="akte-fernlauf-satz">{knopfSatz(linie)}</p>}
                 <ul className="vp-fl-haken" aria-label="Voraussetzungen">
                   {fernlaufHaken(stand).map((h) => (
                     <li key={h.text}><Badge variant={h.ok ? 'ok' : 'off'} dot>{h.text}</Badge></li>

@@ -39,8 +39,9 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p><b>Auftrag.</b> Ein Klick in der Geräteakte prüft vor ({@link FernlaufRegel#vorpruefen}), öffnet ein Fenster von
  * 30 Minuten für den Techniker-Zugang des Werkstatt-Dienstes (Grund mit Fassung und Auftrag, Akteur der Auslöser)
- * und legt den Auftrag an: immer die neueste zuweisbare Fassung der Linie Edge Light mit Skriptstand, dieselbe wie
- * in der Werkstatt ({@link WerkstattRegel#neueste()}), nur aufwärts, je Box höchstens einer offen. Der Akteur ist
+ * und legt den Auftrag an: immer die neueste zuweisbare Fassung der Linie der Box mit Skriptstand (Edge Light für
+ * die Mango, Edge Industrie für den PFC200; {@link FernlaufRegel#geraet}), dieselbe wie in der Werkstatt
+ * ({@link WerkstattRegel#neueste(String)}), nur aufwärts, je Box höchstens einer offen. Der Akteur ist
  * ein Feld: Sammellauf (S2) und Nachtlauf (S4) legen denselben Auftrag an.
  *
  * <p><b>Dienst.</b> Der Werkstatt-Dienst sieht den Auftrag in der Antwort auf seine Ansicht, nimmt ihn an
@@ -344,12 +345,17 @@ public class FernlaufService {
         Optional<WerkstattRepository.Abnahme> abnahme = wbox.flatMap(b -> werkstatt.abnahmen(b.id()).stream()
                 .findFirst());
         String laeuft = FernlaufRegel.laeuft(meldung.map(EnrollmentRepository.Meldung::deviceInfo).orElse(null));
+        // Das Gerät entscheidet die Linie: Eine Mango bekommt nie Edge Industrie, ein PFC200 nie Edge Light. Ohne
+        // erkanntes Gerät gibt es keinen Knopf (Grund keine_edge_light); gezeigt wird dann die Linie der Mango.
+        String erkannt = FernlaufRegel.geraet(wbox.map(WerkstattRepository.Box::boxArt).orElse(null), laeuft);
+        String geraet = erkannt == null ? WerkstattRegel.MANGO : erkannt;
+        String linie = WerkstattRegel.PFC200.equals(geraet) ? BoxArt.INDUSTRIE : BoxArt.LIGHT;
         Long laeuftSeq = laeuft == null ? null : releases.findAll().stream()
-                .filter(r -> BoxArt.LIGHT.equals(BoxArt.ofRelease(r.version(), r.manifest())))
+                .filter(r -> linie.equals(BoxArt.ofRelease(r.version(), r.manifest())))
                 .filter(r -> RolloutStates.releaseIsRunning(r.version(), laeuft))
                 .max(Comparator.comparingLong(EdgeReleaseDto::releaseSeq)).map(EdgeReleaseDto::releaseSeq)
                 .orElse(null);
-        WerkstattRegel.Neueste neueste = regel.neueste();
+        WerkstattRegel.Neueste neueste = regel.neueste(geraet);
         Optional<Zugang> zugang = fernwartung.box(edgeRef);
         BoxStand rm = zugang.map(z -> rueckmeldungen.boxen().get(z.id())).orElse(null);
         Zugang techniker = techniker();
@@ -360,7 +366,7 @@ public class FernlaufService {
         boolean offen = verlauf.stream().anyMatch(f -> FernlaufRegel.offen(f.zustand(jetzt)));
         FernlaufRegel.Eingabe e = new FernlaufRegel.Eingabe(geraete.findByRef(edgeRef).isPresent(),
                 meldung.map(EnrollmentRepository.Meldung::zertifikat).orElse(false),
-                wbox.map(b -> WerkstattService.EDGE_LIGHT.equals(b.boxArt())).orElse(false), laeuft, laeuftSeq,
+                erkannt != null, laeuft, laeuftSeq,
                 neueste.soll() == null ? null : neueste.soll().edgeLight().fassung(),
                 neueste.soll() == null ? null : neueste.soll().releaseSeq(), neueste.grund(), zugang.isPresent(),
                 zugang.map(Zugang::aktiv).orElse(false), rm == null ? null : rm.angenommenAm(),

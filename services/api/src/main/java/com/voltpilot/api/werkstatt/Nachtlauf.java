@@ -17,8 +17,9 @@ import java.util.Optional;
  * Die Regel „nachts von selbst" (Konzept vp-update-vor-zuordnung, Entscheid des Captains 18.11.2026: E3 = B, §11.2;
  * Ausbaustufe S4) - rein, ohne DB, ohne Uhr aus der Umgebung (das Muster von {@code ota.Erstverbindung}).
  *
- * <p><b>Die Regel:</b> Jede Nacht bekommt jede Edge-Light-Box ohne Kundenkonto, die im Wartungstunnel verbunden ist,
- * nach Schlüsseln fragt und älter läuft als die neueste zuweisbare Fassung, denselben Fernlauf wie mit dem Knopf
+ * <p><b>Die Regel:</b> Jede Nacht bekommt jede Box ohne Kundenkonto (Edge Light wie Edge Industrie), die im
+ * Wartungstunnel verbunden ist, nach Schlüsseln fragt und älter läuft als die neueste zuweisbare Fassung ihrer
+ * Linie, denselben Fernlauf wie mit dem Knopf
  * ({@link FernlaufService#aufspielen}, unverändert), mit dem Akteur {@link #AKTEUR}. Was „möglich" heißt, sagt die
  * Vorprüfung des Knopfs ({@link FernlaufRegel#vorpruefen}); diese Regel legt nur fest, wann und wem.
  *
@@ -213,7 +214,7 @@ public final class Nachtlauf {
         if (!b.vorpruefung().moeglich()) {
             return Dran.nein(b.vorpruefung().gruende().get(0).text());
         }
-        String kurz = b.neueste().replaceFirst("^" + FernlaufRegel.EDGE_LIGHT_PRAEFIX, "");
+        String kurz = FernlaufRegel.kurz(b.neueste());
         Optional<Lauf> letzter = b.verlauf().stream().filter(l -> b.neueste().equals(l.fassungZiel())).findFirst();
         if (letzter.isPresent() && fehlschlag(letzter.get().zustand())) {
             return Dran.nein("Der letzte Lauf auf " + kurz + " wurde " + wort(letzter.get().zustand()) + "; die "

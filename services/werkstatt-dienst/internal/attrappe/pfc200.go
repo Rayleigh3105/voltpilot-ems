@@ -77,13 +77,16 @@ type PFC200 struct {
 	// Tunnel- und Host-Schlüssel aus den Argumenten.
 	Anmelden func(code, wireguard, host string) (aus string, rc int)
 
-	t       testing.TB
-	w, z    string // Sandkasten und Zustand der Werkzeuge
-	mu      sync.Mutex
-	offline bool
-	host    ssh.Signer
-	sshLn   net.Listener
-	webLn   net.Listener
+	t      testing.TB
+	imFeld bool // nach der Werkbank: /health folgt dem Dienst-Skript (pfc200_feld.go)
+	// neustarts zählt die Neustarts des Geräts (reboot), seit es die Attrappe gibt.
+	neustarts int
+	w, z      string // Sandkasten und Zustand der Werkzeuge
+	mu        sync.Mutex
+	offline   bool
+	host      ssh.Signer
+	sshLn     net.Listener
+	webLn     net.Listener
 	// conns: je SSH-Verbindung die Prozessgruppen ihrer laufenden Befehle.
 	conns   map[*ssh.ServerConn][]int
 	befehle []string
@@ -166,7 +169,64 @@ case "$1" in
     printf '#!/bin/sh\n# werkstatt-anmelden: Anfrage ablegen, auf die Antwort der Attrappe warten\n[ "$1" = werkstatt-anmelden ] || exit 2\nZ="%s"\ncat >"$Z/anmelden.code"\necho "$*" >"$Z/anmelden.args"\ni=0\nwhile [ ! -e "$Z/anmelden.rc" ] && [ "$i" -lt 2400 ]; do sleep 0.05; i=$((i + 1)); done\ncat "$Z/anmelden.aus" 2>/dev/null\nrc=$(cat "$Z/anmelden.rc" 2>/dev/null || echo 9)\nrm -f "$Z/anmelden.rc" "$Z/anmelden.aus"\n[ "$rc" = 0 ] || echo "abgewiesen" >&2\nexit "$rc"\n' "$Z" >"$W/tmp/vp-edge-industrie/vp-edge-industrie"
     chmod 0755 "$W/tmp/vp-edge-industrie/vp-edge-industrie"
     dienst vp-edge-industrie edge.laeuft
+    # Was das echte install.sh schreibt, als Dateien im Sandkasten: Loader,
+    # Einstellungen, bestaetigte Fassung und Stand. Der Dienst startet, was im
+    # Flash liegt (VERSION), nicht was zuletzt lief; eine Fassung, die in
+    # "$Z/startet-nicht" steht, kommt nicht hoch.
+    mkdir -p "$W/home/voltpilot/libexec" "$W/home/voltpilot/fassung" "$W/home/voltpilot/daten/ota"
+    [ -s "$W/home/voltpilot/libexec/boot.sh" ] || printf '#!/bin/sh\n# Loader (Attrappe)\n' >"$W/home/voltpilot/libexec/boot.sh"
+    [ -s "$W/home/voltpilot/konfig" ] || printf 'enabled = 1\narch = arm\n' >"$W/home/voltpilot/konfig"
+    cp "$Z/programm" "$W/home/voltpilot/fassung/vp-edge-industrie-linux-arm.gz"
+    if [ -n "${2:-}" ]; then
+      echo "$2" >"$W/home/voltpilot/fassung/VERSION"
+      printf '{"release":"%s","release_seq":%s,"state_schema":1}\n' "$2" "${3:-0}" >"$W/home/voltpilot/daten/ota/current.json"
+    fi
+    {
+      echo '#!/bin/sh'
+      echo "Z=\"$Z\""
+      echo "F=\"$W/home/voltpilot/fassung/VERSION\""
+      echo "C=\"$W/home/voltpilot/daten/ota/current.json\""
+      cat <<'DIENST'
+case "$1" in
+  start|restart)
     rm -f "$Z/edge.laeuft"
+    if [ -s "$F" ]; then
+      grep -qx "$(cat "$F")" "$Z/startet-nicht" 2>/dev/null && exit 0
+      cp "$F" "$Z/version.laeuft"
+      sed -n 's/.*"release_seq":\([0-9]*\).*/\1/p' "$C" >"$Z/stand.laeuft" 2>/dev/null
+    fi
+    touch "$Z/edge.laeuft" ;;
+  stop) rm -f "$Z/edge.laeuft" ;;
+  status) [ -e "$Z/edge.laeuft" ] ;;
+esac
+DIENST
+    } >"$W/etc/init.d/vp-edge-industrie"
+    chmod 0755 "$W/etc/init.d/vp-edge-industrie"
+    rm -f "$Z/edge.laeuft"
+    ;;
+  sichern)
+    # Wie edge-industrie/fernlauf.sh: genau, was install.sh schreibt, als tar.gz.
+    cd "$W" || exit 3
+    [ -f home/voltpilot/libexec/boot.sh ] || { echo 'FEHLER: auf dem Geraet liegt kein Edge Industrie' >&2; exit 3; }
+    da="home/voltpilot/libexec/boot.sh etc/init.d/vp-edge-industrie home/voltpilot/konfig home/voltpilot/daten/ota home/voltpilot/fassung etc/rc.d/S99_vp-edge-industrie"
+    [ -e "$Z/sicherung-mit-identitaet" ] && da="$da home/voltpilot/daten/ref"
+    # COPYFILE_DISABLE: Das tar von macOS legte sonst "._"-Eintraege dazu, die
+    # es auf dem Geraet nicht gibt.
+    COPYFILE_DISABLE=1 tar -cf - $da | gzip -c
+    ;;
+  neustart)
+    echo neustart >>"$Z/fernlauf.log"
+    "$W/etc/init.d/vp-edge-industrie" restart
+    ;;
+  zurueck)
+    echo zurueck >>"$Z/fernlauf.log"
+    cat >"$Z/zurueck.tar.gz"
+    [ -e "$Z/zurueck-scheitert" ] && { echo 'FEHLER: die Sicherung laesst sich nicht auspacken' >&2; exit 4; }
+    cd "$W" || exit 3
+    "$W/etc/init.d/vp-edge-industrie" stop
+    rm -rf home/voltpilot/fassung home/voltpilot/daten/ota
+    gzip -dc "$Z/zurueck.tar.gz" | COPYFILE_DISABLE=1 tar -xf - || exit 4
+    "$W/etc/init.d/vp-edge-industrie" start
     ;;
   key)
     cat >"$Z/wartung-programm"
@@ -199,8 +259,39 @@ if [ -n "${VP_INDUSTRIE_MANIFEST:-}" ]; then
   grep -q '"release_seq"' "$VP_INDUSTRIE_MANIFEST" || { echo "FEHLER: Manifest unlesbar" >&2; exit 1; }
   echo "--- Stand vermerkt"
 fi
-ssh -i /dev/null "$ziel" 'vp-attrappe install' < "$bin"
+rel=""
+seq=""
+if [ -n "${VP_INDUSTRIE_MANIFEST:-}" ]; then
+  rel="$(sed -n 's/.*"release": *"\([^"]*\)".*/\1/p' "$VP_INDUSTRIE_MANIFEST" | head -n 1)"
+  seq="$(sed -n 's/.*"release_seq": *\([0-9][0-9]*\).*/\1/p' "$VP_INDUSTRIE_MANIFEST" | head -n 1)"
+fi
+ssh -i /dev/null "$ziel" "vp-attrappe install $rel $seq" < "$bin"
 echo "    0.1 MB gepackt, Pruefsumme auf dem Geraet bestaetigt"
+`
+
+// pfcFernlaufSh steht für edge-industrie/fernlauf.sh (das echte läuft in
+// edge-industrie/test/fernlauf-probe.sh im Container).
+const pfcFernlaufSh = `#!/bin/sh
+set -eu
+ziel="$1"
+was="$2"
+case "$was" in
+  sichern)
+    rm -f "$3"
+    ssh -i /dev/null "$ziel" 'vp-attrappe sichern' >"$3.teil" || { rm -f "$3.teil"; echo "FEHLER: nichts gesichert" >&2; exit 1; }
+    mv -f "$3.teil" "$3"
+    echo "gesichert: ohne Identitaet, Referenz und Tunnel"
+    ;;
+  neustart)
+    ssh -i /dev/null "$ziel" 'vp-attrappe neustart'
+    echo "neu gestartet: nur der Dienst vp-edge-industrie"
+    ;;
+  zurueck)
+    ssh -i /dev/null "$ziel" 'vp-attrappe zurueck' <"$3"
+    echo "zurueck: Sicherung eingespielt, nur der Dienst vp-edge-industrie neu gestartet"
+    ;;
+  *) echo "FEHLER: unbekannter Befehl" >&2; exit 1 ;;
+esac
 `
 
 const pfcWartungSh = `#!/bin/sh
@@ -222,13 +313,29 @@ esac
 // edge-industrie-skripte.tar.gz, mit Attrappen-Skripten.
 func SkripteTarGzPFC200(t testing.TB) []byte {
 	t.Helper()
+	return skripteTarGzPFC200(t, true)
+}
+
+// SkripteTarGzPFC200OhneFernlauf ist ein Skriptstand wie vor fernlauf.sh: Eine
+// solche Fassung richtet die Werkbank ein, ein Fernlauf spielt sie nicht auf.
+func SkripteTarGzPFC200OhneFernlauf(t testing.TB) []byte {
+	t.Helper()
+	return skripteTarGzPFC200(t, false)
+}
+
+func skripteTarGzPFC200(t testing.TB, mitFernlauf bool) []byte {
+	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	for _, d := range []struct{ name, inhalt string }{
+	dateien := []struct{ name, inhalt string }{
 		{"edge-industrie/install.sh", pfcInstallSh}, {"edge-industrie/wartung.sh", pfcWartungSh},
 		{"edge-industrie/files/etc/init.d/vp-wartung", "#!/bin/sh\n"},
-	} {
+	}
+	if mitFernlauf {
+		dateien = append(dateien, struct{ name, inhalt string }{"edge-industrie/fernlauf.sh", pfcFernlaufSh})
+	}
+	for _, d := range dateien {
 		if err := tw.WriteHeader(&tar.Header{Name: d.name, Mode: 0o755, Size: int64(len(d.inhalt)), Typeflag: tar.TypeReg}); err != nil {
 			t.Fatal(err)
 		}
@@ -571,11 +678,7 @@ func (p *PFC200) exec(sc *ssh.ServerConn, ch ssh.Channel, befehl string) int {
 	p.mu.Lock()
 	p.befehle = append(p.befehle, befehl)
 	p.mu.Unlock()
-	p.schreibe(filepath.Join(p.z, "ref"), p.Ref+"\n", 0o644)
-	p.schreibe(filepath.Join(p.z, "wgpub"), p.WgPub+"\n", 0o644)
-	p.schreibe(filepath.Join(p.z, "health.json"), p.health(), 0o644)
-	cmd := exec.Command("/bin/sh", "-c", pfcPfadMuster.ReplaceAllString(befehl, "${1}"+p.w+"/${2}"))
-	cmd.Env = []string{"PATH=" + p.w + "/bin:/usr/bin:/bin:/usr/sbin:/sbin", "VP_PFC_WURZEL=" + p.w, "HOME=" + p.w + "/root"}
+	cmd := p.befehl(befehl)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = ch, ch, ch.Stderr()
 	cmd.WaitDelay = 2 * time.Second
@@ -624,7 +727,41 @@ func (p *PFC200) exec(sc *ssh.ServerConn, ch ssh.Channel, befehl string) int {
 	return 0
 }
 
+// befehl bereitet einen Befehl für den Sandkasten vor: ein echtes sh, die
+// Pfade des Geräts auf den Sandkasten gelegt, der Stand der Attrappe als Dateien.
+func (p *PFC200) befehl(befehl string) *exec.Cmd {
+	p.gleicheAb()
+	p.schreibe(filepath.Join(p.z, "ref"), p.Ref+"\n", 0o644)
+	p.schreibe(filepath.Join(p.z, "wgpub"), p.WgPub+"\n", 0o644)
+	p.schreibe(filepath.Join(p.z, "health.json"), p.health(), 0o644)
+	cmd := exec.Command("/bin/sh", "-c", pfcPfadMuster.ReplaceAllString(befehl, "${1}"+p.w+"/${2}"))
+	cmd.Env = []string{"PATH=" + p.w + "/bin:/usr/bin:/bin:/usr/sbin:/sbin", "VP_PFC_WURZEL=" + p.w, "HOME=" + p.w + "/root"}
+	return cmd
+}
+
+// gleicheAb: Am Gerät im Feld (NeuerPFC200ImFeld) meldet /health, was das
+// Dienst-Skript im Sandkasten zuletzt gestartet hat (version.laeuft,
+// stand.laeuft). An der Werkbank bestimmen die Felder Version und
+// BestaetigterStand, was das Gerät meldet; dort bleibt es dabei.
+func (p *PFC200) gleicheAb() {
+	if !p.imFeld {
+		return
+	}
+	v := p.Lies("version.laeuft")
+	n, err := strconv.ParseInt(p.Lies("stand.laeuft"), 10, 64)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if v != "" {
+		p.Version = v
+	}
+	if err == nil && n > 0 {
+		p.BestaetigterStand = n
+	}
+}
+
 func (p *PFC200) health() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	trust := `"trust":{"trust_set_key_ids":["rel-2026-a"],"trust_set_signed_by":"root-2026-a"}`
 	if p.OhneVertrauensSet {
 		trust = `"trust":{"trust_set_error":"kein Vertrauens-Set"}`
@@ -680,6 +817,9 @@ func (p *PFC200) waechter() {
 		}
 		if exists(filepath.Join(p.z, "neustart")) {
 			_ = os.Remove(filepath.Join(p.z, "neustart"))
+			p.mu.Lock()
+			p.neustarts++
+			p.mu.Unlock()
 			p.Abziehen()
 			go func() {
 				time.Sleep(p.Neustartdauer)

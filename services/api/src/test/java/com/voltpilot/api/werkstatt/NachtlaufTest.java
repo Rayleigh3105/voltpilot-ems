@@ -150,6 +150,21 @@ class NachtlaufTest {
         }
     }
 
+    /** Die Automatik kennt beide Linien: Der Satz nennt auch bei Edge Industrie nur die Nummer der Fassung. */
+    @Test
+    void edgeIndustrieWirdGenausoNichtGedraengelt() {
+        String industrie = "edge-industrie-2026.11.15";
+        Nachtlauf.Box pfc = new Nachtlauf.Box("edge-a", MOEGLICH, industrie, NACHT.minusSeconds(20),
+                List.of(lauf("edge-a", industrie, true, "zurueck", NACHT.minus(Duration.ofDays(1)))));
+        Nachtlauf.Dran d = dran(NACHT, pfc, List.of());
+        assertThat(d.dran()).isFalse();
+        assertThat(d.grund()).contains("Der letzte Lauf auf 2026.11.15 wurde").doesNotContain("edge-industrie-");
+        // Eine Rücknahme bei Edge Light in dieser Nacht hält Edge Industrie nicht an (und umgekehrt).
+        Nachtlauf.Box frei = new Nachtlauf.Box("edge-b", MOEGLICH, industrie, NACHT.minusSeconds(20), List.of());
+        assertThat(dran(NACHT, frei, List.of(lauf("edge-c", NEU, true, "zurueck", NACHT.minusSeconds(600)))).dran())
+                .isTrue();
+    }
+
     @Test
     void eineNeuereFassungGibtDieBoxWiederFrei() {
         Instant gestern = NACHT.minus(Duration.ofDays(1));

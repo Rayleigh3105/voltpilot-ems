@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bereitZumAufspielen, bestaetigung, brauchtDichFernlauf, FERNLAUF_ERGEBNISSE, FERNLAUF_GRUPPEN, FERNLAUF_SCHRITTE,
   fassungKurz, fernlaufLinie, fragtSatz, fragtText, haken, heuteNacht, nachtlaufHalt, nachtlaufZeile, ohneKundenkontoKopf,
+  knopfSatz, zeilenLinie,
   schrittleiste, sonstHeuteNacht, standZeilen, tunnelKarte, verlaufZeile, type Fernlauf, type FernlaufStand,
   type NachtlaufSchalter,
 } from './werkstattFernlauf';
@@ -118,6 +119,59 @@ describe('Fernlauf durch den Tunnel (vp-update-vor-zuordnung S1)', () => {
     expect(b.folgen.join(' ')).toContain('deinem Namen');
     expect(verlaufZeile(auftrag({ zustand: 'zurueck' }), JETZT)).toEqual({ wann: '17:55', text: 'Über den Tunnel auf 2026.11.15 · zurückgenommen · admin', ton: 'warn' });
     expect(fassungKurz(null)).toBe('unbekannt');
+  });
+
+  describe('Edge Industrie (WAGO PFC200)', () => {
+    const pfc = (teil: Partial<FernlaufStand> = {}) => stand({
+      edgeRef: 'edge-zz9988g', laeuft: 'edge-industrie-2026.11.5', neueste: 'edge-industrie-2026.11.15',
+      werkstattFassung: 'edge-industrie-2026.11.5', ...teil,
+    });
+
+    it('die Fassung steht kurz da wie bei Edge Light', () => {
+      expect(fassungKurz('edge-industrie-2026.11.15')).toBe('2026.11.15');
+      expect(fassungKurz('edge-light-2026.11.15')).toBe('2026.11.15');
+      // Eine Docker-Fassung behält ihren Namen.
+      expect(fassungKurz('edge-2026.11.2')).toBe('edge-2026.11.2');
+      const karte = tunnelKarte(pfc(), JETZT);
+      expect(karte.art === 'knopf' && karte.knopf.label).toBe('Auf 2026.11.15 bringen');
+    });
+
+    it('die Bestätigung sagt, dass nur das Programm neu startet und die SPS weiterläuft', () => {
+      const b = bestaetigung('edge-zz9988g', pfc());
+      expect(b.titel).toBe('edge-zz9988g von 2026.11.5 auf 2026.11.15 bringen?');
+      expect(b.intro).toBe('Der Werkstatt-Dienst bekommt ein Fenster für 30 Min. Neu startet nur das Programm von '
+        + 'VoltPilot; das Gerät und die SPS laufen weiter.');
+      expect(b.intro).not.toContain('Die Box startet einmal neu');
+      expect(b.folgen).toContain('Tunnel, Identität, Firmware und SPS-Programm bleiben, wie sie sind.');
+      expect(b.folgen).toHaveLength(4);
+      // Ohne gemeldete Fassung entscheidet das Ziel.
+      expect(bestaetigung('edge-zz9988g', pfc({ laeuft: null })).intro).toContain('die SPS laufen weiter');
+    });
+
+    it('der Satz über dem Knopf nennt für den PFC200 keine Dauer und keinen Neustart der Box', () => {
+      expect(knopfSatz('industrie')).toBe('Wie in der Werkstatt. Neu startet nur das Programm von VoltPilot; '
+        + 'das Gerät und die SPS laufen weiter.');
+      expect(knopfSatz('light')).toBe('Wie in der Werkstatt. Etwa 5 Min., startet einmal neu.');
+      expect(knopfSatz(null)).toBe(knopfSatz('light'));
+    });
+
+    it('in der Liste trägt nur die Edge-Industrie-Zeile eine Marke', () => {
+      expect(zeilenLinie(pfc())).toBe('industrie');
+      expect(zeilenLinie(pfc({ laeuft: null }))).toBe('industrie');
+      expect(zeilenLinie(stand())).toBeNull();
+      expect(zeilenLinie(stand({ laeuft: 'edge-2026.11.2', neueste: null }))).toBeNull();
+      expect(zeilenLinie(stand({ laeuft: null, neueste: null }))).toBeNull();
+    });
+
+    it('der Kopf nennt eine Nummer nur, wenn sie für alle bereiten Boxen dieselbe ist', () => {
+      expect(ohneKundenkontoKopf([pfc()])).toBe('1 Box wartet auf ihr Kundenkonto · 1 läuft älter als 2026.11.15');
+      expect(ohneKundenkontoKopf([stand({ edgeRef: 'edge-a' }), pfc({ neueste: 'edge-industrie-2026.11.20' })]))
+        .toBe('2 Boxen warten auf ihr Kundenkonto · 2 laufen älter als die neueste Fassung ihrer Linie');
+      // Eine nicht bereite Box einer anderen Linie ändert die Nummer nicht.
+      expect(ohneKundenkontoKopf([stand({ edgeRef: 'edge-a' }),
+        pfc({ neueste: 'edge-industrie-2026.11.20', moeglich: false, gruende: [{ code: 'nicht_verbunden', text: 'x' }] })]))
+        .toBe('2 Boxen warten auf ihr Kundenkonto · 1 läuft älter als 2026.11.15');
+    });
   });
 
   describe('Karte „Ohne Kundenkonto" (S2)', () => {

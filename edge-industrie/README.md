@@ -16,6 +16,7 @@ edge-industrie/
 ├── README.md                              dieser Überblick
 ├── install.sh                             Einrichtung über SSH: Benutzer, Loader, Dienst, Vertrauens-Set, bestätigte Fassung
 ├── wartung.sh                             Wartungstunnel über SSH: Programm vp-wartung, Schlüssel der Box, Dienst (key, <adresse>, status, abbauen)
+├── fernlauf.sh                            Fernlauf durch den Tunnel: sichern, was install.sh schreibt, nur den Dienst neu starten, Sicherung zurück
 ├── files/
 │   ├── etc/init.d/vp-edge-industrie       Dienst-Skript (start, stop, restart, status)
 │   ├── etc/init.d/vp-wartung              Dienst-Skript des Wartungstunnels
@@ -32,7 +33,8 @@ edge-industrie/
 └── test/
     ├── install-probe.sh                   install.sh, Dienst und Loader gegen BusyBox-Linux für ARMv7 im Container
     ├── update-probe.sh                    das Update im Loader, dieselben Fälle wie boot-update-probe.sh der Mango
-    └── wartung-probe.sh                   wartung.sh, Dienst und vp-wartung gegen einen Wartungsserver im Kleinen
+    ├── wartung-probe.sh                   wartung.sh, Dienst und vp-wartung gegen einen Wartungsserver im Kleinen
+    └── fernlauf-probe.sh                  fernlauf.sh mit install.sh: sichern, neue Fassung, nur der Dienst startet neu, Rücknahme Byte für Byte
 ```
 
 ## Was auf dem Gerät entsteht
@@ -157,11 +159,25 @@ Ob 8484, 8887, 1883 und 1502 am Gerät wirklich frei sind, zeigt PS-P5.
 Dasselbe Protokoll wie Edge Light ([Updates](../edge-light/docs/boot-und-updates.md)): Das Programm prüft Manifest und Signatur, lädt die Fassung in den RAM, der Loader tauscht beim nächsten Start, die neue Fassung läuft zehn Minuten zur Probe und wird behalten oder zurückgenommen.
 Edge Industrie hat eine eigene Release-Linie `edge-industrie-JJJJ.MM.N` (Lauf `.forgejo/workflows/edge-industrie-release.yaml`, Bau `scripts/release.sh`).
 Jede Fassung trägt genau ein Programm `vp-edge-industrie:linux/arm`, angehängt als `vp-edge-industrie-linux-arm` samt `.gz`; ihr Manifest gilt nur für das Backend `industrie`.
-Dazu hängt der Lauf an, was der Werkstatt-Dienst beim Einrichten eines Geräts auflegt: den Skriptstand `edge-industrie-skripte.tar.gz` (`install.sh`, `wartung.sh`, `files/`; `scripts/skripte-paket.py`) und das Tunnel-Programm `vp-wartung-linux-arm`.
+Dazu hängt der Lauf an, was der Werkstatt-Dienst beim Einrichten eines Geräts auflegt: den Skriptstand `edge-industrie-skripte.tar.gz` (`install.sh`, `wartung.sh`, `fernlauf.sh`, `files/`; `scripts/skripte-paket.py`) und das Tunnel-Programm `vp-wartung-linux-arm`.
 Ihre Prüfsummen stehen signiert im Manifest, als eigene Felder `skripte` und `wartung` und nie als Bestandteil des Updates: Ein unbekannter Bestandteil ließe Boxen die ganze Fassung zurückstellen.
 Die Box meldet sich als `industrie` und bekommt nur Fassungen dieser Linie; ein Edge-Light- oder Docker-Release stellt sie zurück, und das Portal bietet es ihr gar nicht erst an.
 Signiert und registriert wird erst mit der Repo-Variable `EDGE_INDUSTRIE_SIGNIEREN=true`.
 Für `install.sh` liegt das Programm als `edge-industrie/dist/vp-edge-industrie-linux-arm`; auf dem Gerät heißt es `vp-edge-industrie`.
+
+**Ohne Kundenkonto** holt ein Gerät kein Update aus der Cloud.
+Dann spielt der Werkstatt-Dienst die neueste Fassung durch den Wartungstunnel auf ([Vertrag](../docs/contracts/werkstatt-fernlauf-v1.md#zwei-geräte-eine-linie-je-gerät)): `install.sh` wie an der Werkbank, davor und danach `fernlauf.sh`.
+
+```bash
+edge-industrie/fernlauf.sh root@<adresse> sichern <sicherung.tar.gz>   # was install.sh schreibt, in eine Datei auf diesem Rechner
+edge-industrie/fernlauf.sh root@<adresse> neustart                     # nur /etc/init.d/vp-edge-industrie restart
+edge-industrie/fernlauf.sh root@<adresse> zurueck <sicherung.tar.gz>   # Sicherung einspielen, Dienst starten
+```
+
+`fernlauf.sh` startet nie das Gerät neu und fasst weder die SPS-Laufzeit noch den Wartungstunnel an.
+Die Sicherung enthält Loader, Dienst-Skript mit seinem Start-Link, Einstellungen, Vertrauens-Set, Stand und bestätigte Fassung; Identität, Referenz und Tunnel stehen nie darin.
+`zurueck` prüft das Archiv auf dem Gerät, bevor es den Dienst anhält: Ein unlesbares, unvollständiges oder fremdes ändert nichts.
+Das Skript gehört zum signierten Skriptstand; eine Fassung, die es nicht mitbringt, spielt der Fernlauf nicht auf.
 
 Ein Update tauscht nur das Programm.
 **Loader und Dienst-Skript ändern sich nur durch `install.sh`:** Das Loader-Selbstupdate der Mango gibt es auf dem PFC200 nicht.
@@ -185,15 +201,17 @@ edge-industrie/test/update-probe.sh         # das Update im Loader: dieselben F�
 edge-industrie/scripts/loader-abgleich.sh   # Loader wortgleich mit dem Mango-Loader; läuft in edge-light/scripts/test.sh
 edge-industrie/scripts/build-wartung.sh      # das Tunnel-Programm für ARMv7
 edge-industrie/test/wartung-probe.sh        # wartung.sh, Dienst und vp-wartung gegen einen Wartungsserver im Kleinen
+edge-industrie/test/fernlauf-probe.sh       # fernlauf.sh mit install.sh: sichern, neue Fassung, Neustart nur des Dienstes, Rücknahme
 ```
 
-Die Proben laufen in `busybox:1.34.1-glibc` für `linux/arm/v7` mit BusyBox-Init als erstem Prozess; die ersten beiden ohne Netz, die des Wartungstunnels an einem eigenen Docker-Netz mit der Gegenstelle.
+Die Proben laufen in `busybox:1.34.1-glibc` für `linux/arm/v7` mit BusyBox-Init als erstem Prozess; die ersten beiden und die des Fernlaufs ohne Netz, die des Wartungstunnels an einem eigenen Docker-Netz mit der Gegenstelle.
 
 | Probe | Belegt |
 |---|---|
 | `install-probe.sh` | `install.sh` verweigert vor dem ersten SSH-Aufruf, was nicht passt, und ändert nichts, wenn dem Gerät ein Werkzeug fehlt. Ablage, Eigentümer und Schreibschutz stimmen. Das echte Programm läuft als `voltpilot` mit `nice 10`, meldet „WAGO 750-8212“ und `arm` und ist update-bereit. Der Datenspiegel ist aus und lauscht eingeschaltet auf 1502, nichts auf 502. Der Dienst startet das Programm nach einem Absturz nach 10 s neu, beendet es geordnet und startet nach „Strom aus“ von selbst. Ein zweiter Aufruf von `install.sh` erhält Einstellungen und Kennung. Trägt `/tmp` `noexec`, läuft das Programm aus dem Flash |
 | `update-probe.sh` | Als Benutzer `voltpilot`: Gut-Fall mit Behalten; Probestart scheitert; drei Abstürze; keine Cloud bis zur Frist; Selbsttest durchgefallen; Fälschung im RAM; Strom weg in der Probe; Strom weg beim Tausch mit Nachladen genau dieser Fassung; Obergrenze der Marken im Flash. Mit dem echten Programm: Probestart, Urteil „offen“ ohne Cloud, Rücknahme mit dessen Grund, geordnetes Ende auf TERM. Kein Loader-Selbstupdate, auch wenn das Programm am Pfad der Mango schreiben dürfte |
 | `wartung-probe.sh` | Mit dem echten ARMv7-Programm `vp-wartung` gegen einen Wartungsserver im Kleinen (echtes WireGuard, Schlüsselausgabe nach Vertrag), der Server unter seinem Namen erreicht: `wartung.sh` verweigert vor dem ersten SSH-Aufruf, was nicht passt, und ändert nichts, wenn dem Gerät ein Werkzeug fehlt. Der Schlüssel der Box entsteht auf dem Gerät, nur für root, und steht in keiner Ausgabe. Das Programm läuft als root mit `oom_score_adj` 300. 2222 und 8484 lauschen auf keiner Netzbuchse und sind über das Netz nicht erreichbar, im Tunnel schon. Ohne Fenster abgewiesen; dauerhafter Schlüssel; Zeile mit Optionen gilt nicht; der Server zeigt den Host-Schlüssel des Geräts; Terminal; SIGHUP nicht ignoriert. Fenster-Schlüssel: Anmeldung, Ende der Sitzung mit dem Schlüssel, die dauerhafte bleibt; Ereignisliste ohne Schlüssel. Frist ohne Server. Web-App im Tunnel. Neustart des Programms nach 10 s, wachsende Pause bei sofortigem Ende. Nach „Strom aus“ startet der Dienst von selbst, kein Fenster-Schlüssel überlebt. Gleiche Werte fassen den Tunnel nicht an; `wartung.sh` durch den Tunnel selbst; `abbauen` lässt nichts zurück und `/etc` wie vorher |
+| `fernlauf-probe.sh` | Mit den echten `install.sh`, `fernlauf.sh`, Dienst-Skript und Loader, Programme als Attrappe: `fernlauf.sh` verweigert, was nicht passt, vor dem ersten SSH-Aufruf. `sichern` holt genau, was `install.sh` schreibt, ohne Identität, Referenz und Tunnel, und hinterlässt nach einem Fehler keine Datei. Nach `install.sh` mit einer neuen Fassung startet `neustart` nur den Dienst: Das Gerät startet nicht neu, und die Prozesse, die für SPS-Laufzeit und Tunnel stehen, behalten ihre Nummer. `zurueck` stellt jede gesicherte Datei Byte für Byte mit Eigentümer und Rechten wieder her, die alte Fassung läuft wieder; ein kaputtes, unvollständiges oder fremdes Archiv ändert nichts; ein Gerät ohne Edge Industrie wird verweigert. |
 
 **Was der Container nicht belegt:** alles, was von der echten Firmware abhängt.
 Er hat keine SPS-Laufzeit, kein WBM, keine Firewall, kein echtes `get_coupler_details`, keinen echten Flash und rechnet unter Emulation.

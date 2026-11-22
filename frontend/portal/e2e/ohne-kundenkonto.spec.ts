@@ -57,6 +57,38 @@ for (const breite of BREITEN) {
       expect(fehler).toEqual([]);
     });
 
+    test('ein PFC200 steht mit der Marke „Edge Industrie" und seiner eigenen Fassung in der Liste', async ({ page }, info) => {
+      test.skip(info.project.name !== 'desktop-chromium');
+      const fehler = wache(page);
+      await page.setViewportSize({ width: breite, height: breite === 390 ? 844 : 900 });
+      await page.goto('/e2e/edge-updates.html?pfc200=1');
+
+      const karte = page.getByTestId('ohne-kundenkonto');
+      await expect(karte).toContainText('4 Boxen warten auf ihr Kundenkonto');
+      // Zwei Linien, zwei neueste Fassungen: Der Kopf nennt keine einzelne Nummer.
+      await expect(karte).toContainText('3 laufen älter als die neueste Fassung ihrer Linie');
+      const zeilen = karte.getByTestId('ohne-kundenkonto-zeile');
+      await expect(zeilen).toHaveCount(4);
+      const pfc = zeilen.filter({ hasText: 'edge-zz9988g' });
+      await expect(pfc.getByTestId('ohne-kundenkonto-linie')).toHaveText('Edge Industrie');
+      await expect(pfc.getByRole('button', { name: 'Auf 2026.11.20 bringen' })).toBeVisible();
+      await expect(pfc).not.toContainText('edge-industrie-');
+      // Nur die Zeile des PFC200 trägt eine Marke der Linie.
+      await expect(karte.getByTestId('ohne-kundenkonto-linie')).toHaveCount(1);
+      // Die Marke bleibt in ihrer Zeile und läuft nicht über die Fassung daneben.
+      const marke = await pfc.getByTestId('ohne-kundenkonto-linie').boundingBox();
+      const zeile = await pfc.boundingBox();
+      expect(marke && zeile && marke.x >= zeile.x && marke.x + marke.width <= zeile.x + zeile.width).toBe(true);
+
+      if (BILDER) {
+        mkdirSync(BILDER, { recursive: true });
+        await page.waitForTimeout(350);
+        await karte.screenshot({ path: join(BILDER, `ohne-kundenkonto-pfc200-${breite}.png`) });
+      }
+      await keinUeberlauf(page);
+      expect(fehler).toEqual([]);
+    });
+
     test('„Aufspielen" je Box legt denselben Auftrag wie die Akte an (S1, keine zweite Logik)', async ({ page }, info) => {
       test.skip(info.project.name !== 'desktop-chromium');
       const fehler = wache(page);

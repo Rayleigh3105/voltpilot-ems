@@ -103,11 +103,16 @@ function fernlaufStand() {
       verlauf: [{ ...auftrag, erteiltAm: iso(-2_000), begonnenAm: null, zustand: 'erteilt', schritt: null, schrittSeit: null, schritte: [], ergebnis: null }] };
   }
   switch (FERNLAUF) {
+    case 'pfc200':
+      // Ein WAGO PFC200 (Edge Industrie) ohne Kundenkonto: eigene Linie, eigene neueste Fassung.
+      return { ...basis, laeuft: 'edge-industrie-2026.11.5', neueste: 'edge-industrie-2026.11.20',
+        werkstattFassung: 'edge-industrie-2026.11.5' };
     case 'docker':
       return { ...basis, laeuft: 'edge-2026.10.7', neueste: null, werkstattFassung: null, werkstattAm: null,
         moeglich: false, haken: { tunnelVerbunden: false, fragtNachSchluesseln: false, keinKundenkonto: true },
-        gruende: [{ code: 'keine_edge_light', text: 'Nur eine Edge-Light-Box hat den Wartungstunnel; diese ist '
-          + 'keine oder meldet ihre Bauart nicht.' }] };
+        gruende: [{ code: 'keine_edge_light', text: 'Nur eine Edge-Light- oder Edge-Industrie-Box hat den '
+          + 'Wartungstunnel; diese ist keine, meldet ihre Bauart nicht oder meldet eine andere als im '
+          + 'Werkstatt-Register.' }] };
     case 'gesperrt':
       return { ...basis, moeglich: false, haken: { tunnelVerbunden: false, fragtNachSchluesseln: false, keinKundenkonto: true },
         nachtlauf: nichtDran('Der Tunnel-Dienst hat zu dieser Box seit mehr als 3 Minuten nichts gemeldet; ohne frische Rückmeldung kein Lauf.'),
@@ -167,14 +172,16 @@ Object.assign(adminApi, {
     provisioned: true, provisionedAt: iso(-200 * 86_400_000), note: 'Erstinstallation durch Technik-Partner Nordlicht',
   }]),
   listPendingEnrollments: async () => (WARTET ? [{
-    externalRef: BOX, deviceInfo: 'vp-edge-core edge-light-2026.11.5', csrUpdatedAt: iso(-3 * 3_600_000), everIssued: false,
+    externalRef: BOX, deviceInfo: `vp-edge-core ${FERNLAUF === 'pfc200' ? 'edge-industrie' : 'edge-light'}-2026.11.5`, csrUpdatedAt: iso(-3 * 3_600_000), everIssued: false,
     issuedAt: null, werkstattAbnahmeAm: iso(-9 * 86_400_000), zuletztAbgefragtAm: iso(-25_000),
   }] : []),
   // Eine Docker-Box geht nie durch die Werkstatt (2.10): kein Register-Eintrag, also keine Bauart von dort.
   werkstattBoxen: async () => (WARTET && FERNLAUF !== 'docker' ? [{
-    id: 'w1', edgeRef: BOX, boxArt: 'edge-light', lanNetz: '10.213.0.1/24', schritte: {}, notiz: null,
+    id: 'w1', edgeRef: BOX, boxArt: FERNLAUF === 'pfc200' ? 'edge-industrie' : 'edge-light',
+    lanNetz: FERNLAUF === 'pfc200' ? '192.168.1.0/24' : '10.213.0.1/24', schritte: {}, notiz: null,
     angelegtAm: iso(-9 * 86_400_000), angelegtVon: 'Werkstatt-Dienst', geaendertAm: iso(-9 * 86_400_000),
-    abnahmen: [{ id: 'a1', fassung: 'edge-light-2026.11.5', erfasstAm: iso(-9 * 86_400_000) }],
+    abnahmen: [{ id: 'a1', fassung: FERNLAUF === 'pfc200' ? 'edge-industrie-2026.11.5' : 'edge-light-2026.11.5',
+      erfasstAm: iso(-9 * 86_400_000) }],
   }] : []),
   geraeteFernlauf: async () => {
     if (!WARTET) throw new Error('keine Box ohne Kundenkonto');

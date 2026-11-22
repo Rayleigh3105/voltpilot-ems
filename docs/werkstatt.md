@@ -85,7 +85,7 @@ Schritte, Belege und Einstellungen stehen im [README des Dienstes](../services/w
 
 **Stand.**
 Der Dienst kann den Lauf (ausgeschaltet, bis `VP_WERKSTATT_GERAETE=mango,pfc200` gesetzt ist), die API kennt das Gerät `pfc200` (Freigabe, Einmal-Code, Abnahme), und das Portal führt durch den Lauf.
-Fernlauf und Nachtlauf für eine Edge-Industrie-Box fehlen noch.
+Neue Software bekommt ein eingerichteter PFC200 ohne Kundenkonto wie die Mango durch den Tunnel, mit dem Knopf und nachts von selbst ([unten](#neue-software-durch-den-tunnel-box-ohne-kundenkonto)).
 
 **Im Portal.**
 Alle Worte und Bilder zum PFC200 stehen an einer Stelle, in `frontend/portal/src/werkstattPfc200.ts`.
@@ -122,7 +122,7 @@ Anhalten, Fortsetzen und die Tagesgrenze gelten für beide Geräte zusammen (ein
 Die Prüfliste des PFC200 steht im selben Vektor wie die der Mango, unter `geraete.pfc200` in [werkstatt-pruefungen.json](contracts/werkstatt-pruefungen.json): `zugaenge`, `notfall_schluessel`, `tunnel_status`, `anmeldeprobe`, `host_schluessel`, `fenster_zu`, `netze`, `dienste_zu`, `neustart`, `update_bereit`.
 Sie hat keine Prüfung für die SPS und keine für die Firmware, und kein Einrichtungs-WLAN.
 Welche Liste für eine Abnahme gilt, sagt die Box-Art im Register, nicht der Dienst.
-Fernlauf und Nachtlauf gibt es für eine Edge-Industrie-Box noch nicht: Die Fernlauf-Regel gilt nur für eine Edge-Light-Box (Box-Art im Register oder gemeldete Fassung der Linie `edge-light-`).
+Fernlauf und Nachtlauf nehmen eine Edge-Industrie-Box wie eine Edge-Light-Box, jede mit der neuesten Fassung ihrer Linie (`FernlaufRegel.geraet`, [Vertrag](contracts/werkstatt-fernlauf-v1.md#zwei-geräte-eine-linie-je-gerät)).
 Zwillinge der Prüfliste: `WerkstattPruefungen.PFC200` (API), `PRUEFUNGEN_PFC200` in `werkstatt.ts` (Portal), `pfc200.Pruefungen` (Dienst); alle vier gemeinsam ändern.
 
 **Handgriffe am Gerät.**
@@ -171,13 +171,22 @@ zeigt den letzten Fernlauf zusätzlich als eigene Zeile „Nach der Werkstatt" (
 Docker-Box bekommt in der Geräteakte keinen Knopf (kein Wartungstunnel): „Docker-Box · läuft … · holt beim
 Verbinden die neueste Fassung".
 
+**WAGO PFC200 (Edge Industrie).**
+Für einen eingerichteten PFC200 ohne Kundenkonto gilt dasselbe, mit der neuesten Fassung der Linie Edge Industrie.
+Eine Mango bekommt nie Edge Industrie, ein PFC200 nie Edge Light; widersprechen sich Werkstatt-Register und gemeldete Fassung, gibt es keinen Knopf.
+Am PFC200 läuft daneben die Steuerung: Neu startet nur der Dienst `vp-edge-industrie`, nie das Gerät und nie die SPS-Laufzeit, und Firmware, SPS-Programm und Tunnel-Programm bleiben, wie sie sind.
+Karte und Bestätigung im Portal sagen das („Neu startet nur das Programm von VoltPilot; das Gerät und die SPS laufen weiter“) und nennen keine Dauer, weil es für den PFC200 keine gemessene gibt.
+In der Karte „Ohne Kundenkonto“ trägt die Zeile eines PFC200 die Marke „Edge Industrie“.
+Voraussetzung ist eine Fassung, deren signierter Skriptstand `fernlauf.sh` mitbringt; mit einer älteren endet der Fernlauf im Schritt `fassungen`, ohne etwas zu ändern.
+Ein neues Tunnel-Programm bringt der Fernlauf nicht: Das kommt nur an der Werkbank auf ein Gerät.
+
 **Nachts von selbst (S4, Entscheid E3 = B, §11.2).**
 Zusätzlich zum Knopf bekommt jede wartende Box, die der Knopf erlaubt, die neueste Fassung nachts von selbst.
 Der Takt `NachtlaufWatcher` (einmal je Minute, an `voltpilot.ota.mqtt-listener-enabled` wie der `RolloutWatcher`) legt zwischen 02:00 und 05:00 Berliner Zeit je Durchlauf höchstens einen Auftrag an: denselben Auftrag „aufspielen“ wie der Knopf, mit dem Akteur „Automatik · nachts“ (`nachtlauf`) am Fenster, am Auftrag und im Fernwartungs-Protokoll.
 Was erlaubt ist, entscheidet allein die reine Regel `Nachtlauf` (Tests `NachtlaufTest`):
 - ein Lauf, der vor 05:00 beginnt, läuft zu Ende; solange irgendein Fernlauf offen ist, wartet der Takt;
 - kein Drängeln: endete der letzte Lauf einer Box mit der neuesten Fassung zurückgenommen oder offen, versucht die Automatik diese Fassung dort nicht noch einmal, bis eine neuere Fassung kommt oder jemand „Noch einmal“ drückt;
-- Halt: wurde in dieser Nacht ein Lauf mit einer Fassung zurückgenommen oder blieb er offen, bekommt in dieser Nacht keine weitere Box diese Fassung;
+- Halt: wurde in dieser Nacht ein Lauf mit einer Fassung zurückgenommen oder blieb er offen, bekommt in dieser Nacht keine weitere Box diese Fassung (je Fassung, also je Linie: Ein Halt bei Edge Light hält Edge Industrie nicht an und umgekehrt);
 - jede Box höchstens einmal je Nacht, höchstens 20 Nachtläufe je Nacht, kein Auftrag ohne Rückmeldung des Tunnel-Dienstes aus den letzten 3 Minuten.
 
 Bei mehreren Replikaten führt nur eins: der Takt hält eine Sitzungs-Sperre der Datenbank (`pg_try_advisory_lock`), ein zweiter Takt tut dann nichts.

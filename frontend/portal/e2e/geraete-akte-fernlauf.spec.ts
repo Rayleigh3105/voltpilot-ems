@@ -53,6 +53,41 @@ for (const breite of BREITEN) {
       expect(fehler).toEqual([]);
     });
 
+    test('PFC200 (Edge Industrie): Linie, eigene Fassung, und der Dialog sagt, dass die SPS weiterläuft', async ({ page }, info) => {
+      test.skip(info.project.name !== 'desktop-chromium');
+      const fehler = wache(page);
+      await oeffne(page, breite, 'pfc200');
+      const stand = page.getByTestId('akte-fernlauf-stand');
+      await expect(stand).toContainText('Edge Industrie');
+      await expect(stand).toContainText('2026.11.5');
+      await expect(stand).toContainText('2026.11.20');
+      await expect(stand).not.toContainText('edge-industrie-');
+      const satz = page.getByTestId('akte-fernlauf-satz');
+      await expect(satz).toHaveText('Wie in der Werkstatt. Neu startet nur das Programm von VoltPilot; das Gerät und die SPS laufen weiter.');
+      await expect(page.getByTestId('akte-fernlauf-knopf')).toHaveText('Auf 2026.11.20 bringen');
+      await keinUeberlauf(page);
+
+      await page.getByTestId('akte-fernlauf-knopf').click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toContainText('edge-k7m2xq3 von 2026.11.5 auf 2026.11.20 bringen?');
+      await expect(dialog).toContainText('Neu startet nur das Programm von VoltPilot; das Gerät und die SPS laufen weiter.');
+      await expect(dialog).toContainText('Tunnel, Identität, Firmware und SPS-Programm bleiben, wie sie sind.');
+      await expect(dialog).not.toContainText('Die Box startet einmal neu');
+      // Der Dialog passt ganz in das Fenster.
+      const rahmen = await dialog.boundingBox();
+      expect(rahmen).not.toBeNull();
+      expect(rahmen!.x).toBeGreaterThanOrEqual(0);
+      expect(rahmen!.x + rahmen!.width).toBeLessThanOrEqual(breite + 1);
+      if (process.env.VP_PFC200_FERNLAUF_BILDER) {
+        await page.waitForTimeout(350);
+        await page.screenshot({ path: `${process.env.VP_PFC200_FERNLAUF_BILDER}/akte-pfc200-dialog-${breite}.png` });
+      }
+      await dialog.getByRole('button', { name: 'Aufspielen' }).click();
+      await expect(page.getByTestId('akte-fernlauf-laeuft')).toContainText('Wartet auf den Werkstatt-Dienst');
+      await keinUeberlauf(page);
+      expect(fehler).toEqual([]);
+    });
+
     test('ohne Tunnel bleibt der Knopf aus und nennt den Grund', async ({ page }, info) => {
       test.skip(info.project.name !== 'desktop-chromium');
       await oeffne(page, breite, 'gesperrt');
