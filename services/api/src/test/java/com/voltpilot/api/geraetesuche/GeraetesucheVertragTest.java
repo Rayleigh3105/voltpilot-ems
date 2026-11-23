@@ -128,8 +128,11 @@ class GeraetesucheVertragTest {
         List<String> gruende = new ArrayList<>();
         GeraetesucheVertrag.GRUENDE.values().forEach(gruende::addAll);
         assertThat(texte(schemaErgebnis.at("/properties/grund/enum"))).isEqualTo(gruende);
-        assertThat(iterable(schemaErgebnis.at("/$defs/weitere/properties")))
-                .isEqualTo(GeraetesucheVertrag.WEITERE_ARTEN);
+        // unbekannte_geraete is not itself a count kind (DP-3 A's weitere_arten vocabulary): it is the
+        // Go-core box's address list for the unbekannt count.
+        List<String> weitereEigenschaften = new ArrayList<>(iterable(schemaErgebnis.at("/$defs/weitere/properties")));
+        weitereEigenschaften.remove("unbekannte_geraete");
+        assertThat(weitereEigenschaften).isEqualTo(GeraetesucheVertrag.WEITERE_ARTEN);
         // Jede Form, die beide Bericht-Schemas tragen, ist EINE Form.
         schemaStand.path("$defs").fieldNames().forEachRemaining(k ->
                 assertThat(schemaErgebnis.path("$defs").path(k)).as(k).isEqualTo(schemaStand.path("$defs").path(k)));

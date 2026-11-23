@@ -46,17 +46,18 @@ class GeraetesucheAntwortFormTest {
 
     @Test
     void jedeAntwortTraegtGenauDieFelderIhresSchemas() {
-        Map<Class<?>, String> paare = Map.of(
-                GeraetesucheDto.Suche.class, "Geraetesuche",
-                GeraetesucheDto.Netz.class, "GeraetesucheNetz",
-                GeraetesucheDto.Gruppe.class, "GeraetesucheGruppe",
-                GeraetesucheDto.Fund.class, "GeraetesucheFund",
-                GeraetesucheDto.Weitere.class, "GeraetesucheWeitere",
-                GeraetesucheDto.LadesaeuleKlopftAn.class, "GeraetesucheLadesaeuleKlopftAn",
-                GeraetesucheDto.Verlauf.class, "GeraetesucheVerlauf",
-                GeraetesucheDto.VerlaufEintrag.class, "GeraetesucheVerlaufEintrag",
-                GeraetesucheDto.Fehler.class, "GeraetesucheFehler",
-                GeraetesucheDto.Urheber.class, "ProtokollUrheber");
+        Map<Class<?>, String> paare = Map.ofEntries(
+                Map.entry(GeraetesucheDto.Suche.class, "Geraetesuche"),
+                Map.entry(GeraetesucheDto.Netz.class, "GeraetesucheNetz"),
+                Map.entry(GeraetesucheDto.Gruppe.class, "GeraetesucheGruppe"),
+                Map.entry(GeraetesucheDto.Fund.class, "GeraetesucheFund"),
+                Map.entry(GeraetesucheDto.Weitere.class, "GeraetesucheWeitere"),
+                Map.entry(GeraetesucheDto.UnbekanntesGeraet.class, "GeraetesucheUnbekanntesGeraet"),
+                Map.entry(GeraetesucheDto.LadesaeuleKlopftAn.class, "GeraetesucheLadesaeuleKlopftAn"),
+                Map.entry(GeraetesucheDto.Verlauf.class, "GeraetesucheVerlauf"),
+                Map.entry(GeraetesucheDto.VerlaufEintrag.class, "GeraetesucheVerlaufEintrag"),
+                Map.entry(GeraetesucheDto.Fehler.class, "GeraetesucheFehler"),
+                Map.entry(GeraetesucheDto.Urheber.class, "ProtokollUrheber"));
         paare.forEach((record, schema) -> assertThat(komponenten(record)).as(schema)
                 .containsExactlyElementsOf(felder(schema)));
         List<String> komponente = new ArrayList<>();

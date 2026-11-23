@@ -43,7 +43,7 @@ public class GeraetesucheRepository {
     private static final String SPALTEN = "id, site_id, device_id, ausgeloest_am, gueltig_bis, actor_sub, actor_name, "
             + "actor_rolle, actor_art, zustand, grund, stand_nr, schritt, erledigt, gesamt, rest_s, netze::text, "
             + "letzte_meldung_am, beendet_am, dauer_ms, erkenner, weitere_telefon_tablet, weitere_rechner, "
-            + "weitere_unbekannt, abbruch_gesendet_am";
+            + "weitere_unbekannt, weitere_unbekannte_geraete::text, abbruch_gesendet_am";
 
     private static final String FUND_SPALTEN = "schluessel, erkenner, art, hersteller, modell, seriennummer, firmware, "
             + "familie, spannung, kanaele, erkennung, merkmale, anbindung, hindernis, communication, ip, port, serial, "
@@ -142,7 +142,8 @@ public class GeraetesucheRepository {
         int n = jdbc.update(con -> {
             var ps = con.prepareStatement("UPDATE geraetesuche SET zustand = ?, grund = ?, dauer_ms = ?, "
                     + "erkenner = ?, netze = ?::jsonb, weitere_telefon_tablet = ?, weitere_rechner = ?, "
-                    + "weitere_unbekannt = ?, rest_s = NULL, letzte_meldung_am = ?, beendet_am = ? WHERE id = ? "
+                    + "weitere_unbekannt = ?, weitere_unbekannte_geraete = ?::jsonb, rest_s = NULL, "
+                    + "letzte_meldung_am = ?, beendet_am = ? WHERE id = ? "
                     + "AND site_id = ? AND device_id = ? AND zustand IN ('wartet', 'laeuft')");
             ps.setString(1, e.zustand());
             ps.setString(2, e.grund());
@@ -152,11 +153,12 @@ public class GeraetesucheRepository {
             ps.setObject(6, e.weitere().telefonTablet());
             ps.setObject(7, e.weitere().rechner());
             ps.setObject(8, e.weitere().unbekannt());
-            ps.setTimestamp(9, Timestamp.from(am));
+            ps.setString(9, unbekannteGeraeteJson(e.weitere().unbekannteGeraete()));
             ps.setTimestamp(10, Timestamp.from(am));
-            ps.setObject(11, e.suchId());
-            ps.setObject(12, e.siteId());
-            ps.setObject(13, e.deviceId());
+            ps.setTimestamp(11, Timestamp.from(am));
+            ps.setObject(12, e.suchId());
+            ps.setObject(13, e.siteId());
+            ps.setObject(14, e.deviceId());
             return ps;
         });
         if (n != 1) {
@@ -284,8 +286,41 @@ public class GeraetesucheRepository {
                 (Integer) rs.getObject("stand_nr"), rs.getString("schritt"), (Integer) rs.getObject("erledigt"),
                 (Integer) rs.getObject("gesamt"), (Integer) rs.getObject("rest_s"), netze(rs.getString("netze")),
                 instant(rs, "letzte_meldung_am"), instant(rs, "beendet_am"), (Integer) rs.getObject("dauer_ms"),
-                erkenner == null ? null : texte(erkenner), new GeraetesucheBericht.Weitere(t, r, u),
+                erkenner == null ? null : texte(erkenner),
+                new GeraetesucheBericht.Weitere(t, r, u, unbekannteGeraete(rs.getString("weitere_unbekannte_geraete"))),
                 instant(rs, "abbruch_gesendet_am"));
+    }
+
+    private String unbekannteGeraeteJson(List<GeraetesucheBericht.UnbekanntesGeraet> geraete) {
+        if (geraete == null || geraete.isEmpty()) {
+            return null;
+        }
+        ArrayNode a = mapper.createArrayNode();
+        for (GeraetesucheBericht.UnbekanntesGeraet g : geraete) {
+            ObjectNode o = a.addObject().put("ip", g.ip());
+            if (g.ports() != null && !g.ports().isEmpty()) {
+                ArrayNode ports = o.putArray("ports");
+                g.ports().forEach(ports::add);
+            }
+        }
+        return a.toString();
+    }
+
+    private List<GeraetesucheBericht.UnbekanntesGeraet> unbekannteGeraete(String json) {
+        if (json == null) {
+            return List.of();
+        }
+        try {
+            List<GeraetesucheBericht.UnbekanntesGeraet> out = new ArrayList<>();
+            for (JsonNode g : mapper.readTree(json)) {
+                List<Integer> ports = new ArrayList<>();
+                g.path("ports").forEach(p -> ports.add(p.asInt()));
+                out.add(new GeraetesucheBericht.UnbekanntesGeraet(g.path("ip").asText(), List.copyOf(ports)));
+            }
+            return List.copyOf(out);
+        } catch (Exception e) {
+            throw new IllegalStateException("weitere_unbekannte_geraete", e);
+        }
     }
 
     private String netzeJson(List<GeraetesucheBericht.Netz> netze) {

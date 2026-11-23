@@ -284,6 +284,23 @@ for (const breite of BREITEN) {
       expect(fehler).toEqual([]);
     });
 
+    test('Unbekanntes Gerät (DP-3 A, geändert): Adresse und Port stehen da, Telefone bleiben eine Zahl, Übernehmen trägt die Adresse vor', async ({ page }, info) => {
+      const fehler = konsole(page);
+      await oeffne(page, breite, 'fall=fertig');
+      await expect(modal(page).getByRole('heading', { name: '2 Geräte gefunden' })).toBeVisible();
+      const weitere = modal(page).getByTestId('gs-weitere');
+      await weitere.locator('summary').click();
+      await expect(weitere.getByText('Unbekanntes Gerät', { exact: true })).toBeVisible();
+      await expect(weitere.getByText('192.168.178.80 · Port 80 offen')).toBeVisible();
+      await expect(weitere.getByText('Telefone und Rechner stehen nur als Anzahl da – ohne Namen und ohne MAC-Adresse.')).toBeVisible();
+      await pruefeUndFotografiere(page, info, breite, 'gs-unbekanntes-geraet', true);
+
+      await weitere.getByRole('button', { name: 'Von Hand hinzufügen' }).click();
+      // Derselbe Weg wie sonst - der Katalog öffnet, die Adresse geht als Vorbelegung mit (AufbauSection, Übernehmen trägt sie vor).
+      await expect(modal(page, 'Gerät hinzufügen')).toBeVisible();
+      expect(fehler).toEqual([]);
+    });
+
     for (const [fall, name, satz] of [
       ['offline', 'm8-start-offline', /Ihre Box meldet sich gerade nicht \(zuletzt \d\d:\d\d\)/],
       ['update', 'm8-start-update', /Update nötig für: Gerätesuche/],

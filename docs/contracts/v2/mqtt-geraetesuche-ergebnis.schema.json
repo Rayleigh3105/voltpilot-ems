@@ -98,7 +98,7 @@
     "weitere": {
       "type": "object",
       "additionalProperties": false,
-      "description": "DP-3 A: Geräte, die kein Energie-Gerät und keine Netz-Technik sind, NUR als Anzahl je Art - ohne Adresse, MAC oder Namen. Ein fehlender Schlüssel = nicht gezählt (die Docker-Box kann Telefone nicht von Rechnern trennen und zählt alles unter unbekannt).",
+      "description": "DP-3 A: Geräte, die kein Energie-Gerät und keine Netz-Technik sind, NUR als Anzahl je Art - nie eine MAC, ein Hostname oder ein Name. Ein fehlender Schlüssel = nicht gezählt (die Docker-Box kann Telefone nicht von Rechnern trennen und zählt alles unter unbekannt). Ein Go-Kern-Box (Edge Light, Edge Industrie) meldet zusätzlich unbekannte_geraete: die Adressen des unbekannt-Zählers, ohne MAC, Hostname oder Name.",
       "properties": {
         "telefon_tablet": {
           "type": "integer",
@@ -114,6 +114,37 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 512
+        },
+        "unbekannte_geraete": {
+          "type": "array",
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/$defs/unbekanntes_geraet"
+          },
+          "description": "Nur auf einer Go-Kern-Box: eine Zeile je unbekannt-Zähler, aufsteigend nach ip sortiert. Auf der Docker-Box fehlt das Feld (sie kann eine Adresse nicht von Telefon/Rechner unterscheiden)."
+        }
+      }
+    },
+    "unbekanntes_geraet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ip"
+      ],
+      "description": "Eine Adresse, die die Suche nicht weiter erkennen konnte - nie eine MAC, ein Hostname oder ein Name (DP-3 A).",
+      "properties": {
+        "ip": {
+          "$ref": "#/$defs/ipv4",
+          "description": "Liegt in einem der gemeldeten Netze und ist nie die Box-Adresse (Bereichsregel ziel)."
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "description": "Die Ports, die die Box beim Ansprechen schon offen fand, aufsteigend und eindeutig. Fehlt = keiner der geprüften Ports war offen; es wird für diese Meldung nicht neu geprüft."
         }
       }
     },

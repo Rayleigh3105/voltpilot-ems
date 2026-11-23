@@ -672,4 +672,14 @@ button.vp-gs-wahl-zeile:hover {
   .vp-gs-spalten {
     display: none;
   }
+  /* „Von Hand hinzufügen" neben der Adresse eines unbekannten Geräts bräuchte hier mehr Platz, als die
+     Spalte hat - die Handlung rutscht darum unter den Text statt ihn Zeichen für Zeichen umzubrechen. */
+  .vp-gs-zeile.is-aktion-unten {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 2px;
+  }
+  .vp-gs-zeile.is-aktion-unten .vp-gs-aktion {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
 }

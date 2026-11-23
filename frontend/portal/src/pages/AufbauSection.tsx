@@ -207,6 +207,8 @@ export function AufbauSection({
   // GE-5: das Kennzeichen des Gateways, an dem das Gerät hinzukommt (`?neu=geraet&an=DQ-3`); null = kein Weg vorgegeben.
   const [addAn, setAddAn] = useState<string | null>(null);
   const [addTyp, setAddTyp] = useState<TypId | null>(null);
+  // „Von Hand hinzufügen" an einer unbekannten Adresse der Gerätesuche: nur die IP, derselbe Weg wie sonst.
+  const [vonHandAdresse, setVonHandAdresse] = useState<string | null>(null);
   const [vorlage, setVorlage] = useState<SiteComponentTemplate | null>(null);
   // Der Katalog vor jedem Anlegen, das dort gewählte Modell und - nach dem
   // Speichern - der eine Satz, was entstanden ist.
@@ -622,7 +624,10 @@ export function AufbauSection({
     ? sucheFund.u.verbindung
     : sucheFund?.art === 'selbst'
       ? sucheFund.fund.verbindung
-      : null;
+      // „Von Hand hinzufügen" an einer unbekannten Adresse der Suche: nur die IP, kein Port.
+      : vonHandAdresse
+        ? { ip: vonHandAdresse }
+        : null;
 
   // Der Weg des Gateways, an dem das Gerät hinzukommt — aus den geladenen Wegen dieser Anlage, nie geraten.
   const addWeg = addAn
@@ -660,6 +665,7 @@ export function AufbauSection({
     setStart(null);
     setVorlage(null);
     setSucheFund(null);
+    setVonHandAdresse(null);
   };
 
   const WEG_TYP: Record<Exclude<KatalogWeg, 'anlagensteuerung'>, TypId> = {
@@ -1083,6 +1089,12 @@ export function AufbauSection({
           onSelbst={(fund, suchId) => ausSucheAnlegen({ art: 'selbst', fund, suchId })}
           onVonHand={() => {
             const b = suche.box;
+            setSuche(null);
+            oeffneAnlegen(b);
+          }}
+          onVonHandAdresse={(ip) => {
+            const b = suche.box;
+            setVonHandAdresse(ip);
             setSuche(null);
             oeffneAnlegen(b);
           }}

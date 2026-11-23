@@ -124,10 +124,18 @@ export interface GeraetesucheGruppe {
   funde: GeraetesucheFund[];
 }
 
+export interface GeraetesucheUnbekanntesGeraet {
+  ip: string;
+  /** Die Ports, die die Box beim Ansprechen schon offen fand; leer = keiner. */
+  ports: number[];
+}
+
 export interface GeraetesucheWeitere {
   telefonTablet: number | null;
   rechner: number | null;
   unbekannt: number | null;
+  /** Nur eine Go-Kern-Box (Edge Light, Edge Industrie) meldet Adressen; leer bei einer Docker-Box. */
+  unbekannteGeraete: GeraetesucheUnbekanntesGeraet[];
 }
 
 export interface GeraetesucheLadesaeuleKlopftAn {

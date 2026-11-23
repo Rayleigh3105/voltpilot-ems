@@ -314,11 +314,12 @@ func (l *Lauf) Suche(ctx context.Context) Ausgang {
 	defer l.mu.Unlock()
 	var weitere geraetesuche.Weitere
 	if !geraetesuche.GoKern(l.u.BoxArt) {
-		// The Docker box cannot tell a phone from a computer: all is unknown.
+		// The Docker box cannot tell a phone from a computer: all is unknown,
+		// and it never learned addresses it could list (DP-3 A).
 		weitere = geraetesuche.Weitere{Unbekannt: zahl(gezaehlt.unbekannt + gezaehlt.telefon + gezaehlt.rechner)}
 	} else {
 		weitere = geraetesuche.Weitere{TelefonTablet: zahl(gezaehlt.telefon), Rechner: zahl(gezaehlt.rechner),
-			Unbekannt: zahl(gezaehlt.unbekannt)}
+			Unbekannt: zahl(gezaehlt.unbekannt), UnbekannteGeraete: gezaehlt.unbekannteGeraete}
 	}
 	out := Ausgang{Netze: append([]geraetesuche.Netz(nil), l.netze...),
 		Funde: append([]geraetesuche.Fund{}, l.funde...), Weitere: weitere, Erkenner: []string{}}
@@ -331,7 +332,13 @@ func (l *Lauf) Suche(ctx context.Context) Ausgang {
 }
 
 // Weitere as the search counts them before the box type decides the words.
-type weitereZahl struct{ telefon, rechner, unbekannt int }
+// unbekannteGeraete is only filled on a Go-core box (Suche strips it for the
+// Docker box's count-only report) - the address and open ports of each
+// unbekannt device, in the fixed ziele order (already sorted by IP).
+type weitereZahl struct {
+	telefon, rechner, unbekannt int
+	unbekannteGeraete           []geraetesuche.UnbekanntesGeraet
+}
 
 func zahl(n int) *int {
 	if n > 512 {
@@ -633,6 +640,7 @@ func (l *Lauf) geraeteErkennen(ctx context.Context, ziele []*geraet) weitereZahl
 			w.rechner++
 		default:
 			w.unbekannt++
+			w.unbekannteGeraete = append(w.unbekannteGeraete, geraetesuche.UnbekanntesGeraet{IP: g.ip.String(), Ports: offenePorts(g)})
 		}
 	}
 	return w
@@ -714,6 +722,20 @@ func (l *Lauf) meldeWiederfinden(b Bekannt, p wiederfindenPlan) {
 		f.LiestBoxSchon = true
 		return
 	}
+}
+
+// offenePorts is the ports geraeteAnsprechen found open on g, sorted
+// (nil = none found open; no new probing happens here).
+func offenePorts(g *geraet) []int {
+	if len(g.offen) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(g.offen))
+	for p := range g.offen {
+		out = append(out, p)
+	}
+	sort.Ints(out)
+	return out
 }
 
 func probeZiel(ip netip.Addr, bereiche []probe.Bereich) string {

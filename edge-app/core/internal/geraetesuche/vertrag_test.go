@@ -270,7 +270,11 @@ func TestKeinFeldFuerMacHostnameOderName(t *testing.T) {
 		lauf(wurzel)
 	}
 	v := ladeVektoren(t)
-	weitere, _ := felder(Weitere{})
+	// unbekannte_geraete is not itself a count kind (DP-3 A's weitere_arten
+	// vocabulary): it is the Go-core box's address list for the unbekannt
+	// count, and its own field (ip, ports) is scanned above like any other.
+	alle, _ := felder(Weitere{})
+	weitere := ohne(alle, []string{"unbekannte_geraete"})
 	if !reflect.DeepEqual(weitere, v.WeitereArten) {
 		t.Fatalf("weitere %v, vectors %v", weitere, v.WeitereArten)
 	}
@@ -476,6 +480,50 @@ func TestHoechstens256Funde(t *testing.T) {
 	e.Funde = e.Funde[:MaxFunde]
 	if err := e.Pruefe(BoxArtDocker); err != nil {
 		t.Fatalf("256 finds: %v", err)
+	}
+}
+
+// unbekannte_geraete is a Go-core box's own addition on top of the shared
+// vectors (DP-3 A, geändert); its send-side rules only make sense where the
+// box type is known, so they are pinned here rather than in the shared family
+// the Java reader also runs (it cannot re-check a sender-only invariant).
+func TestUnbekannteGeraeteNurGoKernUndZahlStimmt(t *testing.T) {
+	var e Ergebnis
+	if err := json.Unmarshal(ladeVektoren(t).Ergebnis.Gueltig[1].Payload, &e); err != nil { // edge_light_fertig
+		t.Fatal(err)
+	}
+	if len(e.Weitere.UnbekannteGeraete) != 1 {
+		t.Fatalf("fixture: %+v", e.Weitere)
+	}
+	if err := e.Pruefe(BoxArtEdgeLight); err != nil {
+		t.Fatalf("edge_light with addresses: %v", err)
+	}
+	// The Docker box cannot tell a phone from an unknown device and never
+	// adds addresses (DP-3 A).
+	if err := e.Pruefe(BoxArtDocker); err == nil {
+		t.Fatal("docker box with unbekannte_geraete accepted")
+	}
+	// The count and the list must agree.
+	schief := e
+	n := 2
+	schief.Weitere.Unbekannt = &n
+	if err := schief.Pruefe(BoxArtEdgeLight); err == nil {
+		t.Fatal("unbekannt count mismatching the list accepted")
+	}
+	// Sorted and unique addresses.
+	unsortiert := e
+	unsortiert.Weitere.UnbekannteGeraete = append(append([]UnbekanntesGeraet{}, e.Weitere.UnbekannteGeraete...),
+		UnbekanntesGeraet{IP: "192.168.178.5"})
+	n2 := 2
+	unsortiert.Weitere.Unbekannt = &n2
+	if err := unsortiert.Pruefe(BoxArtEdgeLight); err == nil {
+		t.Fatal("unsorted unbekannte_geraete accepted")
+	}
+	// Sorted and unique ports.
+	schlechtePorts := e
+	schlechtePorts.Weitere.UnbekannteGeraete = []UnbekanntesGeraet{{IP: e.Weitere.UnbekannteGeraete[0].IP, Ports: []int{80, 80}}}
+	if err := schlechtePorts.Pruefe(BoxArtEdgeLight); err == nil {
+		t.Fatal("duplicate ports accepted")
 	}
 }
 

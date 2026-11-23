@@ -250,7 +250,7 @@ describe('Gerätesuche · Ergebnis', () => {
   });
 
   it('DP-3 A: Telefone und Rechner nur als Zahl, Netz-Technik nur mit Art; ohne Zählung kein Zahlwort', () => {
-    expect(weitere(F.fertig)).toEqual({ anzahl: 3, zeile: 'Router, WLAN-Zugangspunkt, 1 Telefon oder Tablet' });
+    expect(weitere(F.fertig)).toEqual({ anzahl: 4, zeile: 'Router, WLAN-Zugangspunkt, 1 Telefon oder Tablet, 1 unbekanntes Gerät' });
     expect(weitere(F.wartet)).toEqual({ anzahl: null, zeile: null });
     expect(weitereTitel(3)).toBe('3 weitere Geräte');
     expect(weitereTitel(null)).toBe('Weitere Geräte nicht gezählt');

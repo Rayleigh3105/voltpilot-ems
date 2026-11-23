@@ -1311,7 +1311,12 @@
           "weitere": {
             "telefon_tablet": 2,
             "rechner": 1,
-            "unbekannt": 1
+            "unbekannt": 1,
+            "unbekannte_geraete": [
+              {
+                "ip": "192.168.178.90"
+              }
+            ]
           }
         }
       },

@@ -1,6 +1,7 @@
 package com.voltpilot.api.geraetesuche;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,8 +40,15 @@ public final class GeraetesucheBericht {
             boolean liestBoxSchon) {
     }
 
-    /** DP-3 A: nur Zahlen; null = nicht gezählt. */
-    public record Weitere(Integer telefonTablet, Integer rechner, Integer unbekannt) {
+    /** DP-3 A: nie eine MAC, ein Hostname oder ein Name - nur die Adresse und, soweit die Box sie beim Ansprechen
+     * schon offen fand, die Ports. */
+    public record UnbekanntesGeraet(String ip, @JsonInclude(JsonInclude.Include.NON_EMPTY) List<Integer> ports) {
+    }
+
+    /** DP-3 A: nur Zahlen; null = nicht gezählt. unbekannteGeraete: nur eine Go-Kern-Box (Edge Light, Edge
+     * Industrie) meldet die Adressen des unbekannt-Zählers; null = eine Docker-Box oder keine unbekannten Geräte. */
+    public record Weitere(Integer telefonTablet, Integer rechner, Integer unbekannt,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY) List<UnbekanntesGeraet> unbekannteGeraete) {
     }
 
     /** @param ueberlesen wie viele Funde der Leser überlesen hat */
@@ -129,7 +137,7 @@ public final class GeraetesucheBericht {
             int ueberlesen = funde(rohFunde, netze, funde);
             return new Ergebnis(uuid(r, "tenant_id"), uuid(r, "site_id"), uuid(r, "device_id"), uuid(r, "such_id"),
                     zeit(r.path("ts")), zustand, grund, dauerMs, List.copyOf(erkenner), netze, List.copyOf(funde),
-                    weitere(r.path("weitere")), ueberlesen);
+                    weitere(r.path("weitere"), bereiche(netze)), ueberlesen);
         } catch (RuntimeException e) {
             return null;
         }
@@ -182,12 +190,15 @@ public final class GeraetesucheBericht {
         return List.copyOf(netze);
     }
 
+    private static List<Suchbereich.Bereich> bereiche(List<Netz> netze) {
+        return netze.stream().map(n -> Suchbereich.pruefe(n.netz(), n.boxAdresse()).bereich()).toList();
+    }
+
     private static int funde(JsonNode liste, List<Netz> netze, List<Fund> out) {
         if (!liste.isArray() || liste.size() > GeraetesucheVertrag.MAX_FUNDE) {
             throw new Verworfen("funde");
         }
-        List<Suchbereich.Bereich> bereiche = netze.stream()
-                .map(n -> Suchbereich.pruefe(n.netz(), n.boxAdresse()).bereich()).toList();
+        List<Suchbereich.Bereich> bereiche = bereiche(netze);
         Set<String> schluessel = new HashSet<>();
         int ueberlesen = 0;
         for (JsonNode j : liste) {
@@ -274,11 +285,51 @@ public final class GeraetesucheBericht {
         return new Verbindung(communication, v.path("ip").asText(), ganz(v.path("port"), 1, 65535), serial, unitId);
     }
 
-    private static Weitere weitere(JsonNode w) {
+    private static Weitere weitere(JsonNode w, List<Suchbereich.Bereich> bereiche) {
         if (!w.isObject()) {
             throw new Verworfen("weitere");
         }
-        return new Weitere(zahl(w.path("telefon_tablet")), zahl(w.path("rechner")), zahl(w.path("unbekannt")));
+        return new Weitere(zahl(w.path("telefon_tablet")), zahl(w.path("rechner")), zahl(w.path("unbekannt")),
+                unbekannteGeraete(w.path("unbekannte_geraete"), bereiche));
+    }
+
+    /** Nur eine Go-Kern-Box meldet Adressen (DP-3 A); eine Zeile, die aus dem Rahmen fällt, wird überlesen - die
+     * übrigen gelten, wie bei einem Fund. null = keine (fehlendes Feld oder eine Docker-Box), nie eine leere Liste. */
+    private static List<UnbekanntesGeraet> unbekannteGeraete(JsonNode liste, List<Suchbereich.Bereich> bereiche) {
+        if (liste.isMissingNode() || liste.isNull()) {
+            return null;
+        }
+        if (!liste.isArray() || liste.size() > 512) {
+            return null;
+        }
+        List<UnbekanntesGeraet> out = new ArrayList<>();
+        for (JsonNode g : liste) {
+            if (!g.isObject() || !g.path("ip").isTextual() || Suchbereich.ziel(g.path("ip").asText(), bereiche) != null) {
+                continue;
+            }
+            JsonNode p = g.path("ports");
+            List<Integer> ports = List.of();
+            if (!p.isMissingNode() && !p.isNull()) {
+                if (!p.isArray()) {
+                    continue;
+                }
+                List<Integer> gesammelt = new ArrayList<>();
+                boolean ok = true;
+                for (JsonNode port : p) {
+                    if (!port.isIntegralNumber() || !port.canConvertToInt() || port.asInt() < 1 || port.asInt() > 65535) {
+                        ok = false;
+                        break;
+                    }
+                    gesammelt.add(port.asInt());
+                }
+                if (!ok) {
+                    continue;
+                }
+                ports = List.copyOf(gesammelt);
+            }
+            out.add(new UnbekanntesGeraet(g.path("ip").asText(), ports));
+        }
+        return List.copyOf(out);
     }
 
     private static Integer zahl(JsonNode n) {
