@@ -822,11 +822,6 @@ export function WerkstattBank({
               <strong>PFC200</strong>
               <small>{pfcBereit ? `Steuerung von WAGO, wird ${EDGE_INDUSTRIE}` : 'der Dienst richtet hier keine PFC200 ein'}</small>
             </button>
-            <button type="button" className="vp-wsb-kachel" disabled aria-disabled="true" data-testid="wsb-pi">
-              <PiBild />
-              <strong>Raspberry Pi</strong>
-              <small>kommt mit der nächsten Stufe</small>
-            </button>
           </div>
           <div className="vp-wsb-karte" data-testid="wsb-heute">
             <h5>Heute</h5>

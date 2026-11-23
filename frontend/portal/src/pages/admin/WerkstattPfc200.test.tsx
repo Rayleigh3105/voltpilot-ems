@@ -126,7 +126,8 @@ describe('Werkstatt, PFC200: Start und Anschließen', () => {
     expect(kachel).toHaveTextContent('PFC200');
     expect(kachel).toHaveTextContent('wird Edge Industrie');
     expect(screen.getByTestId('wsb-mango')).toBeEnabled();
-    expect(screen.getByTestId('wsb-pi')).toBeDisabled();
+    // Nur noch zwei Kacheln: Raspberry Pi gibt es nicht mehr.
+    expect(screen.queryByTestId('wsb-pi')).toBeNull();
     cleanup();
     werkstattRegelPfc200.mockClear();
     werkstattFreigabenPfc200.mockClear();

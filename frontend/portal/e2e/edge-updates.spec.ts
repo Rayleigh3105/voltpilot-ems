@@ -28,7 +28,9 @@ for (const breite of [PHONE, DESKTOP]) {
     expect(r!.x).toBeGreaterThanOrEqual(l!.x - 1);
     expect(r!.x + r!.width).toBeLessThanOrEqual(l!.x + l!.width + 1);
 
-    await expect(page.getByRole('heading', { name: 'Docker-Box' })).toBeVisible();
+    // Die Docker-Box bekommt keine Karte mehr (Captain 23.11.2026); Edge Industrie steht hier für
+    // die zweite Linie neben Edge Light.
+    await expect(page.getByRole('heading', { name: 'Edge Industrie' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Edge Light' })).toBeVisible();
     const verlauf = page.locator('details', { has: page.getByRole('heading', { name: 'Verlauf', exact: true }) });
     await expect(verlauf).not.toHaveAttribute('open', '');

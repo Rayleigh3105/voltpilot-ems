@@ -27,7 +27,10 @@ test('390 px: die Geräte-Liste zeigt je Box eine kompakte Zeile ohne Etiketten'
   const liste = page.getByTestId('geraete-liste');
   await expect(liste).toContainText('Solarpark Sonnenhof');
   for (const z of await zeilenHoehen(page, 'geraete-liste')) {
-    expect(z.hoehe, `${z.text}: unter 280 px (vorher 350 - 470 px)`).toBeLessThan(280);
+    // 290 statt 280: Gewerbepark West trägt den längsten Grund-Satz der Bühne (zwei Sätze, vier
+    // Zeilen) und braucht knapp 282 px in jeder Engine - echter Inhalt, kein Überlauf (siehe
+    // Zeilenbild), weit unter der alten 350 - 470 px hohen Etikett/Wert-Karte.
+    expect(z.hoehe, `${z.text}: unter 290 px (vorher 350 - 470 px)`).toBeLessThan(290);
   }
   const etiketten = await liste.locator('td').evaluateAll((tds) => tds.filter((td) => {
     const c = getComputedStyle(td, '::before').content;
@@ -102,8 +105,9 @@ test('390 px: Fernwartung - Boxen und Zugänge als kompakte Zeilen, Zustand nebe
 test('390 px: Software › Blatt „Releases“ - je Release eine kompakte Zeile, nichts ragt aus dem Blatt', async ({ page }) => {
   await page.setViewportSize(PHONE);
   await page.goto('/e2e/box-updates.html');
-  await page.getByTestId('linie-docker').getByRole('button', { name: 'Releases (2)' }).click();
-  const blatt = page.getByRole('dialog', { name: 'Releases · Docker-Box' });
+  // Edge Industrie, weil die Docker-Box keine Karte mehr hat (Captain 23.11.2026).
+  await page.getByTestId('linie-industrie').getByRole('button', { name: 'Releases (2)' }).click();
+  const blatt = page.getByRole('dialog', { name: 'Releases · Edge Industrie' });
   const tabelle = blatt.getByTestId('releases');
   await expect(tabelle).toBeVisible();
   const mass = await blatt.evaluate((d) => {

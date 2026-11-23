@@ -519,7 +519,8 @@ export function plattformText(arch: string): string {
 export function plattformen(art: BoxArt, seite: EdgeReleaseSeite | null | undefined): Plattform[] | null {
   if (art === 'docker') return DOCKER_PLATTFORMEN.map((p) => ({ text: plattformText(p), ton: 'normal' }));
   if (!seite) return null;
-  return seite.programme.map((p) => p.fertig
+  // Edge Light baut weiterhin auch für Raspberry Pi (arm64), die Karte zeigt davon nur noch Mango.
+  return seite.programme.filter((p) => art !== 'light' || !p.arch.endsWith('arm64')).map((p) => p.fertig
     ? { text: `${plattformText(p.arch)} ✓`, ton: 'fertig' }
     : { text: `${plattformText(p.arch)} · noch nicht im Portal`, ton: 'fehlt' });
 }
@@ -559,7 +560,9 @@ export function linienKarten(
   seiten: Map<number, EdgeReleaseSeite> = new Map(),
 ): LinieKarte[] {
   const releases = [...data.releases].sort((a, b) => b.releaseSeq - a.releaseSeq);
-  return LINIEN.flatMap((art): LinieKarte[] => {
+  // Docker-Box bekommt keine Karte mehr (Captain, 23.11.2026): die Linie bleibt in Filtern und
+  // Gerätelisten sichtbar, bestehende Boxen laufen weiter, aber sie wird hier nicht mehr angeboten.
+  return LINIEN.filter((art) => art !== 'docker').flatMap((art): LinieKarte[] => {
     const line = data.lines?.find((l) => l.boxArt === art) ?? null;
     const neuRelease = line
       ? (line.newestReleaseSeq == null ? null : releases.find((r) => r.releaseSeq === line.newestReleaseSeq) ?? null)
@@ -1247,7 +1250,9 @@ export interface InhaltZeile { teil: Satz; geraet: string; groesse: string; port
  */
 export function releaseInhalt(seite: EdgeReleaseSeite): InhaltZeile[] {
   const art = releaseBoxArt({ boxArt: deviceBoxArt(seite.boxArt) ?? 'docker' });
-  const zeilen: InhaltZeile[] = seite.inhalt.map((t): InhaltZeile => {
+  // Edge Light zeigt hier kein Raspberry-Pi-Ziel mehr, wie schon ihre Linien-Karte (`plattformen()`).
+  const inhalt = art === 'light' ? seite.inhalt.filter((t) => !t.arch?.endsWith('arm64')) : seite.inhalt;
+  const zeilen: InhaltZeile[] = inhalt.map((t): InhaltZeile => {
     if (art === 'docker' || !t.arch) {
       return { teil: ['Bild ', { mono: t.name }], geraet: 'PC und Raspberry Pi', groesse: '–', portal: { ton: 'off', text: 'aus der Registry' } };
     }

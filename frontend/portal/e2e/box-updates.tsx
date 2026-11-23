@@ -48,15 +48,33 @@ const base: FleetRow = {
     bestaetigt: 'ja', bestaetigtAm: '2026-09-11T08:30:00Z' }),
 };
 const aelter = { ist: 'edge-2026.09.02-73486bab2980', istRelease: 'edge-2026.09.02', releasesDahinter: 1, istSeit: null };
+// Captain 23.11.2026 (vp-raspberry-pi-raus): die Docker-Box bekommt keine Linien-Karte mehr - diese
+// Boxen bleiben in der Flotte (braucht-dich, Geräte-Liste, Geräteakte), aber für „Verteilen" und die
+// Release-Seite dient hier Edge Industrie als die Linie mit eigener Karte neben Edge Light.
+const anfrageIndustrie = (o: { am: string; angenommen: string; angenommenAm?: string | null; grund?: string | null;
+  bestaetigt?: string; bestaetigtAm?: string | null; schritt?: string | null }) => ({
+  angefragt: { release: 'edge-industrie-2026.09.10', releaseSeq: 52, am: o.am, von: 'alex' },
+  angenommen: { stand: o.angenommen, am: o.angenommenAm ?? null, grund: o.grund ?? null },
+  bestaetigt: { stand: o.bestaetigt ?? 'offen', am: o.bestaetigtAm ?? null, schritt: o.schritt ?? null, grund: null },
+});
+const baseIndustrie: FleetRow = {
+  ...base, ist: 'edge-industrie-2026.09.10-a18b472eab90', soll: 'edge-industrie-2026.09.10', sollSeq: 52,
+  boxArt: 'industrie', linie: 'industrie', istRelease: 'edge-industrie-2026.09.10',
+  fakten: anfrageIndustrie({ am: '2026-09-11T08:00:00Z', angenommen: 'ja', angenommenAm: '2026-09-11T08:02:00Z',
+    bestaetigt: 'ja', bestaetigtAm: '2026-09-11T08:30:00Z' }),
+};
+const aelterIndustrie = { ist: 'edge-industrie-2026.09.02-73486bab2980', istRelease: 'edge-industrie-2026.09.02', releasesDahinter: 1, istSeit: null };
 const fleet: FleetRow[] = [
-  // Geräte & Updates G8: was die Box über ihr Gerät meldet (fiktiv).
-  { ...base, geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' },
+  // Geräte & Updates G8: was die Box über ihr Gerät meldet (fiktiv). Edge Industrie hat eine Karte,
+  // darum läuft diese Box nicht mehr als Docker-Box, sondern als WAGO PFC200.
+  { ...baseIndustrie, geraetModell: 'WAGO PFC200 750-8212', geraetArch: 'arm' },
   // E6 (S7): drei ausgebliebene Herzschläge, läuft trotzdem ein Update - „Verzögert" bleibt reine Anzeige.
-  { ...base, ...aelter, deviceId: 'd2', externalRef: 'edge-abcdefj', label: 'Box Werkstatt', siteName: 'Werkstatt am Bach',
-    geraetModell: 'Intel(R) Client Systems NUC11TNHi5', geraetArch: 'amd64',
+  { ...baseIndustrie, ...aelterIndustrie, deviceId: 'd2', externalRef: 'edge-abcdefj', label: 'Box Werkstatt', siteName: 'Werkstatt am Bach',
+    geraetModell: 'WAGO PFC200 750-8212', geraetArch: 'arm',
     state: 'laedt', reason: 'Das Update wird heruntergeladen.', stand: 'laeuft', lastSeenAt: vor(2 * MIN),
-    fakten: anfrage({ am: vor(20 * MIN), angenommen: 'ja', angenommenAm: vor(18 * MIN), bestaetigt: 'laeuft', schritt: 'laedt' }) },
+    fakten: anfrageIndustrie({ am: vor(20 * MIN), angenommen: 'ja', angenommenAm: vor(18 * MIN), bestaetigt: 'laeuft', schritt: 'laedt' }) },
   // §5.3 „Unbekannt": ein älterer Serverstand liefert das Feld gar nicht (kein `null`, keine Zahl).
+  // Bleibt eine Docker-Box (kommt im Register noch vor, bekommt aber keine Linien-Karte mehr).
   { ...base, ...aelter, deviceId: 'd3', externalRef: 'VP-BOX-1003', label: 'VP-BOX-1003', siteName: 'Gewerbepark West',
     tenantName: 'Muster Solar GmbH', state: 'blockiert', stand: 'gehalten', lastSeenAt: undefined,
     blocker: 'platte', reason: 'Zu wenig freier Speicherplatz auf der Box.',
@@ -77,35 +95,35 @@ const fleet: FleetRow[] = [
     trust: { rootKeyIds: ['root'], trustSetKeyIds: [], trustSetGeneratedAt: null,
       trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' },
     linie: 'light', stand: 'hand', stufe1: true, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null },
-  // Geräte & Updates G6: zwei Docker-Boxen auf dem älteren Release, ohne Anfrage - sie bekommen es über den Dialog.
-  { ...base, ...aelter, deviceId: 'd7', externalRef: 'edge-bsp0001', label: 'edge-bsp0001', siteName: 'Ahrenberg Werk 1',
-    tenantName: 'Ahrenberg GmbH', geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64',
+  // Geräte & Updates G6: zwei PFC200 auf dem älteren Release, ohne Anfrage - sie bekommen es über den Dialog.
+  { ...baseIndustrie, ...aelterIndustrie, deviceId: 'd7', externalRef: 'edge-bsp0001', label: 'edge-bsp0001', siteName: 'Ahrenberg Werk 1',
+    tenantName: 'Ahrenberg GmbH', geraetModell: 'WAGO PFC200 750-8212', geraetArch: 'arm',
     soll: null, sollSeq: null, state: 'aktuell', stand: 'aelter', fakten: null },
-  { ...base, ...aelter, deviceId: 'd8', externalRef: 'edge-bsp0002', label: 'edge-bsp0002', siteName: 'Ahrenberg Lager',
-    tenantName: 'Ahrenberg GmbH', geraetModell: 'Mini-PC', geraetArch: 'amd64',
+  { ...baseIndustrie, ...aelterIndustrie, deviceId: 'd8', externalRef: 'edge-bsp0002', label: 'edge-bsp0002', siteName: 'Ahrenberg Lager',
+    tenantName: 'Ahrenberg GmbH', geraetModell: 'WAGO PFC200 750-8212', geraetArch: 'arm',
     soll: null, sollSeq: null, state: 'aktuell', stand: 'aelter', fakten: null },
 ];
 const data: EdgeUpdates = {
   fleet, rollouts: [], journal: [],
   releases: [
     // Das jüngste Release ist eines für Edge Light (wie am 05.11.2026): es darf
-    // das Docker-Release nicht aus dem Blick drängen (Geräte & Updates S0).
+    // das Edge-Industrie-Release nicht aus dem Blick drängen (Geräte & Updates S0).
     { releaseSeq: 43, version: 'edge-light-2026.09.12', targetCommit: 'c0ffee12', signed: true, boxArt: 'light',
       signingKeyId: 'release', createdAt: now, runningOnDevices: 0, notes: 'Edge Light: Leser für weitere Wechselrichter.' },
-    { releaseSeq: 42, version: 'edge-2026.09.10', targetCommit: 'a18b472e', signed: true, boxArt: 'docker',
-      signingKeyId: 'release', createdAt: '2026-09-10T12:00:00Z', runningOnDevices: 1, notes: 'Verbesserte Verbindungsstabilität und zuverlässigere Updates.' },
-    { releaseSeq: 41, version: 'edge-2026.09.02', targetCommit: '73486bab', signed: true, boxArt: 'docker',
+    { releaseSeq: 52, version: 'edge-industrie-2026.09.10', targetCommit: 'a18b472e', signed: true, boxArt: 'industrie',
+      signingKeyId: 'release', createdAt: '2026-09-10T12:00:00Z', runningOnDevices: 1, notes: 'Verbindung stabiler.' },
+    { releaseSeq: 51, version: 'edge-industrie-2026.09.02', targetCommit: '73486bab', signed: true, boxArt: 'industrie',
       signingKeyId: 'release', createdAt: '2026-09-02T12:00:00Z', runningOnDevices: 3, notes: null },
   ],
   // Die KPI älterer Portale misst am neuesten Release über BEIDE Linien; die
   // Linien tragen das Urteil je Box-Art (so liefert es die API seit S0/G1).
-  kpi: { known: 5, upToDate: 0, unknown: 1, inRollout: 1, failed: 0, newestRelease: 'edge-light-2026.09.12' },
+  kpi: { known: 5, upToDate: 1, unknown: 1, inRollout: 1, failed: 0, newestRelease: 'edge-light-2026.09.12' },
   lines: [
-    { boxArt: 'docker', newestRelease: 'edge-2026.09.10', newestReleaseSeq: 42, devices: 6, known: 6, upToDate: 1,
-      releases: 2, stand: { hand: 0, fehler: 0, offline: 1, laeuft: 1, gehalten: 1, aktuell: 1, aelter: 2, unbekannt: 0 },
+    { boxArt: 'industrie', newestRelease: 'edge-industrie-2026.09.10', newestReleaseSeq: 52, devices: 4, known: 4, upToDate: 1,
+      releases: 2, stand: { hand: 0, fehler: 0, offline: 0, laeuft: 1, gehalten: 0, aktuell: 1, aelter: 2, unbekannt: 0 },
       versions: [
-        { version: 'edge-2026.09.10', releaseSeq: 42, devices: ['d1'] },
-        { version: 'edge-2026.09.02', releaseSeq: 41, devices: ['d2', 'd3', 'd4', 'd7', 'd8'] },
+        { version: 'edge-industrie-2026.09.10', releaseSeq: 52, devices: ['d1'] },
+        { version: 'edge-industrie-2026.09.02', releaseSeq: 51, devices: ['d2', 'd7', 'd8'] },
       ] },
     { boxArt: 'light', newestRelease: 'edge-light-2026.09.12', newestReleaseSeq: 43, devices: 1, known: 1, upToDate: 0,
       releases: 1, stand: { hand: 1, fehler: 0, offline: 0, laeuft: 0, gehalten: 0, aktuell: 0, aelter: 0, unbekannt: 0 },
@@ -115,27 +133,27 @@ const data: EdgeUpdates = {
       ] },
   ],
 };
-// Die Release-Seiten (G4): Edge Light mit beiden Programmen fertig im Portal, Docker mit seinen Bildern.
+// Die Release-Seiten (G4): Edge Light mit beiden Programmen fertig im Portal, Edge Industrie mit ihrem einen Programm.
 const releaseSeite = (releaseSeq: number) => {
   const rel = data.releases.find((r) => r.releaseSeq === releaseSeq)!;
-  const light = rel.boxArt === 'light';
+  const art = rel.boxArt ?? 'docker';
+  const light = art === 'light';
   return {
-    releaseSeq, version: rel.version, boxArt: rel.boxArt ?? 'docker', signed: rel.signed, signingKeyId: rel.signingKeyId,
+    releaseSeq, version: rel.version, boxArt: art, signed: rel.signed, signingKeyId: rel.signingKeyId,
     createdAt: rel.createdAt, targetCommit: rel.targetCommit, notes: rel.notes, erlaubtRueckschritt: false, minFromSeq: null,
-    aenderungen: light ? ['Leser für weitere Wechselrichter (#1693)'] : releaseSeq === 42
+    aenderungen: light ? ['Leser für weitere Wechselrichter (#1693)'] : releaseSeq === 52
       ? ['Core: Neuverbindung nach Funkloch (#1601)', 'Updater: Bilder vor dem Stoppen holen (#1588)'] : null,
     inhalt: light
       ? [{ typ: 'binary', name: 'vp-edge-light', arch: 'linux/mipsle', groesse: 14614743, gzGroesse: 4679121 },
         { typ: 'binary', name: 'vp-edge-light', arch: 'linux/arm64', groesse: 13893816, gzGroesse: 4475301 }]
-      : [{ typ: 'oci-image', name: 'core', arch: null, groesse: null, gzGroesse: null },
-        { typ: 'oci-image', name: 'nodered', arch: null, groesse: null, gzGroesse: null }],
+      : [{ typ: 'binary', name: 'vp-edge-industrie', arch: 'linux/arm', groesse: 15204514, gzGroesse: 5905289 }],
     programme: light ? [
       { arch: 'linux/mipsle', groesse: 4679121, empfangen: 4679121, fertig: true },
       { arch: 'linux/arm64', groesse: 4475301, empfangen: 4475301, fertig: true },
-    ] : [],
+    ] : [{ arch: 'linux/arm', groesse: 5905289, empfangen: 5905289, fertig: true }],
     laeuftAuf: fleet.filter((r) => r.istRelease === rel.version).map((r) => r.deviceId),
-    boxenDerLinie: fleet.filter((r) => r.linie === (light ? 'light' : 'docker')).length,
-    verteilt: releaseSeq === 42
+    boxenDerLinie: fleet.filter((r) => r.linie === art).length,
+    verteilt: releaseSeq === 52
       ? [{ rolloutId: 'r42', state: 'active', createdBy: 'alex', createdAt: vor(20 * MIN), total: 3, confirmed: 0, failed: 0 },
         { rolloutId: 'r41', state: 'done', createdBy: 'alex', createdAt: '2026-09-11T08:00:00Z', total: 1, confirmed: 1, failed: 0 }]
       : [],
@@ -146,22 +164,24 @@ const verlauf = (deviceId: string) => {
   const e = (am: string, quelle: string, art: string, release: string | null, vorher: string | null = null, von: string | null = null) =>
     ({ am, quelle, art, release, vorher, grund: null, von, rolloutId: null });
   const eintraege: Record<string, ReturnType<typeof e>[]> = {
-    d1: [e('2026-09-11T08:30:00Z', 'box', 'stand', 'edge-2026.09.10-a18b472eab90', 'edge-2026.09.02-73486bab2980'),
-      e('2026-09-11T08:02:00Z', 'box', 'angenommen', 'edge-2026.09.10'),
-      e('2026-09-11T08:00:00Z', 'portal', 'angefragt', 'edge-2026.09.10', null, 'alex'),
-      e('2026-09-02T14:00:00Z', 'box', 'stand', 'edge-2026.09.02-73486bab2980', null)],
-    d2: [e(vor(18 * MIN), 'box', 'angenommen', 'edge-2026.09.10'),
-      e(vor(20 * MIN), 'portal', 'angefragt', 'edge-2026.09.10', null, 'alex'),
-      e('2026-09-03T09:00:00Z', 'box', 'stand', 'edge-2026.09.02-73486bab2980', null)],
+    d1: [e('2026-09-11T08:30:00Z', 'box', 'stand', 'edge-industrie-2026.09.10-a18b472eab90', 'edge-industrie-2026.09.02-73486bab2980'),
+      e('2026-09-11T08:02:00Z', 'box', 'angenommen', 'edge-industrie-2026.09.10'),
+      e('2026-09-11T08:00:00Z', 'portal', 'angefragt', 'edge-industrie-2026.09.10', null, 'alex'),
+      e('2026-09-02T14:00:00Z', 'box', 'stand', 'edge-industrie-2026.09.02-73486bab2980', null)],
+    d2: [e(vor(18 * MIN), 'box', 'angenommen', 'edge-industrie-2026.09.10'),
+      e(vor(20 * MIN), 'portal', 'angefragt', 'edge-industrie-2026.09.10', null, 'alex'),
+      e('2026-09-03T09:00:00Z', 'box', 'stand', 'edge-industrie-2026.09.02-73486bab2980', null)],
     d6: [e('2026-11-04T10:00:00Z', 'box', 'stand', 'edge-light-g2d2bca1b6', null)],
   };
   return { deviceId, eintraege: eintraege[deviceId] ?? [] };
 };
-// Die Eignung je Release (G1), wie die API sie aus denselben Boxen bildet.
+// Die Eignung je Release (G1), wie die API sie aus denselben Boxen bildet: je Linie ihre eigenen
+// Boxen, dazu die noch unbekannten (§5.3) - nie die Boxen einer anderen bekannten Linie.
 const eignung = (releaseSeq: number) => {
   const rel = data.releases.find((r) => r.releaseSeq === releaseSeq)!;
-  const light = rel.boxArt === 'light';
-  const boxen = fleet.filter((r) => (light ? r.linie !== 'docker' : r.linie !== 'light')).map((r) => {
+  const art = rel.boxArt ?? 'docker';
+  const light = art === 'light';
+  const boxen = fleet.filter((r) => r.linie === art || r.linie == null).map((r) => {
     const seq = (v: string | null | undefined) => data.releases.find((x) => x.version === v)?.releaseSeq ?? null;
     const offline = !r.lastSeenAt || Date.now() - Date.parse(r.lastSeenAt) > 5 * MIN;
     let gruppe = 'bereit';
@@ -175,7 +195,7 @@ const eignung = (releaseSeq: number) => {
     return { deviceId: r.deviceId, label: r.label, externalRef: r.externalRef, siteName: r.siteName,
       tenantName: r.tenantName, ist: r.ist, gruppe, grund, lastSeenAt: r.lastSeenAt ?? null };
   });
-  return { releaseSeq, version: rel.version, boxArt: rel.boxArt ?? 'docker', boxen, andereLinie: fleet.length - boxen.length };
+  return { releaseSeq, version: rel.version, boxArt: art, boxen, andereLinie: fleet.length - boxen.length };
 };
 const LETZTE_MELDUNG: Record<string, string | null> = {
   d4: new Date(Date.now() - 4 * 3600_000).toISOString(),
