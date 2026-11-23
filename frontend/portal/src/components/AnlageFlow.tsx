@@ -435,6 +435,9 @@ function GeraetStep({
       // Verbunden: die Box aus dem QR-Code ist erledigt, Tab und Browser vergessen sie.
       if (ausQr && gesendet === ausQr) vergissKoppelRef();
       setVerbunden(device);
+      // Eine Box, die beim Verbinden bereits online ist, braucht die Kabel/WLAN-Frage nicht -
+      // sie beantwortet sich selbst. "Später wechseln" bleibt möglich (Text in BoxWeg).
+      if (deviceLiveStatus(device) === 'online') setWegSchritt('weg');
       // N3: der Kopf fragt seine eigene Geräteliste unabhängig ab (bis zu 30 s Takt) -
       // ohne diesen Anstoß sagte er "noch nicht verbunden", während diese Seite schon
       // "Box verbunden" zeigte.

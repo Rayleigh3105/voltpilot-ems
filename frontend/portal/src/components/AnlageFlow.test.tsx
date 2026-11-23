@@ -216,6 +216,36 @@ describe('AnlageFlow - Adresse · Box · Anlage (Anlage-Flow a1, Paket 2)', () =
     expect(Object.keys(sessionStorage)).toEqual([]);
   });
 
+  it('Box ist beim Verbinden schon online: keine Kabel/WLAN-Frage mehr, direkt zu „Ihre Box ist online“', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    const claimDevice = vi.spyOn(api, 'claimDevice').mockResolvedValue({
+      ...device,
+      externalRef: 'edge-k7m2xq3',
+      lastSeenAt: new Date().toISOString(),
+    });
+    vi.spyOn(api, 'listDevices').mockResolvedValue({
+      eintraege: [{ ...device, externalRef: 'edge-k7m2xq3', lastSeenAt: new Date().toISOString() }],
+      teilansicht: null,
+    } as never);
+    vi.spyOn(api, 'savePv').mockResolvedValue(undefined as never);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
+
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    expect(await screen.findByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    await waitFor(() => expect(claimDevice).toHaveBeenCalled());
+
+    // Die Box meldet sich schon - die Frage "Wie soll Ihre Box ins Internet?" wäre für eine
+    // bereits verbundene Box sinnlos und entfällt (Captain-Hinweis vp-einrichtung-verbunden-keine-wahl).
+    expect(screen.queryByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Ihre Box ist online' })).toBeInTheDocument();
+    // Das Versprechen "Sie können das später jederzeit wechseln" gilt weiterhin, nur eben nicht hier.
+    expect(screen.queryByText('Sie können das später jederzeit wechseln.')).toBeNull();
+  });
+
   it('F17: kennt die Anlage die kWp schon (Register), steht sie als Tatsache da - keine zweite Frage', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([
       batteryAsset({ id: 'pv', type: 'pv', pvCapacityKwp: 9.8, capacityKwh: null, registry: 'mastr', registryUnitId: 'SEE900000012345' }),
