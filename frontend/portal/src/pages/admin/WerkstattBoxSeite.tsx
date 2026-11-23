@@ -293,7 +293,7 @@ export function WerkstattBoxSeite({
       </div>
 
       {zeile.geraet === 'Docker-Box' && (
-        <p className="vp-alert vp-alert-warn">Für die Docker-Box gibt es noch keinen Ablauf im Dienst und keine Abnahme (kommt mit der nächsten Stufe).</p>
+        <p className="vp-alert vp-alert-warn">Für die Docker-Box gibt es keinen Ablauf im Dienst und keine Abnahme; neue Boxen entstehen nur noch als Mango oder PFC200.</p>
       )}
       {zeile.lauf?.grund && zeile.stand === 'problem' && (
         <div className="vp-alert vp-alert-warn" data-testid="ws-grund">

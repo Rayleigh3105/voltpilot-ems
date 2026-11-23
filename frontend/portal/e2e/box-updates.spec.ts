@@ -23,18 +23,13 @@ test('Updates: Lage, Linien und Braucht dich - „Box ansehen" führt in die Ger
   await page.goto('/e2e/box-updates.html');
   // Scheibe S1 (N5): die Seite trägt seither EINEN Namen - „Software" (Reiter des Raums „Plattform").
   await expect(page.getByRole('tab', { name: 'Software', exact: true })).toHaveAttribute('aria-selected', 'true');
+  // Die Docker-Box bekommt keine Linien-Karte mehr (Captain 23.11.2026); ihre Boxen bleiben trotzdem
+  // in „Braucht dich" und der Geräte-Liste erreichbar.
+  await expect(page.getByTestId('linie-docker')).toHaveCount(0);
   await expect(page.getByTestId('lage')).toContainText('1 Box hält ein Update zurück: Gewerbepark West.');
-  const docker = page.getByTestId('linie-docker');
-  await expect(docker.getByTestId('linie-neuestes')).toHaveText('edge-2026.09.10');
-  await expect(docker.getByTestId('linie-plattformen')).toContainText('Raspberry Pi · arm64');
   const light = page.getByTestId('linie-light');
   await expect(light.getByTestId('linie-neuestes')).toHaveText('edge-light-2026.09.12');
   await expect(light.getByTestId('linie-plattformen')).toContainText('Mango · mipsle ✓');
-
-  // Der Lauf in der Karte (G6): drei Zahlen statt eines gemischten Zustands.
-  const lauf = docker.getByTestId('linie-lauf');
-  await expect(lauf).toContainText('edge-2026.09.10 an 3 Boxen');
-  await expect(lauf).toContainText('3angefragt (Portal)1angenommen (Box)0bestätigt (Box)');
   const aufgaben = page.getByTestId('braucht-dich').getByTestId('aufgabe');
   await expect(aufgaben).toHaveCount(3);
   await expect(aufgaben.nth(0)).toContainText('Gewerbepark West: hält das Update zurück');
@@ -66,16 +61,17 @@ test('Update verteilen: Gruppen, „Erst eine Box“ und der Knopf, der sagt, wa
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/e2e/box-updates.html');
-  await page.getByTestId('linie-docker').getByRole('button', { name: 'Releases (2)' }).click();
-  await page.getByRole('dialog', { name: 'Releases · Docker-Box' }).getByRole('button', { name: /Verteilen/ }).first().click();
-  const dialog = page.getByRole('dialog', { name: 'Update verteilen · Docker-Box' });
-  await expect(dialog.getByRole('radio', { name: /edge-2026\.09\.10/ })).toBeChecked();
+  // Edge Industrie, weil die Docker-Box keine Karte mehr hat (Captain 23.11.2026).
+  await page.getByTestId('linie-industrie').getByRole('button', { name: 'Releases (2)' }).click();
+  await page.getByRole('dialog', { name: 'Releases · Edge Industrie' }).getByRole('button', { name: /Verteilen/ }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Update verteilen · Edge Industrie' });
+  await expect(dialog.getByRole('radio', { name: /edge-industrie-2026\.09\.10/ })).toBeChecked();
   await expect(dialog.getByTestId('verteil-bereit')).toContainText('Ahrenberg Lager');
   await expect(dialog.getByTestId('verteil-bereit')).toContainText('Ahrenberg Werk 1');
   await expect(dialog.getByTestId('verteil-wartet')).toContainText('Neubau am Feldrain');
   await expect(dialog.getByTestId('verteil-angefragt')).toContainText('Werkstatt am Bach');
   await expect(dialog.getByTestId('verteil-aktuell')).toContainText('Solarpark Sonnenhof');
-  await expect(dialog).toContainText('1 Box der anderen Linie kommt für dieses Release nicht in Frage.');
+  await expect(dialog).toContainText('3 Boxen der anderen Linie kommen für dieses Release nicht in Frage.');
   // „Erst eine Box" ist vorgeschlagen - eine bereite (online) Box.
   await expect(dialog.getByRole('radio', { name: /Erst eine Box: Ahrenberg Lager/ })).toBeChecked();
   await expect(dialog.getByTestId('verteil-satz')).toContainText('Fragt jetzt 1 Box an.');
@@ -102,13 +98,14 @@ test('Release-Seite: Inhalt, was neu ist, wo es läuft, wann verteilt - von dort
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/e2e/box-updates.html');
-  await page.getByTestId('linie-docker').getByTestId('linie-neuestes').click();
-  const seite = page.getByRole('dialog', { name: 'edge-2026.09.10' });
-  await expect(seite.getByTestId('release-aenderungen')).toContainText('Änderungen an der Box seit edge-2026.09.02: 2');
+  // Edge Industrie, weil die Docker-Box keine Karte mehr hat (Captain 23.11.2026).
+  await page.getByTestId('linie-industrie').getByTestId('linie-neuestes').click();
+  const seite = page.getByRole('dialog', { name: 'edge-industrie-2026.09.10' });
+  await expect(seite.getByTestId('release-aenderungen')).toContainText('Änderungen an der Box seit edge-industrie-2026.09.02: 2');
   await expect(seite).toContainText('Core: Neuverbindung nach Funkloch (#1601)');
-  await expect(seite.getByTestId('release-inhalt')).toContainText('Bild core');
-  await expect(seite.getByTestId('release-inhalt')).toContainText('PC und Raspberry Pi');
-  await expect(seite.getByTestId('release-laeuft-auf')).toContainText('1 von 6 Docker-Boxen: Solarpark Sonnenhof.');
+  await expect(seite.getByTestId('release-inhalt')).toContainText('vp-edge-industrie');
+  await expect(seite.getByTestId('release-inhalt')).toContainText('WAGO PFC200');
+  await expect(seite.getByTestId('release-laeuft-auf')).toContainText('1 von 4 Edge-Industrie-Boxen: Solarpark Sonnenhof.');
   await expect(seite.getByTestId('release-verteilt')).toContainText('an 3 Boxen angefragt · 0 bestätigt');
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -138,16 +135,19 @@ test('Je Software-Linie eine Karte: nebeneinander am Rechner, untereinander am T
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto('/e2e/box-updates.html');
-  const docker = page.getByTestId('linie-docker');
+  // Die Docker-Box bekommt keine Karte mehr (Captain 23.11.2026); Edge Industrie steht hier für die
+  // zweite Linie neben Edge Light.
+  const industrie = page.getByTestId('linie-industrie');
   const light = page.getByTestId('linie-light');
-  // Das jüngste Release ist Edge Light - das Docker-Release steht trotzdem oben.
-  await expect(docker.getByTestId('linie-neuestes')).toHaveText('edge-2026.09.10');
-  await expect(docker).toContainText('1 neuestes');
-  await expect(docker.getByTestId('linie-leiter')).toContainText('Solarpark Sonnenhof');
+  // Je Linie ihre eigene Karte, in Linien-Reihenfolge: Edge Light, dann Edge Industrie.
+  await expect(industrie.getByTestId('linie-neuestes')).toHaveText('edge-industrie-2026.09.10');
+  await expect(industrie).toContainText('1 neuestes');
+  await expect(industrie.getByTestId('linie-leiter')).toContainText('Solarpark Sonnenhof');
   await expect(light.getByTestId('linie-neuestes')).toHaveText('edge-light-2026.09.12');
   await expect(light).toContainText('1 nur von Hand (Stufe 1)');
   await expect(light.getByTestId('linie-leiter')).toContainText('Kleingarten Ostend · Stufe 1');
-  // Die einzige Edge-Light-Box hat Stufe 1: statt „Verteilen" der Weg zum Nachrüsten - in die Geräteakte.
+  // Die einzige Edge-Light-Box ohne Stufe 1 läuft schon auf dem neuesten Release; die andere hat
+  // Stufe 1: statt „Verteilen" der Weg zum Nachrüsten - in die Geräteakte.
   await expect(light.getByRole('button', { name: 'Verteilen …' })).toHaveCount(0);
 
   for (const width of [375, 1440]) {
@@ -155,8 +155,8 @@ test('Je Software-Linie eine Karte: nebeneinander am Rechner, untereinander am T
     const over = await ueberlauf(page, '.vp-gu');
     expect(over.seite, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
     expect(over.raus, `Seite „Updates" bei ${width}px`).toEqual([]);
-    // Nebeneinander am Rechner, untereinander am Telefon.
-    const [a, b] = await Promise.all([docker.boundingBox(), light.boundingBox()]);
+    // Nebeneinander am Rechner, untereinander am Telefon - Edge Light vor Edge Industrie (Linien-Reihenfolge).
+    const [a, b] = await Promise.all([light.boundingBox(), industrie.boundingBox()]);
     if (width === 1440) expect(Math.abs(a!.y - b!.y)).toBeLessThan(2);
     else expect(b!.y).toBeGreaterThan(a!.y + a!.height - 1);
   }

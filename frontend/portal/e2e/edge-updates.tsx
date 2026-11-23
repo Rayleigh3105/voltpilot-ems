@@ -1,6 +1,7 @@
 /**
  * Software (Raum „Geräte", vormals „Geräte & Updates") mit fiktiven Daten:
- * beide Linien (Docker-Box und Edge Light), eine Box, die Aufmerksamkeit
+ * zwei Linien mit eigener Karte (Edge Industrie und Edge Light - die Docker-Box
+ * bekommt seit Captain 23.11.2026 keine Karte mehr), eine Box, die Aufmerksamkeit
  * braucht, und ein gefülltes Verlauf-Journal - der Mobil-Durchgang
  * (`vp-adminview-mobile-rework`) braucht den WORST CASE, nicht den Leerlauf.
  */
@@ -65,12 +66,12 @@ Object.assign(adminApi, {
   erstverbindungSchalter: async () => ({ alle: true, docker: true, light: true, eintraege: [] }),
   edgeUpdates: async () => ({
     releases: [
-      { releaseSeq: 15, version: 'edge-2026.10.1', targetCommit: '3bf8c038', notes: null, signed: true, signingKeyId: 'rel-a', createdAt: iso(-7 * 86_400_000), runningOnDevices: 2, boxArt: 'docker' },
-      { releaseSeq: 14, version: 'edge-2026.09.0', targetCommit: '665d59b8', notes: null, signed: true, signingKeyId: 'rel-a', createdAt: iso(-37 * 86_400_000), runningOnDevices: 3, boxArt: 'docker' },
+      { releaseSeq: 15, version: 'edge-industrie-2026.10.1', targetCommit: '3bf8c038', notes: null, signed: true, signingKeyId: 'rel-a', createdAt: iso(-7 * 86_400_000), runningOnDevices: 2, boxArt: 'industrie' },
+      { releaseSeq: 14, version: 'edge-industrie-2026.09.0', targetCommit: '665d59b8', notes: null, signed: true, signingKeyId: 'rel-a', createdAt: iso(-37 * 86_400_000), runningOnDevices: 3, boxArt: 'industrie' },
       { releaseSeq: 9, version: 'edge-light-2026.11.1', targetCommit: null, notes: null, signed: true, signingKeyId: 'rel-a', createdAt: iso(-3 * 86_400_000), runningOnDevices: 1, boxArt: 'light' },
     ],
     rollouts: [{
-      id: 'r1', releaseVersion: 'edge-2026.10.1', releaseSeq: 15, state: 'active', createdBy: 'admin', createdAt: iso(-3_600_000),
+      id: 'r1', releaseVersion: 'edge-industrie-2026.10.1', releaseSeq: 15, state: 'active', createdBy: 'admin', createdAt: iso(-3_600_000),
       total: 2, confirmed: 1, failed: 1,
       devices: [
         { deviceId: 'd1', label: 'edge-a1', siteName: 'Pilsting', tenantName: 'Kunststoffwerk Ahrenberg GmbH', state: 'bestaetigt', reason: null, since: iso(-1_800_000) },
@@ -80,17 +81,17 @@ Object.assign(adminApi, {
     fleet: [
       {
         deviceId: 'd1', label: 'edge-a1', externalRef: 'edge-a1', siteId: 's1', siteName: 'Pilsting', tenantId: 't1',
-        tenantName: 'Kunststoffwerk Ahrenberg GmbH', ist: 'edge-2026.10.1', soll: 'edge-2026.10.1', sollSeq: 15,
+        tenantName: 'Kunststoffwerk Ahrenberg GmbH', ist: 'edge-industrie-2026.10.1', soll: 'edge-industrie-2026.10.1', sollSeq: 15,
         state: 'bestaetigt', reason: null, since: iso(-1_800_000), reportedAt: iso(-30_000), rolloutId: 'r1',
-        boxArt: 'docker', linie: 'docker', lastSeenAt: iso(-30_000), stufe1: false, stand: 'aktuell',
-        istRelease: 'edge-2026.10.1', releasesDahinter: 0,
+        boxArt: 'industrie', linie: 'industrie', lastSeenAt: iso(-30_000), stufe1: false, stand: 'aktuell',
+        istRelease: 'edge-industrie-2026.10.1', releasesDahinter: 0,
       },
       {
         deviceId: 'd2', label: 'edge-b2', externalRef: 'edge-b2', siteId: 's2', siteName: 'Auernheim', tenantId: 't2',
-        tenantName: 'Beispiel GmbH', ist: 'edge-2026.09.0', soll: 'edge-2026.10.1', sollSeq: 15,
+        tenantName: 'Beispiel GmbH', ist: 'edge-industrie-2026.09.0', soll: 'edge-industrie-2026.10.1', sollSeq: 15,
         state: 'fehlgeschlagen', reason: 'Image-Download fehlgeschlagen (Platz).', since: iso(-900_000), reportedAt: iso(-60_000), rolloutId: 'r1',
-        boxArt: 'docker', linie: 'docker', lastSeenAt: iso(-60_000), stufe1: false, stand: 'aelter',
-        istRelease: 'edge-2026.09.0', releasesDahinter: 1,
+        boxArt: 'industrie', linie: 'industrie', lastSeenAt: iso(-60_000), stufe1: false, stand: 'aelter',
+        istRelease: 'edge-industrie-2026.09.0', releasesDahinter: 1,
       },
       {
         deviceId: 'd3', label: 'edge-tgjn9gd', externalRef: 'edge-tgjn9gd', siteId: 's3', siteName: 'Zuhause', tenantId: 't3',
@@ -103,19 +104,19 @@ Object.assign(adminApi, {
     journal: [
       { id: 3, at: iso(-900_000), actor: 'system', event: 'device_state', rolloutId: 'r1', deviceId: 'd2', detail: 'fehlgeschlagen' },
       { id: 2, at: iso(-1_800_000), actor: 'system', event: 'device_state', rolloutId: 'r1', deviceId: 'd1', detail: 'bestaetigt' },
-      { id: 1, at: iso(-3_600_000), actor: 'admin', event: 'rollout_created', rolloutId: 'r1', deviceId: null, detail: 'edge-2026.10.1' },
+      { id: 1, at: iso(-3_600_000), actor: 'admin', event: 'rollout_created', rolloutId: 'r1', deviceId: null, detail: 'edge-industrie-2026.10.1' },
     ],
-    kpi: { known: 3, upToDate: 2, unknown: 0, inRollout: 1, failed: 1, newestRelease: 'edge-2026.10.1' },
+    kpi: { known: 3, upToDate: 2, unknown: 0, inRollout: 1, failed: 1, newestRelease: 'edge-industrie-2026.10.1' },
   }),
   listDevices: async () => [],
   boxVerlauf: async () => ({ deviceId: 'd2', eintraege: [] }),
   edgeRelease: async (seq: number) => ({
-    releaseSeq: seq, version: seq === 9 ? 'edge-light-2026.11.1' : 'edge-2026.10.1', boxArt: seq === 9 ? 'light' : 'docker',
+    releaseSeq: seq, version: seq === 9 ? 'edge-light-2026.11.1' : 'edge-industrie-2026.10.1', boxArt: seq === 9 ? 'light' : 'industrie',
     signed: true, signingKeyId: 'rel-a', createdAt: iso(-7 * 86_400_000), targetCommit: null, notes: null,
     aenderungen: [], erlaubtRueckschritt: false, minFromSeq: null, inhalt: [], laeuftAuf: [], boxenDerLinie: 1, verteilt: [],
     programme: seq === 9 ? [{ arch: 'mt76x8', groesse: 4_800_000, empfangen: 4_800_000, fertig: true }] : [],
   }),
-  edgeEignung: async () => ({ releaseSeq: 15, version: 'edge-2026.10.1', boxArt: 'docker', andereLinie: 0, boxen: [] }),
+  edgeEignung: async () => ({ releaseSeq: 15, version: 'edge-industrie-2026.10.1', boxArt: 'industrie', andereLinie: 0, boxen: [] }),
   createRollout: async () => ({}),
   setUpdateTarget: async () => ({}),
   revertUpdateTarget: async () => ({}),

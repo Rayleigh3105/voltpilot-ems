@@ -736,8 +736,9 @@
 
 .vp-wsb-kacheln {
   display: grid;
-  /* Drei Geräte: nebeneinander, wo der Platz reicht; am Telefon zwei und eins. */
-  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  /* Zwei Geräte: nebeneinander, mit gedeckelter Breite, damit sie nicht auseinanderreißen. */
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 11rem));
+  justify-content: center;
   gap: var(--vp-space-3);
 }
 

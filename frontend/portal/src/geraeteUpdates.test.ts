@@ -78,13 +78,13 @@ describe('Edge Industrie: eine dritte Linie neben Edge Light', () => {
   ];
   const d = daten(fleet, [R.d107, R.l114, i110]);
 
-  it('je Linie eine Karte, gemessen an ihrem eigenen neuesten Release', () => {
+  it('je Linie eine Karte, gemessen an ihrem eigenen neuesten Release (Docker-Box bekommt keine mehr)', () => {
     const karten = linienKarten(d, NOW);
-    expect(karten.map((k) => k.boxArt)).toEqual(['docker', 'light', 'industrie']);
-    const industrie = karten[2];
+    expect(karten.map((k) => k.boxArt)).toEqual(['light', 'industrie']);
+    const industrie = karten[1];
     expect(industrie.neu?.release.version).toBe('edge-industrie-2026.11.0');
     expect(industrie.releases).toBe(1);
-    expect(karten[1].neu?.release.version).toBe('edge-light-2026.11.4');
+    expect(karten[0].neu?.release.version).toBe('edge-light-2026.11.4');
     expect(linieDerBox(fleet[2])).toBe('industrie');
     expect(kurzeVersion('edge-industrie-2026.11.4')).toBe('11.4');
   });
@@ -104,14 +104,9 @@ describe('Alles gut', () => {
       ton: 'ok', icon: 'check', text: ['Alle 6 Boxen laufen auf dem neuesten Release ihrer Linie.'], link: null,
     });
     expect(aufgaben(d, NOW)).toEqual([]);
-    const [docker, light] = linienKarten(d, NOW);
-    expect(docker.neu?.release.version).toBe('edge-2026.10.7');
-    expect(docker.aktion).toBe('aktuell');
-    expect(docker.segmente).toEqual([{ art: 'ok', n: 3, wort: 'neuestes' }]);
-    expect(docker.leiter).toEqual([
-      { version: 'edge-2026.10.7', releaseSeq: 58, neuestes: true, wer: '3 Boxen', deviceIds: fleet.slice(0, 3).map((r) => r.deviceId) },
-    ]);
-    expect(docker.releases).toBe(1);
+    const karten = linienKarten(d, NOW);
+    expect(karten.map((k) => k.boxArt)).toEqual(['light']);
+    const [light] = karten;
     expect(light.neu?.release.version).toBe('edge-light-2026.11.4');
     expect(light.releases).toBe(2);
   });
@@ -127,7 +122,8 @@ describe('Alles gut', () => {
     expect(text(boxZeile({ ...fleet[0], istSeit: '2026-10-28T11:00:00Z' }, NOW).satz)).toBe('läuft seit 28.10.');
   });
 
-  it('die Docker-Box nennt ihre Geräte aus dem Bau, Edge Light seine Programme aus dem Portal', () => {
+  it('Docker-Box-Geräte bleiben als reine Werte abrufbar, die Karte von Edge Light zeigt nur noch Mango', () => {
+    // plattformen('docker', …) bleibt für bestehende Docker-Boxen nutzbar; eine Karte bekommt die Linie nicht mehr.
     expect(plattformen('docker', null)).toEqual([
       { text: 'PC · amd64', ton: 'normal' }, { text: 'Raspberry Pi · arm64', ton: 'normal' },
     ]);
@@ -139,11 +135,11 @@ describe('Alles gut', () => {
     ] } as EdgeReleaseSeite;
     expect(plattformen('light', seite)).toEqual([
       { text: 'Mango · mipsle ✓', ton: 'fertig' },
-      { text: 'Raspberry Pi · arm64 · noch nicht im Portal', ton: 'fehlt' },
       { text: 'WAGO PFC200 · arm ✓', ton: 'fertig' },
     ]);
     const karten = linienKarten(d, NOW, new Map([[60, seite]]));
-    expect(karten[1].plattformen?.[0].text).toBe('Mango · mipsle ✓');
+    expect(karten.map((k) => k.boxArt)).toEqual(['light']);
+    expect(karten[0].plattformen?.[0].text).toBe('Mango · mipsle ✓');
   });
 });
 
@@ -166,17 +162,8 @@ describe('Update läuft', () => {
     expect(text(l.text)).toBe('Ein Update läuft: edge-2026.11.0 an 3 Docker-Boxen · 1 bestätigt.');
     expect(l.link).toEqual({ label: 'Fortschritt', ziel: 'fortschritt' });
     expect(aufgaben(d, NOW)).toEqual([]);
-    const [docker] = linienKarten(d, NOW);
-    expect(docker.aktion).toBe('fortschritt');
-    expect(docker.segmente).toEqual([{ art: 'ok', n: 1, wort: 'neuestes' }, { art: 'lauf', n: 2, wort: 'Update läuft' }]);
-    expect(docker.leiter.map((s) => [s.version, s.wer, s.neuestes])).toEqual([
-      ['edge-2026.11.0', 'Herzogau', true], ['edge-2026.10.7', '2 Boxen · Update läuft', false],
-    ]);
-    // Der Lauf in der Karte (G6): drei Zahlen, nie ein gemischter Zustand.
-    expect(docker.lauf).toMatchObject({
-      release: 'edge-2026.11.0', releaseSeq: 61, angefragt: 3, angenommen: 2, bestaetigt: 1, gescheitert: 0,
-      seit: '15:20', von: 'alex', weiter: null,
-    });
+    // Die Docker-Box-Flotte läuft weiter wie gehabt (lage/aufgaben), nur ihre Karte entfällt.
+    expect(linienKarten(d, NOW).map((k) => k.boxArt)).toEqual(['light']);
   });
 
   it('jede Box sagt, wo sie steht: angefragt → angenommen → bestätigt', () => {
@@ -220,14 +207,8 @@ describe('Fehlgeschlagen', () => {
     expect(z.brauchtDich).toBe(true);
   });
 
-  it('die Linie kann wieder verteilen: die zurückgenommene Anfrage ist keine offene mehr', () => {
-    const [docker] = linienKarten(d, NOW);
-    expect(docker.segmente).toEqual([
-      { art: 'ok', n: 2, wort: 'neuestes' }, { art: 'fehler', n: 1, wort: 'zurückgenommen' },
-    ]);
-    expect(docker.leiter[1].wer).toBe('Ahrenberg Werk 1 · zurückgenommen');
-    expect(docker.verteilbar).toBe(1);
-    expect(docker.aktion).toBe('verteilen');
+  it('die Docker-Box-Flotte bleibt ansprechbar, bekommt aber keine Karte mehr', () => {
+    expect(linienKarten(d, NOW).map((k) => k.boxArt)).toEqual(['light']);
   });
 });
 
@@ -301,11 +282,7 @@ describe('Box offline', () => {
       ['fertig', 'angefragt'], ['warten', 'wartet'], ['leer', 'bestätigt'],
     ]);
     expect(text(z.satz)).toBe('angefragt 13:50 · wartet, bis die Box online ist');
-    const [docker] = linienKarten(d, NOW);
-    expect(docker.segmente[1]).toEqual({ art: 'off', n: 1, wort: 'offline · Update wartet' });
-    // Schon angefragt: kein zweites Verteilen für diese Box.
-    expect(docker.verteilbar).toBe(0);
-    expect(docker.aktion).toBe('nichts');
+    expect(linienKarten(d, NOW).map((k) => k.boxArt)).toEqual(['light']);
   });
 });
 
@@ -350,8 +327,7 @@ describe('Stufe 1 (Stand vom 05.11.)', () => {
   });
 
   it('die Linien-Karte: Leiter aus der API, „Nachrüsten" statt „Verteilen"', () => {
-    const [docker, light] = linienKarten(d, NOW);
-    expect(docker.releases).toBe(48);
+    const [light] = linienKarten(d, NOW);
     expect(light.segmente).toEqual([
       { art: 'ok', n: 1, wort: 'neuestes' }, { art: 'hand', n: 2, wort: 'nur von Hand (Stufe 1)' },
     ]);
@@ -403,15 +379,15 @@ describe('Grenzen', () => {
   });
 
   it('ohne Linien-Stand (älterer Server) steht die Box „ohne Stand", nie als neuestes', () => {
-    const r = box('Alt', 'docker', { stand: undefined, ist: 'edge-2026.10.7-c39b18d9c2a4' });
-    const [docker] = linienKarten(daten([r], [R.d107]), NOW);
-    expect(docker.segmente).toEqual([{ art: 'leer', n: 1, wort: 'ohne Stand' }]);
-    expect(docker.aktion).toBe('nichts');
+    const r = box('Alt', 'light', { stand: undefined, ist: 'edge-light-2026.11.4-c39b18d9c2a4' });
+    const [light] = linienKarten(daten([r], [R.l114]), NOW);
+    expect(light.segmente).toEqual([{ art: 'leer', n: 1, wort: 'ohne Stand' }]);
+    expect(light.aktion).toBe('nichts');
   });
 
   it('eine Box unbekannter Art steht in keiner Linie, aber in der Liste', () => {
-    const r = box('Neubau', 'docker', { boxArt: null, linie: null, stand: 'unbekannt', lastSeenAt: null });
-    const d = daten([r], [R.d107]);
+    const r = box('Neubau', 'light', { boxArt: null, linie: null, stand: 'unbekannt', lastSeenAt: null });
+    const d = daten([r], [R.l110]);
     expect(linienKarten(d, NOW)[0].gesamt).toBe(0);
     const zeilen = boxZeilen(d, NOW);
     expect(gruppen(zeilen).map((g) => g.titel)).toEqual(['Box-Art unbekannt']);
@@ -446,35 +422,36 @@ describe('Grenzen', () => {
 });
 
 describe('An die übrigen (E1 A, G6)', () => {
-  const herzogau = box('Herzogau', 'docker', { ...aktuell(R.d110),
-    fakten: fakten({ release: R.d110, am: vor(90 * MIN), angenommenAm: vor(85 * MIN), bestaetigt: 'ja', bestaetigtAm: vor(79 * MIN) }) });
-  const werk = box('Ahrenberg Werk 1', 'docker', { ist: 'edge-2026.10.7-c39b18d9c2a4', istRelease: 'edge-2026.10.7',
+  // Das Verhalten ist linienunabhängig; geprüft an Edge Light, weil die Docker-Box keine Karte mehr bekommt.
+  const herzogau = box('Herzogau', 'light', { ...aktuell(R.l114),
+    fakten: fakten({ release: R.l114, am: vor(90 * MIN), angenommenAm: vor(85 * MIN), bestaetigt: 'ja', bestaetigtAm: vor(79 * MIN) }) });
+  const werk = box('Ahrenberg Werk 1', 'light', { ist: 'edge-light-2026.11.0-c39b18d9c2a4', istRelease: 'edge-light-2026.11.0',
     releasesDahinter: 1, stand: 'aelter' });
-  const lager = box('Ahrenberg Lager', 'docker', { ist: 'edge-2026.10.7-c39b18d9c2a4', istRelease: 'edge-2026.10.7',
+  const lager = box('Ahrenberg Lager', 'light', { ist: 'edge-light-2026.11.0-c39b18d9c2a4', istRelease: 'edge-light-2026.11.0',
     releasesDahinter: 1, stand: 'aelter', lastSeenAt: vor(40 * MIN) });
 
   it('nach der ersten Bestätigung bietet die Karte die übrigen an - ein neuer Ein-Schritt-Lauf', () => {
-    const [docker] = linienKarten(daten([herzogau, werk, lager, ...lightRuhig()]), NOW);
-    expect(docker.aktion).toBe('weiter');
-    expect(docker.lauf).toMatchObject({ angefragt: 1, angenommen: 1, bestaetigt: 1 });
-    expect(text(docker.lauf!.weiter!.text)).toBe('Herzogau hat bestätigt (15:31). 2 Boxen laufen noch auf edge-2026.10.7.');
-    expect(docker.lauf!.weiter!.uebrige).toEqual([lager.deviceId, werk.deviceId]);
+    const [light] = linienKarten(daten([herzogau, werk, lager]), NOW);
+    expect(light.aktion).toBe('weiter');
+    expect(light.lauf).toMatchObject({ angefragt: 1, angenommen: 1, bestaetigt: 1 });
+    expect(text(light.lauf!.weiter!.text)).toBe('Herzogau hat bestätigt (15:31). 2 Boxen laufen noch auf edge-light-2026.11.0.');
+    expect(light.lauf!.weiter!.uebrige).toEqual([lager.deviceId, werk.deviceId]);
   });
 
   it('kein „weiter", solange die Anfrage offen ist oder etwas gescheitert ist', () => {
-    const offen = { ...herzogau, fakten: fakten({ release: R.d110, bestaetigt: 'laeuft' }), stand: 'laeuft' };
+    const offen = { ...herzogau, fakten: fakten({ release: R.l114, bestaetigt: 'laeuft' }), stand: 'laeuft' };
     expect(linienKarten(daten([offen, werk]), NOW)[0].lauf?.weiter).toBeNull();
     const zurueck = { ...werk, stand: 'fehler',
-      fakten: fakten({ release: R.d110, bestaetigt: 'zurueckgenommen', bestaetigtAm: vor(30 * MIN) }) };
+      fakten: fakten({ release: R.l114, bestaetigt: 'zurueckgenommen', bestaetigtAm: vor(30 * MIN) }) };
     const karte = linienKarten(daten([herzogau, zurueck, lager]), NOW)[0];
     expect(karte.lauf).toMatchObject({ angefragt: 2, bestaetigt: 1, gescheitert: 1, weiter: null });
   });
 
   it('eine Bestätigung von vorgestern ist kein Lauf mehr', () => {
-    const alt = { ...herzogau, fakten: fakten({ release: R.d110, am: vor(50 * STD), bestaetigt: 'ja', bestaetigtAm: vor(49 * STD) }) };
-    const [docker] = linienKarten(daten([alt, werk]), NOW);
-    expect(docker.lauf).toBeNull();
-    expect(docker.aktion).toBe('verteilen');
+    const alt = { ...herzogau, fakten: fakten({ release: R.l114, am: vor(50 * STD), bestaetigt: 'ja', bestaetigtAm: vor(49 * STD) }) };
+    const [light] = linienKarten(daten([alt, werk]), NOW);
+    expect(light.lauf).toBeNull();
+    expect(light.aktion).toBe('verteilen');
   });
 });
 
