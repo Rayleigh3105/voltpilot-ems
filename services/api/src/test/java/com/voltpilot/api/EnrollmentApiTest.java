@@ -275,6 +275,39 @@ class EnrollmentApiTest {
                 .isNotNull();
     }
 
+    /**
+     * vp-einrichtung-verbunden-keine-wahl: the real case the portal's "wie soll Ihre Box ins
+     * Internet?" question needs to skip. A fresh claim is a plain INSERT - {@code last_seen}
+     * (the status heartbeat) stays null no matter what, even for a box the platform has heard
+     * from for minutes already via its certificate poll. {@code anmeldung.zuletztAbgefragtAm}
+     * is that sign of life, and it must survive the claim unscoped by device id - the box polled
+     * before any device row for it existed.
+     */
+    @Test
+    void anmeldungZuletztAbgefragtAmUeberlebtDenClaimAlsLebenszeichenOhneHerzschlag() throws Exception {
+        String ref = "VP-SCHON-ERREICHBAR";
+        provisionSticker(ref);
+        assertThat(postCsr(ref.toLowerCase(java.util.Locale.ROOT),
+                TestPki.csrPem(TestPki.rsaKeyPair(2048), "CN=dev"), null).getStatusCode())
+                .isEqualTo(HttpStatus.ACCEPTED);
+
+        // Vor dem Claim fragt die Box schon im Takt - jede Abfrage ist pending, aber ein
+        // Lebenszeichen (dieZertifikatsAbfrageEinerGetrenntenBoxIstIhrLebenszeichen gilt genauso
+        // für eine Box, die NIE zugeordnet war).
+        assertThat(getCertificate(ref).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        String demo = token("demo", "demo");
+        String deviceId = claimDevice(demo, ref);
+
+        // last_seen (der Status-Herzschlag) bleibt nach einem frischen Claim IMMER null - die
+        // Box hat noch nie Telemetrie geschickt.
+        assertThat(anmeldungFuer(demo, deviceId)).as("der Herzschlag fehlt, die Anmeldung nicht")
+                .containsEntry("schluesselAbgeholtAm", null);
+        java.time.Instant abgefragt = java.time.Instant.parse(
+                (String) anmeldungFuer(demo, deviceId).get("zuletztAbgefragtAm"));
+        assertThat(abgefragt).isAfter(java.time.Instant.now().minusSeconds(60));
+    }
+
     @Test
     void concurrentPollsIssueExactlyOneCertificateWithoutBurningSerials() throws Exception {
         provisionSticker("VP-ENROLL-RACE");

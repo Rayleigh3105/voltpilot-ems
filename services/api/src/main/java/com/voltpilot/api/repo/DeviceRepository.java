@@ -62,12 +62,22 @@ public class DeviceRepository {
      * earlier. {@code csr_updated_at} stays unscoped by device_id on
      * purpose: it is the box's own enroll-loop upload, which happens before
      * any device row exists at all.
+     *
+     * <p>{@code zuletzt_abgefragt_am} (vp-einrichtung-verbunden-keine-wahl): the box's own
+     * certificate-poll heartbeat ({@link com.voltpilot.api.enrollment.EnrollmentRepository#notierAbfrage}),
+     * unscoped by device id like {@code csr_updated_at} - a box polls before any device row
+     * for it exists, and keeps polling across a claim. It is the only sign of life a freshly
+     * claimed box without a status heartbeat yet can give; the portal uses it (alongside
+     * {@code csr_updated_at}) to skip asking "wie soll Ihre Box ins Internet?" for a box that
+     * is demonstrably already online.
      */
     static String anmeldungColumns(String refExpr, String deviceIdExpr) {
         return "(SELECT e.csr_updated_at FROM device_enrollment e WHERE e.external_ref = " + refExpr
                 + ") AS anmeldung_angefragt_am, "
                 + "(SELECT e.issued_at FROM device_enrollment e WHERE e.external_ref = " + refExpr
-                + " AND e.device_id = " + deviceIdExpr + ") AS anmeldung_abgeholt_am";
+                + " AND e.device_id = " + deviceIdExpr + ") AS anmeldung_abgeholt_am, "
+                + "(SELECT e.zuletzt_abgefragt_am FROM device_enrollment e WHERE e.external_ref = " + refExpr
+                + ") AS anmeldung_zuletzt_abgefragt_am";
     }
 
     public List<DeviceDto> findAll() {
@@ -385,11 +395,13 @@ public class DeviceRepository {
             throws java.sql.SQLException {
         java.sql.Timestamp angefragt = rs.getTimestamp("anmeldung_angefragt_am");
         java.sql.Timestamp abgeholt = rs.getTimestamp("anmeldung_abgeholt_am");
-        if (angefragt == null && abgeholt == null) {
+        java.sql.Timestamp zuletztAbgefragt = rs.getTimestamp("anmeldung_zuletzt_abgefragt_am");
+        if (angefragt == null && abgeholt == null && zuletztAbgefragt == null) {
             return null;
         }
         return new com.voltpilot.api.web.dto.AnmeldungDto(
                 angefragt == null ? null : angefragt.toInstant(),
-                abgeholt == null ? null : abgeholt.toInstant());
+                abgeholt == null ? null : abgeholt.toInstant(),
+                zuletztAbgefragt == null ? null : zuletztAbgefragt.toInstant());
     }
 }
