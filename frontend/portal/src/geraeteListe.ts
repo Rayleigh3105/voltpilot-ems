@@ -64,6 +64,14 @@ const key = (z: GeraeteListeZeile): string => (z.lebensabschnitt === 'verbunden'
  * Jede Referenz steht GENAU EINMAL - die Rangfolge löst eine Überschneidung
  * auf (verbunden vor wartet vor Werkstatt vor gedruckt).
  *
+ * Vor dieser Rangfolge steht noch eine gröbere Gruppierung (`istJetztVerbunden`):
+ * jede Zeile, die GERADE JETZT verbunden ist, steht über allen anderen - auch
+ * über einer verbundenen Box, die „Braucht dich" auslöst, aber nicht meldet,
+ * oder einer wartenden Box, die gerade nicht erreichbar ist. Innerhalb der
+ * beiden Gruppen gilt unverändert die bisherige Rangfolge/Reihenfolge. Filter
+ * und Suche (`filterGeraeteListe`) wirken NACH dieser Sortierung, verändern sie
+ * also nicht.
+ *
  * `fassungRefs` (Scheibe S3, Umzugstabelle §4.7): Box-Referenzen, deren
  * Anlage eine Komponenten-Fassung noch nicht angewandt hat
  * (`/admin/component-fleet`, `syncStatus === 'pending'`) - der Chip „Fassung
@@ -172,6 +180,9 @@ export function geraeteListeZeilen(args: {
   }
 
   return rows.sort((a, b) => {
+    const ca = istJetztVerbunden(a) ? 0 : 1;
+    const cb = istJetztVerbunden(b) ? 0 : 1;
+    if (ca !== cb) return ca - cb;
     const ra = RANG[a.lebensabschnitt];
     const rb = RANG[b.lebensabschnitt];
     if (ra !== rb) return ra - rb;
@@ -182,6 +193,20 @@ export function geraeteListeZeilen(args: {
     return key(a).localeCompare(key(b), 'de');
   });
 }
+
+/**
+ * Ob eine Zeile GERADE JETZT verbunden ist (Spalte „Verbindung" zeigt „Verbunden",
+ * `zustand === 'online'`) - unabhängig vom Lebensabschnitt. Nur `verbunden` (eigene
+ * Meldung) und `wartet` (`erreichbar`, eine noch nicht zugeordnete Box) tragen
+ * überhaupt einen Verbindungs-Fakt; die anderen Lebensabschnitte haben keinen und
+ * gelten hier als nicht verbunden. „Verzögert" zählt absichtlich NICHT als verbunden -
+ * die Box meldet sich schon spürbar langsamer, auch wenn sie noch nicht offline ist.
+ */
+const istJetztVerbunden = (z: GeraeteListeZeile): boolean => {
+  if (z.lebensabschnitt === 'verbunden') return z.zeile.verbindung.zustand === 'online';
+  if (z.lebensabschnitt === 'wartet') return z.erreichbar?.zustand === 'online';
+  return false;
+};
 
 const RANG: Record<Lebensabschnitt, number> = { verbunden: 0, wartet: 1, werkstatt: 2, gedruckt: 3, ausgebaut: 4 };
 
