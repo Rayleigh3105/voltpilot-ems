@@ -56,6 +56,7 @@ class LaeuferBeendetArchitekturTest {
                     + " Rueckmeldeweg"),
             entry("GeraetesucheListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
             entry("ChargerStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("KoppelbildStandListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
             entry("DataSourceStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
                     + " Rueckmeldeweg"),
             entry("ConsumerReplanTriggerListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
@@ -98,7 +99,9 @@ class LaeuferBeendetArchitekturTest {
             entry("ControlCertificationService", "Schutz: das Freigaberegister geht an jede Box — eine Verkleinerung"
                     + " muss auch eine Box eines beendeten Bereichs erreichen"),
             entry("ComponentTemplateSeeder", "Plattform-Katalog, kein Kundenbereich"),
-            entry("WagoComponentTemplateSeeder", "Plattform-Katalog, kein Kundenbereich"));
+            entry("WagoComponentTemplateSeeder", "Plattform-Katalog, kein Kundenbereich"),
+            entry("NachtlaufWatcher", "Werkstatt: legt Aufträge nur für Boxen ohne Kundenkonto an, kein"
+                    + " Kundenbereich"));
 
     @Test
     void jederLaeuferLaesstBeendeteKundenbereicheAusOderNenntSeinenGrund() {
