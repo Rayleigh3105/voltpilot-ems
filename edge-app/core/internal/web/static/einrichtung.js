@@ -46,7 +46,29 @@
     return "weg";
   }
 
-  var VPEinrichtung = { balkenstufe: balkenstufe, skala: skala, ergebnisZiel: ergebnisZiel };
+  // ergebnisAnzeige: Titel, Text und sichtbare Knoepfe fuer "reicht" und
+  // "schwach" (6W/6W'). Schwach ist eine Empfehlung, keine Sperre: der
+  // Fertig-Knopf bleibt sichtbar wie bei "reicht" (Captain, 23.11.2026).
+  function ergebnisAnzeige(ziel, felder) {
+    felder = felder || {};
+    if (ziel === "reicht") {
+      return {
+        titel: "Empfang reicht",
+        text: "Die Box ist mit Ihrem WLAN verbunden" +
+          (felder.internet === "ja" ? " und erreicht das Internet." : ".") +
+          " Die Geräte kommen per Netzwerkkabel in die Buchse <strong>„LAN“</strong>.",
+        fertig: true, neu: false, kabel: false
+      };
+    }
+    return {
+      titel: "Empfang schwach",
+      text: "Die Box ist verbunden, aber der Empfang ist schwach - die Verbindung kann abbrechen. " +
+        "Hängen Sie die Box um - näher zum Router, höher, nicht in einen Metallschrank - oder nutzen Sie ein Netzwerkkabel.",
+      fertig: true, neu: true, kabel: true
+    };
+  }
+
+  var VPEinrichtung = { balkenstufe: balkenstufe, skala: skala, ergebnisZiel: ergebnisZiel, ergebnisAnzeige: ergebnisAnzeige };
   global.VPEinrichtung = VPEinrichtung;
   if (!global.document || !global.document.getElementById("sAnmeldung")) return;
 
@@ -321,22 +343,12 @@
       return;
     }
     skalaZeigen(felder.signal, felder.schwelle);
-    if (ziel === "reicht") {
-      $("ergTitel").textContent = "Empfang reicht";
-      $("ergText").innerHTML = "Die Box ist mit Ihrem WLAN verbunden" +
-        (felder.internet === "ja" ? " und erreicht das Internet." : ".") +
-        " Die Geräte kommen per Netzwerkkabel in die Buchse <strong>„LAN“</strong>.";
-      $("ergFertig").hidden = false;
-      $("ergNeu").hidden = true;
-      $("ergKabel").hidden = true;
-    } else {
-      $("ergTitel").textContent = "Empfang reicht nicht";
-      $("ergText").textContent = "Die Box ist verbunden, aber der Empfang ist zu schwach für den Dauerbetrieb. " +
-        "Hängen Sie die Box um - näher zum Router, höher, nicht in einen Metallschrank - und prüfen Sie neu.";
-      $("ergFertig").hidden = true;
-      $("ergNeu").hidden = false;
-      $("ergKabel").hidden = false;
-    }
+    var anzeige = ergebnisAnzeige(ziel, felder);
+    $("ergTitel").textContent = anzeige.titel;
+    $("ergText").innerHTML = anzeige.text;
+    $("ergFertig").hidden = !anzeige.fertig;
+    $("ergNeu").hidden = !anzeige.neu;
+    $("ergKabel").hidden = !anzeige.kabel;
     $("ergFehler").hidden = true;
     zeige("sErgebnis");
   }
