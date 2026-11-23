@@ -202,6 +202,29 @@ describe('M6 · Assistent, Schritt „Box“ mit der Kennung aus dem QR-Code', (
     expect(localStorage.getItem(KOPPEL_VORMERKER)).toBeNull();
   });
 
+  it('ist die Box beim Verbinden schon online, entfällt die Kabel/WLAN-Frage (vp-einrichtung-verbunden-keine-wahl)', async () => {
+    merkeKoppelRef(REF);
+    const claim = vi.spyOn(api, 'claimDevice').mockResolvedValue(box({ lastSeenAt: new Date().toISOString() }));
+    render(<AnlageFlow sites={[site]} wirt="assistent" vorschlagKennung={REF} onDone={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Box verbinden' }));
+    await waitFor(() => expect(claim).toHaveBeenCalled());
+    expect(screen.queryByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Ihre Box ist online' })).toBeInTheDocument();
+  });
+
+  it('der echte Fall: lastSeenAt ist beim Claim immer null, die Zertifikats-Abfrage der Box entscheidet (vp-einrichtung-verbunden-keine-wahl)', async () => {
+    merkeKoppelRef(REF);
+    const claim = vi.spyOn(api, 'claimDevice').mockResolvedValue(box({
+      lastSeenAt: null,
+      anmeldung: { zuletztAngefragtAm: new Date().toISOString(), schluesselAbgeholtAm: null, zuletztAbgefragtAm: new Date().toISOString() },
+    }));
+    render(<AnlageFlow sites={[site]} wirt="assistent" vorschlagKennung={REF} onDone={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Box verbinden' }));
+    await waitFor(() => expect(claim).toHaveBeenCalled());
+    expect(screen.queryByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Ihre Box ist im Internet' })).toBeInTheDocument();
+  });
+
   it('„später verbinden“ behält die Kennung bis morgen (QE-3 B)', async () => {
     merkeKoppelRef(REF);
     render(<AnlageFlow sites={[site]} wirt="assistent" vorschlagKennung={REF} onDone={() => {}} />);

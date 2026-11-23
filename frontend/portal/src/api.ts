@@ -1452,6 +1452,14 @@ export interface Device {
 export interface DeviceAnmeldung {
   zuletztAngefragtAm: string | null;
   schluesselAbgeholtAm: string | null;
+  /**
+   * vp-einrichtung-verbunden-keine-wahl: die Zertifikats-POLLS der Box
+   * (anders als `zuletztAngefragtAm`, nur beim Programmstart, wiederholen sie
+   * sich im Abgleich-Takt vor UND nach dem Verbinden) - das einzige
+   * Lebenszeichen einer frisch verbundenen Box ohne eigenen Herzschlag.
+   * `null`/fehlend = nie abgefragt, oder ein älteres Backend sendet es nicht.
+   */
+  zuletztAbgefragtAm?: string | null;
 }
 
 /** AP-06 IP-19: Ergebnis der Nachfolger-Anmeldung; `zugestellt=false` ist erst vorbereitet. */

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { ApiError, deviceLiveStatus, neueAnfrageKennung, type Device, type Site, type Funktionen } from '../api';
+import { boxSchonAngemeldetOnline } from '../boxLebenszeichen';
 import { api } from '../apiVoll';
 import { anlegeWeg, type AnlegeWeg } from '../anlageOrt';
 import { kennungSendbar, pruefeKennung } from '../edgeRef';
@@ -435,6 +436,13 @@ function GeraetStep({
       // Verbunden: die Box aus dem QR-Code ist erledigt, Tab und Browser vergessen sie.
       if (ausQr && gesendet === ausQr) vergissKoppelRef();
       setVerbunden(device);
+      // Eine Box, die beim Verbinden bereits online ist, braucht die Kabel/WLAN-Frage nicht -
+      // sie beantwortet sich selbst. "Später wechseln" bleibt möglich (Text in BoxWeg). Ein
+      // frischer Claim hat NIE einen Status-Herzschlag (lastSeenAt immer null) - die Zertifikats-
+      // Abfrage der Box (anmeldung) ist dann ihr einziges Lebenszeichen (vp-einrichtung-verbunden-keine-wahl).
+      if (deviceLiveStatus(device) === 'online' || boxSchonAngemeldetOnline(device.anmeldung)) {
+        setWegSchritt('weg');
+      }
       // N3: der Kopf fragt seine eigene Geräteliste unabhängig ab (bis zu 30 s Takt) -
       // ohne diesen Anstoß sagte er "noch nicht verbunden", während diese Seite schon
       // "Box verbunden" zeigte.

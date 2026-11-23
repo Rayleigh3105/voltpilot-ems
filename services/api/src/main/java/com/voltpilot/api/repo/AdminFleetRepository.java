@@ -257,7 +257,8 @@ public class AdminFleetRepository {
                             createdAt == null ? null : createdAt.toInstant(),
                             angefragtAm == null && abgeholtAm == null ? null : new AnmeldungDto(
                                     angefragtAm == null ? null : angefragtAm.toInstant(),
-                                    abgeholtAm == null ? null : abgeholtAm.toInstant()));
+                                    abgeholtAm == null ? null : abgeholtAm.toInstant(),
+                                    null));
                 });
     }
 

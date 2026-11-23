@@ -1,6 +1,7 @@
 import type { AdminDeviceRow, PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
 import { crossoverState } from './adminEdgeUpdates';
 import { DASH, relAge, type BoxErreichbarkeit, type BoxVerbindung } from './adminFleet';
+import { WARTET_ONLINE_WINDOW_MS, WARTET_NIE_ZUGEORDNET_ONLINE_WINDOW_MS } from './boxLebenszeichen';
 
 /**
  * Die reine Schicht der Plattform-Seite **„Geräte"**: der Onboarding-Funnel
@@ -183,27 +184,14 @@ export function pendingErreichbarText(v: BoxVerbindung): string {
 }
 
 /**
- * Online-Fenster einer wartenden Box, die schon einmal ein Zertifikat bekommen hat
- * (`everIssued`) und jetzt getrennt ist (vp-entkoppelte-box-meldet-verbunden, D3 = A). Ihr
- * Lebenszeichen ist keine Herzschlag-Meldung (15 s, dafür gilt `boxVerbindung` der Flotte),
- * sondern ihre Zertifikats-Abfrage im Abgleich-Takt alle 5 min (Edge-Core `reconcileLoop`),
- * und die API notiert höchstens eine Abfrage je Minute. Zwei Abgleich-Takte plus diese
- * Minute: eine verpasste Abfrage kippt die Box noch nicht auf „Meldet sich nicht". Mit der
- * Flotten-Schwelle (45 s / 5 min) stünde eine erreichbare getrennte Box fast immer auf
- * „Verzögert" und flackerte an der 5-min-Grenze.
+ * Die zwei Online-Fenster leben in `boxLebenszeichen.ts` (neutral, keine Admin-Worte) - EIN
+ * Ort für die Zahl, damit Kundenflächen wie `AnlageFlow.tsx` dasselbe Fenster verwenden
+ * können, ohne diese Admin-only-Schicht zu importieren (siehe `copy.test.ts` "the
+ * admin-only pure layers are really admin-only"). Re-export hier erhält bestehende Importe.
+ * vp-entkoppelte-box-meldet-verbunden (D3 = A) und vp-wartend-online-aktuell (19.11.2026)
+ * begründen die beiden Werte.
  */
-export const WARTET_ONLINE_WINDOW_MS = 11 * 60 * 1000;
-
-/**
- * Online-Fenster einer wartenden Box, die NIE zugeordnet war (noch kein Zertifikat bekam -
- * `everIssued === false`): sie fragt laut Edge-Core-Enrollment alle ≤ 60 s, nicht alle 5 min
- * (Firstmate vp-wartend-online-aktuell, Captain 19.11.2026: komplett vom Strom genommen
- * stand sie mit der pauschalen 11-Minuten-Schwelle noch 8 Minuten lang weiter auf „Online" -
- * ihr eigener, viel schnellerer Takt hätte das Schweigen längst verraten). Zwei ausgebliebene
- * Abfragen plus die eine Minute, die die API höchstens einmal je Minute notiert: 2 × 60 s +
- * 60 s = 3 Min.
- */
-export const WARTET_NIE_ZUGEORDNET_ONLINE_WINDOW_MS = 3 * 60 * 1000;
+export { WARTET_ONLINE_WINDOW_MS, WARTET_NIE_ZUGEORDNET_ONLINE_WINDOW_MS };
 
 /**
  * Erreichbarkeit einer wartenden Box aus ihrem letzten Lebenszeichen: die spätere von
@@ -217,7 +205,7 @@ export const WARTET_NIE_ZUGEORDNET_ONLINE_WINDOW_MS = 3 * 60 * 1000;
  * die Akte und die Kopfzeile lesen (`pendingRows`).
  */
 export function wartendeVerbindung(
-  p: Pick<PendingEnrollment, 'csrUpdatedAt' | 'zuletztAbgefragtAm' | 'everIssued'>,
+  p: { csrUpdatedAt: string | null; zuletztAbgefragtAm?: string | null; everIssued: boolean },
   now: Date,
 ): BoxVerbindung {
   const zeiten = [p.csrUpdatedAt, p.zuletztAbgefragtAm ?? null]

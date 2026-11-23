@@ -29305,6 +29305,16 @@ components:
           format: date-time
           nullable: true
           description: Wann die Cloud zuletzt ein Zertifikat fuer diese Anfrage ausgestellt hat (device_enrollment.issued_at).
+        zuletztAbgefragtAm:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            vp-einrichtung-verbunden-keine-wahl: letzte Zertifikats-Abfrage der Box
+            (device_enrollment.zuletzt_abgefragt_am), hoechstens einmal je Minute notiert -
+            wiederholt sich im Abgleich-Takt vor UND nach dem Verbinden, anders als
+            zuletztAngefragtAm (nur beim Programmstart). null = nie abgefragt, oder ein
+            aelteres Backend sendet das Feld noch nicht.
     BelegeImWeg:
       type: object
       description: >
