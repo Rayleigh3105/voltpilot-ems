@@ -1250,7 +1250,9 @@ export interface InhaltZeile { teil: Satz; geraet: string; groesse: string; port
  */
 export function releaseInhalt(seite: EdgeReleaseSeite): InhaltZeile[] {
   const art = releaseBoxArt({ boxArt: deviceBoxArt(seite.boxArt) ?? 'docker' });
-  const zeilen: InhaltZeile[] = seite.inhalt.map((t): InhaltZeile => {
+  // Edge Light zeigt hier kein Raspberry-Pi-Ziel mehr, wie schon ihre Linien-Karte (`plattformen()`).
+  const inhalt = art === 'light' ? seite.inhalt.filter((t) => !t.arch?.endsWith('arm64')) : seite.inhalt;
+  const zeilen: InhaltZeile[] = inhalt.map((t): InhaltZeile => {
     if (art === 'docker' || !t.arch) {
       return { teil: ['Bild ', { mono: t.name }], geraet: 'PC und Raspberry Pi', groesse: '–', portal: { ton: 'off', text: 'aus der Registry' } };
     }

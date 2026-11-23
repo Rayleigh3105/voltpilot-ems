@@ -65,9 +65,11 @@ function zeige(id: string) {
 /**
  * Plattform → **Geräte & Updates** (Geräte & Updates G5, Konzept vom 05.11.2026).
  *
- * Oben ein Satz zur Lage, dann je Software-Linie eine Karte (Docker-Box und
- * Edge Light nebeneinander, jede mit ihrem neuesten Release), darunter „Braucht
- * dich" mit Grund und nächstem Schritt, dann die Boxen nach Linie. Drei Wörter,
+ * Oben ein Satz zur Lage, dann je Software-Linie eine Karte (Edge Light und
+ * Edge Industrie nebeneinander, jede mit ihrem neuesten Release - die
+ * Docker-Box bekommt seit 23.11.2026 keine Karte mehr, ihre Boxen bleiben in
+ * „Braucht dich" und der Geräte-Liste erreichbar), darunter „Braucht dich"
+ * mit Grund und nächstem Schritt, dann die Boxen nach Linie. Drei Wörter,
  * nie vermischt: angefragt (Portal) · angenommen (Box) · bestätigt (Box).
  *
  * <b>Verteilen bleibt EIN Schritt:</b> Release wählen, Geräte ankreuzen,

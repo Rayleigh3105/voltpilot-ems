@@ -27,7 +27,10 @@ test('390 px: die Geräte-Liste zeigt je Box eine kompakte Zeile ohne Etiketten'
   const liste = page.getByTestId('geraete-liste');
   await expect(liste).toContainText('Solarpark Sonnenhof');
   for (const z of await zeilenHoehen(page, 'geraete-liste')) {
-    expect(z.hoehe, `${z.text}: unter 280 px (vorher 350 - 470 px)`).toBeLessThan(280);
+    // 290 statt 280: Gewerbepark West trägt den längsten Grund-Satz der Bühne (zwei Sätze, vier
+    // Zeilen) und braucht knapp 282 px in jeder Engine - echter Inhalt, kein Überlauf (siehe
+    // Zeilenbild), weit unter der alten 350 - 470 px hohen Etikett/Wert-Karte.
+    expect(z.hoehe, `${z.text}: unter 290 px (vorher 350 - 470 px)`).toBeLessThan(290);
   }
   const etiketten = await liste.locator('td').evaluateAll((tds) => tds.filter((td) => {
     const c = getComputedStyle(td, '::before').content;

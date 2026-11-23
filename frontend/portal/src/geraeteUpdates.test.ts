@@ -598,7 +598,7 @@ describe('Release-Seite (G7)', () => {
     erlaubtRueckschritt: false, minFromSeq: null, inhalt: [], programme: [], laeuftAuf: [], boxenDerLinie: 3, verteilt: [], ...o,
   });
 
-  it('Edge Light: je Programm Gerät, Größe und ob es geprüft im Portal liegt - und was nie im Update ist', () => {
+  it('Edge Light: je Programm Gerät, Größe und ob es geprüft im Portal liegt - kein Raspberry-Pi-Ziel mehr, und was nie im Update ist', () => {
     const z = releaseInhalt(seite({
       inhalt: [
         { typ: 'binary', name: 'vp-edge-light', arch: 'linux/mipsle', groesse: 14614743, gzGroesse: 4679121 },
@@ -614,7 +614,6 @@ describe('Release-Seite (G7)', () => {
     }));
     expect(z.map((r) => [text(r.teil), r.geraet, r.groesse, r.portal.text])).toEqual([
       ['vp-edge-light linux/mipsle', 'Mango', `4,7${NB}MB gepackt`, 'geprüft'],
-      ['vp-edge-light linux/arm64', 'Raspberry Pi', `4,5${NB}MB gepackt`, '22 % empfangen'],
       ['vp-edge-light linux/amd64', 'PC', `4,7${NB}MB gepackt`, 'fehlt im Portal'],
       ['vp-edge-light linux/arm', 'WAGO PFC200', `5,9${NB}MB gepackt`, 'geprüft'],
       ['Loader, Dienst, Tunnel-Skripte', '–', 'nicht im Update', 'nur Werkstatt'],

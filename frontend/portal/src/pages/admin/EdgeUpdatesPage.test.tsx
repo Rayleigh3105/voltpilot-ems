@@ -184,7 +184,8 @@ describe('EdgeUpdatesPage', () => {
     fireEvent.click(light);
     await waitFor(() => expect(erstverbindungSchalten).toHaveBeenCalledWith('light', false));
     await waitFor(() => expect(within(karte).getByTestId('erstverbindung-light')).not.toBeChecked());
-    expect(within(karte).getByTestId('erstverbindung-docker')).toBeChecked();
+    // Docker-Box steht nicht mehr zur Wahl: der Schalter zeigt sie nicht mehr an.
+    expect(within(karte).queryByTestId('erstverbindung-docker')).toBeNull();
     expect(karte).toHaveTextContent('teilweise aus');
     expect(karte).toHaveTextContent('von moritz');
     await waitFor(() => expect(edgeUpdates.mock.calls.length).toBeGreaterThan(vorher));
