@@ -127,6 +127,7 @@ class UemsKorrekturVorschlaegeTest {
     static void bauenUndFahren() throws Exception {
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
         flyway().target(letzteFassungVorDieser()).load().migrate();
+        jobsAus();
         stammdaten();
         // Was pünktlich eintraf — der Bestand vor dieser Migration.
         saeen(KB, "F10", abschnitte("f10-", false));
@@ -142,8 +143,10 @@ class UemsKorrekturVorschlaegeTest {
                 "591", null));
         fingerVorher = Bestandsschutz.fingerabdruck(root, List.of());
         flyway().target(DIESE).load().migrate();
+        jobsAus();
         fingerNachMigration = Bestandsschutz.fingerabdruck(root, List.of());
         flyway().load().migrate();
+        jobsAus();
 
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
@@ -644,6 +647,13 @@ class UemsKorrekturVorschlaegeTest {
             throw new IllegalStateException(x);
         }
         throw new AssertionError("kein Fall " + name);
+    }
+
+    /** Verhindert einen Wettlauf: ein von der Migration frisch angelegter Timescale-Job darf nicht laufen,
+     *  während der Aufbau weiterarbeitet oder die nächste Migration dieselben Tabellen sperrt. */
+    private static void jobsAus() {
+        root.queryForList("SELECT alter_job(job_id, scheduled => false) FROM timescaledb_information.jobs "
+                + "WHERE job_id >= 1000");
     }
 
     private static boolean spalte(String rolle, String spalte) {
