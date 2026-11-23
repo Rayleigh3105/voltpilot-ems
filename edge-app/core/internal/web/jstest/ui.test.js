@@ -3466,6 +3466,21 @@ test("Einrichtung: ergebnisZiel lenkt die Rueckgaben des Netz-Skripts", () => {
   assert.strictEqual(f(0, {}), "schwach"); // ohne Urteil nie "reicht" behaupten
 });
 
+test("Einrichtung: schwacher Empfang bleibt abschliessbar (Fertig-Knopf sichtbar wie bei reicht)", () => {
+  const w = load(["einrichtung.js"]);
+  const f = w.VPEinrichtung.ergebnisAnzeige;
+  const schwach = f("schwach", { signal: "-75", schwelle: "-70" });
+  assert.strictEqual(schwach.fertig, true);  // keine Sperre: Fertig bleibt sichtbar
+  assert.strictEqual(schwach.neu, true);     // "neu pruefen" bleibt ein freiwilliger Weg
+  assert.strictEqual(schwach.kabel, true);   // "per Kabel" bleibt ein freiwilliger Weg
+  assert.ok(!/reicht nicht/i.test(schwach.text)); // Warnung, keine Sperrmeldung
+
+  const reicht = f("reicht", { internet: "ja" });
+  assert.strictEqual(reicht.fertig, true);
+  assert.strictEqual(reicht.neu, false);
+  assert.strictEqual(reicht.kabel, false);
+});
+
 /* ============ einrichtwlan.js: das Einrichtungs-WLAN am Kabel ============ */
 
 function einrichtWlan(z) {
