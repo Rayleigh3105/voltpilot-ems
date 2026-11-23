@@ -111,6 +111,30 @@ describe('geraeteListeZeilen: eine Zeile je Box, jeder Lebensabschnitt genau ein
     expect(zeilen.map((z) => z.lebensabschnitt)).toEqual(['verbunden', 'wartet', 'werkstatt', 'gedruckt', 'ausgebaut']);
   });
 
+  it('Firstmate vp-geraete-verbunden-oben: eine verbundene Box steht über einer offline Box, die „Braucht dich" auslöst', () => {
+    const zeilen = geraeteListeZeilen({
+      fleet: [
+        fleetRow({ externalRef: 'edge-offline-fehler', label: 'edge-offline-fehler', deviceId: 'dF', stand: 'fehler', lastSeenAt: vor(10 * 60_000) }),
+        fleetRow({ externalRef: 'edge-online', label: 'edge-online', deviceId: 'dO' }),
+      ],
+      devices: [], pending: [], werkstattBoxen: [],
+    }, now);
+    const offline = zeilen.find((z) => z.lebensabschnitt === 'verbunden' && z.zeile.ref.includes('edge-offline-fehler')) as { zeile: { brauchtDich: boolean; verbindung: { zustand: string } } };
+    expect(offline.zeile.brauchtDich).toBe(true);
+    expect(offline.zeile.verbindung.zustand).toBe('offline');
+    expect(zeilen.map((z) => (z.lebensabschnitt === 'verbunden' ? z.zeile.ref : z.ref)))
+      .toEqual(['edge-online', 'edge-offline-fehler']);
+  });
+
+  it('Firstmate vp-geraete-verbunden-oben: eine verbundene wartende Box steht über einer offline Box, die „Braucht dich" auslöst', () => {
+    const zeilen = geraeteListeZeilen({
+      fleet: [fleetRow({ externalRef: 'edge-offline-fehler', label: 'edge-offline-fehler', deviceId: 'dF', stand: 'fehler', lastSeenAt: vor(10 * 60_000) })],
+      devices: [], pending: [pending({ externalRef: 'edge-wartend-online' })], werkstattBoxen: [],
+    }, now);
+    expect(zeilen.map((z) => (z.lebensabschnitt === 'verbunden' ? z.zeile.ref : z.ref)))
+      .toEqual(['edge-wartend-online', 'edge-offline-fehler']);
+  });
+
   it('L7: eine ausgebaute Box mit Aufkleber-Eintrag erscheint als „ausgebaut", nicht als „gedruckt"', () => {
     const ref = 'edge-z9';
     const zeilen = geraeteListeZeilen({
