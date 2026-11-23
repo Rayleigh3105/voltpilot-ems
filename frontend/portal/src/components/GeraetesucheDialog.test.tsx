@@ -40,6 +40,7 @@ function rendere(over: Partial<Parameters<typeof GeraetesucheDialog>[0]> = {}) {
     onUebernehmen: vi.fn(),
     onSelbst: vi.fn(),
     onVonHand: vi.fn(),
+    onVonHandAdresse: vi.fn(),
     onAdresseGespeichert: vi.fn(),
     ...over,
   };
@@ -142,6 +143,20 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
     expect(screen.getByText('Router, 2 Telefone oder Tablets, 1 Rechner')).toBeInTheDocument();
     expect(screen.getByText('Diese Box liest es noch nicht; andere VoltPilot-Boxen schon.')).toBeInTheDocument();
     expect(screen.getByText(/Passwortschutz ist an/)).toBeInTheDocument();
+  });
+
+  it('Unbekanntes Gerät (DP-3 A, geändert): Adresse und Ports stehen da, Übernehmen trägt die Adresse vor', async () => {
+    starten(F.fertig);
+    const { props } = rendere();
+    await screen.findByTestId('gs-ergebnis');
+    const weitere = screen.getByTestId('gs-weitere');
+    fireEvent.click(weitere.querySelector('summary') as HTMLElement);
+    expect(within(weitere).getByText('Unbekanntes Gerät')).toBeInTheDocument();
+    expect(within(weitere).getByText('192.168.178.80 · Port 80 offen')).toBeInTheDocument();
+    // Telefone bleiben eine reine Zahl, nie eine Adresse (DP-3 A).
+    expect(within(weitere).getByText('Telefone und Rechner stehen nur als Anzahl da – ohne Namen und ohne MAC-Adresse.')).toBeInTheDocument();
+    fireEvent.click(within(weitere).getByRole('button', { name: 'Von Hand hinzufügen' }));
+    expect(props.onVonHandAdresse).toHaveBeenCalledWith('192.168.178.80');
   });
 
   it('„Woran erkannt?" macht die Erkennung prüfbar', async () => {

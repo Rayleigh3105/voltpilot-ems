@@ -315,7 +315,7 @@ function suche(jetzt: number, vorS: number, over: Partial<Geraetesuche>): Geraet
     erkenner: ['solarman', 'shelly', 'goe', 'netztechnik', 'modbus_offen', 'sunspec', 'fronius_solar_api', 'kaco_aiswei',
       'kostal', 'huawei', 'sma', 'victron', 'opendtu_ahoy', 'ebyte', 'wago', 'mdns', 'ssdp', 'funkmodul'],
     gruppen: gruppen({}),
-    weitere: { telefonTablet: 2, rechner: 1, unbekannt: 0 },
+    weitere: { telefonTablet: 2, rechner: 1, unbekannt: 0, unbekannteGeraete: [] },
     ladesaeulenKlopfenAn: [],
     ...over,
   };
@@ -326,15 +326,16 @@ export function geraetesucheFaelle(jetzt: number) {
   const laufend = (over: Partial<Geraetesuche> = {}) =>
     suche(jetzt, 12, { zustand: 'laeuft', beendetAm: null, dauerMs: null, erkenner: null, ...over });
   return {
-    wartet: laufend({ zustand: 'wartet', netze: [], weitere: { telefonTablet: null, rechner: null, unbekannt: null } }),
+    wartet: laufend({ zustand: 'wartet', netze: [], weitere: { telefonTablet: null, rechner: null, unbekannt: null, unbekannteGeraete: [] } }),
     laeuft: laufend({
       schritt: 'geraete_ansprechen', erledigt: 3, gesamt: 4, restSekunden: 15,
       gruppen: gruppen({ bereit: [gsShelly] }),
-      weitere: { telefonTablet: null, rechner: null, unbekannt: null },
+      weitere: { telefonTablet: null, rechner: null, unbekannt: null, unbekannteGeraete: [] },
     }),
     fertig: suche(jetzt, 60, {
       gruppen: gruppen({ bereit: [gsDeye, gsShelly], weitere: [gsRouter, gsZugangspunkt] }),
-      weitere: { telefonTablet: 1, rechner: null, unbekannt: null },
+      // Eine Go-Kern-Box meldet zum unbekannt-Zähler auch die Adresse (DP-3 A, geändert); das Telefon bleibt Zahl.
+      weitere: { telefonTablet: 1, rechner: null, unbekannt: 1, unbekannteGeraete: [{ ip: '192.168.178.80', ports: [80] }] },
     }),
     /** Stufe 2 (V2): jede Gruppe belegt, dazu eine Ladesäule, die anklopft. */
     breit: suche(jetzt, 60, {
@@ -355,7 +356,7 @@ export function geraetesucheFaelle(jetzt: number) {
     }),
     nichts: suche(jetzt, 45, {
       gruppen: gruppen({}),
-      weitere: { telefonTablet: 2, rechner: 1, unbekannt: null },
+      weitere: { telefonTablet: 2, rechner: 1, unbekannt: null, unbekannteGeraete: [] },
       erkenner: ['solarman', 'shelly', 'goe', 'netztechnik', 'modbus_offen'],
     }),
     abgebrochen: suche(jetzt, 20, {
@@ -368,16 +369,16 @@ export function geraetesucheFaelle(jetzt: number) {
     }),
     abgelehnt: suche(jetzt, 5, {
       zustand: 'abgelehnt', grund: 'lan_host_fehlt', dauerMs: 0, netze: [], erkenner: null,
-      weitere: { telefonTablet: null, rechner: null, unbekannt: null },
+      weitere: { telefonTablet: null, rechner: null, unbekannt: null, unbekannteGeraete: [] },
     }),
     fehlgeschlagen: suche(jetzt, 15, {
       zustand: 'fehlgeschlagen', grund: 'interner_fehler', dauerMs: 4_200,
-      weitere: { telefonTablet: null, rechner: null, unbekannt: null },
+      weitere: { telefonTablet: null, rechner: null, unbekannt: null, unbekannteGeraete: [] },
     }),
     /** Mitansehen: gestartet vom VoltPilot-Service. */
     fremd: laufend({
       gestartetVon: VON_SERVICE, schritt: 'nachbarn_finden', erledigt: 120, gesamt: 254, restSekunden: 30,
-      weitere: { telefonTablet: null, rechner: null, unbekannt: null },
+      weitere: { telefonTablet: null, rechner: null, unbekannt: null, unbekannteGeraete: [] },
     }),
   };
 }

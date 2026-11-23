@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"regexp"
 	"strings"
 	"time"
@@ -302,11 +303,23 @@ type Fund struct {
 }
 
 // Weitere counts what is neither an energy device nor network gear - only as
-// a number per kind (DP-3 A). nil = not counted.
+// a number per kind (DP-3 A). nil = not counted. A Go-core box (Edge Light,
+// Edge Industrie) additionally lists UnbekannteGeraete: the addresses of the
+// Unbekannt count, still never a MAC, hostname or name. The Docker box cannot
+// tell a phone from an unknown device, so it only ever sends the count.
 type Weitere struct {
-	TelefonTablet *int `json:"telefon_tablet,omitempty"`
-	Rechner       *int `json:"rechner,omitempty"`
-	Unbekannt     *int `json:"unbekannt,omitempty"`
+	TelefonTablet     *int                `json:"telefon_tablet,omitempty"`
+	Rechner           *int                `json:"rechner,omitempty"`
+	Unbekannt         *int                `json:"unbekannt,omitempty"`
+	UnbekannteGeraete []UnbekanntesGeraet `json:"unbekannte_geraete,omitempty"`
+}
+
+// UnbekanntesGeraet is one address the search could not identify further: its
+// IP and, where the box already found them open while probing, its open
+// ports. No MAC, no hostname, no name (DP-3 A).
+type UnbekanntesGeraet struct {
+	IP    string `json:"ip"`
+	Ports []int  `json:"ports,omitempty"`
 }
 
 // Stand is the progress message (display only; the result is binding).
@@ -391,6 +404,13 @@ func (e Ergebnis) Pruefe(boxArt string) error {
 			return fmt.Errorf("weitere %d", *n)
 		}
 	}
+	bereiche, err := Bereiche(e.Netze)
+	if err != nil {
+		return err
+	}
+	if err := pruefeUnbekannteGeraete(e.Weitere, boxArt, bereiche); err != nil {
+		return err
+	}
 	return pruefeNetzeUndFunde(e.Netze, e.Funde, boxArt)
 }
 
@@ -436,6 +456,49 @@ func Bereiche(netze []Netz) ([]probe.Bereich, error) {
 		out = append(out, b)
 	}
 	return out, nil
+}
+
+// pruefeUnbekannteGeraete checks the address list strictly before a box
+// sends it: only a Go-core box may carry one at all (the Docker box cannot
+// tell a phone from an unknown device, so it never adds addresses), each
+// address lies in one of the reported networks, is sorted and unique, and
+// its ports are 1..65535, sorted, unique. The list's length must equal the
+// Unbekannt count the box reports beside it.
+func pruefeUnbekannteGeraete(w Weitere, boxArt string, bereiche []probe.Bereich) error {
+	if len(w.UnbekannteGeraete) == 0 {
+		return nil
+	}
+	if !GoKern(boxArt) {
+		return errors.New("unbekannte_geraete: only a Go-core box reports addresses")
+	}
+	if w.Unbekannt == nil || *w.Unbekannt != len(w.UnbekannteGeraete) {
+		return fmt.Errorf("unbekannte_geraete: %d addresses, unbekannt count %v", len(w.UnbekannteGeraete), w.Unbekannt)
+	}
+	var vorherige netip.Addr
+	for i, g := range w.UnbekannteGeraete {
+		ip, err := netip.ParseAddr(g.IP)
+		if err != nil {
+			return fmt.Errorf("unbekannte_geraete %d: ip %q", i, g.IP)
+		}
+		if i > 0 && !vorherige.Less(ip) {
+			return fmt.Errorf("unbekannte_geraete %d: not sorted / unique", i)
+		}
+		vorherige = ip
+		if grund := probe.ZielImBereich(g.IP, bereiche); grund != "" {
+			return fmt.Errorf("unbekannte_geraete %d: ip %q: %s", i, g.IP, grund)
+		}
+		var vorherPort int
+		for j, p := range g.Ports {
+			if p < 1 || p > 65535 {
+				return fmt.Errorf("unbekannte_geraete %d: port %d", i, p)
+			}
+			if j > 0 && p <= vorherPort {
+				return fmt.Errorf("unbekannte_geraete %d: ports not sorted / unique", i)
+			}
+			vorherPort = p
+		}
+	}
+	return nil
 }
 
 func pruefeNetzeUndFunde(netze []Netz, funde []Fund, boxArt string) error {

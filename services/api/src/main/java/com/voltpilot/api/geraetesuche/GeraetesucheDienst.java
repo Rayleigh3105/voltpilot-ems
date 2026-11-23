@@ -246,7 +246,10 @@ public class GeraetesucheDienst {
         return new GeraetesucheDto.Suche(z.id(), z.deviceId(), zustand(z, jetzt), z.grund(), z.ausgeloestAm(),
                 urheber(z.akteur()), z.beendetAm(), z.dauerMs(), z.schritt(), z.erledigt(), z.gesamt(),
                 beendet ? null : z.restS(), z.netze().stream().map(GeraetesucheDienst::netz).toList(), z.erkenner(),
-                List.copyOf(liste), new GeraetesucheDto.Weitere(w.telefonTablet(), w.rechner(), w.unbekannt()),
+                List.copyOf(liste),
+                new GeraetesucheDto.Weitere(w.telefonTablet(), w.rechner(), w.unbekannt(),
+                        w.unbekannteGeraete().stream()
+                                .map(g -> new GeraetesucheDto.UnbekanntesGeraet(g.ip(), g.ports())).toList()),
                 klopftAn(z, jetzt));
     }
 

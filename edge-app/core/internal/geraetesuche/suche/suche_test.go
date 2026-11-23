@@ -255,7 +255,7 @@ func TestDockerBoxSuchtDurchNATNurMitTCP(t *testing.T) {
 	// Phones, computers and the unknown are a count; the Docker box cannot
 	// tell them apart.
 	if aus.Weitere.Unbekannt == nil || *aus.Weitere.Unbekannt != 1 || aus.Weitere.TelefonTablet != nil ||
-		aus.Weitere.Rechner != nil {
+		aus.Weitere.Rechner != nil || aus.Weitere.UnbekannteGeraete != nil {
 		t.Fatalf("weitere: %+v", aus.Weitere)
 	}
 	if aus.Netze[0].Aktiv < 12 {
@@ -426,6 +426,10 @@ func TestEdgeLightSiehtBeideNetzeUndDieWege(t *testing.T) {
 	// .60 randomised MAC = phone, .61 announces a workstation, .62 unknown.
 	if *aus.Weitere.TelefonTablet != 1 || *aus.Weitere.Rechner != 1 || *aus.Weitere.Unbekannt != 1 {
 		t.Fatalf("weitere: %d/%d/%d", *aus.Weitere.TelefonTablet, *aus.Weitere.Rechner, *aus.Weitere.Unbekannt)
+	}
+	// A Go-core box lists the unbekannt count's own address - never its MAC.
+	if len(aus.Weitere.UnbekannteGeraete) != 1 || aus.Weitere.UnbekannteGeraete[0].IP != "192.168.178.62" {
+		t.Fatalf("unbekannte_geraete: %+v", aus.Weitere.UnbekannteGeraete)
 	}
 	if n.wurdeGewaehlt("10.8.0.") || n.wurdeGewaehlt("192.168.178.21:") || n.wurdeGewaehlt("192.168.178.35:") {
 		t.Fatal("dialed into the tunnel, the box itself or a logger it reads")

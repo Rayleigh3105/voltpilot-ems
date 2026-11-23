@@ -51,7 +51,7 @@ export const plantArticles: HelpArticle[] = [
       ] },
       { id: 'wer-und-was-bleibt', title: 'Wer suchen darf und was gespeichert wird', paragraphs: [
         "Suchen und die Ergebnisse ansehen darf, wer an der Anlage Geräte einrichten darf – dasselbe Recht wie für „Gerät hinzufügen“. Fehlt es, steht statt des Knopfs, wer es darf. Unter „Letzte Suchen“ sehen Sie, wer wann gesucht hat.",
-        "VoltPilot speichert Energie-Geräte (Wechselrichter, Zähler, Wallboxen, Schalter) und Netz-Technik wie Router oder WLAN-Zugangspunkte mit Hersteller, Modell und Adresse. Nach 30 Tagen werden die Suche und ihre Funde gelöscht; festgehalten bleibt nur, wer wann gesucht hat, wie viele Geräte es waren und welche gefundenen Geräte Sie übernommen haben. Telefone, Tablets und Rechner erscheinen nur als Anzahl. MAC-Adressen und die Namen, die Geräte im Heimnetz tragen, speichert VoltPilot nicht.",
+        "VoltPilot speichert Energie-Geräte (Wechselrichter, Zähler, Wallboxen, Schalter) und Netz-Technik wie Router oder WLAN-Zugangspunkte mit Hersteller, Modell und Adresse. Nach 30 Tagen werden die Suche und ihre Funde gelöscht; festgehalten bleibt nur, wer wann gesucht hat, wie viele Geräte es waren und welche gefundenen Geräte Sie übernommen haben. Telefone, Tablets und Rechner erscheinen nur als Anzahl. Ein nicht erkanntes Gerät steht mit seiner Adresse (und, wenn bekannt, offenen Ports) in der Liste, wenn Ihre VoltPilot-Box ein eigenes Gerät im Netz ist; läuft sie als Programm auf einem Rechner (Docker), bleibt es bei der Anzahl. MAC-Adressen und die Namen, die Geräte im Heimnetz tragen, speichert VoltPilot nicht.",
       ] },
       { id: 'gruppen', title: 'Die Gruppen der Ergebnisse', paragraphs: [
         "„Bereit zum Übernehmen“ führt mit einem Tipp in die Einrichten-Seite; der Test startet von selbst. „Braucht Ihre Hilfe“ nennt, was Sie zuerst tun müssen, etwa eine Schnittstelle einschalten oder eine neue Adresse bestätigen. „Schon eingerichtet“ zeigt, was die Anlage bereits kennt.",
@@ -63,7 +63,7 @@ export const plantArticles: HelpArticle[] = [
       ] },
       { id: 'box-auf-rechner', title: 'Eine Box auf einem eigenen Rechner', paragraphs: [
         "Läuft Ihre VoltPilot-Box als Programm auf einem eigenen Rechner (Docker), sucht sie durch dessen Netzanschluss: in den Adressen um die Adresse im Heimnetz, die bei der Einrichtung eingetragen wurde. Fehlt diese Adresse, beginnt die Suche nicht und sagt das – fragen Sie dann Ihren Installateur.",
-        "Eine solche Box hört keine Rundrufe im Heimnetz. Sie kann Telefone, Rechner und andere Geräte darum nicht unterscheiden und zählt sie als „unbekannte Geräte“. Energie-Geräte findet sie über dieselben Fragen an jede Adresse.",
+        "Eine solche Box hört keine Rundrufe im Heimnetz. Sie kann Telefone, Rechner und andere Geräte darum nicht unterscheiden und zählt sie als „unbekannte Geräte“ – ohne deren Adresse. Eine VoltPilot-Box, die als eigenes Gerät im Netz steht, listet die Adresse jedes unbekannten Geräts einzeln auf. Energie-Geräte findet sie über dieselben Fragen an jede Adresse.",
       ] },
     ], related: ['anlagenmodell', 'geraete', 'box-verbinden'],
   },

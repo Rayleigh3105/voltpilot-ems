@@ -113,6 +113,9 @@ class GeraetesucheSchnittstelleVertragTest {
         List<String> weitere = new ArrayList<>();
         schemas.at("/GeraetesucheWeitere/properties").fieldNames()
                 .forEachRemaining(f -> weitere.add(snake.translate(f)));
+        // unbekannte_geraete ist keine Zählart: die Adressliste einer Go-Kern-Box zum unbekannt-Zähler (DP-3 A,
+        // geändert), eigenes Feld statt eines Worts aus WEITERE_ARTEN.
+        weitere.remove("unbekannte_geraete");
         assertThat(weitere).isEqualTo(GeraetesucheVertrag.WEITERE_ARTEN);
     }
 
@@ -137,7 +140,7 @@ class GeraetesucheSchnittstelleVertragTest {
             }
             n++;
         }
-        assertThat(n).isEqualTo(9);
+        assertThat(n).isEqualTo(10);
         assertThat(Objects.requireNonNull(schemas.at("/GeraetesucheFund/properties/komponente/required")).toString())
                 .isEqualTo("[\"id\",\"name\"]");
     }

@@ -41,6 +41,7 @@ import {
   uebernahmeSchluessel,
   uebernahmeWeg,
   uhrzeit,
+  unbekanntesGeraetZeile,
   verlaufZeile,
   vorbelegung,
   wann,
@@ -155,6 +156,7 @@ export function GeraetesucheDialog({
   onUebernehmen,
   onSelbst,
   onVonHand,
+  onVonHandAdresse,
   onAdresseGespeichert,
   wartet,
   onWiederVerbinden,
@@ -187,6 +189,8 @@ export function GeraetesucheDialog({
   onSelbst: (fund: GeraetesucheFund, suchId: string | null) => void;
   /** „Von Hand hinzufügen": der Katalog. */
   onVonHand: () => void;
+  /** „Von Hand hinzufügen" an einer unbekannten Adresse der Suche: derselbe Weg, die Adresse schon eingetragen. */
+  onVonHandAdresse: (ip: string) => void;
   onAdresseGespeichert: (result: SiteComponents, satz: string) => void;
   /**
    * Wartet die abgeglichene Komponente eines eingerichteten Fundes auf ihr Gerät? Der Wirt weiß es aus dem
@@ -621,6 +625,7 @@ export function GeraetesucheDialog({
         onWiederVerbinden={onWiederVerbinden}
         onZulassen={(id) => void zulassen(id)}
         onVonHand={onVonHand}
+        onVonHandAdresse={onVonHandAdresse}
         onVerlauf={() => setAnsicht({ art: 'verlauf', zurueck: true })}
       />
     );
@@ -820,6 +825,7 @@ function Ergebnis({
   onWiederVerbinden,
   onZulassen,
   onVonHand,
+  onVonHandAdresse,
   onVerlauf,
 }: {
   titelRef: RefObject<HTMLHeadingElement>;
@@ -843,6 +849,7 @@ function Ergebnis({
   onWiederVerbinden?: (f: GeraetesucheFund) => void;
   onZulassen: (chargePointId: string) => void;
   onVonHand: () => void;
+  onVonHandAdresse: (ip: string) => void;
   onVerlauf: () => void;
 }) {
   const ende = endHinweis(suche);
@@ -988,6 +995,28 @@ function Ergebnis({
                     <b>{fundTitel(f)}</b>
                     <small>{fundZeile(f, true)}</small>
                   </span>
+                </div>
+              </li>
+            ))}
+            {suche.weitere.unbekannteGeraete.map((g) => (
+              <li key={g.ip} className="vp-gs-fund">
+                <div className={`vp-gs-zeile${portalVerwaltet ? ' is-aktion-unten' : ''}`}>
+                  <AufbauSymbol kategorie="fund" icon="help-circle" />
+                  <span className="vp-gs-text">
+                    <b>Unbekanntes Gerät</b>
+                    <small>{unbekanntesGeraetZeile(g)}</small>
+                  </span>
+                  {portalVerwaltet && (
+                    <span className="vp-gs-aktion">
+                      <button
+                        type="button"
+                        className="vp-gs-link"
+                        onClick={() => onVonHandAdresse(g.ip)}
+                      >
+                        Von Hand hinzufügen
+                      </button>
+                    </span>
+                  )}
                 </div>
               </li>
             ))}

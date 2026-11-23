@@ -22,7 +22,10 @@ einem Tipp in den bestehenden Anlege-Fluss. V3 (gezieltes Wiederfinden von der G
   mDNS, SSDP und Funkmodul-Liste gibt es nur auf Edge Light; die Docker-Box zählt Telefone und Rechner als `unbekannt`.
 - **„Erkannt, mit dieser Box noch nicht anbindbar“** = `anbindung` `nicht_mit_dieser_box` oder `kein_leseweg`, festgelegt
   je Paar und Box-Art im Erkennungskatalog der Vektoren — nicht in Portal oder API nachbauen.
-- **Datenschutz (DP-3 A):** keine MAC, kein Hostname, kein Gerätename; Telefone/Rechner nur als Zahl; Suchen und Funde
+- **Datenschutz (DP-3 A, geändert):** keine MAC, kein Hostname, kein Gerätename; Telefone/Rechner nur als Zahl. Eine
+  Go-Kern-Box (Edge Light, Edge Industrie) meldet zu ihrem `unbekannt`-Zähler zusätzlich `weitere.unbekannte_geraete`
+  (Adresse und, soweit schon offen gefunden, Ports je unbekanntes Gerät; sortiert, Länge = Zähler); die Docker-Box
+  kann ein Telefon nicht von einer unbekannten Adresse unterscheiden und sendet das Feld nie. Suchen und Funde
   30 Tage, das Protokoll bleibt. **Recht** `geraet.einrichten` an der Anlage (DP-4 A).
 - **Gleichheit sagt allein der Server** (`abgleich`), nie dieselbe Adresse; eine neue Adresse ist ein Vorschlag, den ein
   Tipp übernimmt (DP-7 A).

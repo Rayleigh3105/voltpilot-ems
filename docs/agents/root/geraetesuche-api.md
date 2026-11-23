@@ -33,8 +33,10 @@ Konzept `vp-portal-geraetesuche-konzept` (30.10.2026, DP-1 C, DP-2 bis DP-7 A). 
   Auslösen). Eine spätere Meldung der Box gilt noch; so eine Suche sperrt keinen neuen Start.
 - **Gruppen werden beim Lesen gebildet** (Detail und Verlauf), gegen die Komponenten von heute; das Protokoll
   `beendet` hält die Zähler zum Zeitpunkt des Ergebnisses fest.
-- **Datenschutz (DP-3 A):** keine Spalte für MAC, Hostname oder Gerätenamen; die Verbindung steht in Spalten, nicht als
-  JSON. Suchen und Funde gehen nach 30 Tagen, das Protokoll bleibt (Person, Zähler, Übernahmen).
+- **Datenschutz (DP-3 A, geändert):** keine Spalte für MAC, Hostname oder Gerätenamen; die Verbindung steht in Spalten,
+  nicht als JSON. Die Adressliste einer Go-Kern-Box zum `unbekannt`-Zähler (`weitere_unbekannte_geraete`, nie bei der
+  Docker-Box) liegt als `jsonb` neben der Zeile, dieselbe 30-Tage-Frist wie die Funde. Suchen und Funde gehen nach
+  30 Tagen, das Protokoll bleibt (Person, Zähler, Übernahmen).
 - **Herkunft = optionaler Bezug `geraetesuche: { suchId, fund }`** (`GeraetesucheBezug`) an drei Schreibwegen:
   `POST …/components` und `POST …/components/custom` („Vielleicht · selbst beschreiben“) schreiben die Protokollzeile
   `uebernommen`, `PUT …/components/{id}` schreibt `adresse_uebernommen`, nur wenn sich die Verbindung ändert (DP-7 A).

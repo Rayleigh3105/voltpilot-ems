@@ -40677,12 +40677,28 @@ components:
             wenn der Fund sich nicht übernehmen lässt.
     GeraetesucheWeitere:
       type: object
-      description: DP-3 A - Geräte, die kein Energie-Gerät und keine Netz-Technik sind, nur als Zahl; null = nicht gezählt.
-      required: [telefonTablet, rechner, unbekannt]
+      description: >
+        DP-3 A - Geräte, die kein Energie-Gerät und keine Netz-Technik sind, nur als Zahl; null = nicht gezählt.
+        unbekannteGeraete: nur eine Go-Kern-Box (Edge Light, Edge Industrie) meldet die Adressen des unbekannt-Zählers
+        mit, nie eine MAC, ein Hostname oder ein Name; leer bei einer Docker-Box oder ohne unbekannte Geräte.
+      required: [telefonTablet, rechner, unbekannt, unbekannteGeraete]
       properties:
         telefonTablet: { type: integer, nullable: true }
         rechner: { type: integer, nullable: true }
         unbekannt: { type: integer, nullable: true }
+        unbekannteGeraete:
+          type: array
+          items: { $ref: "#/components/schemas/GeraetesucheUnbekanntesGeraet" }
+    GeraetesucheUnbekanntesGeraet:
+      type: object
+      description: Nie eine MAC, ein Hostname oder ein Name (DP-3 A).
+      required: [ip, ports]
+      properties:
+        ip: { type: string, example: 192.168.178.90 }
+        ports:
+          type: array
+          items: { type: integer }
+          description: Die Ports, die die Box beim Ansprechen schon offen fand; leer = keiner.
     GeraetesucheLadesaeuleKlopftAn:
       type: object
       required: [chargePointId, ip, zuerst, zuletzt, versuche]

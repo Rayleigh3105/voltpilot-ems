@@ -47,7 +47,13 @@ public final class GeraetesucheDto {
     public record Komponente(UUID id, String name) {
     }
 
-    public record Weitere(Integer telefonTablet, Integer rechner, Integer unbekannt) {
+    /** unbekannteGeraete: nur eine Go-Kern-Box meldet die Adressen des unbekannt-Zählers; leer sonst. */
+    public record Weitere(Integer telefonTablet, Integer rechner, Integer unbekannt,
+            List<UnbekanntesGeraet> unbekannteGeraete) {
+    }
+
+    /** Nie eine MAC, ein Hostname oder ein Name (DP-3 A). */
+    public record UnbekanntesGeraet(String ip, List<Integer> ports) {
     }
 
     public record LadesaeuleKlopftAn(String chargePointId, String ip, Instant zuerst, Instant zuletzt, int versuche) {

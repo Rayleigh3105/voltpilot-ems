@@ -22,6 +22,7 @@ import {
   type GeraetesucheSchritt,
   type GeraetesucheUrheber,
   type GeraetesucheVerlaufEintrag,
+  type GeraetesucheUnbekanntesGeraet,
   type GeraetesucheWeitere,
   type GeraetesucheZustand,
   type GeraetesucheLadesaeuleKlopftAn,
@@ -456,6 +457,13 @@ export function weitere(s: Geraetesuche): { anzahl: number | null; zeile: string
 export function weitereTitel(anzahl: number | null): string {
   if (anzahl === null) return 'Weitere Geräte nicht gezählt';
   return anzahl === 1 ? '1 weiteres Gerät' : `${anzahl} weitere Geräte`;
+}
+
+/** „Port 80 offen" bzw. „Ports 80, 443 offen" - nie eine MAC oder ein Name (DP-3 A). */
+export function unbekanntesGeraetZeile(g: Pick<GeraetesucheUnbekanntesGeraet, 'ip' | 'ports'>): string {
+  if (g.ports.length === 0) return g.ip;
+  const woerter = g.ports.length === 1 ? `Port ${g.ports[0]} offen` : `Ports ${g.ports.join(', ')} offen`;
+  return `${g.ip} · ${woerter}`;
 }
 
 /** Die vier Prüffragen, wenn kein Energie-Gerät gefunden wurde (m7) - mit den Netzen, in denen gesucht wurde. */

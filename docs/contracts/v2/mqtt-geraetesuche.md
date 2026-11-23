@@ -113,7 +113,7 @@ vollständig) und die **neuen** `funde[]` seit dem vorigen Stand. Der Stand ist 
              "merkmale": ["v5_kopf_seriennummer", "deye_typ_0x0006", "deye_seriennummer_0x0003"], "anbindung": "uebernehmen",
              "verbindung": {"communication": "solarman_v5", "ip": "192.168.178.34", "port": 8899, "serial": 3115580613, "unit_id": 1},
              "liest_box_schon": false}],
-  "weitere": {"unbekannt": 4}
+  "weitere": {"unbekannt": 2, "unbekannte_geraete": [{"ip": "192.168.178.62"}, {"ip": "192.168.178.90", "ports": [80]}]}
 }
 ```
 
@@ -152,8 +152,17 @@ Docker-Box meldet sie weiter als `kein_leseweg` (Folgepaket); SMA, Victron und O
 - Netz-Technik (`router`, `zugangspunkt`) nur mit Hersteller, Modell und Adresse.
 - Telefone, Tablets, Rechner und Unbekanntes sind nie ein Fund, nur eine Zahl in `weitere` (`telefon_tablet`,
   `rechner`, `unbekannt`). Die Docker-Box kann sie nicht unterscheiden und zählt alles als `unbekannt`.
+- **Geändert:** eine Go-Kern-Box (Edge Light, Edge Industrie) meldet zu ihrem `unbekannt`-Zähler zusätzlich
+  `weitere.unbekannte_geraete`: eine Zeile je unbekanntes Gerät mit seiner `ip` und, soweit die Box sie beim
+  Ansprechen schon offen fand, seinen `ports` - weiterhin nie eine MAC, ein Hostname oder ein Name. Die Liste ist
+  nach `ip` sortiert, ihre Länge muss dem `unbekannt`-Zähler entsprechen, und jede Adresse liegt in einem der
+  gemeldeten Netze (Bereichsregel §4). Es wird dafür nicht neu angesprochen: nur, was die Suche ohnehin schon sah.
+  Die Docker-Box kann ein Telefon nicht von einer unbekannten Adresse unterscheiden und sendet das Feld nie - sie
+  bleibt bei der reinen Zahl. Additiv und abwärtskompatibel: eine ältere Box ohne das Feld bleibt gültig (die API
+  liest ein fehlendes Feld als „keine Adressen"), eine ältere API überliest das unbekannte Feld.
 - Sendet eine fehlerhafte Box doch eine MAC, überliest die API das Feld (Fall `fund_mit_mac`); ein Telefon als Fund wird
-  überlesen (`telefon_als_fund`). Gespeichert wird nur, was dieser Vertrag nennt; Funde 30 Tage (B2).
+  überlesen (`telefon_als_fund`). Gespeichert wird nur, was dieser Vertrag nennt; dieselbe 30-Tage-Frist wie die
+  Funde gilt auch für `unbekannte_geraete` (B2).
 
 ## 7. Antwort an das Portal
 
