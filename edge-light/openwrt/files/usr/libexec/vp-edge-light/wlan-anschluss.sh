@@ -11,8 +11,13 @@
 #   wlan-anschluss.sh verbinden <ssid>    Passwort als eine Zeile auf stdin
 #   wlan-anschluss.sh kabel [--ohne-kabel]  zurueck zum Kabelweg
 #   wlan-anschluss.sh status              Zustand
-#   wlan-anschluss.sh nachziehen          lokale Adresse am Relay = WLAN-Adresse
-#                                         (ruft der Hotplug-Haken bei ifup auf)
+#   wlan-anschluss.sh nachziehen          lokale Adresse am Relay = WLAN-Adresse,
+#                                         dann wege (ruft der Hotplug-Haken bei
+#                                         ifup auf)
+#   wlan-anschluss.sh wege                eigene Wege der Box zu den Geraeten an
+#                                         der LAN-Buchse ergaenzen (dazu jede
+#                                         Minute aus dem Takt von
+#                                         einrichtung-wlan.sh)
 #
 # Ausgabe: eine Zeile je Wert, "schluessel=wert" (scan: eine Zeile je Netz,
 # mit --json die Liste von iwinfo). Rueckgabe:
@@ -36,6 +41,16 @@
 #     jedem anderen gelernten Rechner, etwa dem Router (DNS) - der kennt
 #     10.213.0.0/24 nicht. Bekommt die Box im WLAN eine neue Adresse, zieht
 #     ein Hotplug-Haken sie nach (nachziehen).
+#   - Den Weg der Box zu einem Geraet legt relayd nur an, solange ihm die
+#     lokale Adresse gehoert: Der Kernel weist einen Weg mit fremdem Absender
+#     ab ("Invalid prefsrc address"), relayd liest die Antwort nicht und legt
+#     fuer ein Geraet, das es schon kennt, nie neu an. relayd startet aber
+#     auch, bevor DHCP die WLAN-Adresse gibt (Netz-Neustart wie beim Booten,
+#     ifup vp_wlan; im Emulator gemessen), und lernt die Geraete sofort. Dann
+#     fehlt der Weg der Box dauerhaft, waehrend die Weiterleitung fuer das
+#     Heimnetz steht - Box 10.10.16.5 am 24.11.2026: "Host is unreachable".
+#     wege ergaenzt genau die Wege, die relayd selbst angelegt haette; der
+#     Hotplug-Haken ruft es bei jedem ifup, der Takt jede Minute.
 #   - Das Funkmodul der Mango kann nur einen Kanal; nur 2,4 GHz.
 #
 # Schutz im Heimnetz (Konzept, Abschnitt 6.3):
@@ -295,6 +310,15 @@ befehl_status() {
   echo "schwelle=$SCHWELLE"
   if pidof relayd >/dev/null 2>&1; then echo "relay=an"; else echo "relay=aus"; fi
   echo "relay_adresse=$(uci -q get network.vp_relay.ipaddr)"
+  # Rechner, die relayd kennt, denen aber der eigene Weg der Box fehlt (behebt
+  # wege; leer: keiner fehlt oder kein Relay mit lokaler Adresse)
+  wege_lage
+  # shellcheck disable=SC2086 # ANDERE ist eine Liste von Tabellen
+  if [ -n "$T0" ]; then
+    echo "wege_fehlen=$(fehlende_wege "$LOKAL" "$T0" $ANDERE | cut -d' ' -f1 | tr '\n' ' ' | sed 's/ $//')"
+  else
+    echo "wege_fehlen="
+  fi
   if [ "$(uci -q get dhcp.lan.ignore)" = 1 ]; then echo "lan_dhcp=aus"; else echo "lan_dhcp=an"; fi
   if [ -n "$(uci -q get firewall.vp_heimnetz)" ]; then echo "zone_$ZONE=ja"; else echo "zone_$ZONE=nein"; fi
   if oben wan; then echo "kabel=ja"; else echo "kabel=nein"; fi
@@ -397,12 +421,15 @@ regel() { # regel <name> <von> <nach> <proto> <ports> <ziel> <titel>
 }
 
 # Hotplug-Haken: bekommt die Box im WLAN eine neue Adresse, zieht er die
-# lokale Adresse am Relay nach. verbinden legt ihn an, kabel entfernt ihn.
+# lokale Adresse am Relay nach und ergaenzt die eigenen Wege der Box (beides
+# in nachziehen: auch ein Haken, den ein aelterer Stand angelegt hat, ruft so
+# die neue Fassung). verbinden legt ihn an, kabel entfernt ihn.
 hotplug_eintragen() {
   mkdir -p "$(dirname "$HOTPLUG")"
   cat >"$HOTPLUG" <<EOT
 # vp-wlan-anschluss: von wlan-anschluss.sh verbinden angelegt, kabel entfernt ihn.
-# Neue WLAN-Adresse der Box -> lokale Adresse am Relay (relayd -L) nachziehen.
+# Neue WLAN-Adresse der Box -> lokale Adresse am Relay (relayd -L) nachziehen,
+# danach die eigenen Wege der Box zu den Geraeten ergaenzen (wege).
 [ "\$INTERFACE" = vp_wlan ] && { [ "\$ACTION" = ifup ] || [ "\$ACTION" = ifupdate ]; } && $SELBST nachziehen
 EOT
 }
@@ -416,6 +443,73 @@ befehl_nachziehen() {
   uci commit network
   /etc/init.d/relayd restart >/dev/null 2>&1
   melde "neue WLAN-Adresse $adr: lokale Adresse am Relay nachgezogen"
+}
+
+# ---- Eigene Wege der Box zu den Geraeten an der LAN-Buchse -----------------
+
+# relayd legt je gelerntem Rechner Wege in die Tabellen der ANDEREN
+# Schnittstellen (dort laufen die weitergeleiteten Pakete) und in seine lokale
+# Tabelle ("iif lo", der Verkehr der Box selbst), diesen mit der lokalen
+# Adresse als Absender (relayd route.c, rtnl_route_set). Nur dieser Weg kann
+# scheitern (siehe oben); wege holt ihn nach - mit derselben Tabelle,
+# Schnittstelle, Absender und proto boot, wie relayd ihn anlegt. So loescht
+# relayd ihn auch wieder, wenn es den Rechner vergisst. Die Weiterleitung fasst
+# wege nicht an.
+
+relayd_adresse() { # die lokale Adresse (-L) des laufenden relayd, sonst leer
+  # Kurz nach einem ifup laufen zeitweise mehrere relayd (procd startet ihn je
+  # Schnittstellen-Ereignis neu): die erste PID mit -L zaehlt.
+  for pid in $(pidof relayd 2>/dev/null); do
+    l="$(tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null | awk 'f { print; exit } $0 == "-L" { f = 1 }')"
+    [ -z "$l" ] || { echo "$l"; return 0; }
+  done
+}
+# relayd_tabellen: "<schnittstelle> <tabelle>" je Regel von relayd (Prioritaet
+# 2, "iif <schnittstelle> lookup <tabelle>"; lo ist die lokale Tabelle)
+relayd_tabellen() {
+  ip rule 2>/dev/null | sed -n 's/^2:.* iif \([^ ]*\) lookup \([0-9][0-9]*\).*/\1 \2/p'
+}
+# fehlende_wege <lokale Adresse> <lokale Tabelle> <tabelle ...>: "<ziel>
+# <schnittstelle>" je Rechner, den relayd in einer Schnittstellen-Tabelle
+# fuehrt, dem in der lokalen Tabelle aber der Weg mit diesem Absender fehlt
+fehlende_wege() {
+  l="$1"
+  t0="$2"
+  shift 2
+  {
+    ip -4 route show table "$t0" 2>/dev/null | sed 's/^/L /'
+    for t in "$@"; do ip -4 route show table "$t" 2>/dev/null | sed 's/^/T /'; done
+  } | awk -v s="$l" '
+    { d = ""; q = ""; via = 0
+      for (i = 3; i <= NF; i++) { if ($i == "dev") d = $(i + 1); if ($i == "src") q = $(i + 1); if ($i == "via") via = 1 } }
+    $1 == "L" { if (q == s) da[$2 " " d] = 1; next }
+    !via && d != "" && $2 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { kand[$2 " " d] = 1 }
+    END { for (k in kand) if (!(k in da)) print k }' | sort
+}
+# wege_lage: setzt LOKAL, T0 und ANDERE (leer, wenn relayd ohne lokale Adresse
+# laeuft oder gar nicht)
+wege_lage() {
+  LOKAL="$(relayd_adresse)"
+  tab="$(relayd_tabellen)"
+  T0="$(printf '%s\n' "$tab" | awk '$1 == "lo" { print $2; exit }')"
+  ANDERE="$(printf '%s\n' "$tab" | awk -v t="$T0" '$1 != "lo" && $2 != t { print $2 }' | sort -u | tr '\n' ' ')"
+  [ -n "$LOKAL" ] && [ -n "$T0" ] || { LOKAL=""; T0=""; ANDERE=""; }
+}
+
+befehl_wege() {
+  [ -n "$(uci -q get network.vp_relay)" ] || return 0
+  wege_lage
+  [ -n "$T0" ] || return 0
+  # Gehoert die Adresse der Box gerade nicht, nimmt der Kernel keinen Weg an:
+  # dann holt es das naechste ifup (Hotplug) oder der naechste Takt nach.
+  ip -4 -o addr show 2>/dev/null | grep -qF " $LOKAL/" || return 0
+  # shellcheck disable=SC2086 # ANDERE ist eine Liste von Tabellen
+  neu="$(fehlende_wege "$LOKAL" "$T0" $ANDERE | while read -r ziel dev; do
+    ip route replace "$ziel" dev "$dev" src "$LOKAL" table "$T0" proto boot scope link 2>/dev/null && echo "$ziel"
+  done | tr '\n' ' ')"
+  neu="${neu% }"
+  echo "ergaenzt=$neu"
+  [ -z "$neu" ] || melde "eigener Weg der Box zu $neu ergaenzt (relayd hatte ihn ohne Absender $LOKAL gelernt)"
 }
 
 # Schritt 2: LAN-Seite umstellen - Relay mit lokaler Adresse, DHCP der Box aus,
@@ -544,10 +638,16 @@ case "$BEFEHL" in
   verbinden) mit_sperre befehl_verbinden "${2:-}" ;;
   kabel) mit_sperre befehl_kabel "${2:-}" ;;
   # Aus dem Hotplug-Haken: haelt ein anderer Lauf die Sperre, setzt der die
-  # Adresse selbst - dann nicht warten.
-  nachziehen) (flock -n 9 || exit 0; befehl_nachziehen) 9>"$SPERRE" ;;
+  # Adresse selbst - dann nicht warten. wege laeuft auch dann: es aendert keine
+  # Konfiguration, und der Takt des Einrichtungs-WLANs haelt dieselbe Sperre
+  # oft genau dann, wenn das WLAN wiederkommt.
+  nachziehen)
+    (flock -n 9 || exit 0; befehl_nachziehen) 9>"$SPERRE"
+    befehl_wege >/dev/null
+    ;;
+  wege) befehl_wege ;;
   *)
-    echo "scan [--json] | messen <ssid> | verbinden <ssid> (Passwort auf stdin) | kabel [--ohne-kabel] | status | nachziehen" >&2
+    echo "scan [--json] | messen <ssid> | verbinden <ssid> (Passwort auf stdin) | kabel [--ohne-kabel] | status | nachziehen | wege" >&2
     exit 2
     ;;
 esac

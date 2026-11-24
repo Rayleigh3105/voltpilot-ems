@@ -1,0 +1,33 @@
+# Lauf eigene-wege: im WLAN-Weg B erreicht die Box die Geraete an ihrer eigenen LAN-Buchse auch dann, wenn relayd sie lernt, bevor DHCP die WLAN-Adresse gibt (Befund Box 10.10.16.5 am 24.11.2026, "Host is unreachable"; hier nach Netz-Neustart wie beim Booten und nach ifup vp_wlan). Weiterleitung fuer das Heimnetz und Box -> Router bleiben, wie sie sind
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v.out; echo "rc=$?" > /tmp/v.rc; gleich "verbinden: Rueckgabe" "$(cat /tmp/v.rc)" "rc=0"; WWANIP=$(wert wlan_adresse /tmp/v.out); echo "wlan=$WWANIP"
+@60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 192.168.178.*) pruef_ok "Geraet mit Adresse vom Router ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP)";; esac
+# Das Geraet redet nebenher mit dem Router (wie der Huawei-Dongle mit seiner Cloud); relayd lernt es aus seinem ARP
+ip netns exec kabel sh -c 'while :; do ping -c 1 -W 1 192.168.178.1 >/dev/null 2>&1; sleep 4; done' >/dev/null 2>&1 & echo $! > /tmp/geraet-redet.pid
+STA=$(ubus call network.wireless status | jsonfilter -e '@.radio0.interfaces[@.section="vp_wlan"].ifname'); echo "sta=$STA"; ip rule | grep lookup
+# weiter: relayd fuehrt das Geraet fuer die Weiterleitung (Tabelle der WLAN-Schnittstelle); weg_box: der eigene Weg der Box (lokale Tabelle, Absender = WLAN-Adresse)
+weiter() { ip route show table 16801 | grep -q "^$KABELIP dev br-lan"; }; weg_box() { ip route show table 16800 | grep -q "^$KABELIP dev br-lan .*src $WWANIP"; }
+oben_warten() { i=0; while [ $i -lt 90 ] && ! { ifstatus vp_wlan | grep -q '"up": true' && pidof relayd >/dev/null && weiter; }; do sleep 1; i=$((i+1)); done; sleep 8; WWANIP=$($W status | sed -n s/^wlan_adresse=//p); info "$1: oben nach $i s, relayd $(pidof relayd), WLAN $WWANIP"; }
+@60 sleep 6; pruefe "vorher: relayd fuehrt das Geraet" weiter; pruefe "vorher: eigener Weg der Box zum Geraet" weg_box; pruefe "vorher: Box liest das Geraet (502)" tcp - $KABELIP 502
+# Fall 1: Netz-Neustart wie beim Booten. relayd laeuft schon, bevor DHCP die WLAN-Adresse gibt, und lernt das Geraet sofort; der Kernel weist seinen Weg mit diesem Absender ab
+@200 /etc/init.d/network restart; sleep 3; oben_warten "Neustart"
+pruefe "Neustart: relayd fuehrt das Geraet" weiter; pruefe "Neustart: eigener Weg der Box zum Geraet" weg_box; pruefe "Neustart: Box erreicht das Geraet (Ping)" ping -c 2 -W 2 $KABELIP; pruefe "Neustart: Box liest das Geraet (502)" tcp - $KABELIP 502
+pruefe "Neustart: Box erreicht den Router" ping -c 2 -W 2 192.168.178.1; pruefe "Neustart: Heimnetz erreicht das Geraet (Weiterleitung)" ip netns exec kunde ping -c 2 -W 2 $KABELIP; gleich "Neustart: status nennt keinen fehlenden Weg" "$($W status | sed -n s/^wege_fehlen=//p)" ""
+ip netns exec kabel tcpdump -n -l -i kabel1 -c 1 "icmp and dst host $KABELIP and icmp[icmptype] == icmp-echo" > /tmp/td.txt 2>/dev/null & sleep 1; ping -c 1 -W 2 $KABELIP >/dev/null; sleep 2; gleich "Neustart: Geraet sieht die Box mit ihrer WLAN-Adresse" "$(awk '{print $3}' /tmp/td.txt | head -n 1)" "$WWANIP"
+info "nach dem Neustart: $(logread -l 150 | grep -c 'eigener Weg der Box') Meldung(en) im Protokoll: $(logread -l 150 | grep 'eigener Weg der Box' | tail -n 1 | sed 's/.*vp-wlan-anschluss: //')"
+# Fall 2: ifup vp_wlan (der Waechter nach einem Routertausch, oder von Hand)
+@120 ifup vp_wlan; sleep 3; oben_warten "ifup"
+pruefe "ifup: relayd fuehrt das Geraet" weiter; pruefe "ifup: eigener Weg der Box zum Geraet" weg_box; pruefe "ifup: Box liest das Geraet (502)" tcp - $KABELIP 502; pruefe "ifup: Box erreicht den Router" ping -c 2 -W 2 192.168.178.1
+# Fall 3: ifup, waehrend ein anderer Lauf die Sperre haelt (der Takt des Waechters haelt sie oft genau dann, wenn das WLAN wiederkommt)
+flock /var/lock/vp-wlan-anschluss sleep 40 >/dev/null 2>&1 & sleep 1; verneine "Sperre ist belegt" flock -n /var/lock/vp-wlan-anschluss true
+@120 ifup vp_wlan; sleep 3; oben_warten "ifup unter Sperre"; pruefe "ifup unter Sperre: eigener Weg der Box zum Geraet" weg_box; pruefe "ifup unter Sperre: Box liest das Geraet (502)" tcp - $KABELIP 502
+@60 i=0; while [ $i -lt 50 ] && ! flock -n /var/lock/vp-wlan-anschluss true; do sleep 1; i=$((i+1)); done; info "Sperre frei nach $i s"
+# Fall 4: relayd lernt das Geraet, waehrend die WLAN-Adresse fehlt, und danach kommt kein ifup (hier: Adresse an netifd vorbei entfernt und wieder gesetzt) - dann holt der Takt des Waechters den Weg nach
+@60 ip addr del $WWANIP/24 dev $STA; /etc/init.d/relayd restart; sleep 3; ip netns exec kabel ip neigh flush dev kabel1; ip netns exec kabel ping -c 1 -W 2 192.168.178.1 >/dev/null 2>&1; sleep 2; ip addr add $WWANIP/24 dev $STA; sleep 2
+pruefe "ohne ifup: relayd fuehrt das Geraet" weiter; verneine "ohne ifup: zunaechst fehlt der eigene Weg der Box (so lernte relayd es)" weg_box; case " $($W status | sed -n s/^wege_fehlen=//p) " in *" $KABELIP "*) pruef_ok "ohne ifup: status nennt das Geraet in wege_fehlen";; *) pruef_fehler "ohne ifup: status nennt das Geraet nicht in wege_fehlen";; esac
+@60 mit; $E takt; pruefe "ohne ifup: der naechste Takt ergaenzt den eigenen Weg der Box" weg_box; pruefe "ohne ifup: danach liest die Box das Geraet (502)" tcp - $KABELIP 502; pruefe "Protokoll nennt das Ergaenzen" sh -c "logread -l 150 | grep 'eigener Weg der Box zu' | grep -qF ' $KABELIP '"
+# Fall 5: relayd vergisst das Geraet (vom Kabel getrennt) - der ergaenzte Weg geht mit, wie relayds eigener
+kill $(cat /tmp/geraet-redet.pid) 2>/dev/null; ip netns exec kabel ip link set kabel1 down; echo "Geraet getrennt"
+@150 i=0; while [ $i -lt 120 ] && weiter; do sleep 2; i=$((i+2)); done; info "relayd vergass das Geraet nach $i s"; verneine "getrennt: relayd fuehrt das Geraet nicht mehr" weiter; verneine "getrennt: kein Weg der Box zum Geraet bleibt stehen" sh -c "ip route show table 16800 | grep -q '^$KABELIP '"
+@60 ip netns exec kabel ip link set kabel1 up; sleep 2; ip netns exec kabel ping -c 2 -W 2 192.168.178.1 >/dev/null 2>&1; sleep 2; pruefe "wieder angesteckt: Box liest das Geraet (502)" tcp - $KABELIP 502
+# Fall 6: Kabelweg - wege tut nichts, status nennt nichts
+@120 $W kabel --ohne-kabel > /tmp/k.out; gleich "Kabelweg: wege aendert nichts" "$($W wege)" ""; gleich "Kabelweg: status ohne fehlende Wege" "$($W status | sed -n s/^wege_fehlen=//p)" ""

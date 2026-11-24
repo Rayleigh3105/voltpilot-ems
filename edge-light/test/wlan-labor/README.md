@@ -1,7 +1,7 @@
 # WLAN-Labor: OpenWrt mit simuliertem Funk
 
 Ein echtes OpenWrt 25.12.5 mit WLAN, ohne Mango, ohne Docker, ohne Root auf dem Rechner.
-Gebaut für den WLAN-Anschluss der Box (`edge-light/openwrt/files/usr/libexec/vp-edge-light/wlan-anschluss.sh`); inzwischen prüft es auch das Einrichtungs-WLAN samt Wächter (`einrichtung-wlan.sh`, Läufe `einrichtung`, `fenster`, `ohne-cloud`), das Weiterlesen bei Routerausfall und -tausch (`routerausfall`), die Einrichtungsseite der Web-App Ende-zu-Ende (`einrichtung-weg`: das echte Go-Programm, als i686 gebaut, läuft im Emulator) und die Vorgabe der Werkstatt (S1: eine Box mit Land DE und relayd wie ab Werk, aber ganz ohne Paketquelle beim Kunden, Lauf `werkstatt`).
+Gebaut für den WLAN-Anschluss der Box (`edge-light/openwrt/files/usr/libexec/vp-edge-light/wlan-anschluss.sh`); inzwischen prüft es auch das Einrichtungs-WLAN samt Wächter (`einrichtung-wlan.sh`, Läufe `einrichtung`, `fenster`, `ohne-cloud`), das Weiterlesen bei Routerausfall und -tausch (`routerausfall`), die Einrichtungsseite der Web-App Ende-zu-Ende (`einrichtung-weg`: das echte Go-Programm, als i686 gebaut, läuft im Emulator) die Vorgabe der Werkstatt (S1: eine Box mit Land DE und relayd wie ab Werk, aber ganz ohne Paketquelle beim Kunden, Lauf `werkstatt`) und die eigenen Wege der Box zu den Geräten an ihrer LAN-Buchse, wenn relayd sie vor der WLAN-Adresse lernt (Netz-Neustart wie beim Booten, `ifup`; Lauf `eigene-wege`).
 Der nächste Schritt (Wiederfinden der Geräte, S6) verwendet es weiter.
 
 ```sh
@@ -41,6 +41,7 @@ Abweichungen vom Gerät, ehrlich benannt:
 | `werkzeug/udhcpc.sh` | DHCP für die Namensräume |
 | `werkzeug/http.sh` | roher HTTP-Aufruf über busybox `nc` (uclient-fetch kann weder Header noch Cookies): `http_ruf <ns> <adresse> <port> <methode> <pfad> [cookie] [json-body]`, dazu `http_status` und `http_cookie` |
 | `werkzeug/beob-wlan.sh` | für die Fehlersuche: alle 2 s Client-Schnittstelle, Zustand von wpa_supplicant, WLAN-Adresse und lokale Adresse am Relay (`sh /tmp/labor/werkzeug/beob-wlan.sh > /tmp/beob.txt &` in einem Lauf) |
+| `werkzeug/zeitleiste.sh` | für die Fehlersuche an den eigenen Wegen der Box: jede Sekunde relayd (PIDs), WLAN-Adresse, `vp_wlan` oben, und ob das Gerät in der Weiterleitung und im Weg der Box steht (Lauf `messung-wege`) |
 
 Neue Läufe: eine Datei unter `laeufe/`, eine Zeile je Befehl; die Probe hängt sie hinter `basis.txt` und `aufbau.txt`.
 Das Skript der Box liegt im Gast unter `$W`, die Adresse des Kabelgeräts holt `dhcp_neu kabel kabel1`.
@@ -49,5 +50,6 @@ Das Skript der Box liegt im Gast unter `$W`, die Adresse des Kabelgeräts holt `
 
 - Die Last des Rechners: unter hoher Last kommt OpenWrt im Emulator nicht rechtzeitig hoch. Die Probe wartet deshalb, bis die Last unter `VP_WLAN_LABOR_LAST` liegt (Vorgabe: Kerne × 1,5).
 - Lange Zeilen verliert die serielle Konsole: `boot.mjs` sendet in Stücken von 48 Zeichen.
+- Eine Befehlszeile samt der Marke, die `boot.mjs` anhängt (rund 30 Zeichen), bleibt unter 500 Zeichen: Die Shell im Gast kappt längere still, der Lauf wartet dann bis zur Frist und bricht ab (gemessen mit 515 + Marke). Längere Helfer gehören nach `werkzeug/`.
 - `@<s>` wirkt nur am Zeilenanfang.
 - Variablen der Konsole sind nicht exportiert: in `sh -c` doppelte Anführungszeichen, damit die Konsole sie einsetzt.
