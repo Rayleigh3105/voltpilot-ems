@@ -245,10 +245,13 @@ kaco-rs485, das zusätzlich die Feldbreiten und die Prüfsumme gegen echte
 „APL_RS485protocol_KACO"-Dokument verweist). Die physische Schnittstelle
 (RS232 UND RS485, Klemmen, Busadresse, Abschlusswiderstand) ist durch KACOs
 eigene Betriebsanleitung belegt (Powador 3200-6600, Dok. 31001135-06,
-[PDF](https://www.selectronic.com.au/manuals/31001135-06-130417_HB_3200_6600_Operating_Instructions_EN_Web.pdf)) -
-nur die Dekodierung der Momentanwerte selbst wurde an keinem echten Gerät
-dieser Anlage gemessen, siehe die VERIFY-on-device-Liste unten und
-[`kaco/POWADOR-RS485-CHECKLISTE.md`](kaco/POWADOR-RS485-CHECKLISTE.md).
+[PDF](https://www.selectronic.com.au/manuals/31001135-06-130417_HB_3200_6600_Operating_Instructions_EN_Web.pdf)).
+Die Dekodierung der Momentanwerte ist seit 24.11.2026 an einem echten Gerät
+gemessen: ein Powador 3200 - INT an Busadresse 1 hinter einem Waveshare
+antwortete auf Kommando „0“, und VoltPilots eigener Decoder las das Frame
+mit stimmender Prüfsumme (§11.5, Frame als Vektor in
+`kaco/kaco-serial-vectors.json`). Offen bleibt der Rest der Liste in §11.5,
+dazu [`kaco/POWADOR-RS485-CHECKLISTE.md`](kaco/POWADOR-RS485-CHECKLISTE.md).
 
 ### 11.1 Anschluss am Gerät + Zusatzhardware: ein transparenter RS485-zu-Ethernet-Wandler
 
@@ -336,18 +339,29 @@ zusätzlich ein fremdes Kommando-Byte im Satz.
 ### 11.5 ⚠ Am Gerät zu prüfen (VERIFY-on-device)
 
 Die physische Schnittstelle (RS232/RS485, Klemmen, Busadresse, Terminierung)
-ist durch KACOs eigene Betriebsanleitung belegt (§11.1) - unverifiziert bleibt
-nur die **Dekodierung der Momentanwerte**, nichts davon wurde an einem echten
-Gerät dieser Anlage gemessen:
+ist durch KACOs eigene Betriebsanleitung belegt (§11.1). **Gemessen am
+24.11.2026 um 09:10** an einem Powador 3200 - INT beim Kunden, gelesen von
+einer Edge-Light-Box über einen Waveshare (TCP-Port 4196) mit VoltPilots
+eigenem Decoder: Die Antwort trägt den Kopf `*010` (Busadresse 1, Kommando
+„0“, also die hier gebaute Serie „00“), die Prüfsumme stimmt, 66 Bytes. Werte:
+Status 4, DC 388,4 V / 3,31 A / 1284 W, AC 231,1 V / 5,33 A / 1233 W, 24 °C,
+Tagesertrag 0,44 kWh. Der Typ-String lautet `3200I` und endet mit einem
+NUL-Byte vor dem CR; der Decoder schneidet NUL am Rand ab wie Leerraum (sonst
+trüge `inverter_type` ein unsichtbares Zeichen). Das Frame steht wörtlich in
+`kaco/kaco-serial-vectors.json`.
 
-1. **Antwortet das Gerät überhaupt auf Kommando „0"** mit dem erwarteten
-   `LF *<Adresse>0 …`-Kopf - oder mit einem anderen Kommando-Byte (anderes
-   Protokoll, siehe §11.4)?
-2. **Vorzeichen/Plausibilität** der Momentanwerte am Typenschild gegenprüfen.
-3. **Die tatsächliche Busadresse** des Geräts (Einstellungsmenü) - nicht
-   raten.
+1. ~~**Antwortet das Gerät überhaupt auf Kommando „0"**~~ - ja, mit dem
+   erwarteten `LF *<Adresse>0 …`-Kopf (oben). Ein anderes Powador-Modell
+   kann weiter anders antworten (§11.4).
+2. **Plausibilität** der Momentanwerte am Typenschild bzw. Display
+   gegenprüfen: offen. Die Werte oben sind in sich stimmig (AC-Leistung
+   unter der DC-Leistung, Netzspannung 231 V), verglichen mit dem Display
+   wurden sie nicht.
+3. **Die tatsächliche Busadresse** des Geräts - an dieser Anlage 1 (das Gerät
+   antwortete darauf); an jeder weiteren Anlage nicht raten.
 4. **Wandler-Konfiguration** wie in §11.1 beschrieben (9600 8N1, TCP-Server,
-   keine Protokoll-Übersetzung).
+   keine Protokoll-Übersetzung): an diesem Waveshare passend, sonst gäbe es
+   kein Frame mit stimmender Prüfsumme.
 
 ## 12. Der vorbereitete, gesperrte Steuerpfad
 
