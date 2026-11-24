@@ -41,10 +41,16 @@
 #                (cmd/einrichtung-probe, GOARCH=386) im Emulator - Kennung mit
 #                Sperre, Schranke, Netzliste, verbinden bis zum WLAN-Weg B
 #                (braucht das Go-Werkzeug auf dem Rechner)
+#   eigene-wege  im WLAN-Weg B: die Box erreicht die Geraete an ihrer
+#                LAN-Buchse auch, wenn relayd sie vor der WLAN-Adresse lernt
+#                (Netz-Neustart wie beim Booten, ifup, ifup unter Sperre, ohne
+#                Ereignis bis zum Takt); der ergaenzte Weg geht mit dem Geraet
 # Dazu, ohne Urteil: messung-relay (die Messung aus dem Konzept, Abschnitt
-# 6.4: Zone und lokale Adresse am Relay).
+# 6.4: Zone und lokale Adresse am Relay) und messung-wege (zu eigene-wege:
+# Kernel bei fremdem Absender, Zeitleiste relayd/WLAN-Adresse bei Neustart
+# und ifup).
 #
-#   edge-light/test/wlan-anschluss-probe.sh [lauf ...]      (Vorgabe: alle zwoelf)
+#   edge-light/test/wlan-anschluss-probe.sh [lauf ...]      (Vorgabe: alle dreizehn)
 #   VP_WLAN_LABOR_CACHE=<verz>  Zwischenspeicher fuer Abbilder, Pakete, v86
 #                               (Vorgabe ~/.cache/vp-wlan-labor, rund 250 MB)
 #   VP_WLAN_LABOR_AUS=<verz>    Protokolle, je Lauf <lauf>.log (Vorgabe: neu unter /tmp)
@@ -64,7 +70,7 @@ HOTPLUG91="$HIER/../openwrt/files/etc/hotplug.d/iface/91-vp-einrichtung"
 KERN="$HIER/../../edge-app/core"
 CACHE="${VP_WLAN_LABOR_CACHE:-$HOME/.cache/vp-wlan-labor}"
 AUS="${VP_WLAN_LABOR_AUS:-$(mktemp -d "${TMPDIR:-/tmp}/vp-wlan-probe.XXXXXX")}"
-LAEUFE="${*:-scan messen verbinden falsch kabel stoerfaelle einrichtung ohne-cloud werkstatt fenster routerausfall einrichtung-weg}"
+LAEUFE="${*:-scan messen verbinden falsch kabel stoerfaelle einrichtung ohne-cloud werkstatt fenster routerausfall eigene-wege einrichtung-weg}"
 
 command -v node >/dev/null 2>&1 || { echo "FEHLER: node fehlt (>= 22)" >&2; exit 2; }
 [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ] || { echo "FEHLER: node >= 22 noetig" >&2; exit 2; }
@@ -126,7 +132,7 @@ for lauf in $LAEUFE; do
   f="$(tr -d '\r' <"$AUS/$lauf.log" | grep -c '^PRUEF FEHLER ' || true)"
   OK=$((OK + o))
   FEHLER=$((FEHLER + f))
-  if [ "$o" -eq 0 ] && [ "$lauf" != messung-relay ]; then
+  if [ "$o" -eq 0 ] && case "$lauf" in messung-*) false ;; *) true ;; esac; then
     echo "  FEHLER  keine einzige Pruefung gelaufen"
     FEHLER=$((FEHLER + 1))
   fi

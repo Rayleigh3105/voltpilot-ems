@@ -274,6 +274,144 @@
       }
     },
     {
+      "name": "echtes Frame: Powador 3200 INT, Adresse 1, 24.11.2026 09:10 (Typ endet mit NUL)",
+      "hex": "0a2a30313020202034203338382e342020332e3331202031323834203233312e312020352e33332020313233332020323420202020343430208d203332303049000d",
+      "trim": "0a2a30313020202034203338382e342020332e3331202031323834203233312e312020352e33332020313233332020323420202020343430208d203332303049000d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 141,
+        "actual": 141
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 388.4,
+        "dcCurrentA": 3.31,
+        "dcPowerW": 1284,
+        "acVoltageV": 231.1,
+        "acCurrentA": 5.33,
+        "acPowerW": 1233,
+        "temperatureC": 24,
+        "dailyYieldWh": 440,
+        "inverterType": "3200I",
+        "checksumOk": true,
+        "checksumExpected": 141,
+        "checksumActual": 141
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 1.233
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 388.4,
+          "dc_current_a": 3.31,
+          "ac_voltage_v": 231.1,
+          "ac_current_a": 5.33,
+          "temp_c": 24,
+          "energy_today_kwh": 0.44,
+          "checksum_ok": true,
+          "inverter_type": "3200I",
+          "ac_kw": 1.233,
+          "dc_kw": 1.284
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 1.233
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 388.4,
+          "dc_current_a": 3.31,
+          "ac_voltage_v": 231.1,
+          "ac_current_a": 5.33,
+          "temp_c": 24,
+          "energy_today_kwh": 0.44,
+          "checksum_ok": true,
+          "inverter_type": "3200I",
+          "ac_kw": 1.233,
+          "dc_kw": 1.284
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "NUL und Leerraum gemischt an beiden Enden des Typ-Strings",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137363134200120002039363030492000000d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137363134200120002039363030492000000d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 1,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 1,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
       "name": "hoechste Busadresse 32, kein Typ-String",
       "hex": "0a2a33323020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420050d",
       "trim": "0a2a33323020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420050d",

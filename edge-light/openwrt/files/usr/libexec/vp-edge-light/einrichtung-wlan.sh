@@ -6,7 +6,9 @@
 # Handy NUR die Einrichtungsseite der Box (:8484); aendern laesst sich dort
 # erst etwas nach Eingabe der Kennung, die unten auf der Box steht.
 #
-#   einrichtung-wlan.sh takt       der Waechter, aus cron jede Minute
+#   einrichtung-wlan.sh takt       der Waechter, aus cron jede Minute (ergaenzt
+#                                  dabei auch die eigenen Wege der Box zu den
+#                                  Geraeten: wlan-anschluss.sh wege)
 #   einrichtung-wlan.sh status     Zustand (eine Zeile je Wert), dazu warum es
 #                                  offen oder zu ist und wann sich das aendert
 #                                  (die Seite der Box zeigt das am Kabel)
@@ -81,6 +83,7 @@ ANLAUF="${VP_EINRICHT_ANLAUF:-90}"          # s nach dem Start des Programms, bi
 OHNE_PROGRAMM="${VP_EINRICHT_OHNE_PROGRAMM:-300}"  # s Laufzeit der Box, ab der ein stummes Programm "keine Cloud" heisst
 HEALTH="${VP_EINRICHT_HEALTH:-}"            # Vorgabe: /health der Web-App auf 127.0.0.1
 SPERRE="${VP_WLAN_SPERRE:-/var/lock/vp-wlan-anschluss}"  # dieselbe wie wlan-anschluss.sh
+ANSCHLUSS="${VP_WLAN_ANSCHLUSS:-/usr/libexec/vp-edge-light/wlan-anschluss.sh}"
 ZUSTAND="${VP_EINRICHT_ZUSTAND:-/tmp/vp-einricht}"
 DNSMASQ_PID="$ZUSTAND/dnsmasq.pid"
 FAENGER=5353                                # Port des DNS-Faengers
@@ -407,6 +410,11 @@ nudge_pruefen() {
 befehl_takt() {
   jetzt="$(laufzeit)"
   merke takt "$jetzt"
+  # Im WLAN-Weg B: die eigenen Wege der Box zu den Geraeten an ihrer LAN-Buchse
+  # ergaenzen, falls relayd ein Geraet ohne die WLAN-Adresse gelernt hat und
+  # kein ifup mehr kommt, das es nachholt (wlan-anschluss.sh wege; meldet nur,
+  # was es ergaenzt).
+  [ ! -x "$ANSCHLUSS" ] || "$ANSCHLUSS" wege >/dev/null 2>&1 || true
   if [ "$(wpa_zustand "$(schnittstelle_von vp_wlan)")" = COMPLETED ]; then
     a="$(adresse_von vp_wlan)"
     m="$(maske_von vp_wlan)"

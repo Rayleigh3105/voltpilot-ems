@@ -281,12 +281,14 @@ func ParseCmd0(raw []byte) (*Parsed, error) {
 	p.ChecksumOk, p.ChecksumExpected, p.ChecksumActual = v.OK, v.Expected, v.Actual
 
 	// The type string after the checksum is decorative: absent, the frame is
-	// still fully usable.
+	// still fully usable. A Powador 3200 INT ends it with a NUL byte before the
+	// CR (" 3200I" + 0x00, measured 24.11.2026): NUL at either end goes like
+	// whitespace (JS: replace(/^[\s\0]+|[\s\0]+$/g, '')).
 	tail := raw[offChecksum+1:]
 	if i := bytes.IndexByte(tail, cr); i >= 0 {
 		tail = tail[:i]
 	}
-	p.InverterType = asciiField(tail, span{0, len(tail)})
+	p.InverterType = strings.Trim(asciiField(tail, span{0, len(tail)}), jsWhitespace+"\x00")
 
 	var err error
 	fields := []struct {

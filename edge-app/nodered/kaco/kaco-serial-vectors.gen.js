@@ -67,6 +67,11 @@ const cases = [
   // --- gute Frames ----------------------------------------------------------------
   { name: 'dokumentiertes Beispiel (kacors485 README, Typ 9600I)', raw: ex },
   { name: 'Kundenanlage: Stand-in des Powador 3200 (Typ 3200I)', raw: frame(KUNDE, { type: ' 3200I' }) },
+  // Das erste Frame von einem echten Geraet: Powador 3200 INT an Busadresse 1
+  // hinter dem Waveshare, gelesen am 24.11.2026 um 09:10 von einer Edge-Light-Box
+  // im WLAN-Weg. Pruefsumme stimmt; der Typ-String endet mit einem NUL vor dem CR.
+  { name: 'echtes Frame: Powador 3200 INT, Adresse 1, 24.11.2026 09:10 (Typ endet mit NUL)', raw: Buffer.from('0a2a30313020202034203338382e342020332e3331202031323834203233312e312020352e33332020313233332020323420202020343430208d203332303049000d', 'hex') },
+  { name: 'NUL und Leerraum gemischt an beiden Enden des Typ-Strings', raw: frame(EXAMPLE, { type: ' \u0000 9600I \u0000\u0000' }) },
   { name: 'hoechste Busadresse 32, kein Typ-String', raw: frame({ ...EXAMPLE, address: '32' }, { type: '' }) },
   { name: 'Adresse 7 (Kommando-Echo 0)', raw: frame({ ...EXAMPLE, address: '07' }) },
   { name: 'Nachts: AC-Leistung -12 W (Eigenverbrauch der Elektronik)', raw: frame({ ...EXAMPLE, acPowerW: -12, status: 1 }) },

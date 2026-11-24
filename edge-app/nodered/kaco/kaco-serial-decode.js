@@ -19,9 +19,10 @@
  * dessen README das Frame woertlich mit Beispiel-Bytes zeigt; g4bri3lDev/
  * kaco-rs485, das zusaetzlich die Pruefsumme und die feste Feldbreite gegen
  * echte 6400xi/8000xi-Aufzeichnungen dokumentiert und auf KACOs eigenes
- * "APL_RS485protocol_KACO"-Dokument verweist). Nichts davon wurde an einem
- * echten Geraet dieser Anlage gemessen - siehe KACO.md fuer die
- * VERIFY-on-device-Liste und die Feld-Checkliste
+ * "APL_RS485protocol_KACO"-Dokument verweist). Am echten Geraet gemessen
+ * seit 24.11.2026: ein Powador 3200 INT an Busadresse 1 hinter einem Waveshare
+ * (Frame als Vektor in kaco-serial-vectors.json) - siehe KACO.md §11.5 fuer
+ * das, was noch offen ist, und die Feld-Checkliste
  * (POWADOR-RS485-CHECKLISTE.md).
  *
  * Busadresse 1-32 und der Abschlusswiderstand am Endgeraet sind durch KACOs
@@ -265,10 +266,13 @@ function parseCmd0(raw) {
 
   // Der Typ-String nach der Pruefsumme ist dekorativ (laut den auf echten
   // Geraeten gemessenen Framing-Notizen): fehlt er, ist das Frame trotzdem
-  // vollstaendig nutzbar.
+  // vollstaendig nutzbar. Ein Powador 3200 INT schliesst ihn mit einem
+  // NUL-Byte vor dem CR ab (" 3200I" + 0x00, gemessen am 24.11.2026): NUL
+  // am Rand faellt wie Leerraum weg, sonst traegt inverter_type ein
+  // unsichtbares Zeichen.
   const tail = raw.subarray(CMD0_OFFSETS.checksum + 1);
   const crIdx = tail.indexOf(CR);
-  const inverterType = (crIdx < 0 ? tail : tail.subarray(0, crIdx)).toString('ascii').trim();
+  const inverterType = (crIdx < 0 ? tail : tail.subarray(0, crIdx)).toString('ascii').replace(/^[\s\0]+|[\s\0]+$/g, '');
 
   return {
     address,

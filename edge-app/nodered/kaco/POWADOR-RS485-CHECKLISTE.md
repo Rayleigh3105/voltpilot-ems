@@ -84,6 +84,10 @@ RS485-zu-Ethernet-Wandler"**:
 - Gelesene Werte (Status, Spannungen, Ströme, Leistung, Temperatur,
   Tagesertrag) gegen das Typenschild bzw. den Momentanwert am Display des
   Geräts plausibilisieren.
+- So sieht eine gute Antwort aus (Powador 3200 - INT, Busadresse 1,
+  24.11.2026): Kopf `*010`, Prüfsumme stimmt, Typ `3200I` (am Gerät mit
+  einem NUL-Byte am Ende, das VoltPilot abschneidet). Werte und Frame:
+  `KACO.md` §11.5.
 
 ## 6. Was dieser Weg NICHT kann
 
