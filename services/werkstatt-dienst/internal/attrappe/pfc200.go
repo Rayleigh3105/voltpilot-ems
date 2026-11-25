@@ -27,9 +27,10 @@ import (
 )
 
 // Die Werkzeuge der WAGO-Firmware als Attrappe (/etc/config-tools): Skripte,
-// die sich verhalten, wie Hilfetexte und Skripte des Geräts es zeigen
-// (750-8212, Firmware 03.10.08(22), nur gelesen). Sie halten ihren Zustand in
-// Dateien im Sandkasten der Attrappe.
+// die sich verhalten, wie Hilfetexte und Skripte eines 750-8212 mit Firmware
+// 03.10.08(22) es zeigen (nur gelesen) - das Gerät, an dem sie entstanden; die
+// gemeldete Firmware-Zeile selbst ist davon unabhängig (siehe NeuerPFC200,
+// SetzeFirmware). Sie halten ihren Zustand in Dateien im Sandkasten der Attrappe.
 //
 //go:embed pfc200/config-tools/*
 var pfcWerkzeuge embed.FS
@@ -107,7 +108,11 @@ v=$(cat "$VP_PFC_WURZEL/var/lib/pfc-attrappe/uhr/versatz" 2>/dev/null || echo 0)
 if [ "$*" = "-u +%s" ]; then echo $(( $(/bin/date -u +%s) + v )); else exec /bin/date "$@"; fi
 `,
 	"pidof": `#!/bin/sh
-[ "$1" = dockerd ] && [ -e "$VP_PFC_WURZEL/var/lib/pfc-attrappe/docker/laeuft" ]
+case "$1" in
+  dockerd) [ -e "$VP_PFC_WURZEL/var/lib/pfc-attrappe/docker/laeuft" ] ;;
+  codesys3) [ -e "$VP_PFC_WURZEL/var/lib/pfc-attrappe/codesys/laeuft" ] ;;
+  *) exit 1 ;;
+esac
 `,
 	"docker": `#!/bin/sh
 # docker ps -a --format '{{.Names}}<TAB>{{.Image}}<TAB>{{.Status}}': die
@@ -133,6 +138,7 @@ touch "$VP_PFC_WURZEL/var/lib/pfc-attrappe/neustart"
 	"netstat": `#!/bin/sh
 echo "tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN"
 [ -e "$VP_PFC_WURZEL/var/lib/pfc-attrappe/edge.laeuft" ] && echo "tcp        0      0 :::8484                 :::*                    LISTEN"
+[ -e "$VP_PFC_WURZEL/var/lib/pfc-attrappe/codesys/laeuft" ] && echo "tcp        0      0 127.0.0.1:502           0.0.0.0:*               LISTEN"
 exit 0
 `,
 	"ip": `#!/bin/sh
@@ -334,11 +340,49 @@ case "$was" in
 esac
 `
 
+// codesysInitSkript spielt den Dienst der CODESYS-Laufzeit nach (Schritt
+// grundprogramm): "restart" setzt die Marke, die pidof und netstat sehen.
+const codesysInitSkript = `#!/bin/sh
+Z="$VP_PFC_WURZEL/var/lib/pfc-attrappe/codesys"
+mkdir -p "$Z"
+case "$1" in
+  restart|start)
+    [ -e "$Z/startet-nicht" ] && { echo "FEHLER: Laufzeit startet nicht" >&2; exit 1; }
+    touch "$Z/laeuft"
+    ;;
+  stop) rm -f "$Z/laeuft" ;;
+esac
+`
+
 // SkripteTarGzPFC200 baut einen Skriptstand wie der Release-Anhang
 // edge-industrie-skripte.tar.gz, mit Attrappen-Skripten.
 func SkripteTarGzPFC200(t testing.TB) []byte {
 	t.Helper()
 	return skripteTarGzPFC200(t, true)
+}
+
+// GrundprogrammTarGzPFC200 baut ein kleines, aber echtes tar.gz wie der
+// Release-Anhang edge-industrie-grundprogramm.tar.gz: eine Boot-Applikation
+// der Attrappe (keine echte CODESYS-Datei), zum Prüfen von Auspacken und Marke.
+func GrundprogrammTarGzPFC200(t testing.TB) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	inhalt := []byte("Application.app (Attrappe)")
+	if err := tw.WriteHeader(&tar.Header{Name: "Application.app", Mode: 0o644, Size: int64(len(inhalt)), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(inhalt); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 // SkripteTarGzPFC200OhneFernlauf ist ein Skriptstand wie vor fernlauf.sh: Eine
@@ -375,6 +419,13 @@ func skripteTarGzPFC200(t testing.TB, mitFernlauf bool) []byte {
 // genannte Update-Linie, mit Skriptstand und Tunnel-Programm (leere
 // Prüfsumme: das Feld fehlt, wie bei einer Fassung vor diesen Feldern).
 func ManifestPFC200(fassung string, seq int64, programmSha, backend, skripteSha, wartungSha string) []byte {
+	return ManifestPFC200MitGrundprogramm(fassung, seq, programmSha, backend, skripteSha, wartungSha, "")
+}
+
+// ManifestPFC200MitGrundprogramm ist ManifestPFC200, zusätzlich mit der
+// Bootapplikation des Basisprojekts (grundprogrammSha leer: wie ohne,
+// ManifestPFC200 selbst).
+func ManifestPFC200MitGrundprogramm(fassung string, seq int64, programmSha, backend, skripteSha, wartungSha, grundprogrammSha string) []byte {
 	m, _ := Manifest(fassung, seq, programmSha)
 	s := strings.Replace(string(m), `"linux/mipsle"`, `"linux/arm"`, 1)
 	s = strings.Replace(s, `"light"`, `"`+backend+`"`, 1)
@@ -386,6 +437,10 @@ func ManifestPFC200(fassung string, seq int64, programmSha, backend, skripteSha,
 	if wartungSha != "" {
 		zusatz += `,
   "wartung": {"name": "` + fassungen.WartungProgramm + `", "sha256": "` + wartungSha + `", "size": 1}`
+	}
+	if grundprogrammSha != "" {
+		zusatz += `,
+  "grundprogramm": {"name": "` + fassungen.GrundprogrammDatei + `", "sha256": "` + grundprogrammSha + `", "size": 1}`
 	}
 	s = strings.Replace(s, `"signing_key_id": "rel-2026-a"`, `"signing_key_id": "rel-2026-a"`+zusatz, 1)
 	return []byte(s)
@@ -408,7 +463,19 @@ func NeuerPFC200(t testing.TB) *PFC200 {
 	for name, inhalt := range pfcProgramme {
 		p.schreibe(filepath.Join(w, "bin", name), inhalt, 0o755)
 	}
-	p.schreibe(filepath.Join(w, "etc/REVISIONS"), "FIRMWARE=03.10.08(22)\n", 0o644)
+	// Ab Werk meldet die Attrappe heute Firmware 04.xx (die Linie mit der
+	// CODESYS-V3.5-Laufzeit, Entscheid D1 der Pi-Ablösung): Das ist die
+	// Firmware, mit der echte Boxen ab jetzt ausgeliefert werden. Die
+	// Werkzeug-Antworten selbst (/etc/config-tools) sind nach einem 750-8212
+	// mit Firmware 03.10.08(22) nachgebaut und bleiben das - nur die
+	// gemeldete Firmware-Zeile ist diese; SetzeFirmware stellt sie für einen
+	// Test auf die ältere Linie zurück.
+	p.schreibe(filepath.Join(w, "etc/REVISIONS"), "FIRMWARE=04.02.13(24)\n", 0o644)
+	// codesys3: die CODESYS-V3.5-Laufzeit, als Dienst-Skript und über pidof/
+	// netstat sichtbar (Schritt grundprogramm). Der Name ist nicht an einem
+	// echten Gerät belegt (siehe pfc200.codesysBootApplikation); die Attrappe
+	// bietet ihn als einen der Kandidaten an, die der Dienst versucht.
+	p.schreibe(filepath.Join(w, "etc/init.d/codesys3"), codesysInitSkript, 0o755)
 	p.schreibe(filepath.Join(w, "proc/sys/net/ipv4/ip_forward"), "0\n", 0o644)
 	// Ab Werk liegt kein Schlüssel auf dem Gerät; ein Test legt einen fremden dazu.
 	p.schreibe(filepath.Join(w, "root/.ssh/authorized_keys"), "", 0o600)
@@ -459,6 +526,13 @@ func (p *PFC200) schreibe(pfad, inhalt string, modus os.FileMode) {
 // Setze schreibt eine Angabe in den Zustand der Werkzeuge (etwa "schalter",
 // "netz/kabel", "docker/aktiv").
 func (p *PFC200) Setze(name, wert string) { p.schreibe(filepath.Join(p.z, name), wert+"\n", 0o644) }
+
+// SetzeFirmware überschreibt die Firmware-Zeile (/etc/REVISIONS), die der
+// Schritt erkennen liest: für einen Test der älteren Firmware-Linie (ohne
+// CODESYS V3.5, Schritt grundprogramm), etwa "03.10.08(22)".
+func (p *PFC200) SetzeFirmware(fw string) {
+	p.schreibe(filepath.Join(p.w, "etc/REVISIONS"), "FIRMWARE="+fw+"\n", 0o644)
+}
 
 // Lies liest eine Angabe aus dem Zustand; "" wenn sie fehlt.
 func (p *PFC200) Lies(name string) string {

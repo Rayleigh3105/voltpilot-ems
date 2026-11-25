@@ -8515,6 +8515,7 @@ paths:
                       programm_sha256: { type: string }
                       skripte_sha256: { type: string }
                       wartung_sha256: { type: string, description: "Das Tunnel-Programm vp-wartung-linux-arm, aus dem signierten Manifest (wartung)." }
+                      grundprogramm_sha256: { type: string, description: "Die Boot-Applikation des Basisprojekts, aus dem signierten Manifest (grundprogramm). Fehlt dieses Feld, trägt die Fassung kein Grundprogramm (optional, anders als wartung_sha256)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: "Keine Freigabe: angehalten, keine passende Fassung oder Tagesgrenze erreicht (Grund in `message`); oder eine andere Box-Art als mango und pfc200." }

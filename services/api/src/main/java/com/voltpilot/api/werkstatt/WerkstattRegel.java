@@ -464,8 +464,15 @@ public class WerkstattRegel {
             return new Ergebnis(name, null, "Die Fassung " + name + " trägt Skriptstand und Tunnel-Programm nicht "
                     + "im signierten Manifest. Die Werkstatt nimmt erst eine Fassung, die damit gebaut ist.");
         }
+        // Das Grundprogramm (Boot-Applikation des Basisprojekts) ist, anders als
+        // Skriptstand und Tunnel-Programm, AUCH bei Edge Industrie optional: Es
+        // ändert sich nur, wenn der Captain ein neues CODESYS-Projekt übergibt,
+        // nicht mit jeder Fassung. Fehlt es im Manifest, wartet die Werkstatt
+        // deshalb NICHT - der Schritt grundprogramm des Dienstes erkennt das
+        // Fehlen selbst und hält mit einem Handgriff an.
+        String grundprogrammSha256 = m.grundprogramm().map(ReleaseManifest.Grundprogramm::sha256).orElse(null);
         Programm edge = new Programm(name, quelle + name + "/", programm.get().sha256(), skripte.get().sha256(),
-                wartung.get().sha256());
+                wartung.get().sha256(), grundprogrammSha256);
         return new Ergebnis(name, new Soll(null, edge, r.releaseSeq()), null);
     }
 

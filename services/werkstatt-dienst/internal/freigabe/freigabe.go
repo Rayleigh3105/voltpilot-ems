@@ -86,12 +86,18 @@ type Programm struct {
 // Dateien) und das Tunnel-Programm vp-wartung aus demselben Release-Tag. Ein
 // OpenWrt-Abbild gibt es nicht: Die Firmware des PFC200 fasst der Dienst nicht
 // an.
+//
+// GrundprogrammSha256 ist anders als die übrigen Felder OPTIONAL, auch für den
+// PFC200: die CODESYS-Bootapplikation des Basisprojekts kommt aus dem eigenen
+// Repo voltpilot-sps und eigenem Takt; eine Fassung ohne sie bleibt gültig,
+// nur der Schritt grundprogramm hält dann mit einem Handgriff an.
 type Industrie struct {
-	Fassung        string `json:"fassung"`
-	Quelle         string `json:"quelle"`
-	ProgrammSha256 string `json:"programm_sha256"`
-	SkripteSha256  string `json:"skripte_sha256"`
-	WartungSha256  string `json:"wartung_sha256"`
+	Fassung             string `json:"fassung"`
+	Quelle              string `json:"quelle"`
+	ProgrammSha256      string `json:"programm_sha256"`
+	SkripteSha256       string `json:"skripte_sha256"`
+	WartungSha256       string `json:"wartung_sha256"`
+	GrundprogrammSha256 string `json:"grundprogramm_sha256,omitempty"`
 }
 
 var (
@@ -220,6 +226,9 @@ func (f Freigabe) pruefePFC200(add func(string, ...any)) {
 	}
 	if !sha256Muster.MatchString(i.WartungSha256) {
 		add("edge_industrie.wartung_sha256: 64 Zeichen 0-9a-f")
+	}
+	if i.GrundprogrammSha256 != "" && !sha256Muster.MatchString(i.GrundprogrammSha256) {
+		add("edge_industrie.grundprogramm_sha256: 64 Zeichen 0-9a-f")
 	}
 }
 

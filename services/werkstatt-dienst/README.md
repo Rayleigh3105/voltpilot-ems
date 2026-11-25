@@ -93,6 +93,7 @@ Paket `internal/pfc200`, die Texte für Menschen an einer Stelle in `internal/pf
 | `internet` | Weg und Namen über die Brücke (befristet), Uhr nach der des Dienstes gestellt (ab Werk steht sie Jahre zurück, jede TLS-Verbindung scheiterte), Zeitabgleich ein | Portal erreichbar mit geprüftem Zertifikat, Uhr vorher und nachher |
 | `zugaenge` | ein Schlüssel nur für diesen Lauf; drei Zufallspasswörter für `root`, `admin`, `user`: erst verschlüsselt, dann als Hash gesetzt; Anmeldung mit Passwort aus | jedes Werkspasswort an SSH abgewiesen, das Gerät meldet „nicht mehr ab Werk“, `passwort_age` |
 | `notfall` | der Notfall-Schlüssel als einziger dauerhafter (daneben bis zum Ende der Lauf-Schlüssel) | Fingerabdruck |
+| `grundprogramm` | nur Firmware 04.xx oder neuer (sonst Fall `pfc_firmware_alt`); die Boot-Applikation des Basisprojekts aus der Freigabe nach `/home/codesys/PlcLogic/Application` auspacken (trägt die Freigabe keine, Fall `pfc_kein_grundprogramm`; liegt dort schon eine fremde, Fall `pfc_grundprogramm_fremd` statt sie zu überschreiben), die CODESYS-Laufzeit neu starten, Prozess und Modbus-Server auf der Schleife prüfen (keine Koppelprobe) | Prüfsumme, Firmware, Stand vorher, dass CODESYS läuft |
 | `programm` | `install.sh` des Release-Stands, Dienst starten | Prüfsumme auf dem Gerät bestätigt, `/health` mit Referenz und Fassung, update-bereit |
 | `tunnel_schluessel`, `einloesen`, `tunnel` | wie bei der Mango, mit `wartung.sh` und dem Programm `vp-wartung` | Handshake, Port 2222 lauscht an keiner Netzbuchse, Abholer mit gültiger Antwort |
 | `netze` | Buchsen trennen: X1 Kundennetz per DHCP, X2 Anlagennetz (`VP_WERKSTATT_LAN_NETZ`); Firewall ein; Start nur vom internen Speicher | Netze je Buchse; am Kundennetz kein Dienst des Geräts offen, am Anlagennetz nur `ssh`, `https`, `codesysr`; dazu Web-App 8484 und OCPP 8887; Weiterleitung aus; Modbus 502 von außen zu |
@@ -101,8 +102,8 @@ Paket `internal/pfc200`, die Texte für Menschen an einer Stelle in `internal/pf
 | `internet_weg` | Weg über die Brücke heraus; zuletzt der Lauf-Schlüssel | genau ein dauerhafter Schlüssel, der Lauf-Schlüssel wird abgewiesen |
 | `uebergabe` | Abnahme mit je einem Beleg je Prüfung, Firmware und Seriennummer als Angaben | Kennung der Abnahme |
 
-Was der Lauf am PFC200 nie anfasst: die SPS-Laufzeit (CODESYS), ihre Einstellungen, ihr Programm, ihren Modbus-Server; die Firmware; fremde Container, Abbilder und Datenträger (Schritt `docker` schaltet nur den Docker-Dienst selbst aus).
-Einen Schritt für SPS, Koppelprobe oder Firmware gibt es nicht.
+Was der Lauf am PFC200 anfasst: nur der Schritt `grundprogramm` ändert etwas an der SPS-Laufzeit (CODESYS) - die Boot-Applikation des Basisprojekts, nie eine schon vorhandene andere - und startet sie neu; ihre Einstellungen, ihr Modbus-Server jenseits davon, die Firmware und fremde Container, Abbilder und Datenträger (Schritt `docker` schaltet nur den Docker-Dienst selbst aus) bleiben unberührt.
+Einen Schritt für das Anlagenprogramm, seine Koppelprobe oder die Firmware selbst gibt es nicht.
 
 Drei Stellen sind so gebaut, dass der Lauf sich nicht aussperrt:
 
@@ -120,9 +121,10 @@ Release-Anhänge einer Edge-Industrie-Fassung (Linie `edge-industrie-JJJJ.MM.N`)
 | `vp-edge-industrie-linux-arm` | das Programm, wie `edge-industrie/dist/` | `programm_sha256`, im signierten Manifest unter `artifacts[]` |
 | `edge-industrie-skripte.tar.gz` | `edge-industrie/` als `edge-industrie/…` (`install.sh`, `wartung.sh`, `files/`) | `skripte_sha256` |
 | `vp-wartung-linux-arm` | das Tunnel-Programm | `wartung_sha256` |
+| `edge-industrie-grundprogramm.tar.gz` | die Boot-Applikation des Basisprojekts, NUR wenn der Captain eine nach `edge-industrie/grundprogramm/` eingespielt hat ([README](../../edge-industrie/grundprogramm/README.md)) | `grundprogramm_sha256` (optional, auch für den PFC200) |
 
-Der Release-Lauf `edge-industrie-release.yaml` hängt alle drei an; die Prüfsummen der beiden letzten stehen signiert im Manifest (Felder `skripte` und `wartung`).
-Der Dienst verlangt sie dort: Im Schritt `fassungen` prüft er die Signaturkette des Manifests und dass es genau das Programm, den Skriptstand und das Tunnel-Programm der Freigabe beschreibt.
+Der Release-Lauf `edge-industrie-release.yaml` hängt die ersten drei immer an, den vierten nur, wenn er gebaut wurde; die Prüfsummen der letzten drei stehen signiert im Manifest (Felder `skripte`, `wartung`, `grundprogramm`).
+Der Dienst verlangt Skriptstand und Tunnel-Programm dort: Im Schritt `fassungen` prüft er die Signaturkette des Manifests und dass es genau das Programm, den Skriptstand und das Tunnel-Programm der Freigabe beschreibt; nennt die Freigabe eine Prüfsumme für das Grundprogramm, muss auch sie im Manifest stehen, aber eine Freigabe ohne sie bleibt gültig (der Schritt `grundprogramm` hält dann selbst mit einem Handgriff an).
 Eine Fassung ohne signiertes Manifest oder ohne diese Felder richtet er auf einem PFC200 nicht ein (anders als bei der Mango, wo eine nicht signierte Fassung läuft und nur keine Abnahme bekommt): Das Tunnel-Programm läuft als root und öffnet den Fernzugang.
 Die Freigabe für den PFC200 kommt aus dem Portal wie die der Mango: `GET /api/v1/werkstatt-dienst/freigabe?boxArt=pfc200`.
 Die Regel der API legt sie selbst an, aus der neuesten zuweisbaren signierten Edge-Industrie-Fassung, deren Manifest Skriptstand und Tunnel-Programm nennt; fehlt eine solche Fassung, wartet die Werkstatt für dieses Gerät, und die Mango läuft weiter.

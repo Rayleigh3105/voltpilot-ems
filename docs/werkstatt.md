@@ -94,11 +94,11 @@ Alle Worte und Bilder zum PFC200 stehen an einer Stelle, in `frontend/portal/src
 |---|---|
 | Werkbank, Start | Kachel „PFC200“ neben „Mango“. Meldet der Dienst keine Freigabe für den PFC200 (`freigabe_pfc200` fehlt in der Ansicht), ist sie gesperrt und sagt, dass der Dienst hier keine einrichtet |
 | Werkbank, Anschließen | Endklemme, oranges Kabel in X2, Strom. Der Handgriff „feste Adresse“ steht immer da, in drei Sätzen und drei Zeichnungen (Schalter auf STOP, Reset-Taster länger als 8 Sekunden bis SYS orange blinkt, Schalter zurück auf RUN): Ein PFC200 ab Werk hat an der Werkbank sonst keine Adresse. Wartet die Werkstatt für den PFC200, steht der Grund darüber |
-| Lauf-Seite | Sechs Phasen: Erkannt, Absichern, Software, Bei VoltPilot anmelden, Netze trennen und Probe, Abnahme. Keine Phase und kein Schritt für die SPS oder die Firmware. Die Karte „Kommt auf diese Box“ nennt Edge Industrie und, nur zur Anzeige, die gelesene Firmware („bleibt, wie sie ist“). Eine Minutenzahl nennt die Seite erst, wenn frühere Läufe an einem PFC200 jeden offenen Schritt gemessen haben; eine Schätzung gibt es nicht |
+| Lauf-Seite | Sechs Phasen: Erkannt, Absichern, Software, Bei VoltPilot anmelden, Netze trennen und Probe, Abnahme. Die Phase Software hat jetzt zwei Schritte: `grundprogramm` (die Boot-Applikation des Basisprojekts auf die SPS, nur Firmware 04.xx oder neuer) und `programm` (Edge Industrie); kein Schritt für das Anlagenprogramm, seine Koppelprobe oder die Firmware selbst. Die Karte „Kommt auf diese Box“ nennt Edge Industrie und, nur zur Anzeige, die gelesene Firmware („bleibt, wie sie ist“). Eine Minutenzahl nennt die Seite erst, wenn frühere Läufe an einem PFC200 jeden offenen Schritt gemessen haben; eine Schätzung gibt es nicht |
 | Fall-Seiten | Wartet der Lauf auf einen Handgriff (`pfc_schalter_stop`, `pfc_kabel_x1`), zeigt die Seite ihn mit Zeichnung und macht von selbst weiter; „zur Seite legen“ gibt es erst, wenn ein Lauf angehalten hat. Den Werksreset zeigt nur `pfc_passwort`, mit Zeichnung, danach die feste Adresse. Für jedes fremde Gerät (`passwort_fremd`, `pfc_schon_eingerichtet`, …) gibt es kein Bild eines Resets |
-| Abschlussseite | Referenz und QR-Code für das Schild (ein gedrucktes Gehäuse hat der PFC200 nicht), dazu „CODESYS und Zugänge“: Die drei Passwörter stehen nur verschlüsselt an der Abnahme, das von `admin` entschlüsselt der Betreiber selbst, CODESYS erreicht das Gerät nur an X2, die Werkstatt hat kein SPS-Programm geladen |
+| Abschlussseite | Referenz und QR-Code für das Schild (ein gedrucktes Gehäuse hat der PFC200 nicht), dazu „CODESYS und Zugänge“: Die drei Passwörter stehen nur verschlüsselt an der Abnahme, das von `admin` entschlüsselt der Betreiber selbst, CODESYS erreicht das Gerät nur an X2, die Werkstatt hat das Grundprogramm geladen, aber kein Anlagenprogramm |
 | Übersicht | In der Karte „Werkstatt“ eine Zeile zum PFC200: seine Edge-Industrie-Fassung, oder worauf die Werkstatt für ihn wartet. Nur wenn der Dienst PFC200 einrichtet, einer im Register steht oder ein Lauf an einem lief; sonst fragt die Seite den Stand nicht ab |
-| Seite der Box | Schild statt Druckdatei, „CODESYS und Zugänge“, Firmware, Bestellnummer und Seriennummer als Angabe („nur gelesen“), die Netze der zwei Buchsen, die zehn Prüfungen des PFC200 mit Beleg, die drei Zugänge in einem verschlüsselten Text |
+| Seite der Box | Schild statt Druckdatei, „CODESYS und Zugänge“, Firmware, Bestellnummer und Seriennummer als Angabe („nur gelesen“), die Netze der zwei Buchsen, die elf Prüfungen des PFC200 mit Beleg, die drei Zugänge in einem verschlüsselten Text |
 
 Die Zeichnungen sind ein Schema der Front (Leuchte SYS, Betriebsartenschalter, Reset-Taster, Buchsen X1 und X2), kein Foto und nicht maßstäblich.
 Geprüft wird das Portal gegen den Vektor [werkstatt-ansicht-v1.zustaende-pfc200.json](contracts/werkstatt-ansicht-v1.zustaende-pfc200.json): die Ansicht in jedem Zustand eines Laufs am PFC200, erzeugt aus dem Dienst selbst.
@@ -116,11 +116,11 @@ Anhalten, Fortsetzen und die Tagesgrenze gelten für beide Geräte zusammen (ein
 | `GET /api/v1/werkstatt-dienst/freigabe?boxArt=pfc200` | die laufende Zeile mit `edge_industrie` (Fassung, Quelle, Prüfsummen von Programm, Skriptstand, Tunnel-Programm), ohne `openwrt` und `edge_light` |
 | `POST /api/v1/werkstatt-dienst/codes` mit `boxArt: pfc200` | Code unter dieser Zeile; die Box steht als `edge-industrie` im Register. Steht die Referenz dort schon als anderes Gerät: 409 |
 | `POST /api/v1/werkstatt/einloesen` | unverändert; eingelöst wird nur unter einer Zeile des Geräts, für das der Code ausgegeben wurde |
-| `POST /api/v1/werkstatt-dienst/abnahmen/{ref}` | die zehn Prüfungen des PFC200 (unten), jede mit Beleg, ohne Übergangsfrist; `passwortAge` trägt die drei Zugänge; `angaben` trägt Bestellnummer, Firmware und Seriennummer als Angabe |
+| `POST /api/v1/werkstatt-dienst/abnahmen/{ref}` | die elf Prüfungen des PFC200 (unten), jede mit Beleg, ohne Übergangsfrist; `passwortAge` trägt die drei Zugänge; `angaben` trägt Bestellnummer, Firmware und Seriennummer als Angabe |
 | `GET /api/v1/admin/werkstatt/regel?geraet=pfc200`, `…/freigaben?geraet=pfc200` | Stand und Zeilen für den PFC200; ohne `geraet` bleibt beides bei der Mango |
 
-Die Prüfliste des PFC200 steht im selben Vektor wie die der Mango, unter `geraete.pfc200` in [werkstatt-pruefungen.json](contracts/werkstatt-pruefungen.json): `zugaenge`, `notfall_schluessel`, `tunnel_status`, `anmeldeprobe`, `host_schluessel`, `fenster_zu`, `netze`, `dienste_zu`, `neustart`, `update_bereit`.
-Sie hat keine Prüfung für die SPS und keine für die Firmware, und kein Einrichtungs-WLAN.
+Die Prüfliste des PFC200 steht im selben Vektor wie die der Mango, unter `geraete.pfc200` in [werkstatt-pruefungen.json](contracts/werkstatt-pruefungen.json): `zugaenge`, `notfall_schluessel`, `tunnel_status`, `anmeldeprobe`, `host_schluessel`, `fenster_zu`, `netze`, `dienste_zu`, `neustart`, `update_bereit`, `grundprogramm`.
+Sie hat eine Prüfung für das Grundprogramm (die Boot-Applikation des Basisprojekts), aber keine für das Anlagenprogramm, seine Koppelprobe oder die Firmware, und kein Einrichtungs-WLAN.
 Welche Liste für eine Abnahme gilt, sagt die Box-Art im Register, nicht der Dienst.
 Fernlauf und Nachtlauf nehmen eine Edge-Industrie-Box wie eine Edge-Light-Box, jede mit der neuesten Fassung ihrer Linie (`FernlaufRegel.geraet`, [Vertrag](contracts/werkstatt-fernlauf-v1.md#zwei-geräte-eine-linie-je-gerät)).
 Zwillinge der Prüfliste: `WerkstattPruefungen.PFC200` (API), `PRUEFUNGEN_PFC200` in `werkstatt.ts` (Portal), `pfc200.Pruefungen` (Dienst); alle vier gemeinsam ändern.
@@ -138,9 +138,10 @@ Zwillinge der Prüfliste: `WerkstattPruefungen.PFC200` (API), `PRUEFUNGEN_PFC200
 Antwortet am Kabel niemand, zeigt die Ansicht des Dienstes den Handgriff „feste Adresse“ immer: Ein PFC200 ab Werk wartet auf DHCP und hat sonst keine Adresse.
 Den Werksreset nennt der Dienst nie für ein fremdes Gerät; er löscht das SPS-Programm.
 
-**Was der Lauf nicht tut.**
-Kein Schritt für die SPS: kein Programm laden, starten oder prüfen, keine Koppelprobe; die Laufzeit (CODESYS), ihre Einstellungen und ihr Modbus-Server bleiben unberührt.
-Die Firmware prüft und ändert er nicht; ihr Stand steht als Angabe im Beleg und an der Abnahme.
+**Was der Lauf tut und nicht tut.**
+Ein Schritt (`grundprogramm`, nur Firmware 04.xx oder neuer) spielt die Boot-Applikation des Basisprojekts auf die SPS und lädt sie; er überschreibt nie eine schon vorhandene, andere Boot-Applikation, und trägt die Fassung kein Grundprogramm, hält er mit einem Handgriff an.
+Kein Schritt für das Anlagenprogramm: keine Koppelprobe, keine Änderung an Einstellungen oder Modbus-Server der Laufzeit über das Grundprogramm hinaus.
+Die Firmware prüft er nur auf ihre Hauptlinie (für den Schritt `grundprogramm`) und ändert sie nie; ihr voller Stand steht als Angabe im Beleg und an der Abnahme.
 Fremde Container beendet er nicht.
 
 **CODESYS nach dem Lauf.**

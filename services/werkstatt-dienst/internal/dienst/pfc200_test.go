@@ -152,7 +152,7 @@ func TestPFC200AmAnschlussBekommtSeinenLauf(t *testing.T) {
 	d.Runde(ctx)
 	s := bisEnde(t, d)
 	if s.BoxArt != "pfc200" || s.Freigabe != "2026-11-pfc200-1" || s.Schritt != "fassungen" || s.Fall != faelle.FassungNichtBereit ||
-		!strings.Contains(s.Loesung.Schritte[0], "PFC200") || s.Vorher == nil || !strings.Contains(s.Vorher.System, "03.10.08") {
+		!strings.Contains(s.Loesung.Schritte[0], "PFC200") || s.Vorher == nil || !strings.Contains(s.Vorher.System, "04.02.13") {
 		t.Fatalf("Lauf: %+v / %+v / %+v", s, s.Loesung, s.Vorher)
 	}
 	if z := p.Lies("aufrufe"); z != "" {

@@ -63,9 +63,11 @@ type manifestForm struct {
 	SigningKeyID string `json:"signing_key_id"`
 	// Was nur die Werkstatt braucht (additive Felder des Manifests, kein
 	// Bestandteil des Updates): der Skriptstand und, bei Edge Industrie, das
-	// Tunnel-Programm.
-	Skripte *beilage `json:"skripte"`
-	Wartung *beilage `json:"wartung"`
+	// Tunnel-Programm und (optional, auch bei Edge Industrie) die
+	// Bootapplikation des Basisprojekts.
+	Skripte       *beilage `json:"skripte"`
+	Wartung       *beilage `json:"wartung"`
+	Grundprogramm *beilage `json:"grundprogramm"`
 }
 
 type beilage struct {
@@ -91,7 +93,12 @@ var BackendsPFC200 = []string{"industrie"}
 // seine Prüfsumme und die der Skripte nimmt der Dienst darum nicht allein aus
 // der Freigabe, sondern verlangt sie im signierten Manifest. Eine Fassung,
 // deren Manifest sie nicht nennt, richtet er nicht ein.
-func PruefeManifestPFC200(manifest, signatur []byte, fassung, programmSha, skripteSha, wartungSha string) (Stand, error) {
+//
+// grundprogrammSha ist, anders als skripteSha und wartungSha, oft leer: Die
+// Bootapplikation des Basisprojekts ist auch bei Edge Industrie optional
+// (die Freigabe trägt sie nur, wenn die Fassung sie signiert mitführt). Leer
+// bindet nichts; der Schritt grundprogramm erkennt das Fehlen selbst.
+func PruefeManifestPFC200(manifest, signatur []byte, fassung, programmSha, skripteSha, wartungSha, grundprogrammSha string) (Stand, error) {
 	st, err := PruefeManifestFuer(manifest, signatur, fassung, "arm", programmSha, BackendsPFC200...)
 	if err != nil {
 		return Stand{}, err
@@ -114,6 +121,16 @@ func PruefeManifestPFC200(manifest, signatur []byte, fassung, programmSha, skrip
 			return Stand{}, fmt.Errorf("release.json nennt fuer %s die Datei %q statt %s", b.was, b.ist.Name, b.name)
 		case b.ist.SHA256 != b.soll:
 			return Stand{}, fmt.Errorf("release.json beschreibt %s mit einer anderen Pruefsumme (%s) als die Freigabe (%s)", b.was, orKein(b.ist.SHA256), b.soll)
+		}
+	}
+	if grundprogrammSha != "" {
+		switch {
+		case m.Grundprogramm == nil:
+			return Stand{}, fmt.Errorf("release.json nennt die Bootapplikation nicht (%s), die Freigabe aber eine Pruefsumme dafuer", GrundprogrammDatei)
+		case m.Grundprogramm.Name != GrundprogrammDatei:
+			return Stand{}, fmt.Errorf("release.json nennt fuer die Bootapplikation die Datei %q statt %s", m.Grundprogramm.Name, GrundprogrammDatei)
+		case m.Grundprogramm.SHA256 != grundprogrammSha:
+			return Stand{}, fmt.Errorf("release.json beschreibt die Bootapplikation mit einer anderen Pruefsumme (%s) als die Freigabe (%s)", orKein(m.Grundprogramm.SHA256), grundprogrammSha)
 		}
 	}
 	return st, nil
