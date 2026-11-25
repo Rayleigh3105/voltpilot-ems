@@ -162,6 +162,19 @@ case "$*" in *127.0.0.1:8484/health*) [ -e "$Z/edge.laeuft" ] && cat "$Z/health.
 [ "$1" = -s ] && [ "$4" = -c ] || exit 2
 exec sh -c "$5"
 `,
+	// usermod -p <hash> <benutzer>: config_linux_user lehnt user=root ab
+	// (siehe dort); root setzt sein eigenes Passwort so, wie die Werkstatt es
+	// am Geraet tut, ueber das Standardwerkzeug von shadow-utils.
+	"usermod": `#!/bin/sh
+. "$VP_PFC_WURZEL/etc/config-tools/attrappe.sh"
+[ "$1" = -p ] || exit 3
+h="$2"
+u="$3"
+case "$u" in root | admin | user) ;; *) exit 6 ;; esac
+printf '%s' "$h" | grep -Eq '^\$6\$[./0-9A-Za-z]{1,16}\$[./0-9A-Za-z]{86}$' || exit 1
+setze "benutzer/$u.hash" "$h"
+merke "user=$u hash=gesetzt"
+`,
 	// vp-attrappe: was die Attrappen-Skripte install.sh und wartung.sh auf
 	// dem Geraet tun (die echten laufen in den Proben im Container).
 	"vp-attrappe": `#!/bin/sh

@@ -320,6 +320,15 @@ func TestLaufAbWerk(t *testing.T) {
 	if a.p.NimmtAn("root", "wago") || a.p.NimmtAn("admin", "wago") || a.p.NimmtAn("user", "user") {
 		t.Error("ein Werkspasswort gilt noch")
 	}
+	// config_linux_user lehnt user=root ab (WAGO-Quelltext, FW22 und FW24+
+	// gleich): root bekommt sein Passwort über usermod, nie darüber.
+	aufrufe := strings.Join(a.p.Aufrufe(), "\n")
+	if strings.Contains(aufrufe, "config_linux_user user=root") {
+		t.Error("root darf nie über config_linux_user laufen (das Werkzeug lehnt user=root ab)")
+	}
+	if !strings.Contains(aufrufe, "usermod user=root hash=gesetzt") {
+		t.Error("root bekommt sein neues Passwort nicht über usermod")
+	}
 	if a.p.Lies("ssh/password-request-state") != "disabled" {
 		t.Error("Anmeldung mit Passwort nicht aus")
 	}
