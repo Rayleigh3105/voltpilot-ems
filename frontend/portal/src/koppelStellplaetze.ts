@@ -166,6 +166,8 @@ export function grundText(grund: string | null | undefined): string | null {
       return 'Handeingriff';
     case 'test':
       return KOPPEL_SCHALT_TEST;
+    case 'vertrag':
+      return 'Direktvermarkter';
     default:
       return null;
   }

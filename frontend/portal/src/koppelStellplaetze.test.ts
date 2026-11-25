@@ -151,12 +151,13 @@ describe('drei getrennte Zeilen', () => {
     expect(quittungZeile(sp, koppelStand()).text).toBe('angenommen · zu einem früheren Wunsch');
   });
 
-  it('der Grund des Wunschs: Netz, Regel, Handeingriff, Schalt-Test', () => {
+  it('der Grund des Wunschs: Netz, Regel, Handeingriff, Schalt-Test, Direktvermarkter', () => {
     const grund = (g: string) => wunschZeile(koppelPlatz(1, { wunsch: { art: 'on_off', wert: 1, grund: g, folge: 1 } })).text;
     expect(grund('netz')).toBe('ein · Netz');
     expect(grund('regel')).toBe('ein · Regel');
     expect(grund('hand')).toBe('ein · Handeingriff');
     expect(grund('test')).toBe('ein · Schalt-Test');
+    expect(grund('vertrag')).toBe('ein · Direktvermarkter');
     expect(grund('keiner')).toBe('ein');
   });
 });

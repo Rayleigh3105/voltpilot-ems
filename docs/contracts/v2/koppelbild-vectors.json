@@ -1,12 +1,12 @@
 {
-  "_comment": ["VoltPilot-Koppelbild v1 (KB-1). Die Prosa steht in koppelbild.md, der Aufbau und die Fälle stehen HIER.", "Quelle: Konzept vp-pfc200-edge-konzept Abschnitt 5 (Entwurf 0.1 vom 19.11.2026), Entscheid E2 = A vom 19.11.2026.", "Die Fälle sind Schrittfolgen: Halteregister setzen (Telegramm der Edge oder fremd), ein Zyklus des Bausteins,", "eine Lesung der Edge. Je Schritt die Erwartung an alle drei Seiten: Schreiber (absicht → woerter),", "Baustein (Eingänge der Anlage → q_woerter und erwartet_sps), Leser (erwartet_lesung) und Lage (erwartet_lage).", "Gerechnet mit einem Referenzmodell außerhalb des Repos; die Prüfer rechnen unabhängig nach. Alle Fälle sind", "herkunft vertrag, belegt false: an keiner Steuerung belegt."],
+  "_comment": ["VoltPilot-Koppelbild v1 (KB-1). Die Prosa steht in koppelbild.md, der Aufbau und die Fälle stehen HIER.", "Quelle: Konzept vp-pfc200-edge-konzept Abschnitt 5 (Entwurf 0.1 vom 19.11.2026), Entscheid E2 = A vom 19.11.2026.", "Nebenversion 1.1 (25.11.2026, Direktvermarktung Stufe 4): grund 6 vertrag, additiv; nur ein Telegramm,", "das Grund 6 verwendet, trägt das Versionswort 0x0101 (Fall K29); Leser prüfen allein die Hauptversion.", "Die Fälle sind Schrittfolgen: Halteregister setzen (Telegramm der Edge oder fremd), ein Zyklus des Bausteins,", "eine Lesung der Edge. Je Schritt die Erwartung an alle drei Seiten: Schreiber (absicht → woerter),", "Baustein (Eingänge der Anlage → q_woerter und erwartet_sps), Leser (erwartet_lesung) und Lage (erwartet_lage).", "Gerechnet mit einem Referenzmodell außerhalb des Repos; die Prüfer rechnen unabhängig nach. Alle Fälle sind", "herkunft vertrag, belegt false: an keiner Steuerung belegt."],
   "schema_version": "1.0",
   "$schema_datei": "./koppelbild.schema.json",
   "vertrag": "./koppelbild.md",
   "herkunft": "Konzept vp-pfc200-edge-konzept Abschnitt 5 (Entwurf 0.1, 19.11.2026); Entscheide E2 = A, E3 = A vom 19.11.2026",
   "zwillinge": ["edge-app/core/internal/koppelbild", "sps/codesys/bibliothek/FB_VP_Koppelbild.st"],
   "pruefer": ["frontend/portal/src/koppelbild.test.ts", "edge-app/core/internal/koppelbild/vertrag_test.go", "sps/codesys/pruefer/pruefe.py"],
-  "koppelbild": {"signatur_w": "VP KW", "signatur_q": "VP KQ", "hauptversion": 1, "nebenversion": 0, "version_wort": 256, "plaetze": 8},
+  "koppelbild": {"signatur_w": "VP KW", "signatur_q": "VP KQ", "hauptversion": 1, "nebenversion": 1, "version_wort": 256, "plaetze": 8},
   "typen": [
     {"typ": "U16", "woerter": 1, "ungueltig": 65535, "vorzeichen": false},
     {"typ": "S16", "woerter": 1, "ungueltig": 32767, "vorzeichen": true},
@@ -22,7 +22,7 @@
     "kopf": [
       {"feld": "signatur", "adresse": 0, "woerter": 2, "typ": "U32", "art": "pruefwert", "ungueltig": null, "einheit": "0x5650 0x4B57", "bedeutung": "„VP“ „KW“: das ist ein Koppelbild-Wunsch", "soll_woerter": [22096, 19287]},
       {"feld": "wortfolge", "adresse": 2, "woerter": 2, "typ": "U32", "art": "pruefwert", "ungueltig": null, "einheit": "0x01020304", "bedeutung": "Prüfwert, über dieselbe Routine wie jeder 32-bit-Wert", "soll_woerter": [258, 772]},
-      {"feld": "version", "adresse": 4, "woerter": 1, "typ": "U16", "art": "version", "ungueltig": null, "einheit": "0x0100", "bedeutung": "höherwertiges Byte Hauptversion 1, niederwertiges Nebenversion 0", "soll": {"hauptversion": 1, "nebenversion": 0, "wort": 256}},
+      {"feld": "version", "adresse": 4, "woerter": 1, "typ": "U16", "art": "version", "ungueltig": null, "einheit": "0x0100 oder 0x0101", "bedeutung": "höherwertiges Byte Hauptversion 1, niederwertiges die höchste Nebenversion, deren Vokabular das Telegramm verwendet (1.1: grund 6)", "soll": {"hauptversion": 1, "nebenversion": 0, "wort": 256}},
       {"feld": "platz_anzahl", "adresse": 5, "woerter": 1, "typ": "U16", "art": "fest", "ungueltig": null, "einheit": "8", "bedeutung": "Zahl der Stellplätze im Telegramm", "soll": 8},
       {"feld": "sitzung", "adresse": 6, "woerter": 1, "typ": "U16", "art": "zahl", "ungueltig": 65535, "einheit": "Zufallszahl 1 bis 65534", "bedeutung": "neu bei jedem Programmstart der Edge; 0 und 0xFFFF sind ungültig"},
       {"feld": "herzschlag", "adresse": 7, "woerter": 1, "typ": "U16", "art": "zaehler", "ungueltig": null, "einheit": "+1 je Telegramm, 65535 → 0", "bedeutung": "Lebenszeichen der Edge"},
@@ -111,7 +111,8 @@
       {"code": 2, "name": "netz", "bedeutung": "Grenze oder Vorgabe am Netzanschluss"},
       {"code": 3, "name": "regel", "bedeutung": "Regel oder Steuerlogik der Anlage"},
       {"code": 4, "name": "hand", "bedeutung": "Handeingriff im Portal oder an der Box"},
-      {"code": 5, "name": "test", "bedeutung": "Schalt-Test, Werkstatt"}
+      {"code": 5, "name": "test", "bedeutung": "Schalt-Test, Werkstatt"},
+      {"code": 6, "name": "vertrag", "bedeutung": "Vorgabe eines Direktvermarkters oder anderen Vertragspartners (ab Nebenversion 1.1)", "ab_nebenversion": 1}
     ],
     "kopf_urteil": [
       {"code": 0, "name": "keins", "bedeutung": "seit dem Programmstart kam kein Telegramm"},
@@ -3565,8 +3566,8 @@
       ]
     },
     {
-      "name": "K17 nebenversion-1-1",
-      "why": "Nebenversion 1.1 auf beiden Seiten. Der Baustein 1.0 nimmt ein Telegramm der Fassung 1.1 an und uebergeht das unbekannte Bit und den unbekannten Grund. Der Leser 1.0 liest eine Quittung 1.1 weiter, uebergeht unbekannte Bits und behandelt den unbekannten Urteilscode als fremd (kein Wert).",
+      "name": "K17 hoehere-nebenversion",
+      "why": "Eine ausgedachte Nebenversion 1.2 auf beiden Seiten. Der Baustein nimmt ein Telegramm der Fassung 1.2 an und uebergeht das unbekannte Bit und den unbekannten Grund. Der Leser liest eine Quittung 1.2 weiter, uebergeht unbekannte Bits und behandelt den unbekannten Urteilscode als fremd (kein Wert).",
       "herkunft": "vertrag",
       "belegt": false,
       "steuerung_soll": 1042,
@@ -3621,15 +3622,15 @@
         },
         {
           "t_ms": 1000,
-          "warum": "Schreiber 1.1: e_bits Bit 4, w_grund 6 unbekannt",
-          "w": {"woerter": [22096, 19287, 258, 772, 257, 8, 5889, 1, 0, 1042, 60, 23, 0, 0, 0, 17044, 1, 6, 2, 27928, 1, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0], "von": "edge"},
+          "warum": "Schreiber 1.2: e_bits Bit 4, w_grund 7 unbekannt",
+          "w": {"woerter": [22096, 19287, 258, 772, 258, 8, 5889, 1, 0, 1042, 60, 23, 0, 0, 0, 5793, 1, 7, 2, 27928, 1, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0], "von": "edge"},
           "q_woerter": [22096, 19281, 258, 772, 256, 1, 1, 256, 0, 1042, 1, 5889, 1, 60, 3, 1, 0, 0, 0, 30827, 1, 1, 0, 1, 0, 0, 4, 2856, 1, 1, 2, 27928, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535],
           "erwartet_sps": {
             "kopf_urteil": "angenommen",
             "rest_s": 60,
             "edge_lebt": true,
             "wunsch": [
-              {"gilt": true, "wert": 159000, "grund": 6, "urteil": "angenommen"},
+              {"gilt": true, "wert": 159000, "grund": 7, "urteil": "angenommen"},
               {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
               {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
               {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
@@ -3659,14 +3660,14 @@
         },
         {
           "t_ms": 2000,
-          "warum": "Quittung einer Bibliothek 1.1: q_bits Bit 3, a_bits Bit 6, q_urteil 8 unbekannt",
+          "warum": "Quittung einer Bibliothek 1.2: q_bits Bit 3, a_bits Bit 6, q_urteil 8 unbekannt",
           "q_woerter": [22096, 19281, 258, 772, 256, 1, 2, 256, 0, 1042, 1, 5889, 1, 59, 3, 1, 0, 0, 0, 4137, 1, 1, 0, 1, 0, 0, 4, 2856, 1, 1, 2, 27928, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535],
           "erwartet_sps": {
             "kopf_urteil": "angenommen",
             "rest_s": 59,
             "edge_lebt": true,
             "wunsch": [
-              {"gilt": true, "wert": 159000, "grund": 6, "urteil": "angenommen"},
+              {"gilt": true, "wert": 159000, "grund": 7, "urteil": "angenommen"},
               {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
               {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
               {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
@@ -3676,11 +3677,11 @@
               {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"}
             ]
           },
-          "lesung": {"woerter": [22096, 19281, 258, 772, 257, 1, 2, 256, 0, 1042, 1, 5889, 1, 59, 11, 1, 0, 0, 0, 50689, 1, 1, 0, 65, 0, 0, 4, 2856, 8, 1, 2, 27928, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535]},
+          "lesung": {"woerter": [22096, 19281, 258, 772, 258, 1, 2, 256, 0, 1042, 1, 5889, 1, 59, 11, 1, 0, 0, 0, 26980, 1, 1, 0, 65, 0, 0, 4, 2856, 8, 1, 2, 27928, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535]},
           "erwartet_lesung": {
             "ergebnis": "lesbar",
             "grund": null,
-            "kopf": {"version_haupt": 1, "version_neben": 1, "platz_anzahl": 1, "herzschlag": 2, "steuerung_id": 1042, "q_sitzung": 5889, "q_herzschlag": 1, "angenommen_zaehler": 1, "abgelehnt_zaehler": 0, "bibliothek": {"haupt": 1, "neben": 0}, "kopf_urteil": "angenommen", "rest_s": 59, "q_bits": ["fernsteuerung_frei", "edge_lebt"]},
+            "kopf": {"version_haupt": 1, "version_neben": 2, "platz_anzahl": 1, "herzschlag": 2, "steuerung_id": 1042, "q_sitzung": 5889, "q_herzschlag": 1, "angenommen_zaehler": 1, "abgelehnt_zaehler": 0, "bibliothek": {"haupt": 1, "neben": 0}, "kopf_urteil": "angenommen", "rest_s": 59, "q_bits": ["fernsteuerung_frei", "edge_lebt"]},
             "leer": {},
             "plaetze": [
               {"n": 1, "angebot": {"art": "limit_w", "ziel": "erzeugung_gesamt", "nr": 0, "min": 0, "max": 265000, "bits": ["bereit"]}, "q_urteil": null, "q_folge": 1, "q_wirksam": 159000, "leer": {"q_urteil": "fremd"}},
@@ -5871,6 +5872,170 @@
             "leer": {},
             "plaetze": [
               {"n": 1, "angebot": {"art": "limit_w", "ziel": "erzeugung_gesamt", "nr": 0, "min": 0, "max": 265000, "bits": ["bereit"]}, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 2, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 3, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 4, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 5, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 6, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 7, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 8, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}}
+            ]
+          },
+          "erwartet_lage": {"lage": "bereit", "schreibt": true, "wuenscht": true}
+        }
+      ]
+    },
+    {
+      "name": "K29 grund-vertrag",
+      "why": "Nebenversion 1.1 (additiv): Grund 6 vertrag nennt die Vorgabe eines Direktvermarkters oder anderen Vertragspartners. Die Edge schreibt das Minimum aus Fahrplan und Partner auf den Stellplatz der Einspeisung und nennt den bindenden Grund; nur ein Telegramm, das Grund 6 verwendet, traegt das Versionswort 0x0101. Der Baustein 1.0 nimmt beide an und reicht den Grund unveraendert durch.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "steuerung_soll": 1042,
+      "sps_anfang": {"herzschlag": 0, "angenommen_zaehler": 0, "abgelehnt_zaehler": 0},
+      "schritte": [
+        {
+          "t_ms": 0,
+          "warum": "Programmstart: was in den Halteregistern steht, ist nur der Vergleichsstand",
+          "w": {"woerter": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "von": "start"},
+          "sps": {
+            "steuerung_id": 1042,
+            "fernsteuerung_frei": true,
+            "hand_ort": false,
+            "bibliothek": 256,
+            "hoechste_frist_s": 60,
+            "angebot": {"1": {"art": "limit_w", "ziel": "einspeisung", "nr": 0, "min": 0, "max": 25000, "bereit": true, "gruende": []}},
+            "rueck": {"1": {"wirksam": 7500}}
+          },
+          "q_woerter": [22096, 19281, 258, 772, 256, 1, 0, 256, 0, 1042, 0, 0, 0, 0, 1, 0, 0, 0, 0, 790, 1, 6, 0, 1, 0, 0, 0, 25000, 0, 0, 0, 7500, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535],
+          "erwartet_sps": {
+            "kopf_urteil": "keins",
+            "rest_s": 0,
+            "edge_lebt": false,
+            "wunsch": [
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"}
+            ]
+          },
+          "erwartet_lesung": {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "platz_anzahl": 1, "herzschlag": 0, "steuerung_id": 1042, "q_sitzung": 0, "q_herzschlag": 0, "angenommen_zaehler": 0, "abgelehnt_zaehler": 0, "bibliothek": {"haupt": 1, "neben": 0}, "kopf_urteil": "keins", "rest_s": 0, "q_bits": ["fernsteuerung_frei"]},
+            "leer": {},
+            "plaetze": [
+              {"n": 1, "angebot": {"art": "limit_w", "ziel": "einspeisung", "nr": 0, "min": 0, "max": 25000, "bits": ["bereit"]}, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": 7500, "leer": {}},
+              {"n": 2, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 3, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 4, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 5, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 6, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 7, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 8, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}}
+            ]
+          },
+          "erwartet_lage": {"lage": "bereit", "schreibt": true, "wuenscht": true}
+        },
+        {
+          "t_ms": 1000,
+          "warum": "Der Direktvermarkter bindet: min(Fahrplan, Partner) = 7500 W mit Grund vertrag; das Telegramm traegt das Versionswort 0x0101",
+          "w": {
+            "absicht": {
+              "sitzung": 10497,
+              "herzschlag": 1,
+              "steuerung_id": 1042,
+              "frist_s": 60,
+              "e_bits": ["cloud_verbunden", "plan_frisch", "steuerung_frei"],
+              "plaetze": {"1": {"art": "limit_w", "grund": "vertrag", "wert": 7500, "folge": 1}}
+            },
+            "woerter": [22096, 19287, 258, 772, 257, 8, 10497, 1, 0, 1042, 60, 7, 0, 0, 0, 27232, 1, 6, 0, 7500, 1, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0],
+            "von": "edge"
+          },
+          "q_woerter": [22096, 19281, 258, 772, 256, 1, 1, 256, 0, 1042, 1, 10497, 1, 60, 3, 1, 0, 0, 0, 16595, 1, 6, 0, 1, 0, 0, 0, 25000, 1, 1, 0, 7500, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535],
+          "erwartet_sps": {
+            "kopf_urteil": "angenommen",
+            "rest_s": 60,
+            "edge_lebt": true,
+            "wunsch": [
+              {"gilt": true, "wert": 7500, "grund": "vertrag", "urteil": "angenommen"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"}
+            ]
+          },
+          "erwartet_lesung": {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "platz_anzahl": 1, "herzschlag": 1, "steuerung_id": 1042, "q_sitzung": 10497, "q_herzschlag": 1, "angenommen_zaehler": 1, "abgelehnt_zaehler": 0, "bibliothek": {"haupt": 1, "neben": 0}, "kopf_urteil": "angenommen", "rest_s": 60, "q_bits": ["fernsteuerung_frei", "edge_lebt"]},
+            "leer": {},
+            "plaetze": [
+              {"n": 1, "angebot": {"art": "limit_w", "ziel": "einspeisung", "nr": 0, "min": 0, "max": 25000, "bits": ["bereit"]}, "q_urteil": "angenommen", "q_folge": 1, "q_wirksam": 7500, "leer": {}},
+              {"n": 2, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 3, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 4, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 5, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 6, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 7, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
+              {"n": 8, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}}
+            ]
+          },
+          "erwartet_lage": {"lage": "bereit", "schreibt": true, "wuenscht": true}
+        },
+        {
+          "t_ms": 6000,
+          "warum": "Der Fahrplan bindet wieder (Partner frei): Grund markt, das Versionswort faellt auf 0x0100 zurueck",
+          "w": {
+            "absicht": {
+              "sitzung": 10497,
+              "herzschlag": 2,
+              "steuerung_id": 1042,
+              "frist_s": 60,
+              "e_bits": ["cloud_verbunden", "plan_frisch", "steuerung_frei"],
+              "plaetze": {"1": {"art": "limit_w", "grund": "markt", "wert": 20000, "folge": 2}}
+            },
+            "woerter": [22096, 19287, 258, 772, 256, 8, 10497, 2, 0, 1042, 60, 7, 0, 0, 0, 1788, 1, 1, 0, 20000, 2, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 0, 0],
+            "von": "edge"
+          },
+          "sps": {
+            "steuerung_id": 1042,
+            "fernsteuerung_frei": true,
+            "hand_ort": false,
+            "bibliothek": 256,
+            "hoechste_frist_s": 60,
+            "angebot": {"1": {"art": "limit_w", "ziel": "einspeisung", "nr": 0, "min": 0, "max": 25000, "bereit": true, "gruende": []}},
+            "rueck": {"1": {"wirksam": 20000}}
+          },
+          "q_woerter": [22096, 19281, 258, 772, 256, 1, 6, 256, 0, 1042, 1, 10497, 2, 60, 3, 2, 0, 0, 0, 16376, 1, 6, 0, 1, 0, 0, 0, 25000, 1, 2, 0, 20000, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535, 0, 0, 0, 0, 32767, 65535, 32767, 65535, 0, 0, 32767, 65535],
+          "erwartet_sps": {
+            "kopf_urteil": "angenommen",
+            "rest_s": 60,
+            "edge_lebt": true,
+            "wunsch": [
+              {"gilt": true, "wert": 20000, "grund": "markt", "urteil": "angenommen"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"},
+              {"gilt": false, "wert": null, "grund": null, "urteil": "kein_wunsch"}
+            ]
+          },
+          "erwartet_lesung": {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "platz_anzahl": 1, "herzschlag": 6, "steuerung_id": 1042, "q_sitzung": 10497, "q_herzschlag": 2, "angenommen_zaehler": 2, "abgelehnt_zaehler": 0, "bibliothek": {"haupt": 1, "neben": 0}, "kopf_urteil": "angenommen", "rest_s": 60, "q_bits": ["fernsteuerung_frei", "edge_lebt"]},
+            "leer": {},
+            "plaetze": [
+              {"n": 1, "angebot": {"art": "limit_w", "ziel": "einspeisung", "nr": 0, "min": 0, "max": 25000, "bits": ["bereit"]}, "q_urteil": "angenommen", "q_folge": 2, "q_wirksam": 20000, "leer": {}},
               {"n": 2, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
               {"n": 3, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},
               {"n": 4, "angebot": null, "q_urteil": "kein_wunsch", "q_folge": 0, "q_wirksam": null, "leer": {"q_wirksam": "ungueltig"}},

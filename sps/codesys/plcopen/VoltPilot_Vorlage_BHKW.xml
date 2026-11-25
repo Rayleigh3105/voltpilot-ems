@@ -131,7 +131,8 @@ Codes (Vertrag §7):
        4 on_off (0/1), 5 mode (1..8), 6 setpoint_c (0,1 °C)
   Ziel 1 erzeugung_gesamt, 2 erzeugungseinheit, 3 speicher, 4 verbraucher, 5 netzbezug,
        6 einspeisung, 7 probe
-  Grund 0 keiner, 1 markt, 2 netz, 3 regel, 4 hand, 5 test
+  Grund 0 keiner, 1 markt, 2 netz, 3 regel, 4 hand, 5 test, 6 vertrag (Nebenversion 1.1;
+       Auskunft, keine Weiche: der Baustein reicht ihn unverändert durch)
 
  Abschnitt W: liegt auf den Halteregistern 0..63 des Modbus-TCP-Servers; nur die Edge schreibt.</xhtml></documentation>
       </dataType>

@@ -26,6 +26,11 @@ const (
 	qSiegel      = 19
 	version      = 0x0100
 	hauptversion = 1
+	// grundVertrag is the first code of Nebenversion 1.1 (contract §14): a
+	// telegram whose vocabulary stays within 1.0 keeps the 1.0 version word,
+	// one carrying grund "vertrag" declares 0x0101.
+	grundVertrag   = 6
+	versionVertrag = 0x0101
 
 	// FristMinS and FristMaxS bound frist_s (contract §3).
 	FristMinS = 5
@@ -48,7 +53,7 @@ var (
 var (
 	ArtNamen        = []string{"keiner", "limit_w", "limit_pct", "setpoint_w", "on_off", "mode", "setpoint_c"}
 	ZielNamen       = []string{"", "erzeugung_gesamt", "erzeugungseinheit", "speicher", "verbraucher", "netzbezug", "einspeisung", "probe"}
-	GrundNamen      = []string{"keiner", "markt", "netz", "regel", "hand", "test"}
+	GrundNamen      = []string{"keiner", "markt", "netz", "regel", "hand", "test", "vertrag"}
 	KopfUrteilNamen = []string{"keins", "angenommen", "signatur_fremd", "version_fremd", "wortfolge_falsch",
 		"siegel_falsch", "steuerung_fremd", "kopf_ungueltig", "abgelaufen", "gesperrt"}
 	QUrteilNamen = []string{"kein_wunsch", "angenommen", "begrenzt", "art_fremd", "wert_ungueltig",
@@ -158,6 +163,13 @@ func Schreibe(a Absicht) []uint16 {
 	w := make([]uint16, WWoerter)
 	w[0], w[1], w[2], w[3] = sigW[0], sigW[1], pruefW[0], pruefW[1]
 	w[4] = version
+	for _, p := range a.Plaetze {
+		if art, mit := code(ArtNamen, p.Art); mit && art != 0 {
+			if g, _ := code(GrundNamen, p.Grund); g >= grundVertrag {
+				w[4] = versionVertrag
+			}
+		}
+	}
 	w[5] = Plaetze
 	w[6] = a.Sitzung
 	w[7] = a.Herzschlag

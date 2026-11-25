@@ -1,6 +1,6 @@
 # VoltPilot-Koppelbild v1 (KB-1)
 
-Stand 19.11.2026 · Vertrag 1.0 · Koppelbild 1.0 (Wort 0x0100) · Konzept `vp-pfc200-edge-konzept` Abschnitt 5 (Entwurf 0.1) · Entscheide E2 = A und E3 = A vom 19.11.2026 (PFC200 statt Raspberry Pi).
+Stand 25.11.2026 · Vertrag 1.1 (additiv: `grund` 6 `vertrag`, §7 und §14) · Koppelbild 1.x (Wort 0x0100 oder 0x0101) · Konzept `vp-pfc200-edge-konzept` Abschnitt 5 (Entwurf 0.1) · Entscheide E2 = A und E3 = A vom 19.11.2026 (PFC200 statt Raspberry Pi) · Direktvermarktungs-Konzept d2 Abschnitt 5.5 (E1 bis E6 = A vom 25.11.2026).
 
 Das Koppelbild ist die **Vereinbarung zwischen der Edge-Software und dem SPS-Programm einer Anlage** über Modbus TCP.
 Die Edge schreibt Wünsche, die SPS entscheidet und quittiert.
@@ -13,7 +13,7 @@ Was nur am Gerät oder in der CODESYS-Entwicklungsumgebung zu belegen ist, steht
 | Datei | Rolle |
 |---|---|
 | [`koppelbild.md`](./koppelbild.md) | dieser Vertrag |
-| [`koppelbild-vectors.json`](./koppelbild-vectors.json) | Aufbau (Felder, Bits, Vokabular, Siegel, Regeln) und 29 Fälle K1–K28 als Schrittfolgen mit rohen Wörtern und der Erwartung an alle Seiten |
+| [`koppelbild-vectors.json`](./koppelbild-vectors.json) | Aufbau (Felder, Bits, Vokabular, Siegel, Regeln) und 30 Fälle K1–K29 als Schrittfolgen mit rohen Wörtern und der Erwartung an alle Seiten |
 | [`koppelbild.schema.json`](./koppelbild.schema.json) | Schema der Vektor-Datei (Teilmenge des UEMS-Schema-Läufers) |
 | `frontend/portal/src/koppelbild.test.ts` | Prüfer: Schema, lückenloser Aufbau, Vertrag ⟷ Datei, Siegel, Rechenbeispiele, ein unabhängiger Baustein, Leser und Lage über alle Fälle |
 | `edge-app/core/internal/koppelbild` | Zwilling der Box: Schreiber, Leser, Lage; `vertrag_test.go` gegen alle Fälle |
@@ -69,7 +69,7 @@ Dass eine Anlage ein Koppelbild hat, erkennt die Box an der Signatur bei 1000, n
 |---|---|---|---|---|---|---|
 | 0 | 2 | `signatur` | U32 | – | 0x5650 0x4B57 | „VP“ „KW“: das ist ein Koppelbild-Wunsch |
 | 2 | 2 | `wortfolge` | U32 | – | 0x01020304 | Prüfwert, über dieselbe Routine wie jeder 32-bit-Wert |
-| 4 | 1 | `version` | U16 | – | 0x0100 | höherwertiges Byte Hauptversion 1, niederwertiges Nebenversion 0 |
+| 4 | 1 | `version` | U16 | – | 0x0100 oder 0x0101 | höherwertiges Byte Hauptversion 1, niederwertiges die höchste Nebenversion, deren Vokabular das Telegramm verwendet (§14) |
 | 5 | 1 | `platz_anzahl` | U16 | – | 8 | Zahl der Stellplätze im Telegramm |
 | 6 | 1 | `sitzung` | U16 | 0xFFFF | Zufallszahl 1 bis 65534 | neu bei jedem Programmstart der Edge; 0 und 0xFFFF sind ungültig |
 | 7 | 1 | `herzschlag` | U16 | – | +1 je Telegramm, 65535 → 0 | Lebenszeichen der Edge |
@@ -220,6 +220,7 @@ Die Arten sind die Kommandos des [Schiedsrichters der Box](./edge-desired-arbitr
 | `grund` | 3 | `regel` | | Regel oder Steuerlogik der Anlage |
 | `grund` | 4 | `hand` | | Handeingriff im Portal oder an der Box |
 | `grund` | 5 | `test` | | Schalt-Test, Werkstatt |
+| `grund` | 6 | `vertrag` | | Vorgabe eines Direktvermarkters oder anderen Vertragspartners (ab Nebenversion 1.1) |
 | `kopf_urteil` | 0 | `keins` | | seit dem Programmstart kam kein Telegramm |
 | `kopf_urteil` | 1 | `angenommen` | | |
 | `kopf_urteil` | 2 | `signatur_fremd` | | |
@@ -361,7 +362,7 @@ Gelesen: Steuerung 0 (Grundprogramm), Frist 20 s, `steuerung_frei` und `probe`, 
 | K12 | Fernsteuerung gesperrt, wieder frei, während einer Frist entzogen |
 | K13, K14, K15 | `art_fremd` (auch auf leerem Platz), `wert_ungueltig`, `nicht_bereit` (Störung, Hand/Ort) |
 | K16 | Speicher mit Vorzeichen |
-| K17, K18 | Nebenversion 1.1 mit unbekanntem Bit und Code auf beiden Seiten; Hauptversion 2 |
+| K17, K18 | eine höhere Nebenversion (1.2, ausgedacht) mit unbekanntem Bit und Code auf beiden Seiten; Hauptversion 2 |
 | K19 | Wortfolge falsch, obwohl Signatur, Fassung und Siegel stimmen |
 | K20 | Probe-Stellplatz der Werkstatt, Frist 20 s |
 | K21 | `kopf_ungueltig`: `frist_s` 0, 0xFFFF, 4 und 601; Sitzung 0 und 0xFFFF; `platz_anzahl` 7; die Grenzen 5 und 600 gelten |
@@ -372,6 +373,7 @@ Gelesen: Steuerung 0 (Grundprogramm), Frist 20 s, `steuerung_frei` und `probe`, 
 | K26 | Grenzfälle nur für Leser: 115 Wörter, `platz_anzahl` 9 und 0xFFFF, Signatur des Wunschs bei 1000, `steuerung_id` ungültig |
 | K27 | Angebote, die die Box nicht nimmt; `mode` begrenzt |
 | K28 | Lebenszeichen ohne Wunsch, Herzschlag 65535 → 0 |
+| K29 | Grund `vertrag` (Nebenversion 1.1): das Minimum aus Fahrplan und Direktvermarkter auf dem Stellplatz der Einspeisung, Versionswort 0x0101 nur bei Grund 6 |
 
 ## 13. Größe und Anfragen
 
@@ -384,6 +386,12 @@ Bei einer Änderung schreibt die Edge sofort (nach einer frischen Lesung der Qui
 - **Je Fassung fest:** 8 Stellplätze, feste Adressen.
 - **Nebenversion heißt additiv:** ein freies Wort oder ein freies Bit bekommt Bedeutung, oder ein Vokabular bekommt einen neuen Code.
   Ein Leser der 1.0 übergeht freie Wörter und Bits und behandelt einen unbekannten Code als `fremd`, also als kein Wert; die Siegel decken die freien Wörter mit ab (K17).
+- **Das Versionswort nennt die höchste Nebenversion, deren Vokabular das Telegramm verwendet.**
+  Ein Telegramm, das nur Vokabular der 1.0 trägt, bleibt Wort für Wort ein Telegramm der 1.0 (0x0100); erst ein Wunsch mit `grund` 6 macht es zu einem der 1.1 (0x0101, K29).
+  Leser und Baustein prüfen allein die Hauptversion; die Vektor-Datei trägt je Vokabularwert `ab_nebenversion`.
+- **Nebenversion 1.1 (25.11.2026, Direktvermarktung Stufe 4):** `grund` 6 `vertrag`.
+  Der Grund bleibt Auskunft, keine Weiche: der Baustein 1.0 reicht ihn unverändert durch, die Chronik nennt den Direktvermarkter als Urheber.
+  Was die Edge daraus macht (das Minimum aus Fahrplan und Partner), steht im Direktvermarktungs-Konzept d2 Abschnitt 5.5, nicht in diesem Vertrag.
 - **Hauptversion 2** braucht, wer Adressen verschiebt, Bedeutungen ändert oder mehr Stellplätze will.
   W und Q tragen ihre Fassung getrennt; die SPS weist ein Telegramm fremder Hauptversion ab, die Edge schreibt nur die Hauptversion, die Q nennt (K18).
 - **Vorbehalt vor dem ersten Einbau:** Solange kein Baustein bei einem Kunden läuft, berichtigt ein PR eine Annahme, die ein Prüfstein widerlegt, in Fassung 1.0 selbst: Vertrag, Vektoren, Prüfer und beide Zwillinge gemeinsam.
