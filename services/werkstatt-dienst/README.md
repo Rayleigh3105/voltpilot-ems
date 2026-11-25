@@ -87,7 +87,8 @@ Paket `internal/pfc200`, die Texte für Menschen an einer Stelle in `internal/pf
 
 | Schritt | Was | Beleg |
 |---|---|---|
-| `erkennen` | genau ein Gerät von WAGO unter 192.168.1.17, Anmeldung mit dem Werkspasswort; hier ändert sich nichts. Hält an bei: anderer Bestellnummer, schon eingerichtet, Docker läuft, Notfall-Schlüssel der falschen Art. Wartet (von selbst weiter) auf: Kabel in X2, Schalter auf RUN | MAC, Bestellnummer, Firmware (nur Angabe), Seriennummer, Host-Schlüssel |
+| `erkennen` | genau ein Gerät von WAGO unter 192.168.1.17, Anmeldung mit dem Werkspasswort; hier ändert sich nichts. Hält an bei: anderer Bestellnummer, schon eingerichtet, Notfall-Schlüssel der falschen Art. Wartet (von selbst weiter) auf: Kabel in X2, Schalter auf RUN | MAC, Bestellnummer, Firmware (nur Angabe), Seriennummer, Host-Schlüssel, Docker-Stand (nur Angabe) |
+| `docker` | läuft Docker, schaltet der Dienst ihn mit dem Werkzeug der Firmware aus (WBM-Äquivalent `config_docker remove`), bevor ein späterer Schritt sich auf Weiterleitung und Firewall verlässt; fremde Container fasst er dabei nie an. Läuft kein Docker, ändert sich nichts. Scheitert das Ausschalten oder läuft Docker danach weiter: hält an | Container vor dem Ausschalten (Name, Abbild, Stand), Docker-Stand vorher und nachher |
 | `fassungen` | Programm, Skriptstand und Tunnel-Programm nach Prüfsumme, signiertes Manifest geprüft, bevor das Gerät angefasst wird | Prüfsummen, Herkunft |
 | `internet` | Weg und Namen über die Brücke (befristet), Uhr nach der des Dienstes gestellt (ab Werk steht sie Jahre zurück, jede TLS-Verbindung scheiterte), Zeitabgleich ein | Portal erreichbar mit geprüftem Zertifikat, Uhr vorher und nachher |
 | `zugaenge` | ein Schlüssel nur für diesen Lauf; drei Zufallspasswörter für `root`, `admin`, `user`: erst verschlüsselt, dann als Hash gesetzt; Anmeldung mit Passwort aus | jedes Werkspasswort an SSH abgewiesen, das Gerät meldet „nicht mehr ab Werk“, `passwort_age` |
@@ -100,7 +101,7 @@ Paket `internal/pfc200`, die Texte für Menschen an einer Stelle in `internal/pf
 | `internet_weg` | Weg über die Brücke heraus; zuletzt der Lauf-Schlüssel | genau ein dauerhafter Schlüssel, der Lauf-Schlüssel wird abgewiesen |
 | `uebergabe` | Abnahme mit je einem Beleg je Prüfung, Firmware und Seriennummer als Angaben | Kennung der Abnahme |
 
-Was der Lauf am PFC200 nie anfasst: die SPS-Laufzeit (CODESYS), ihre Einstellungen, ihr Programm, ihren Modbus-Server; die Firmware; fremde Container (läuft Docker, hält er an).
+Was der Lauf am PFC200 nie anfasst: die SPS-Laufzeit (CODESYS), ihre Einstellungen, ihr Programm, ihren Modbus-Server; die Firmware; fremde Container, Abbilder und Datenträger (Schritt `docker` schaltet nur den Docker-Dienst selbst aus).
 Einen Schritt für SPS, Koppelprobe oder Firmware gibt es nicht.
 
 Drei Stellen sind so gebaut, dass der Lauf sich nicht aussperrt:

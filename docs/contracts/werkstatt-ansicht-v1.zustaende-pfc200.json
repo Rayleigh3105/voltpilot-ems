@@ -106,6 +106,7 @@
       "titel": "Neustart-Probe",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -132,6 +133,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -414,13 +420,13 @@
       "schritt": "erkennen",
       "titel": "PFC200 erkennen",
       "erledigt": [],
-      "grund": "Auf dem Gerät läuft Docker (installiert, aktiv). Der Dienst beendet keine fremden Container; mit Docker stimmen Weiterleitung und Firewall des Geräts nicht.",
-      "handgriff": "In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten, wenn die Container nicht gebraucht werden. Dann das orange Kabel kurz abziehen.",
+      "grund": "Docker ist nach dem Ausschalten weiter active (Dienst läuft: ja)",
+      "handgriff": "In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten. Dann das orange Kabel kurz abziehen.",
       "fall": "pfc_docker_an",
       "loesung": {
-        "titel": "Auf diesem PFC200 läuft Docker.",
+        "titel": "Docker ließ sich auf diesem PFC200 nicht automatisch ausschalten.",
         "schritte": [
-          "Der Dienst beendet keine fremden Container. In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten, wenn die Container nicht gebraucht werden.",
+          "In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten. Fremde Container bleiben dabei stehen.",
           "Das orange Kabel kurz abziehen und wieder in die Buchse X2 stecken. Der Dienst fängt neu an."
         ],
         "selbst": true,
@@ -1026,6 +1032,7 @@
       "zustand": "fertig",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -1045,6 +1052,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -1110,6 +1122,128 @@
           "schritt": "uebergabe",
           "dauer_s": 0,
           "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
+  "laeuft_docker": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "docker",
+      "titel": "Docker ausschalten",
+      "erledigt": [
+        "erkennen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
         }
       ],
       "vorher": {
@@ -1225,6 +1359,7 @@
       "titel": "Einmal-Code einlösen",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -1239,6 +1374,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -1491,7 +1631,8 @@
       "schritt": "fassungen",
       "titel": "Fassungen der Freigabe bereitlegen",
       "erledigt": [
-        "erkennen"
+        "erkennen",
+        "docker"
       ],
       "schritt_seit": "2026-11-04T10:29:00Z",
       "schritt_frist_s": 3600,
@@ -1500,6 +1641,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         }
       ],
       "vorher": {
@@ -1614,6 +1760,7 @@
       "titel": "Internet über die Brücke (befristet) und Uhr stellen",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen"
       ],
       "schritt_seit": "2026-11-04T10:29:00Z",
@@ -1623,6 +1770,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -1743,6 +1895,7 @@
       "titel": "Werkstatt-Internet und Lauf-Schlüssel entfernen",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -1762,6 +1915,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -1932,6 +2090,7 @@
       "titel": "Netze trennen und Firewall einschalten",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -1948,6 +2107,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -2103,6 +2267,7 @@
       "titel": "Neustart-Probe",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -2120,6 +2285,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -2279,6 +2449,7 @@
       "titel": "Notfall-Schlüssel",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge"
@@ -2290,6 +2461,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -2420,6 +2596,7 @@
       "titel": "Probe im Fenster",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -2438,6 +2615,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -2602,6 +2784,7 @@
       "titel": "Edge Industrie einspielen",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -2614,6 +2797,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -2749,6 +2937,7 @@
       "titel": "Tunnel einrichten",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -2764,6 +2953,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -2914,6 +3108,7 @@
       "titel": "Tunnel-Schlüssel erzeugen",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -2927,6 +3122,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -3067,6 +3267,7 @@
       "titel": "Belege für die Abnahme",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -3087,6 +3288,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -3261,6 +3467,7 @@
       "titel": "Zugänge: drei Passwörter, Anmeldung nur noch mit Schlüssel",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet"
       ],
@@ -3271,6 +3478,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",
@@ -3849,6 +4061,7 @@
       "titel": "Neustart-Probe",
       "erledigt": [
         "erkennen",
+        "docker",
         "fassungen",
         "internet",
         "zugaenge",
@@ -3878,6 +4091,11 @@
           "schritt": "erkennen",
           "dauer_s": 0,
           "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
         },
         {
           "schritt": "fassungen",

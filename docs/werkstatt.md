@@ -133,7 +133,7 @@ Zwillinge der Prüfliste: `WerkstattPruefungen.PFC200` (API), `PRUEFUNGEN_PFC200
 | der Lauf wartet mit `pfc_schalter_stop` | Schalter auf RUN; der Lauf macht von selbst weiter |
 | der Lauf wartet mit `pfc_kabel_x1` | Kabel in X2; der Lauf macht von selbst weiter |
 | `pfc_passwort` (nur für ein Gerät, das diese Werkstatt begonnen und nicht fertig gemacht hat) | Werksreset: Reset-Taster halten, Schalter auf RESET, bis SYS abwechselnd rot und grün blinkt; danach wieder die feste Adresse |
-| `pfc_docker_an` | Docker in der Web-Oberfläche des Geräts ausschalten, Kabel kurz ab |
+| `pfc_docker_an` (der Dienst schaltet Docker sonst selbst aus) | Docker in der Web-Oberfläche des Geräts ausschalten, Kabel kurz ab |
 
 Antwortet am Kabel niemand, zeigt die Ansicht des Dienstes den Handgriff „feste Adresse“ immer: Ein PFC200 ab Werk wartet auf DHCP und hat sonst keine Adresse.
 Den Werksreset nennt der Dienst nie für ein fremdes Gerät; er löscht das SPS-Programm.

@@ -220,7 +220,7 @@ describe('Werkstatt, PFC200: jeder Zustand des Dienstes', () => {
     expect(schritte.querySelector('[data-schritt="netze"]')).toHaveAttribute('data-zustand', 'lauf');
     expect(schritte.querySelector('[data-schritt="sps"]')).toBeNull();
     const jetzt = screen.getByTestId('wsb-jetzt');
-    expect(jetzt).toHaveTextContent('Schritt 10 von 14');
+    expect(jetzt).toHaveTextContent('Schritt 11 von 15');
     expect(jetzt).toHaveTextContent('Netze trennen, Firewall einschalten');
     expect(jetzt).toHaveTextContent('X1 wird das Kundennetz, X2 das Anlagennetz');
     expect(jetzt.textContent).not.toMatch(/meist/);
@@ -296,11 +296,11 @@ describe('Werkstatt, PFC200: jeder Zustand des Dienstes', () => {
     expect(screen.getByTestId('wsb-loesung').textContent).not.toMatch(/Reset-Taster|Schalter auf RESET/);
   });
 
-  it('Docker an: der Handgriff liegt in der Web-Oberfläche des Geräts; der Dienst beendet nichts', async () => {
+  it('Docker ließ sich nicht automatisch ausschalten: der Handgriff liegt in der Web-Oberfläche des Geräts; der Dienst beendet nichts', async () => {
     werkstattDienst.mockResolvedValue(ausZustand('angehalten_pfc_docker_an'));
     await waehlePfc200();
-    expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent('Auf diesem PFC200 läuft Docker.');
-    expect(screen.getByTestId('wsb-fall-was')).toHaveTextContent('Fremde Container beendet der Dienst nicht');
+    expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent('Docker ließ sich auf diesem PFC200 nicht automatisch ausschalten.');
+    expect(screen.getByTestId('wsb-fall-was')).toHaveTextContent('Der Dienst konnte Docker nicht selbst ausschalten');
     expect(screen.getByTestId('wsb-fall-banner')).toHaveAttribute('data-art', 'hand');
   });
 

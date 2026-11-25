@@ -88,9 +88,9 @@ describe('PFC200: Phasen und Schritte', () => {
     expect(meistDauer([], 'pfc200')).toEqual({});
     const ohne = fortschritt(l, meistDauer([], 'pfc200'));
     expect(ohne.restMinuten).toBeNull();
-    expect(ohne.anteil).toBeCloseTo(9 / 14, 5);
+    expect(ohne.anteil).toBeCloseTo(10 / 15, 5);
     expect(jetzt(l, {}, T)!.meistSek).toBeNull();
-    expect(jetzt(l, {}, T)).toMatchObject({ nummer: 10, von: 14, titel: 'Netze trennen, Firewall einschalten', danach: 'Neustart-Probe' });
+    expect(jetzt(l, {}, T)).toMatchObject({ nummer: 11, von: 15, titel: 'Netze trennen, Firewall einschalten', danach: 'Neustart-Probe' });
     const offen = schrittListe(l, {}, T).flatMap((p) => p.schritte).filter((s) => s.zustand === 'offen');
     expect(offen.length).toBeGreaterThan(0);
     expect(offen.every((s) => s.dauer === null)).toBe(true);

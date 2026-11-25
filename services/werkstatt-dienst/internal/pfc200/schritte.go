@@ -170,8 +170,6 @@ func (l *Lauf) erkennen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, 
 			orKeins(w["werk_root"]), orKeins(w["werk_admin"]), orKeins(w["werk_user"]))
 	case w["ssh_passwort"] != "enabled":
 		h.Fall, h.Grund = faelle.NichtNachweisbar, fmt.Sprintf("Die Anmeldung mit Passwort ist %q, ab Werk ist sie an.", w["ssh_passwort"])
-	case w["docker_aktiv"] == "active" || w["docker_laeuft"] == "ja":
-		h.Was, h.Fall, h.Grund = DockerAus, faelle.PFCDockerAn, "Auf dem Gerät läuft Docker ("+w["docker_install"]+", "+w["docker_aktiv"]+"). Der Dienst beendet keine fremden Container; mit Docker stimmen Weiterleitung und Firewall des Geräts nicht."
 	}
 	if h.Grund != "" {
 		return b, h
@@ -284,6 +282,72 @@ func (l *Lauf) erkennenHalbImLan(ctx context.Context, _ *lauf.Kontext) (protokol
 			Grund: "Im Anlagennetz steht ein eingerichteter PFC200; der Dienst lässt ihn nicht zurücksetzen: " + nein + "."}
 	}
 	return b.Mit("zuruecksetzen", "ja"), lauf.Handgriff{Was: Werksreset, Fall: faelle.PFCPasswort, Grund: halbGrund(sp)}
+}
+
+// ---- Docker ausschalten ------------------------------------------------------------
+
+// befehlDockerStand liest den Docker-Stand, wie schon in erkennen; hier ohne
+// Nebenwirkung, vor und nach dem Ausschalten.
+const befehlDockerStand = `T=` + Werkzeuge + `
+echo "docker_install=$($T/get_docker_config install-status 2>/dev/null)"
+echo "docker_aktiv=$($T/get_docker_config activation-status 2>/dev/null)"
+echo "docker_laeuft=$(if pidof dockerd >/dev/null 2>&1; then echo ja; else echo nein; fi)"`
+
+// befehlDockerContainer listet die Container (Name, Abbild, Stand), nur zum
+// Beleg vor dem Ausschalten; der Dienst beendet und ändert keinen von ihnen.
+const befehlDockerContainer = "command -v docker >/dev/null 2>&1 && docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' 2>/dev/null"
+
+// dockerAusschalten ist der erste Schritt, der das Gerät ändern darf: Läuft
+// Docker, schaltet der Dienst ihn mit dem Werkzeug der Firmware aus (dem
+// WBM-Äquivalent unter „Docker“), bevor ein späterer Schritt sich auf
+// Weiterleitung und Firewall verlässt. Fremde Container, Abbilder und
+// Datenträger fasst er dabei nie an: kein Beenden, kein Löschen, keine
+// Deinstallation von Docker selbst. Läuft kein Docker, ändert sich nichts.
+func (l *Lauf) dockerAusschalten(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
+	b := protokoll.Beleg{}
+	w, err := l.werte(ctx, befehlDockerStand)
+	if err != nil {
+		return b, err
+	}
+	b = b.Mit("docker_vorher", w["docker_install"]+", "+w["docker_aktiv"]+", Dienst läuft: "+w["docker_laeuft"])
+	if w["docker_aktiv"] != "active" && w["docker_laeuft"] != "ja" {
+		return b.Mit("docker", "schon aus, nichts geändert"), nil
+	}
+	erg, err := l.fuehre(ctx, befehlDockerContainer, "")
+	if err != nil {
+		return b, err
+	}
+	container := dockerContainerBeleg(erg.Aus)
+	b = b.Mit("container_vorher", container)
+
+	if _, err := l.fuehre(ctx, Werkzeuge+"/config_docker remove", ""); err != nil {
+		return b, lauf.Handgriff{Was: DockerAus, Fall: faelle.PFCDockerAn, Grund: "Docker ließ sich nicht ausschalten: " + err.Error()}
+	}
+	w, err = l.werte(ctx, befehlDockerStand)
+	if err != nil {
+		return b, err
+	}
+	b = b.Mit("docker_nachher", w["docker_install"]+", "+w["docker_aktiv"]+", Dienst läuft: "+w["docker_laeuft"])
+	if w["docker_aktiv"] == "active" || w["docker_laeuft"] == "ja" {
+		return b, lauf.Handgriff{Was: DockerAus, Fall: faelle.PFCDockerAn,
+			Grund: "Docker ist nach dem Ausschalten weiter " + w["docker_aktiv"] + " (Dienst läuft: " + w["docker_laeuft"] + ")"}
+	}
+	return b.Mit("docker", "ausgeschaltet ("+Werkzeuge+"/config_docker remove), Container unverändert stehen gelassen: "+container), nil
+}
+
+// dockerContainerBeleg macht aus der Ausgabe von docker ps eine Zeile für den
+// Beleg; "keine" wenn die Attrappe/das Gerät keinen Container nennt.
+func dockerContainerBeleg(roh string) string {
+	var zeilen []string
+	for _, z := range strings.Split(strings.TrimSpace(roh), "\n") {
+		if z = strings.TrimSpace(z); z != "" {
+			zeilen = append(zeilen, strings.Join(strings.Split(z, "\t"), " | "))
+		}
+	}
+	if len(zeilen) == 0 {
+		return "keine"
+	}
+	return strings.Join(zeilen, "; ")
 }
 
 // ---- Fassungen ---------------------------------------------------------------------

@@ -67,8 +67,9 @@ const (
 	// dem Schritt netze wäre das Gerät an X1 nicht mehr erreichbar. Der
 	// Dienst wartet, bis das Kabel in X2 steckt.
 	PFCKabelX1 = "pfc_kabel_x1"
-	// PFCDockerAn: Auf dem Gerät läuft Docker. Der Dienst beendet keine
-	// fremden Container und richtet das Gerät so nicht ein.
+	// PFCDockerAn: Der Dienst konnte Docker nicht selbst ausschalten (Schritt
+	// docker). Fremde Container, Abbilder und Datenträger fasst er dabei nie
+	// an; das Ausschalten von Hand ist der Fallback dieses Falls.
 	PFCDockerAn          = "pfc_docker_an"
 	PFCFalschesGeraet    = "pfc_falsches_geraet"
 	PFCSchonEingerichtet = "pfc_schon_eingerichtet"
@@ -142,7 +143,7 @@ var tabellePFC200 = map[string]Loesung{
 	PFCPasswort:          {Titel: "Dieser PFC200 ist nur halb eingerichtet.", Schritte: []string{pfcWerk, pfcWerkFolge, pfcStop, pfcResetLang, pfcRun, pfcAdresse}, Selbst: true},
 	PFCSchalterStop:      {Titel: "Der Betriebsartenschalter steht auf STOP.", Schritte: []string{pfcRun, "Sonst nichts tun: Der Dienst macht von selbst weiter."}, Selbst: true},
 	PFCKabelX1:           {Titel: "Das orange Kabel steckt nicht in der Buchse X2.", Schritte: []string{"Das orange Kabel WERKSTATT in die Buchse X2 des PFC200 stecken. Die Buchse X1 bleibt leer.", "Sonst nichts tun: Der Dienst macht von selbst weiter."}, Selbst: true},
-	PFCDockerAn:          {Titel: "Auf diesem PFC200 läuft Docker.", Schritte: []string{"Der Dienst beendet keine fremden Container. In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten, wenn die Container nicht gebraucht werden.", pfcKurzAb + " Der Dienst fängt neu an."}, Selbst: true},
+	PFCDockerAn:          {Titel: "Docker ließ sich auf diesem PFC200 nicht automatisch ausschalten.", Schritte: []string{"In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten. Fremde Container bleiben dabei stehen.", pfcKurzAb + " Der Dienst fängt neu an."}, Selbst: true},
 	PFCFalschesGeraet:    {Titel: "Das ist kein PFC200 750-8212.", Schritte: []string{zurSeite}, ZurSeite: true},
 	PFCSchonEingerichtet: {Titel: "Auf diesem PFC200 ist schon Edge Industrie.", Schritte: []string{"Nicht zurücksetzen.", zurSeite}, ZurSeite: true},
 	PFCNotfallSchluessel: {Titel: "Der Notfall-Schlüssel passt nicht zum PFC200.", Schritte: []string{"Der PFC200 ist noch unverändert. " + zurSeite, "Die Technik hinterlegt einen Notfall-Schlüssel der Art RSA oder ECDSA: Ed25519 nimmt der PFC200 nicht."}, ZurSeite: true},

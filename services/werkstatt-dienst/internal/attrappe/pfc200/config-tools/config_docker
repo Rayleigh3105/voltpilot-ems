@@ -1,0 +1,21 @@
+#!/bin/sh
+# config_docker activate|remove - wie das WBM es im Hintergrund ruft (Docker >
+# Aktivieren/Deaktivieren). "remove" ist der Gegenpart zu "activate": Docker
+# aus, dockerd endet; Container, Abbilder und Datenträger bleiben unberührt.
+. "$(dirname "$0")/attrappe.sh"
+case "${1:-}" in
+  activate)
+    setze docker/aktiv active
+    setze docker/laeuft 1
+    ;;
+  remove)
+    if [ "$(lies docker/scheitert '')" = "1" ]; then
+      merke "$*"
+      falsch "Docker deaktivieren fehlgeschlagen (Attrappe)"
+    fi
+    setze docker/aktiv inactive
+    rm -f "$Z/docker/laeuft"
+    ;;
+  *) falsch "Invalid parameter (${1:-})" ;;
+esac
+merke "$*"
