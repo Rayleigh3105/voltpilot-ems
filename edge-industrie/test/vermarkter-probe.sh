@@ -5,6 +5,11 @@
 # Umleitung 502 -> 1502 NUR am Tunnel und die Sicherheit des Anschlusses.
 #
 #   PS-D14  Darf der Helfer nur das Eine? (ohne root, fremder Pfad, Zusatz)
+#   Sicher scheitern: laden die Firewall-Regeln nicht, kommt der Tunnel
+#           nicht hoch (und faellt, wenn er lief)
+#   script-security am Build erkannt: 0 auf einem Netlink-Build (die
+#           Vorgabe, Konzept §8), 1 nur auf einem iproute2-Build wie dem
+#           dieser Probe; ein iproute2-Build mit Stufe 0 scheitert sichtbar
 #   PS-D11  Tunnel oben, nur der eine Port offen
 #   PS-D12  Umleitung (502 -> 1512) traegt nur am Tunnel; 502 an der
 #           "X1/X2"-Seite bleibt bei der SPS, :1502 beim Datenspiegel; der
@@ -146,12 +151,50 @@ status_hat "zugang=fehlt" || fail "status ohne Zugang"
 box ip link show tun-vermarkter >/dev/null 2>&1 && fail "Tunnel ohne Zugang"
 
 echo "==> Zugang zustellen (wie die Cloud-Zustellung: Dateien unter /home/voltpilot/vermarkter)"
+# Davor zwei Masken fuer die Negativ-Pfade: iptables-restore scheitert, und
+# die Build-Erkennung sieht einen Netlink-Build (enable_iproute2=no) wie auf
+# der WAGO-Firmware. /usr/local/sbin liegt im PATH vor /sbin.
+box mkdir -p /usr/local/sbin
+box sh -c 'printf "#!/bin/sh\nexit 1\n" >/usr/local/sbin/iptables-restore && chmod 755 /usr/local/sbin/iptables-restore'
+box sh -c 'printf "#!/bin/sh\nif [ \"\$1\" = \"--version\" ]; then echo \"OpenVPN 2.5.11 arm-wago\"; echo \"Compile time defines: enable_iproute2='no'\"; exit 0; fi\nexec /usr/sbin/openvpn \"\$@\"\n" >/usr/local/sbin/openvpn && chmod 755 /usr/local/sbin/openvpn'
 box sh -c 'mkdir -p /home/voltpilot/vermarkter/zugang'
 docker cp "$PKI/ca.pem" "$BOX:/home/voltpilot/vermarkter/zugang/ca.pem"
 docker cp "$PKI/client.pem" "$BOX:/home/voltpilot/vermarkter/zugang/zertifikat.pem"
 docker cp "$PKI/client.key" "$BOX:/home/voltpilot/vermarkter/zugang/schluessel.pem"
 box sh -c "printf '%s 1194 udp\n' '$PARTNER' >/home/voltpilot/vermarkter/zugang/gegenstelle"
 box sh -c 'echo luox >/home/voltpilot/vermarkter/partner'
+
+echo "==> Sicher scheitern: iptables-restore schlaegt fehl - der Tunnel kommt NICHT hoch"
+for i in $(seq 1 30); do
+  box test -f /etc/openvpn/vp-vermarkter.conf && break
+  [ "$i" = 30 ] && fail "Konfiguration wurde nicht geschrieben"
+  sleep 1
+done
+sleep 22   # mindestens zwei weitere Waechter-Takte
+status_hat "umleitung=fehlt" || fail "sicher scheitern: Umleitung gilt als da"
+status_hat "tunnel=unten" || fail "sicher scheitern: Tunnel kam trotz fehlender Regeln hoch"
+status_hat "openvpn=steht" || fail "sicher scheitern: OpenVPN laeuft trotz fehlender Regeln"
+echo "    OK: ohne Regeln kein Tunnel"
+
+echo "==> Build-Erkennung: der (vorgetaeuschte) Netlink-Build bekommt script-security 0 (Konzept §8)"
+box grep -q "script-security 0" /etc/openvpn/vp-vermarkter.conf \
+  || fail "Netlink-Build: script-security 0 fehlt in der Konfiguration"
+echo "    OK: script-security 0 auf dem Netlink-Build"
+
+echo "==> Falsche Stufe scheitert sichtbar: Regeln wieder ladbar, aber der echte iproute2-Build mit Stufe 0 bringt keinen Tunnel"
+box rm -f /usr/local/sbin/iptables-restore
+for i in $(seq 1 30); do
+  status_hat "umleitung=da" && break
+  [ "$i" = 30 ] && fail "Regeln kamen nach dem Demaskieren nicht"
+  sleep 1
+done
+sleep 22
+adresse_da="$(box sh -c "ip -4 addr show tun-vermarkter 2>/dev/null | grep -c inet" || true)"
+[ "${adresse_da:-0}" = "0" ] || fail "iproute2-Build mit Stufe 0 bekam trotzdem eine Tunnel-Adresse"
+echo "    OK: Stufe 0 auf dem iproute2-Build scheitert sichtbar (keine Tunnel-Adresse)"
+
+echo "==> Maske weg: die Build-Erkennung sieht wieder iproute2, der Waechter schreibt Stufe 1 neu und der Tunnel kommt"
+box rm -f /usr/local/sbin/openvpn
 
 echo "==> PS-D11: der Waechter nimmt den Zugang, der Tunnel kommt"
 for i in $(seq 1 30); do
@@ -241,7 +284,7 @@ urllib.request.urlopen(urllib.request.Request(os.environ["VP_URL"], data=body,
     method="POST", headers={"Content-Type": "application/json"}), timeout=5).read()
 PY
 sidecar_json "http://${PARTNER}:8081/status" "d['gelesen'].get('nvp_einspeisung_w') == 2350" \
-  "luox liest durch den Tunnel die Messung (502 -> 1502)" 30
+  "luox liest durch den Tunnel die Messung (502 -> 1512)" 30
 
 echo "==> PS-D13-Vorstufe: Vorgabe 30 % kommt an und wird wirksame Grenze (den Koppelbild-Wunsch mit Grund vertrag belegt der Go-Test internal/layer1 TestVermarkterBegrenztUeberDasKoppelbild)"
 docker exec -i -e VP_URL="http://${PARTNER}:8081/vorgabe" "$PROBE" python3 - <<'PY'
