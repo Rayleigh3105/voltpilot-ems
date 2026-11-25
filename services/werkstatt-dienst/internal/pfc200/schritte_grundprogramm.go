@@ -22,6 +22,13 @@ import (
 // Koppelprobe bleiben SPS-Programmierung nach dem Lauf (Abschnitt 6.7 im
 // Konzept vp-pfc200-edge-konzept), nicht Werkstatt.
 //
+// Trägt die Freigabe kein Grundprogramm, übergeht sich der Schritt sichtbar
+// (Beleg „übersprungen“, nichts am Gerät geändert) und prüft dafür auch
+// nicht erst die Firmware: Das hält jeden PFC200-Lauf benutzbar, solange noch
+// keine Fassung ein Grundprogramm trägt (Stand 25.11.2026: noch keine). Die
+// Prüfung der Firmware und alle Handgriffe unten gelten erst, sobald die
+// Freigabe eines trägt.
+//
 // Belegt: WAGO/pfc-firmware-sdk-G2, Tag FW24-V04.02.13,
 // ptxproj/projectroot/etc/init.d/runtime - prepare_home_dir() legt /home/codesys
 // als Verweis auf /home/codesys_root an (oder auf /media/sd, wenn
@@ -117,6 +124,15 @@ exec ` + codesysLaufzeitDienst + ` start`
 
 func (l *Lauf) grundprogrammEinspielen(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
 	b := protokoll.Beleg{}.Mit("firmware", orKeins(l.firmware))
+
+	// Übergehen statt Handgriff, siehe Paketkommentar oben.
+	soll := l.freigabe.EdgeIndustrie.GrundprogrammSha256
+	if soll == "" {
+		text := "Diese Freigabe trägt kein Grundprogramm - übersprungen"
+		l.belege["grundprogramm"] = "Schritt grundprogramm: " + text + ". Am Gerät ist nichts geändert."
+		return b.Mit("grundprogramm", text), nil
+	}
+
 	haupt, ok := firmwareHauptlinie(l.firmware)
 	if !ok || haupt < CodesysMindestlinie {
 		return b, lauf.Handgriff{Was: ZurSeite, Fall: faelle.PFCFirmwareAlt,
@@ -124,11 +140,6 @@ func (l *Lauf) grundprogrammEinspielen(ctx context.Context, _ *lauf.Kontext) (pr
 				orKeins(l.firmware), CodesysMindestlinie, CodesysMindestlinie)}
 	}
 
-	soll := l.freigabe.EdgeIndustrie.GrundprogrammSha256
-	if soll == "" {
-		return b, lauf.Handgriff{Was: ZurSeite, Fall: faelle.PFCKeinGrundprogramm,
-			Grund: "Die Fassung " + l.freigabe.EdgeIndustrie.Fassung + " trägt kein Grundprogramm (kein grundprogramm_sha256 in der Freigabe). Am Gerät ist nichts geändert."}
-	}
 	if l.pfadGrundprogramm == "" {
 		return b, errors.New("Grundprogramm im Zwischenspeicher fehlt, obwohl die Freigabe eine Prüfsumme nennt (Schritt fassungen)")
 	}

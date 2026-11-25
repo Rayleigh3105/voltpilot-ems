@@ -80,7 +80,7 @@ export const SCHRITT_TEXT_PFC200: Record<string, { titel: string; tut: string }>
   notfall: { titel: 'Notfall-Schlüssel', tut: 'Legt genau einen Notfall-Schlüssel der Technik auf das Gerät.' },
   grundprogramm: {
     titel: 'Grundprogramm einspielen',
-    tut: 'Spielt die Boot-Applikation des Basisprojekts auf die SPS (nur Firmware 04.xx oder neuer) und startet die CODESYS-Laufzeit neu. Kein Anlagenprogramm, keine Koppelprobe.',
+    tut: 'Spielt die Boot-Applikation des Basisprojekts auf die SPS (nur Firmware 04.xx oder neuer) und startet die CODESYS-Laufzeit neu. Kein Anlagenprogramm, keine Koppelprobe. Trägt die Fassung keines, wird der Schritt übersprungen.',
   },
   programm: {
     titel: `${EDGE_INDUSTRIE} einspielen`,

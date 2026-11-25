@@ -139,7 +139,8 @@ Antwortet am Kabel niemand, zeigt die Ansicht des Dienstes den Handgriff „fest
 Den Werksreset nennt der Dienst nie für ein fremdes Gerät; er löscht das SPS-Programm.
 
 **Was der Lauf tut und nicht tut.**
-Ein Schritt (`grundprogramm`, nur Firmware 04.xx oder neuer) spielt die Boot-Applikation des Basisprojekts auf die SPS und lädt sie; er überschreibt nie eine schon vorhandene, andere Boot-Applikation, und trägt die Fassung kein Grundprogramm, hält er mit einem Handgriff an.
+Ein Schritt (`grundprogramm`) spielt die Boot-Applikation des Basisprojekts auf die SPS und lädt sie, nur Firmware 04.xx oder neuer; er überschreibt nie eine schon vorhandene, andere Boot-Applikation.
+Trägt die Freigabe kein Grundprogramm - heute immer, solange keine Fassung eines trägt -, übergeht sich der Schritt sichtbar (Beleg „übersprungen“), kein Handgriff, keine Prüfung der Firmware: Ohne das bliebe jeder PFC200-Lauf an diesem Schritt stehen.
 Kein Schritt für das Anlagenprogramm: keine Koppelprobe, keine Änderung an Einstellungen oder Modbus-Server der Laufzeit über das Grundprogramm hinaus.
 Die Firmware prüft er nur auf ihre Hauptlinie (für den Schritt `grundprogramm`) und ändert sie nie; ihr voller Stand steht als Angabe im Beleg und an der Abnahme.
 Fremde Container beendet er nicht.
