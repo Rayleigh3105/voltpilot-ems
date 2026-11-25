@@ -40,6 +40,32 @@
   font-size: 0.9rem;
 }
 
+.vp-dv-textknopf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: var(--vp-space-2) 0;
+  color: var(--vp-link, #2c5282);
+  font-size: 0.9rem;
+  cursor: pointer;
+  align-self: center;
+}
+
+.vp-dv-vertraglink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 10px);
+  color: var(--vp-link, #2c5282);
+  text-decoration: none;
+  font-weight: 600;
+}
+
 .vp-dv-partnerliste {
   list-style: none;
   margin: var(--vp-space-3) 0;
@@ -117,8 +143,19 @@
 
 .vp-dv-zustimmzeile {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--vp-space-3);
+  cursor: pointer;
+}
+
+/* Muster `.vp-ein-cb` (Einrichten.css): dieselbe Kontrollgröße und Markenfarbe wie jede andere
+   Zustimmungs-Checkbox des Portals - eine zweite, unmarkierte Browser-Checkbox wäre ein Bruch. */
+.vp-dv-zustimmzeile input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--vp-action, #2c5282);
 }
 
 .vp-dv-fussreihe {
@@ -203,12 +240,14 @@
   background: var(--vp-mint-start, #eaf7ee);
 }
 
+/* Neutraler Platzhalter statt einer Partnerfarbe, solange es kein Partnerlogo gibt (Firstmate-Hinweis: Rot
+   liest sich wie ein Fehler) - dieselbe neutrale Fläche wie jeder unbestätigte Knoten. */
 .vp-dv-kreis.vp-dv-partner {
   font-weight: 700;
   font-size: 0.78rem;
-  color: var(--vp-industry-end, #b91c1c);
-  background: #fdecea;
-  border-color: color-mix(in srgb, var(--vp-industry-end, #b91c1c) 35%, transparent);
+  color: var(--vp-text-dark, #1a202c);
+  background: var(--vp-bg-light, #eef1f5);
+  border-color: var(--vp-border, #cbd5e1);
 }
 
 .vp-dv-kreis.is-warnung {

@@ -79,39 +79,64 @@ function Verbindungsbild({ partnerKuerzel, anlageBox, boxPartner, partnerWarnung
   );
 }
 
-type Schritt = 'waehlen' | 'vertrag';
+/** "Was ist Direktvermarktung?" (Bildschirm 3) - reine Information, auf Wunsch, keine Box-Daten. */
+function InfoModal({ partner, onClose }: { partner: DirektvermarktungPartner | null; onClose: () => void }) {
+  return (
+    <Modal open onClose={onClose} blatt title="Was ist Direktvermarktung?">
+      <div className="vp-dv-schritt">
+        <p>Ein Direktvermarkter wie {partner?.name ?? 'Ihr Direktvermarkter'} verkauft Ihren Strom an der Börse und
+          darf die Einspeisung dafür begrenzen. Dafür bekommen Sie den Börsenpreis und eine Marktprämie statt der
+          festen Einspeisevergütung.</p>
+        <p>Ohne Fernsteuerung droht eine Zahlung an den Netzbetreiber (EEG § 52).</p>
+        {partner?.vertragLink && (
+          <a href={partner.vertragLink} target="_blank" rel="noopener noreferrer">
+            Erlös bei {partner.name} berechnen
+          </a>
+        )}
+        <Button onClick={onClose} fullWidth>Verstanden</Button>
+      </div>
+    </Modal>
+  );
+}
 
-/** Der Einrichtungs-Assistent (Blätter/Modal, §7.3 "Aufgaben"): wählen, dann Zustimmen. */
+type Schritt = 'waehlen' | 'vertragsfrage' | 'kein_vertrag' | 'zustimmen';
+
+const SCHRITT_NR: Record<Schritt, number> = { waehlen: 1, vertragsfrage: 2, kein_vertrag: 2, zustimmen: 3 };
+const ZURUECK_ZIEL: Partial<Record<Schritt, Schritt>> = { vertragsfrage: 'waehlen', kein_vertrag: 'vertragsfrage',
+  zustimmen: 'vertragsfrage' };
+
+/**
+ * Der Einrichtungs-Assistent (Blätter/Modal, §7.3 "Aufgaben", §6 Schritte 1-2): wählen (ruft `waehlen`, sobald
+ * der Partner feststeht), Vertragsfrage (reine Information - der Partnerlink gehört hier sichtbar hinein, nicht
+ * nur als kleine Zeile, Captain-Wunsch), dann Zustimmen (ruft `zustimmen`).
+ *
+ * Wer mit einem bestehenden Entwurf zurückkommt (Bildschirm-Fortschritt, §7.3), startet bei der Vertragsfrage -
+ * `waehlen` ist schon geschehen, kein zweiter Aufruf.
+ */
 function EinrichtenModal({ site, status, onClose, onFertig }: {
   site: Site;
   status: DirektvermarktungStatus;
   onClose: () => void;
   onFertig: (status: DirektvermarktungStatus) => void;
 }) {
-  const [schritt, setSchritt] = useState<Schritt>('waehlen');
-  const [partner, setPartner] = useState<string>(status.katalog[0]?.partner ?? '');
+  const schonGewaehlt = status.aktuell != null;
+  const [schritt, setSchritt] = useState<Schritt>(schonGewaehlt ? 'vertragsfrage' : 'waehlen');
+  const [partner, setPartner] = useState<string>(status.aktuell?.partner ?? status.katalog[0]?.partner ?? '');
   const [einVerstanden, setEinVerstanden] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
-  const gewaehlt = status.katalog.find((p) => p.partner === partner) ?? null;
-  const schrittNr = schritt === 'waehlen' ? 1 : 3;
+  const gewaehlt = status.partner ?? status.katalog.find((p) => p.partner === partner) ?? null;
 
-  const weiterZuVertrag = () => {
+  const waehlen = async () => {
     if (!partner) {
       setFehler('Bitte einen Direktvermarkter wählen.');
       return;
     }
-    setFehler(null);
-    setSchritt('vertrag');
-  };
-
-  const waehlenUndZustimmen = async () => {
     setBusy(true);
     setFehler(null);
     try {
       await api.direktvermarktungWaehlen(site.id, partner);
-      const neu = await api.direktvermarktungZustimmen(site.id, ZUSTIMMUNG_TEXTFASSUNG_1);
-      onFertig(neu);
+      setSchritt('vertragsfrage');
     } catch (e) {
       setFehler(e instanceof ApiError ? e.message : 'Das hat leider nicht geklappt. Bitte erneut versuchen.');
     } finally {
@@ -119,14 +144,28 @@ function EinrichtenModal({ site, status, onClose, onFertig }: {
     }
   };
 
+  const zustimmen = async () => {
+    setBusy(true);
+    setFehler(null);
+    try {
+      onFertig(await api.direktvermarktungZustimmen(site.id, ZUSTIMMUNG_TEXTFASSUNG_1));
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Das hat leider nicht geklappt. Bitte erneut versuchen.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const zurueckZiel = ZURUECK_ZIEL[schritt];
+
   return (
     <Modal open onClose={onClose} blatt
-      icon={schritt === 'vertrag' ? (
-        <button type="button" className="vp-dv-zurueck" aria-label="Zurück" onClick={() => setSchritt('waehlen')}>
+      icon={zurueckZiel ? (
+        <button type="button" className="vp-dv-zurueck" aria-label="Zurück" onClick={() => setSchritt(zurueckZiel)}>
           <Icon name="chevron-left" size={18} />
         </button>
       ) : undefined}
-      title={<span className="vp-dv-blatttitel">Direktvermarkter<small>{schrittNr} von 4</small></span>}>
+      title={<span className="vp-dv-blatttitel">Direktvermarkter<small>{SCHRITT_NR[schritt]} von 4</small></span>}>
       {schritt === 'waehlen' && (
         <div className="vp-dv-schritt">
           <h3>Wer vermarktet Ihren Strom?</h3>
@@ -158,16 +197,41 @@ function EinrichtenModal({ site, status, onClose, onFertig }: {
             </li>
             {status.katalog.length === 0 && <li className="vp-dv-hinweis">Noch kein Direktvermarkter hinterlegt.</li>}
           </ul>
-          {gewaehlt?.vertragLink && (
-            <a href={gewaehlt.vertragLink} target="_blank" rel="noopener noreferrer">
-              Noch kein Vertrag? Erlös bei {gewaehlt.name} berechnen
-            </a>
-          )}
           {fehler && <p className="vp-alert vp-alert-info">{fehler}</p>}
-          <Button onClick={weiterZuVertrag} fullWidth>Weiter mit {gewaehlt?.partner ?? 'Direktvermarkter'}</Button>
+          <Button onClick={() => void waehlen()} disabled={busy} fullWidth>
+            {busy ? 'Einen Moment …' : `Weiter mit ${gewaehlt?.partner ?? 'Direktvermarkter'}`}
+          </Button>
         </div>
       )}
-      {schritt === 'vertrag' && (
+      {schritt === 'vertragsfrage' && (
+        <div className="vp-dv-schritt">
+          <h3>Haben Sie schon einen Vertrag mit {gewaehlt?.name}?</h3>
+          {gewaehlt?.vertragLink && (
+            <a className="vp-dv-vertraglink" href={gewaehlt.vertragLink} target="_blank" rel="noopener noreferrer">
+              <Icon name="link" size={16} /> Erlös bei {gewaehlt.name} berechnen
+            </a>
+          )}
+          {fehler && <p className="vp-alert vp-alert-err">{fehler}</p>}
+          <Button onClick={() => setSchritt('zustimmen')} fullWidth>Ja, Vertrag ist da</Button>
+          <button type="button" className="vp-dv-textknopf" onClick={() => setSchritt('kein_vertrag')}>
+            Noch nicht
+          </button>
+        </div>
+      )}
+      {schritt === 'kein_vertrag' && (
+        <div className="vp-dv-schritt">
+          <h3>Noch kein Vertrag</h3>
+          <p>Schließen Sie den Vertrag mit {gewaehlt?.name} ab, dann geht es hier weiter. Wir merken uns
+            {gewaehlt ? ` ${gewaehlt.name}` : ' Ihre Wahl'}.</p>
+          {gewaehlt?.vertragLink && (
+            <Button onClick={() => window.open(gewaehlt.vertragLink!, '_blank', 'noopener')} fullWidth>
+              Erlös bei {gewaehlt.name} berechnen
+            </Button>
+          )}
+          <Button variant="outline" onClick={onClose} fullWidth>Später weitermachen</Button>
+        </div>
+      )}
+      {schritt === 'zustimmen' && (
         <div className="vp-dv-schritt">
           <h3>Das darf {gewaehlt?.name} an Ihrer Anlage</h3>
           <ul className="vp-dv-zustimmliste">
@@ -187,7 +251,7 @@ function EinrichtenModal({ site, status, onClose, onFertig }: {
             <span>Ich stimme dem Datenaustausch mit {gewaehlt?.name} zu.</span>
           </label>
           {fehler && <p className="vp-alert vp-alert-err">{fehler}</p>}
-          <Button onClick={() => void waehlenUndZustimmen()} disabled={busy || !einVerstanden} fullWidth>
+          <Button onClick={() => void zustimmen()} disabled={busy || !einVerstanden} fullWidth>
             {busy ? 'Einen Moment …' : 'Zustimmen'}
           </Button>
           <p className="vp-dv-fussnotiz">Jederzeit beendbar</p>
@@ -264,6 +328,7 @@ export function DirektvermarktungSection({ site }: { site: Site }) {
   const [status, setStatus] = useState<DirektvermarktungStatus | null>(null);
   const [fehler, setFehler] = useState(false);
   const [assistentOffen, setAssistentOffen] = useState(false);
+  const [infoOffen, setInfoOffen] = useState(false);
   const [beendenOffen, setBeendenOffen] = useState(false);
   const [jetzt, setJetzt] = useState(() => new Date());
 
@@ -327,6 +392,9 @@ export function DirektvermarktungSection({ site }: { site: Site }) {
           <p>Ein Direktvermarkter liest Ihre Erzeugung und darf sie begrenzen; dafür bekommen Sie den Börsenpreis
             und eine Marktprämie statt der festen Einspeisevergütung.</p>
           <Button onClick={() => setAssistentOffen(true)}>Direktvermarkter wählen</Button>
+          <button type="button" className="vp-dv-textknopf" onClick={() => setInfoOffen(true)}>
+            <Icon name="info" size={15} /> Was ist Direktvermarktung?
+          </button>
         </Card>
       )}
 
@@ -434,6 +502,9 @@ export function DirektvermarktungSection({ site }: { site: Site }) {
         </Card>
       )}
 
+      {infoOffen && (
+        <InfoModal partner={status.katalog[0] ?? null} onClose={() => setInfoOffen(false)} />
+      )}
       {assistentOffen && (
         <EinrichtenModal
           site={site}

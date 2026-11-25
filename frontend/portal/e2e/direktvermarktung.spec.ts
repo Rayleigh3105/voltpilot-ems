@@ -34,6 +34,12 @@ function vorSekunden(s: number): string {
 
 function mitEintrag(zustand: DirektvermarktungZustand, ende: string | null = null,
     stand: Partial<DirektvermarktungStandDaten> | null = null): DirektvermarktungStatus {
+  // Physikalisch widerspruchsfrei (Firstmate-Hinweis, Board-Runde pr2000-bilder): die Einspeisung folgt der
+  // Vorgabe - bei 0 % geht nichts mehr ins Netz, die Erzeugung bleibt (Speicher/Eigenverbrauch nehmen sie auf;
+  // dieser Zwilling kennt nur die zwei Pfade Haus/Netz, siehe wohinDerStromGeht()).
+  const vorgabePct = stand?.vorgabePct ?? 100;
+  const erzeugungW = stand?.erzeugungW ?? 14100;
+  const einspeisungW = stand?.einspeisungW ?? Math.round(erzeugungW * (vorgabePct / 100));
   return {
     aktuell: {
       id: 'e-1', partner: 'luox', zustand, zustimmungAm: vorSekunden(500000), zustimmungVon: 'kunde',
@@ -43,9 +49,8 @@ function mitEintrag(zustand: DirektvermarktungZustand, ende: string | null = nul
     stand: stand === null ? null : {
       tunnelObenSeit: vorSekunden(300), handshakeAm: vorSekunden(10), gegenstelle: '10.44.0.1',
       letzteAbfrageAm: vorSekunden(12), abfragenJeMinute: 4, letzteSchreibungAm: vorSekunden(240),
-      vorgabePct: 100, lebenszeichenAm: vorSekunden(12), einspeisungW: 12345, erzeugungW: 14100,
-      netzbetreiberPct: 100, referenzW: 85000,
-      ...stand,
+      lebenszeichenAm: vorSekunden(12), netzbetreiberPct: 100, referenzW: 85000,
+      ...stand, vorgabePct, erzeugungW, einspeisungW,
     },
     verlaufKurz: [], katalog: KATALOG, darf: true,
   };
@@ -90,6 +95,11 @@ test.describe('Direktvermarktung: der Kunde kommt allein durch (PS-D18)', () => 
       await expect(page.getByText('Wer vermarktet Ihren Strom?')).toBeVisible();
       await page.getByText('luox energy', { exact: true }).click();
       await page.getByRole('button', { name: /Weiter mit/ }).click();
+
+      // Blatt: Vertragsfrage - der Partnerlink steht sichtbar im Weg (Captain-Wunsch).
+      await expect(page.getByRole('heading', { name: /Haben Sie schon einen Vertrag/ })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Erlös bei luox energy berechnen/ })).toBeVisible();
+      await page.getByRole('button', { name: 'Ja, Vertrag ist da' }).click();
 
       // Blatt: Zustimmen.
       await expect(page.getByText('Sehen, was Ihre Anlage einspeist')).toBeVisible();
