@@ -765,6 +765,48 @@ func TestKeinInternetHaeltVorDenZugaengenAn(t *testing.T) {
 	}
 }
 
+// Produktion lässt VP_WERKSTATT_PORTAL_URL leer und setzt VP_WERKSTATT_API_URL
+// auf die Portal-API im Cluster: konfig.Lies lässt PortalURL dann auf diese
+// Adresse zurückfallen (Fehlerbild kein_internet, 25.11.2026: Standardweg über
+// die Brücke stand, curl scheiterte mit "Could not resolve host:
+// api.voltpilot-prod.svc.cluster.local"). l.k.PortalURL ist genau diese
+// Adresse, über die der DIENST SELBST sein Vertrauens-Set lädt (hier der
+// Testserver srv, wie neu() ihn setzt - stünde in Produktion für die nur im
+// Cluster aufgelöste Portal-API). Das Gerät hinter der Werkbank-Brücke kann
+// so eine Adresse nie auflösen: Der Internet-Check und das dauerhaft
+// eingespielte portal_url müssen immer die öffentliche, vom Gerät aus
+// erreichbare Adresse verwenden (GeraetPortalURL, hier ihre Vorgabe), nie die
+// des Dienstes im Cluster.
+func TestInternetUndEingespieltesPortalSindNieDieClusterAdresseDesDienstes(t *testing.T) {
+	t.Parallel()
+	a := neu(t)
+	// a.k.PortalURL ist bereits srv.URL (neu()): die Adresse, über die der
+	// Dienst selbst das Vertrauens-Set lädt. a.k.GeraetPortalURL bleibt leer:
+	// Dann gilt für das Gerät die Vorgabe https://portal.voltpilot.de.
+	l, z := a.fahre(t, pfc200.AbWerk)
+	if z != lauf.Fertig {
+		t.Fatalf("Zustand %s im Schritt %s: %s", z, l.Stand().Schritt, l.Stand().Grund)
+	}
+	clusterAdresse := strings.TrimPrefix(strings.TrimPrefix(a.k.PortalURL, "https://"), "http://")
+	for _, c := range a.p.Befehle() {
+		if strings.Contains(c, clusterAdresse) {
+			t.Errorf("Befehl ans Gerät nennt die Adresse des Dienstes im Cluster (%s): %q", clusterAdresse, c)
+		}
+	}
+	var internetBefehl string
+	for _, c := range a.p.Befehle() {
+		if strings.Contains(c, "/api/v1/edge/trust-set/trust-set.json") {
+			internetBefehl = c
+		}
+	}
+	if !strings.Contains(internetBefehl, "https://portal.voltpilot.de/api/v1/edge/trust-set/trust-set.json") {
+		t.Fatalf("der Internet-Check zielt nicht auf das öffentliche Portal: %q", internetBefehl)
+	}
+	if konfig := a.p.Datei("/home/voltpilot/konfig"); !strings.Contains(konfig, "portal_url = https://portal.voltpilot.de") {
+		t.Fatalf("das eingespielte portal_url auf der Box: %q", konfig)
+	}
+}
+
 // Eine nicht signierte Fassung richtet der Dienst auf einem PFC200 gar nicht
 // erst ein: Der Lauf hält an, bevor sich am Gerät etwas ändert.
 func TestNichtSignierteFassungWirdNichtEingerichtet(t *testing.T) {

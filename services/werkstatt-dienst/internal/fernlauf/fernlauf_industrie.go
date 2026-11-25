@@ -405,10 +405,10 @@ func gesichertIndustrie(e string) bool {
 func (l *laufZustand) aufspielenIndustrie(ctx context.Context) (protokoll.Beleg, string, error) {
 	// Ab hier nimmt jeder Fehler die Sicherung zurück.
 	l.aufgespielt = true
-	env := []string{"VP_INDUSTRIE_MANIFEST=" + l.pfadManifest, "VP_TRUST_SET_DIR=" + l.dirVertrauen}
-	if l.k.PortalURL != "" {
-		env = append(env, "VP_PORTAL_URL="+l.k.PortalURL)
-	}
+	// VP_PORTAL_URL ist die vom Gerät aus erreichbare Adresse (geraetPortalURL),
+	// nie die Adresse des Dienstes im Cluster (l.k.PortalURL gilt nur für den
+	// Abruf des Vertrauens-Sets oben).
+	env := []string{"VP_INDUSTRIE_MANIFEST=" + l.pfadManifest, "VP_TRUST_SET_DIR=" + l.dirVertrauen, "VP_PORTAL_URL=" + l.k.geraetPortalURL()}
 	r, err := l.skriptIndustrie(ctx, "install.sh", nil, env...)
 	if err != nil {
 		return nil, "", err

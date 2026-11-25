@@ -159,6 +159,46 @@ func TestAPIQuelle(t *testing.T) {
 	}
 }
 
+// Produktion lässt VP_WERKSTATT_PORTAL_URL leer und setzt VP_WERKSTATT_API_URL
+// auf die Portal-API im Cluster (Fehlerbild kein_internet, 25.11.2026):
+// PortalURL fällt dann auf diese nur im Cluster aufgelöste Adresse zurück.
+// GeraetPortalURL - die Adresse, die ein Gerät hinter der Werkbank-Brücke
+// bekommt - darf diesem Fallback nie folgen.
+func TestGeraetPortalURLFaelltNieAufDenInClusterFallbackZurueck(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{DateiStatus, DateiWeiterleitung, DateiPflege} {
+		pem, _ := attrappe.SchluesselPEM(t)
+		_ = os.WriteFile(filepath.Join(dir, n), pem, 0o600)
+	}
+	pub := filepath.Join(dir, "notfall.pub")
+	_ = os.WriteFile(pub, ssh.MarshalAuthorizedKey(attrappe.Schluessel(t).PublicKey()), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, DateiClientSecret), []byte("dienst-secret-123\n"), 0o600)
+	env := map[string]string{"VP_WERKBANK_ADRESSE": "192.0.2.50", "VP_WERKSTATT_GEHEIM": dir, "VP_WERKSTATT_NOTFALL_PUB": pub,
+		"VP_WERKSTATT_API_URL":   "http://api.voltpilot-prod.svc.cluster.local:8090",
+		"VP_WERKSTATT_TOKEN_URL": "https://portal.example/auth/realms/voltpilot/protocol/openid-connect/token"}
+	k, err := Lies(umgebung(env), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Wie in Produktion: ohne eigene VP_WERKSTATT_PORTAL_URL fällt PortalURL
+	// auf die Adresse der Portal-API zurück - gilt nur für den Dienst selbst.
+	if k.PortalURL != "http://api.voltpilot-prod.svc.cluster.local:8090" {
+		t.Fatalf("PortalURL %q", k.PortalURL)
+	}
+	// GeraetPortalURL bleibt die Vorgabe, nie die Cluster-Adresse.
+	if k.GeraetPortalURL != GeraetPortalURLVorgabe {
+		t.Fatalf("GeraetPortalURL %q, erwartet die Vorgabe %q", k.GeraetPortalURL, GeraetPortalURLVorgabe)
+	}
+	env["VP_WERKSTATT_GERAET_PORTAL_URL"] = "https://portal.example/"
+	if k, err = Lies(umgebung(env), true); err != nil || k.GeraetPortalURL != "https://portal.example" {
+		t.Fatalf("%v %q", err, k.GeraetPortalURL)
+	}
+	env["VP_WERKSTATT_GERAET_PORTAL_URL"] = "portal.example"
+	if _, err = Lies(umgebung(env), true); err == nil || !strings.Contains(err.Error(), "VP_WERKSTATT_GERAET_PORTAL_URL") {
+		t.Fatalf("%v", err)
+	}
+}
+
 func TestTechnikerZugang(t *testing.T) {
 	dir := t.TempDir()
 	for _, n := range []string{DateiStatus, DateiWeiterleitung, DateiPflege} {

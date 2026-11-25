@@ -123,9 +123,18 @@ type Konfig struct {
 	WartungPub string       // öffentlicher Schlüssel des Wartungsservers (Portal)
 	WartungEP  string       // Name des Wartungsservers; leer: Vorgabe von wartung.sh
 	BoxNetz    netip.Prefix // Tunnel-Adressen der Boxen
-	// PortalURL ist das Portal: Dort lädt der Dienst das Vertrauens-Set, und
-	// dorthin prüft das Gerät seinen Weg ins Internet. Leer: das Standard-Portal.
+	// PortalURL ist das Portal, von dem der DIENST SELBST (im Cluster) das
+	// Vertrauens-Set laedt und die Signatur des Manifests prueft. Leer: das
+	// Standard-Portal. Kann eine nur im Cluster aufloesbare Adresse sein
+	// (Fallback auf die Portal-API) - das Gerät bekommt diese Adresse nie zu
+	// sehen, dafür gilt GeraetPortalURL.
 	PortalURL string
+	// GeraetPortalURL ist das Portal, wie das GERÄT hinter der Werkbank-Brücke
+	// es erreicht: der befristete Internet-Check (Zertifikat des Portals) und
+	// das dauerhaft eingespielte portal_url auf der Box. Leer: das
+	// Standard-Portal (https://portal.voltpilot.de), nie PortalURL oder sein
+	// In-Cluster-Fallback.
+	GeraetPortalURL string
 	// Portal ist der Dienst-Baum der API: Einmal-Code, Probe-Fenster der
 	// Einlösung, Abnahme mit Belegen. nil: Tunnel-Adresse als Eingabe, Probe
 	// und Abnahme im Portal von Hand.
@@ -194,12 +203,25 @@ func (k Konfig) jetzt() time.Time {
 	return time.Now()
 }
 
-// portalURL ist das Portal ohne Schrägstrich am Ende.
+// portalURL ist das Portal, von dem der Dienst selbst (im Cluster) lädt, ohne
+// Schrägstrich am Ende. Nie an das Gerät geben: siehe geraetPortalURL.
 func (k Konfig) portalURL() string {
 	if k.PortalURL == "" {
 		return "https://portal.voltpilot.de"
 	}
 	return strings.TrimRight(k.PortalURL, "/")
+}
+
+// geraetPortalURL ist das Portal, wie das Gerät hinter der Werkbank-Brücke es
+// erreicht, ohne Schrägstrich am Ende: der Internet-Check und das dauerhaft
+// eingespielte portal_url auf der Box. Fällt NIE auf PortalURL oder dessen
+// In-Cluster-Fallback zurück (das Gerät kann eine Cluster-interne Adresse nie
+// auflösen).
+func (k Konfig) geraetPortalURL() string {
+	if k.GeraetPortalURL == "" {
+		return "https://portal.voltpilot.de"
+	}
+	return strings.TrimRight(k.GeraetPortalURL, "/")
 }
 
 // Einstieg: wo das Gerät steht, wenn sein Lauf beginnt.

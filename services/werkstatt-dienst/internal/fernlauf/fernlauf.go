@@ -123,13 +123,30 @@ type Konfig struct {
 	// Oeffne baut den Tunnel; nil = wartung.Oeffne (Tests setzen eine Attrappe).
 	Oeffne    func(wartung.Zugang, wartung.Server) (wartung.Weg, error)
 	Fassungen *fassungen.Ablage
-	PortalURL string // Vertrauens-Set (/api/v1/edge/trust-set/…)
-	Bauart    string
-	Arbeit    string
-	Portal    Portal
-	Ablage    *protokoll.Ablage
-	Zeiten    Zeiten
-	Log       *slog.Logger
+	// PortalURL ist das Portal, von dem der DIENST SELBST (im Cluster) das
+	// Vertrauens-Set lädt (/api/v1/edge/trust-set/…); kann eine nur im Cluster
+	// aufgelöste Adresse sein. Nie an die Box geben: siehe GeraetPortalURL.
+	PortalURL string
+	// GeraetPortalURL ist das Portal, wie die BOX es erreicht (eingespieltes
+	// VP_PORTAL_URL/portal_url). Leer: das Standard-Portal
+	// (https://portal.voltpilot.de), nie PortalURL oder sein In-Cluster-Fallback.
+	GeraetPortalURL string
+	Bauart          string
+	Arbeit          string
+	Portal          Portal
+	Ablage          *protokoll.Ablage
+	Zeiten          Zeiten
+	Log             *slog.Logger
+}
+
+// geraetPortalURL ist das Portal, wie die Box hinter dem Wartungstunnel es
+// erreicht, ohne Schrägstrich am Ende. Fällt NIE auf PortalURL oder dessen
+// In-Cluster-Fallback zurück.
+func (k Konfig) geraetPortalURL() string {
+	if k.GeraetPortalURL == "" {
+		return "https://portal.voltpilot.de"
+	}
+	return strings.TrimRight(k.GeraetPortalURL, "/")
 }
 
 // Ansicht ist, was die Ansicht des Dienstes zum Fernlauf meldet
@@ -922,7 +939,7 @@ func (l *laufZustand) tunnelStatus(ctx context.Context) (string, error) {
 func (l *laufZustand) aufspielen(ctx context.Context) (protokoll.Beleg, string, error) {
 	// Ab hier nimmt jeder Fehler die Sicherung zurück.
 	l.aufgespielt = true
-	r, err := l.skript(ctx, "install.sh", nil, mango.InstallUmgebung(l.k.Bauart, l.pfadManifest, l.dirVertrauen, l.k.PortalURL)...)
+	r, err := l.skript(ctx, "install.sh", nil, mango.InstallUmgebung(l.k.Bauart, l.pfadManifest, l.dirVertrauen, l.k.geraetPortalURL())...)
 	if err != nil {
 		return nil, "", err
 	}
