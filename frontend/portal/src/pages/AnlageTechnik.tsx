@@ -50,7 +50,7 @@ import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { EinspeiseverguetungBlatt } from '../components/EinspeiseverguetungBlatt';
 import { angabeMoeglich, ruhtErklaerung, verguetungFolge, verguetungZeile } from '../einspeiseverguetung';
 import type { DirektvermarktungStatus } from '../direktvermarktung';
-import { anzeige as direktvermarktungAnzeige } from '../direktvermarktung';
+import { anzeige as direktvermarktungAnzeige, einstellungszeileDetail } from '../direktvermarktung';
 import { DangerZone } from '../components/DangerZone';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfoTip } from '../components/InfoTip';
@@ -722,7 +722,9 @@ export function TechnikSection({
             label="Direktvermarktung"
             wert={direktvermarktungAnzeige(dvStatus?.aktuell ?? null, dvStatus?.partner?.name ?? null,
               dvStatus?.stand ?? null, new Date()).statuszeile}
-            sub={dvStatus?.aktuell ? null : 'Strom direkt an der Börse verkaufen'}
+            sub={dvStatus?.aktuell
+              ? einstellungszeileDetail(dvStatus?.stand ?? null, new Date())
+              : 'Strom direkt an der Börse verkaufen'}
             recht="anlage.verwalten"
             onClick={() => { window.location.hash = hashForRoute(anlageRoute(site.id, 'direktvermarktung')); }}
           />

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   anzeige,
+  einstellungszeileDetail,
   fortschrittIndex,
   lageFor,
   partnerFragtNichtAb,
@@ -201,5 +202,25 @@ describe('wohinDerStromGeht', () => {
 
   it('beide 0: null statt einer leeren Leiste', () => {
     expect(wohinDerStromGeht(stand({ einspeisungW: 0, erzeugungW: 0 }))).toBeNull();
+  });
+});
+
+describe('einstellungszeileDetail (§7.3 "Einstieg", zweite Zeile)', () => {
+  it('ohne Stand: null', () => {
+    expect(einstellungszeileDetail(null, JETZT)).toBeNull();
+  });
+
+  it('mit Abfrage und Vorgabe: beide Teile, durch · getrennt', () => {
+    expect(einstellungszeileDetail(stand({ letzteAbfrageAm: vorMinuten(2), vorgabePct: 100 }), JETZT))
+        .toBe('Letzte Abfrage vor 2 Min. · Vorgabe 100 %');
+  });
+
+  it('nur Vorgabe bekannt: nur dieser Teil', () => {
+    expect(einstellungszeileDetail(stand({ letzteAbfrageAm: null, vorgabePct: 30 }), JETZT))
+        .toBe('Vorgabe 30 %');
+  });
+
+  it('nichts davon bekannt: null, keine leere Zeile', () => {
+    expect(einstellungszeileDetail(stand({ letzteAbfrageAm: null, vorgabePct: null }), JETZT)).toBeNull();
   });
 });

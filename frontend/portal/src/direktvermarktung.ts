@@ -209,6 +209,19 @@ export function fortschrittIndex(eintrag: DirektvermarktungEintrag | null): numb
   }
 }
 
+/**
+ * Die zweite Zeile unter der Einstellungen-Zeile (§7.3 "Einstieg"), sobald verbunden: "Letzte Abfrage vor 40 s ·
+ * Vorgabe 100 %" - wie die Geräteakte liest sie nur den Stand, nichts Eigenes. `null` ohne genug Daten dafür.
+ */
+export function einstellungszeileDetail(stand: DirektvermarktungStandDaten | null, jetzt: Date): string | null {
+  if (!stand) return null;
+  const abfrage = minutenSeit(stand.letzteAbfrageAm, jetzt);
+  const teile: string[] = [];
+  if (abfrage != null) teile.push(`Letzte Abfrage ${seitAlter(abfrage)}`);
+  if (stand.vorgabePct != null) teile.push(`Vorgabe ${stand.vorgabePct} %`);
+  return teile.length > 0 ? teile.join(' · ') : null;
+}
+
 export const ZUSTIMMUNG_TEXTFASSUNG_1 =
   'luox liest Einspeisung, Erzeugung, Vorgabe des Netzbetreibers und Anlagenleistung. luox darf die Erzeugung '
   + 'auf 0 bis 100 % stellen. Nicht: Speicher, Verbraucher, Ihr Netz, die Box.';
