@@ -187,7 +187,8 @@ bx 'command -v openvpn >/dev/null && openvpn --version | head -1 | grep -qi "mbe
   && ok "openvpn-mbedtls auf der Box: $(bx 'openvpn --version | head -1 | cut -d" " -f1-2')" \
   || falsch "openvpn-mbedtls auf der Box"
 # Das Kundengeraet lauscht, damit Schritt 4 einen POSITIVEN Gegenbeweis hat.
-docker exec -d "$P-lanrechner" sh -c 'while :; do printf "HTTP/1.0 200 OK\r\n\r\nkundengeraet" | timeout 60 socat -u STDIN TCP-LISTEN:8080,reuseaddr 2>/dev/null; done'
+x lanrechner sh -c "printf 'HTTP/1.0 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nkundengeraet' > /antwort"
+docker exec -d "$P-lanrechner" sh -c 'exec socat TCP-LISTEN:8080,reuseaddr,fork OPEN:/antwort,rdonly'
 
 # ── Labor-CA und Server bei luox ─────────────────────────────────────────────
 schritt "Labor-luox: Wegwerf-CA, Server-Zertifikat, tls-crypt; Server PUSHT Routen (PS-D17)"
@@ -308,7 +309,9 @@ zu "$TUN" 8887 "OCPP 8887 durch den Tunnel abgewiesen"
 lx "ping -c1 -W2 $TUN >/dev/null 2>&1" && falsch "Ping zur Box kommt an (F16: kein Ping ohne Bedarf)" || ok "kein Ping zur Box (F16)"
 # Ein Geraet im Kundennetz: der Server routet das LAN bewusst in den Tunnel -
 # die Box darf es NICHT weiterleiten. Vorher der Gegenbeweis aus der Box.
-bx "uclient-fetch -T 4 -qO- http://$LAN.20:8080 2>/dev/null | grep -q kundengeraet" \
+# nc, nicht uclient-fetch: dessen non-blocking connect verfehlt unter
+# Docker-Emulation (x86-Box auf arm64) das Schreibbarkeits-Ereignis.
+bx "nc $LAN.20 8080 </dev/null | grep -q kundengeraet" \
   && ok "Gegenbeweis: das Kundengeraet antwortet der Box im LAN" || falsch "Gegenbeweis: Kundengeraet antwortet der Box nicht"
 lx "ip route replace $LAN.0/24 dev tun0"
 zu "$LAN.20" 8080 "Kundengeraet im LAN durch den Tunnel unerreichbar (keine Weiterleitung)"
