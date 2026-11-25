@@ -13,12 +13,10 @@ import java.sql.Connection;
 import java.sql.Date;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -99,7 +97,6 @@ class UemsStrukturAenderungTest {
     private static JsonNode referenz;
     private static BerichtAbzugBildung bildung;
     private static StrukturAenderungLaeufer laeufer;
-    private static BerichtKaskade kaskade;
     private static UUID st1Oktober;
     private static UUID uOktober;
     private static UUID uDezember;
@@ -125,8 +122,7 @@ class UemsStrukturAenderungTest {
         referenz = JSON.readTree(Files.readString(V2.resolve("uems-referenzunternehmen.json")));
         bildung = new BerichtAbzugBildung(new MeasurementCatalog(JSON), JSON,
                 new BerichtRegelwerk("VoltPilot Test", Map.of("bericht", "1.1")));
-        kaskade = new BerichtKaskade(bildung);
-        laeufer = new StrukturAenderungLaeufer(new JdbcTemplate(admin), kaskade, 200);
+        laeufer = new StrukturAenderungLaeufer(new JdbcTemplate(admin), new BerichtKaskade(bildung), 200);
 
         ahrenberg();
         st1Oktober = freigegeben("BR-2026-0001", "monatsbericht_standort", "standort", IDS.get("ST-1"), "monat", "2026-10",
@@ -165,11 +161,12 @@ class UemsStrukturAenderungTest {
         long zeile = messstelleAenderung("MS-07", "verteilung_geaendert", VERTEILUNG_ALT, VERTEILUNG_NEU,
                 beginn(OKT_AB), true, Instant.parse("2026-11-20T09:00:00Z"));
         Instant takt = Instant.parse("2026-11-20T09:05:00Z");
-        // Die Bühnen-Uhr der Kaskade auf den Takt dieses Falls stellen (BerichtKaskade#uhrStellen): sonst nähme
-        // BerichtKaskade#datenstand immer die ECHTE DB-Uhr, sobald der feste Takt (20.11.2026) hinter ihr liegt -
-        // Zeitbombe, Befund 25.11.2026. Am Ende der Methode wieder lösen, damit spätere Fälle (B9 ff.) ihre eigene,
-        // noch nicht abgelaufene Zeit unverändert gegen die echte DB-Uhr prüfen.
-        kaskade.uhrStellen(Clock.fixed(takt, ZoneOffset.UTC));
+        // Die DB-Uhr von BerichtKaskade#datenstand auf den Takt dieses Falls stellen (BerichtKaskade#dbUhrStellen):
+        // sonst nähme sie immer die ECHTE DB-Uhr, sobald der feste Takt (20.11.2026) hinter ihr liegt - Zeitbombe,
+        // Befund 25.11.2026. Am Ende der Methode wieder lösen, damit spätere Fälle (B9 ff.) ihre eigene, noch nicht
+        // abgelaufene Zeit unverändert gegen die echte DB-Uhr prüfen. Betrifft nur die DB-Uhr-Lesung, nicht jetzt/
+        // rechenzeit/die Bühne.
+        BerichtKaskade.dbUhrStellen(con -> takt);
         try {
             StrukturAenderungLaeufer.Lauf lauf = laeufer.lauf(takt);
 
@@ -196,7 +193,7 @@ class UemsStrukturAenderungTest {
             assertThat(laeufer.lauf(takt.plusSeconds(300)).gelesen()).as("nichts zweimal").isZero();
             assertThat(berichtsTabellen()).isEqualTo(nachher);
         } finally {
-            kaskade.uhrStellen(null);
+            BerichtKaskade.dbUhrStellen(null);
         }
     }
 
@@ -330,9 +327,9 @@ class UemsStrukturAenderungTest {
         long spaet = messstelleAenderung("MS-12", "ort_korrigiert", "{}", "{}", beginn(OKT_AB), true,
                 Instant.parse("2026-11-24T09:00:00Z"));
         Instant takt = Instant.parse("2026-11-24T09:05:00Z");
-        // Bühnen-Uhr auf diesen Takt, aus demselben Grund wie in B8 (Zeitbombe gegen die echte DB-Uhr) - danach wieder
+        // DB-Uhr auf diesen Takt, aus demselben Grund wie in B8 (Zeitbombe gegen die echte DB-Uhr) - danach wieder
         // lösen.
-        kaskade.uhrStellen(Clock.fixed(takt, ZoneOffset.UTC));
+        BerichtKaskade.dbUhrStellen(con -> takt);
         try {
             assertThat(laeufer.lauf(takt).gescheitert()).isEmpty();
 
@@ -348,7 +345,7 @@ class UemsStrukturAenderungTest {
             assertThat(anstoesseAn(uDezember)).isEmpty();
             assertThat(anstoesseAn(uJahr)).isEmpty();
         } finally {
-            kaskade.uhrStellen(null);
+            BerichtKaskade.dbUhrStellen(null);
         }
     }
 
