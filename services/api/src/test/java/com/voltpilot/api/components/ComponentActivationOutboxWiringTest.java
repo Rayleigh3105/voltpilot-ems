@@ -21,6 +21,7 @@ import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.yaml.snakeyaml.Yaml;
 
 /**
  * L9 (Scout {@code vp-portal-box-spiegel-s2} §4): das ANLEGEN einer Komponente
@@ -117,6 +119,35 @@ class ComponentActivationOutboxWiringTest {
                 .isEqualTo(7);
         assertThat(operation.getValue()).isEqualTo("component_create");
         verify(registry, never()).pushRegistryBestEffort(any());
+    }
+
+    /**
+     * Die AUSGELIEFERTE Vorgabe des Takts ({@code retryPending}) ist AN - geprueft an der echten
+     * {@code application.yml}, nicht an einem Kontext (der Testlauf schaltet ihn global aus, siehe
+     * {@code pom.xml}: {@code voltpilot.components.activation.enabled=false}). Ungeschuetzt schrieb
+     * er alle 2 s unbemerkt an Nachbar-Zeilen weiter, waehrend ein Testcontainers-Löschzug lief
+     * ({@code LoeschzugKatalogApiTest} wurde instabil, sobald vier weitere Katalog-Tabellen die
+     * Pruefung spuerbar verlangsamten).
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void theShippedDefaultIsOnBecauseActivationMustNotNeedAnEnvVar() throws Exception {
+        Map<String, Object> yml;
+        try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
+            assertThat(in).as("application.yml auf dem Klassenpfad").isNotNull();
+            yml = (Map<String, Object>) new Yaml().loadAll(in).iterator().next();
+        }
+        assertThat(at(yml, "voltpilot", "components", "activation", "enabled"))
+                .isEqualTo("${VOLTPILOT_COMPONENTS_ACTIVATION_ENABLED:true}");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object at(Map<String, Object> yml, String... path) {
+        Object node = yml;
+        for (String key : path) {
+            node = ((Map<String, Object>) node).get(key);
+        }
+        return node;
     }
 
     private static ComponentTemplateDto template() {
