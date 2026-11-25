@@ -879,3 +879,53 @@ func TestPort80NurEinmalWiederholt(t *testing.T) {
 		t.Fatalf("refused: offen %v alive %v, %d attempts, want closed, alive, 1", offen, alive, versuche)
 	}
 }
+
+// A Huawei Smart Dongle leaves a request unanswered that comes right after the
+// connect (field, 25.11.2026). The chain of port 502 asks SunSpec and SMA
+// first, both at once and unanswered; the Huawei recogniser asks only
+// Takt.HuaweiRuhe after its connect and finds the SUN2000 behind unit 1.
+func TestHuaweiHinterDemSmartDongleFragtErstNachDerRuhe(t *testing.T) {
+	m, err := geraetesim.StartModbus("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Close() })
+	m.SetzeText(1, 30000, 15, "SUN2000-3KTL-M1")
+	m.SetzeText(1, 30015, 10, "PRUEFNUMMER01")
+	m.Taub(200 * time.Millisecond)
+	takt := Takt{JeSekunde: 100000, Zeitlimit: 250 * time.Millisecond, HuaweiRuhe: 300 * time.Millisecond}
+
+	l, g := einGeraetMit(t, m.Addr(), 502, takt)
+	if !l.erkenne(context.Background(), g) {
+		t.Fatal("kein Fund hinter dem tauben Dongle")
+	}
+	if m.Ueberhoert() == 0 {
+		t.Fatal("SunSpec und SMA fragen sofort - der Dongle muss sie ueberhoeren")
+	}
+
+	vorher := m.Ueberhoert()
+	_, g = einGeraetMit(t, m.Addr(), 502, takt)
+	mb := g.modbus(502)
+	defer mb.schliesse()
+	start := time.Now()
+	fund, ok := erkenneHuawei(context.Background(), g, 502, mb)
+	if !ok || fund.Erkenner != "huawei" || fund.Modell != "SUN2000-3KTL-M1" || fund.Verbindung.UnitID == nil || *fund.Verbindung.UnitID != 1 {
+		t.Fatalf("Huawei-Erkenner allein: %v %+v", ok, fund)
+	}
+	if d := time.Since(start); d < 300*time.Millisecond {
+		t.Fatalf("erste Anfrage nach %v, vor der Ruhe", d)
+	}
+	if m.Ueberhoert() != vorher {
+		t.Fatal("der Huawei-Erkenner fragte in der tauben Zeit")
+	}
+	if mb.ruhe != 0 {
+		t.Fatal("die Ruhe gilt nur fuer den Huawei-Erkenner")
+	}
+
+	// A dongle deaf for longer than the pause stays without a find.
+	m.Taub(time.Hour)
+	_, g = einGeraetMit(t, m.Addr(), 502, takt)
+	if _, ok := erkenneHuawei(context.Background(), g, 502, g.modbus(502)); ok {
+		t.Fatal("ein Fund ohne Antwort")
+	}
+}
