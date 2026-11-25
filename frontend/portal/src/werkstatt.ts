@@ -175,7 +175,8 @@ export type PruefungId = (typeof PRUEFUNGEN)[number]['id'];
 
 /**
  * Die Prüfungen für den WAGO PFC200 (Edge Industrie): `geraete.pfc200` im selben Vektor, Zwilling von
- * `WerkstattPruefungen.PFC200`. Ohne Prüfung der SPS und der Firmware; ihr Stand steht als Angabe an der Abnahme.
+ * `WerkstattPruefungen.PFC200`. Mit Prüfung des Grundprogramms, aber ohne Prüfung des Anlagenprogramms, seiner
+ * Koppelprobe oder der Firmware; ihr Stand steht als Angabe an der Abnahme.
  */
 export const PRUEFUNGEN_PFC200 = [
   { id: 'zugaenge', text: 'Drei eigene Passwörter gesetzt (root, admin, user), jedes Werkspasswort abgewiesen, Anmeldung mit Passwort aus' },
@@ -188,6 +189,7 @@ export const PRUEFUNGEN_PFC200 = [
   { id: 'dienste_zu', text: 'Firewall ein, nur die Soll-Dienste offen, Docker aus, Start nur vom internen Speicher' },
   { id: 'neustart', text: 'Neustart-Probe: Tunnel wieder oben, dieselbe Referenz, derselbe Host-Schlüssel, Schalter auf RUN' },
   { id: 'update_bereit', text: 'Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Industrie' },
+  { id: 'grundprogramm', text: 'Grundprogramm eingespielt: Prüfsumme gegen das signierte Manifest bestätigt, CODESYS-Laufzeit läuft, ihr Modbus-Server lauscht auf Port 503' },
 ] as const;
 
 /** Die Prüfliste eines Geräts der Werkstatt (`pfc200`; sonst die Mango). */

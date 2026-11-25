@@ -16,6 +16,7 @@ const (
 	titelInternet         = "Internet über die Brücke (befristet) und Uhr stellen"
 	titelZugaenge         = "Zugänge: drei Passwörter, Anmeldung nur noch mit Schlüssel"
 	titelNotfall          = "Notfall-Schlüssel"
+	titelGrundprogramm    = "Grundprogramm einspielen"
 	titelProgramm         = Name + " einspielen"
 	titelTunnelSchluessel = "Tunnel-Schlüssel erzeugen"
 	titelEinloesen        = "Einmal-Code einlösen"

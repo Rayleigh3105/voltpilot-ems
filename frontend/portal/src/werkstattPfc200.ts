@@ -5,11 +5,14 @@
  * Light).
  *
  * Was die Werkstatt an ihm tut und was nicht:
- * - Sie richtet Zugänge, Notfall-Schlüssel, Edge Industrie, Wartungstunnel und
- *   die zwei Netze ein und nimmt ihn mit zehn Prüfungen ab.
- * - Sie hat keinen Schritt für die SPS: kein Programm, keine Koppelprobe; die
- *   Laufzeit (CODESYS) und ihre Einstellungen bleiben unberührt.
- * - Die Firmware liest sie nur. Ihr Stand steht als Angabe an der Abnahme.
+ * - Sie richtet Zugänge, Notfall-Schlüssel, das Grundprogramm, Edge Industrie,
+ *   Wartungstunnel und die zwei Netze ein und nimmt ihn mit elf Prüfungen ab.
+ * - Sie hat einen Schritt für die SPS, aber nur das Grundprogramm (die
+ *   Boot-Applikation des Basisprojekts, nur Firmware 04.xx oder neuer): kein
+ *   Anlagenprogramm, keine Koppelprobe; Einstellungen und Modbus-Server der
+ *   Laufzeit (CODESYS) jenseits davon bleiben unberührt.
+ * - Die Firmware liest sie, außer für den Schritt Grundprogramm (ihre
+ *   Hauptlinie). Ihr Stand steht als Angabe an der Abnahme.
  *
  * Reines Modul: kein React, kein Netzwerk, keine Abhängigkeit zu
  * `werkstattBank.ts` oder `werkstattLauf.ts` (beide lesen von hier).
@@ -37,12 +40,13 @@ export const PRUEFUNGEN_PFC200_WORT = zahlwort(PRUEFUNGEN_PFC200.length);
 /**
  * Sechs Phasen in Alltagsworten, in der Reihenfolge des Laufs (Vertrag
  * werkstatt-ansicht-v1, `lauf.box_art` = `pfc200`). Eine Phase „Steuerung“
- * gibt es nicht: Die SPS gehört nicht in die Werkstatt.
+ * gibt es nicht: Nur das Grundprogramm (Schritt `grundprogramm`, Phase
+ * Software) gehört in die Werkstatt, nicht das Anlagenprogramm.
  */
 export const PHASEN_PFC200 = [
   { id: 'erkannt', titel: 'Erkannt', klein: 'PFC200 erkannt, Firmware gelesen', schritte: ['erkennen', 'docker'] },
   { id: 'absichern', titel: 'Absichern', klein: 'Dateien der Freigabe, drei Passwörter, Notfall-Schlüssel', schritte: ['fassungen', 'internet', 'zugaenge', 'notfall'] },
-  { id: 'software', titel: 'Software', klein: `${EDGE_INDUSTRIE} einspielen`, schritte: ['programm'] },
+  { id: 'software', titel: 'Software', klein: `Grundprogramm und ${EDGE_INDUSTRIE} einspielen`, schritte: ['grundprogramm', 'programm'] },
   { id: 'anmelden', titel: 'Bei VoltPilot anmelden', klein: 'Geräteschlüssel und Wartungstunnel', schritte: ['tunnel_schluessel', 'einloesen', 'tunnel_adresse', 'tunnel'] },
   { id: 'probe', titel: 'Netze trennen und Probe', klein: 'Zwei Buchsen, Neustart, Anmeldung über den Tunnel', schritte: ['netze', 'neustart', 'probe'] },
   { id: 'abnahme', titel: 'Abnahme', klein: `Alle ${PRUEFUNGEN_PFC200_WORT} Prüfungen mit Beleg`, schritte: ['internet_weg', 'uebergabe'] },
@@ -74,6 +78,10 @@ export const SCHRITT_TEXT_PFC200: Record<string, { titel: string; tut: string }>
     tut: 'Setzt für root, admin und user je ein zufälliges Passwort; abgelegt werden sie nur verschlüsselt. Danach geht die Anmeldung nur noch mit Schlüssel.',
   },
   notfall: { titel: 'Notfall-Schlüssel', tut: 'Legt genau einen Notfall-Schlüssel der Technik auf das Gerät.' },
+  grundprogramm: {
+    titel: 'Grundprogramm einspielen',
+    tut: 'Spielt die Boot-Applikation des Basisprojekts auf die SPS (nur Firmware 04.xx oder neuer) und startet die CODESYS-Laufzeit neu. Kein Anlagenprogramm, keine Koppelprobe.',
+  },
   programm: {
     titel: `${EDGE_INDUSTRIE} einspielen`,
     tut: 'Installiert das Programm, startet es und wartet, bis es sich mit seiner Referenz meldet. Die Laufzeit der SPS bleibt unberührt.',
@@ -109,6 +117,10 @@ export const FALL_CODES_PFC200 = [
   'pfc_falsches_geraet',
   'pfc_schon_eingerichtet',
   'pfc_notfall_schluessel',
+  'pfc_firmware_alt',
+  'pfc_kein_grundprogramm',
+  'pfc_grundprogramm_fremd',
+  'pfc_grundprogramm_laedt_nicht',
 ] as const;
 
 /**
@@ -124,6 +136,10 @@ export const WAS_PFC200: Record<string, string> = {
   pfc_falsches_geraet: 'An der Werkbank werden von WAGO nur PFC200 mit der Bestellnummer 750-8212 eingerichtet.',
   pfc_schon_eingerichtet: `Auf ihm liegt schon ${EDGE_INDUSTRIE}, aber kein Lauf dieser Werkstatt kennt ihn.`,
   pfc_notfall_schluessel: 'Der Notfall-Schlüssel der Werkstatt ist von einer Art, die der PFC200 nicht annimmt. Am Gerät wurde nichts geändert.',
+  pfc_firmware_alt: 'Seine Firmware ist älter als die Linie 04.xx. Die CODESYS-Laufzeit für das Grundprogramm gibt es erst ab dieser Linie. Am Gerät wurde nichts geändert.',
+  pfc_kein_grundprogramm: 'Die Fassung, die die Werkstatt gerade aufspielt, trägt noch kein Grundprogramm. Am Gerät wurde nichts geändert.',
+  pfc_grundprogramm_fremd: 'Auf der SPS liegt schon eine Boot-Applikation, die nicht das Grundprogramm dieser Werkstatt ist. Der Dienst überschreibt sie nie von selbst.',
+  pfc_grundprogramm_laedt_nicht: 'Die CODESYS-Laufzeit ließ sich nicht neu starten, oder das Grundprogramm läuft danach nicht nachweisbar.',
   bruecke_nicht_bereit: 'Der kleine Rechner (Pi) an der Werkbank antwortet nicht. Ohne ihn erreicht der Dienst keinen PFC200.',
   startet: 'Er meldet sich, nimmt aber noch keine Anmeldung an. Der Dienst beginnt erst, wenn er zweimal hintereinander gleich antwortet.',
   keine_box: 'Das Kabel steckt, aber an ihm meldet sich noch niemand. Ein PFC200 ab Werk hat ohne den Handgriff „feste Adresse“ keine Adresse.',
