@@ -1,0 +1,128 @@
+{
+  "schema_version": "1.0",
+  "partner": "luox",
+  "hinweis": "Vektoren für den Go-Zwilling (edge-app/core/internal/direktvermarkter). 'wortfolge_laufzeit' ist die vorläufige Annahme für F3 (little = niederwertiges Wort zuerst), solange luox nicht geantwortet hat; beide Wortfolgen sind unten belegt, damit ein Wechsel nur diesen einen Wert ändert.",
+  "wortfolge_laufzeit": "little",
+  "bei_veraltet_laufzeit": "ausnahme_0x0b",
+
+  "decode": [
+    {"name": "nvp_einspeisung_w little", "bedeutung": "nvp_einspeisung_w", "typ": "s32", "wortfolge": "little", "regs": [2350, 0], "value": 2350},
+    {"name": "nvp_einspeisung_w big", "bedeutung": "nvp_einspeisung_w", "typ": "s32", "wortfolge": "big", "regs": [0, 2350], "value": 2350},
+    {"name": "nvp_einspeisung_w negativ (Bezug)", "bedeutung": "nvp_einspeisung_w", "typ": "s32", "wortfolge": "little", "regs": [64186, 65535], "value": -1350},
+    {"name": "erzeugung_w little", "bedeutung": "erzeugung_w", "typ": "u32", "wortfolge": "little", "regs": [3100, 0], "value": 3100},
+    {"name": "netzbetreiber_vorgabe_pct", "bedeutung": "netzbetreiber_vorgabe_pct", "typ": "u16", "wortfolge": "little", "regs": [100], "value": 100},
+    {"name": "referenz_w little", "bedeutung": "referenz_w", "typ": "u32", "wortfolge": "little", "regs": [10000, 0], "value": 10000},
+    {"name": "vermarkter_vorgabe_pct", "bedeutung": "vermarkter_vorgabe_pct", "typ": "u16", "wortfolge": "little", "regs": [55], "value": 55},
+    {"name": "lebenszeichen little", "bedeutung": "lebenszeichen", "typ": "u32", "wortfolge": "little", "regs": [42, 0], "value": 42},
+    {"name": "lebenszeichen big", "bedeutung": "lebenszeichen", "typ": "u32", "wortfolge": "big", "regs": [0, 42], "value": 42}
+  ],
+
+  "encode": [
+    {"name": "setpoint 55 pct", "bedeutung": "vermarkter_vorgabe_pct", "typ": "u16", "wortfolge": "little", "value": 55, "regs": [55]},
+    {"name": "setpoint ruhewert 100 pct", "bedeutung": "vermarkter_vorgabe_pct", "typ": "u16", "wortfolge": "little", "value": 100, "regs": [100]},
+    {"name": "lebenszeichen 42 little", "bedeutung": "lebenszeichen", "typ": "u32", "wortfolge": "little", "value": 42, "regs": [42, 0]},
+    {"name": "lebenszeichen 42 big", "bedeutung": "lebenszeichen", "typ": "u32", "wortfolge": "big", "value": 42, "regs": [0, 42]},
+    {"name": "nvp_einspeisung_w negativ little", "bedeutung": "nvp_einspeisung_w", "typ": "s32", "wortfolge": "little", "value": -1350, "regs": [64186, 65535]}
+  ],
+
+  "telegramme": [
+    {
+      "name": "lesen_bekannte_einspeisung_little",
+      "gruppe": "lesen_little",
+      "beschreibung": "PS-D23: Register 0 bei bekannter Einspeisung (2350 W) lesen, Wortfolge little - Wert gleich der Messung",
+      "wortfolge": "little",
+      "anfrage_hex": "000100000006010400000007",
+      "antwort_hex": "00010000001101040e092e00000c1c0000006427100000"
+    },
+    {
+      "name": "lesen_bekannte_einspeisung_big",
+      "gruppe": "lesen_big",
+      "beschreibung": "dieselbe Anfrage gegen einen mit Wortfolge big konfigurierten Server - zweite Hypothese für F3; beide Zwillinge müssen beide Wortfolgen auf denselben Messwert zurückrechnen können, bevor luox antwortet",
+      "wortfolge": "big",
+      "anfrage_hex": "000100000006010400000007",
+      "antwort_hex": "00010000001101040e0000092e00000c1c006400002710"
+    },
+    {
+      "name": "lebenszeichen_schreiben_fc16",
+      "gruppe": "schreibfolge",
+      "beschreibung": "FC16 auf Halteregister 3-4 (lebenszeichen, u32=42, Wortfolge little); erneuert die Frist, damit die folgenden Vorgaben auch EFFEKTIV wirken (siehe schreiben_ohne_lebenszeichen für den Fall ohne)",
+      "wortfolge": "little",
+      "anfrage_hex": "00050000000b01100003000204002a0000",
+      "antwort_hex": "000500000006011000030002",
+      "erwartet_lebenszeichen_erneuert": true
+    },
+    {
+      "name": "schreiben_in_band",
+      "gruppe": "schreibfolge",
+      "beschreibung": "FC6, Vorgabe 55% - innerhalb des Bands 0-100 und mit frischem Lebenszeichen, wird angenommen und echot",
+      "anfrage_hex": "000200000006010600020037",
+      "antwort_hex": "000200000006010600020037",
+      "erwartet_vermarkter_vorgabe_pct": 55
+    },
+    {
+      "name": "schreiben_ausserhalb_band",
+      "gruppe": "schreibfolge",
+      "beschreibung": "FC6, Vorgabe 150% - außerhalb des Bands, Ausnahme 0x03 (ILLEGAL DATA VALUE); die Vorgabe bleibt beim Wert des vorigen schreiben_in_band-Vektors (55%), weil diese Gruppe sequenziell gegen einen Server läuft",
+      "anfrage_hex": "000300000006010600020096",
+      "antwort_hex": "000300000003018603",
+      "erwartet_vermarkter_vorgabe_pct": 55
+    },
+    {
+      "name": "schreiben_unbekannte_adresse",
+      "gruppe": "schreibfolge",
+      "beschreibung": "FC6 auf Halteregister 5 - keine Bedeutung dort, Ausnahme 0x02 (ILLEGAL DATA ADDRESS)",
+      "anfrage_hex": "000400000006010600050001",
+      "antwort_hex": "000400000003018602"
+    },
+    {
+      "name": "lesen_nach_schreiben",
+      "gruppe": "schreibfolge",
+      "beschreibung": "FC3 auf Halteregister 2 nach schreiben_in_band - liest die eben geschriebene Vorgabe (55%) zurück",
+      "anfrage_hex": "000600000006010300020001",
+      "antwort_hex": "0006000000050103020037"
+    },
+    {
+      "name": "lesen_unbekannte_adresse",
+      "gruppe": "lesen_unbekannt",
+      "beschreibung": "FC3 auf Halteregister 5 - keine Bedeutung dort, Ausnahme 0x02",
+      "anfrage_hex": "000700000006010300050001",
+      "antwort_hex": "000700000003018302"
+    },
+    {
+      "name": "schreiben_ohne_lebenszeichen",
+      "gruppe": "ohne_lebenszeichen",
+      "beschreibung": "Review 25.11.2026 (PR #1999): FC6 Vorgabe 40% auf einem frischen Server, OHNE je das Lebenszeichen geschrieben zu haben - innerhalb des Bands, wird angenommen (kein 0x03 nur wegen eines fehlenden Lebenszeichens, F4 lässt die Reihenfolge offen)",
+      "anfrage_hex": "000800000006010600020028",
+      "antwort_hex": "000800000006010600020028",
+      "erwartet_effektiv_vorgabe_pct": 100,
+      "erwartet_effektiv_aktiv": false
+    },
+    {
+      "name": "lesen_register_ohne_lebenszeichen",
+      "gruppe": "ohne_lebenszeichen",
+      "beschreibung": "FC3 auf Halteregister 2 - das REGISTER hält den eben geschriebenen Wert (40%), unabhängig vom fehlenden Lebenszeichen; nur die WIRKSAME Grenze (Limit()) bleibt bei 100%",
+      "anfrage_hex": "000900000006010300020001",
+      "antwort_hex": "0009000000050103020028"
+    }
+  ],
+
+  "lebenszeichen_ablauf": [
+    {"name": "frisch", "frist_s": 900, "seit_letzter_abfrage_s": 100, "erwartet_zustand": "verbunden"},
+    {"name": "vorgabe_aktiv", "frist_s": 900, "seit_letzter_abfrage_s": 100, "vermarkter_vorgabe_pct_vor_ablauf": 55, "erwartet_zustand": "vorgabe_aktiv"},
+    {"name": "an_der_grenze", "frist_s": 900, "seit_letzter_abfrage_s": 899, "vermarkter_vorgabe_pct_vor_ablauf": 55, "erwartet_zustand": "vorgabe_aktiv"},
+    {
+      "name": "abgelaufen",
+      "frist_s": 900,
+      "seit_letzter_abfrage_s": 901,
+      "vermarkter_vorgabe_pct_vor_ablauf": 30,
+      "erwartet_zustand": "abgelaufen",
+      "erwartet_vermarkter_vorgabe_pct": 100,
+      "erwartet_ereignis": "lebenszeichen_abgelaufen"
+    }
+  ],
+
+  "veraltet": [
+    {"name": "messwert_frisch", "alter_s": 10, "stale_after_s": 30, "erwartet_ausnahme": null},
+    {"name": "messwert_veraltet", "alter_s": 31, "stale_after_s": 30, "erwartet_ausnahme": 11, "hinweis": "F8 offen - vorläufig GATEWAY TARGET DEVICE FAILED wie im Datenspiegel (0x0B), nie ein erfundener Wert"}
+  ]
+}

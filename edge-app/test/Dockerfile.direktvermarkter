@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+# PS-D23 test image: the direktvermarkter data-mirror server and a staged
+# luox poller (vp-luox-sim), built from the core module so the test runs the
+# exact catalog and server code, never a separate copy. Context is
+# edge-app/core:
+#   docker build -f ../test/Dockerfile.direktvermarkter -t vp-direktvermarkter-test .
+# Dev/test image only - never part of a customer install.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+ARG TARGETOS TARGETARCH
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w" -o /out/vp-direktvermarkter-server ./cmd/vp-direktvermarkter-server
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w" -o /out/vp-luox-sim ./cmd/vp-luox-sim
+
+FROM alpine:3.20
+RUN addgroup -S voltpilot && adduser -S -G voltpilot voltpilot
+COPY --from=build /out/vp-direktvermarkter-server /usr/local/bin/vp-direktvermarkter-server
+COPY --from=build /out/vp-luox-sim /usr/local/bin/vp-luox-sim
+USER voltpilot
+# No fixed ENTRYPOINT/CMD: the test run picks the program (server or poller)
+# as the `docker run` command.

@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "fassung": 1,
+  "bedeutungen": [
+    "nvp_einspeisung_w",
+    "erzeugung_w",
+    "netzbetreiber_vorgabe_pct",
+    "referenz_w",
+    "vermarkter_vorgabe_pct",
+    "lebenszeichen"
+  ],
+  "vorgesehen": [
+    "speicher_leistung_w",
+    "ladestand_pct",
+    "vermarkter_vorgabe_w",
+    "blindleistung_vorgabe"
+  ],
+  "einrichtung_schritte": [
+    "vertrag_frage",
+    "zustimmung",
+    "zip_hochladen",
+    "passwort",
+    "email_inbetriebnahme",
+    "stammdaten_sr_tr_id",
+    "startdatum"
+  ],
+  "fragen": {
+    "F1": "OpenVPN: Port und Protokoll, Gegenstelle, Dateiliste der ZIP, Gültigkeit und Erneuerung des Zertifikats",
+    "F2": "Sind Port 502 und Unit-ID 1 fest?",
+    "F3": "Was heißt 'Little-Endian': welches Wort eines 32-Bit-Werts zuerst, Bytefolge im Wort?",
+    "F4": "Wie oft liest luox, wie und wie oft schreibt es den 32-Bit-Watchdog (zweimal FC 6 oder einmal FC 16)?",
+    "F5": "Gilt die Vorgabe für die Einspeisung am Netzpunkt oder für die Erzeugung; worauf beziehen sich die Prozent?",
+    "F6": "Was genau ist die Referenzleistung (Modulleistung, Wechselrichter-Nennleistung, mögliche Leistung)?",
+    "F7": "Was zeigt Register 4 ohne Signal des Netzbetreibers; soll eine feste 70-%-Grenze dort stehen?",
+    "F8": "Antwort bei veralteten Messwerten: Ausnahme, letzter Wert, Null?",
+    "F9": "Gibt es den Verbindungstest als Schnittstelle?",
+    "F10": "Gibt es für VoltPilot den EMS-Weg mit Kontoanmeldung; kann VoltPilot auf die Liste kompatibler Schnittstellen?",
+    "F11": "Darf VoltPilot die Inbetriebnahme direkt melden; welche Form hat der Einbaubeleg?",
+    "F12": "Ein Zertifikat je Anlage oder je Einheit; mehrere Wechselrichter hinter einer Box?",
+    "F13": "Anlagen mit Speicher: braucht luox Speicherwerte, wie wird Einspeisung aus dem Speicher behandelt?",
+    "F14": "Welche Daten speichert luox wie lange; Auftragsverarbeitung; Text der Zustimmung",
+    "F15": "Box-Tausch: dasselbe Zertifikat oder ein neues?",
+    "F16": "Braucht luox Ping oder andere Dienste im Tunnel?",
+    "F17": "Wie plant luox die Umstellung auf das Smart-Meter-Gateway ab 1.1.2028?",
+    "F18": "Auf welchem Weg kommt das ZIP-Passwort; kann es für VoltPilot-Kunden anders zugestellt werden?"
+  }
+}

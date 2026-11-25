@@ -258,6 +258,15 @@ jobs:
           python3 -m unittest discover -s catalog/control-profiles/tests -p 'test_*.py'
           python3 catalog/control-profiles/tools/package_edge_runtime.py --check
 
+      - name: Direct-marketer catalog + packaged Edge runtime
+        # vp-direktvermarktung-konzept d2 Stufe 1: schema + invariants, tool
+        # tests, and the copy the Go core embeds
+        # (internal/direktvermarkter/profiles.json) must be current.
+        run: |
+          python3 catalog/direktvermarkter/tools/validate.py
+          python3 -m unittest discover -s catalog/direktvermarkter/tests -p 'test_*.py'
+          python3 catalog/direktvermarkter/tools/package_edge_runtime.py --check
+
       - name: Go core (race)
         working-directory: edge-app/core
         # Integration packages briefly reserve ephemeral listeners before the
