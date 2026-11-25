@@ -1,0 +1,36 @@
+# Lauf skripte-update: das Selbstupdate der WLAN-Skripte (internal/wlanstand; derselbe Lauf wie im bestaetigten Programm, hier als cmd/wlan-skripte-probe) an einer Box mit dem alten Stand im WLAN-Weg B. Nichts startet neu: WLAN, relayd, Konfiguration, cron und Hotplug bleiben, wie sie sind; danach erreicht die Box ihr Geraet wieder. Am Kabelweg aendert der Lauf am Netz nichts
+# Der alte Stand an seinen Platz (wie auf den Boxen im Feld, von install.sh abgelegt), dazu das Probe-Programm
+cp /tmp/labor/skript/alt/wlan-anschluss.sh /tmp/labor/skript/alt/einrichtung-wlan.sh /usr/libexec/vp-edge-light/ && chmod 0755 $W $E; P=/tmp/wlan-skripte-probe; cp /tmp/labor/skript/wlan-skripte-probe $P; chmod 0755 $P; NEU=/tmp/labor/skript; ALT=/tmp/labor/skript/alt
+verneine "alter Stand: ohne WLAN_STAND" grep -q '^WLAN_STAND=' $W; verneine "alter Stand: kennt wege nicht" $W wege
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v.out; echo "rc=$?" > /tmp/v.rc; gleich "alter Stand verbindet: Rueckgabe" "$(cat /tmp/v.rc)" "rc=0"; WWANIP=$(wert wlan_adresse /tmp/v.out); echo "wlan=$WWANIP"
+@60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 192.168.178.*) pruef_ok "Geraet mit Adresse vom Router ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP)";; esac
+ip netns exec kabel sh -c 'while :; do ping -c 1 -W 1 192.168.178.1 >/dev/null 2>&1; sleep 4; done' >/dev/null 2>&1 & echo $! > /tmp/geraet-redet.pid
+STA=$(ubus call network.wireless status | jsonfilter -e '@.radio0.interfaces[@.section="vp_wlan"].ifname'); echo "sta=$STA"; ip rule | grep lookup
+weiter() { ip route show table 16801 | grep -q "^$KABELIP dev br-lan"; }; weg_box() { ip route show table 16800 | grep -q "^$KABELIP dev br-lan .*src $WWANIP"; }
+# Wie an Box 10.10.16.5: relayd lernt das Geraet, waehrend die WLAN-Adresse fehlt (wie Lauf eigene-wege, Fall 4: Adresse an netifd vorbei entfernt und wieder gesetzt; relayd lernt dabei auch den Router und die alte Kabeladresse des Geraets neu). Der alte Stand holt den Weg der Box nie nach, auch nicht im Takt
+@60 ip addr del $WWANIP/24 dev $STA; /etc/init.d/relayd restart; sleep 3; ip netns exec kabel ip neigh flush dev kabel1; ip netns exec kabel ping -c 1 -W 2 192.168.178.1 >/dev/null 2>&1; sleep 2; ip addr add $WWANIP/24 dev $STA; sleep 2
+@60 mit; $E takt; sleep 2; pruefe "alter Stand: relayd fuehrt das Geraet" weiter; verneine "alter Stand: der eigene Weg der Box fehlt, auch nach dem Takt" weg_box; info "alter Stand, Box -> Geraet 502: $(tcp_meldung - $KABELIP 502)"
+# Ausgangslage: WLAN (Adresse, relayd, Schnittstelle), Laufzeit von vp_wlan, Konfiguration samt cron, Hotplug-Haken und Regeln
+lage() { echo "wlan=$($W status | sed -n s/^wlan_adresse=//p) relayd=$(pidof relayd) sta=$(ubus call network.wireless status | jsonfilter -e '@.radio0.interfaces[@.section="vp_wlan"].ifname')"; }
+konf() { { for k in network wireless firewall dhcp; do uci export $k; done; cat /etc/crontabs/root; ls -l /etc/hotplug.d/iface/; cat /etc/hotplug.d/iface/*; ip rule; } 2>&1 | md5sum | cut -c1-32; }; oben() { ifstatus vp_wlan | jsonfilter -e '@.uptime'; }
+LAGE0=$(lage); KONF0=$(konf); OBEN0=$(oben); echo "lage=$LAGE0 konf=$KONF0 oben=$OBEN0"
+# Abbruch mitten im Schreiben: der Lauf haelt an, sobald die neue Fassung von wlan-anschluss.sh in wlan-anschluss.sh.neu steht (der Waechter ist da schon ersetzt), und endet mit kill -9 - wie Strom weg vor dem Umbenennen
+VP_WLAN_PROBE_HALT=/tmp/halt VP_WLAN_PROBE_HALT_BEI=wlan-anschluss.sh $P $W > /tmp/p0.out 2>&1 & echo $! > /tmp/p0.pid
+@60 i=0; while [ $i -lt 40 ] && [ ! -f /tmp/halt ]; do sleep 1; i=$((i+1)); done; kill -9 $(cat /tmp/p0.pid); sleep 1; pruefe "Abbruch: angehalten mitten im Schreiben" test -f /tmp/halt
+pruefe "Abbruch: wlan-anschluss.sh ist die alte Fassung, ganz" cmp -s $W $ALT/wlan-anschluss.sh; pruefe "Abbruch: die neue liegt nur als .neu daneben" cmp -s $W.neu $NEU/wlan-anschluss.sh; pruefe "Abbruch: der Waechter ist schon neu" cmp -s $E $NEU/einrichtung-wlan.sh
+pruefe "Abbruch: die alte Fassung arbeitet (status)" sh -c "$W status | grep -qx modus=wlan"; mit; $E takt > /tmp/t.out 2>&1; gleich "Abbruch: der neue Waechter laeuft mit dem alten Skript (takt)" "$?" 0
+# Der naechste Lauf (der naechste Start des Programms) spielt den Rest ein
+@90 sleep 2; $P $W > /tmp/p1.out 2>&1; gleich "Lauf: Rueckgabe" "$?" 0; cat /tmp/p1.out
+gleich "Lauf: vorher" "$(wert vorher /tmp/p1.out)" 0; gleich "Lauf: nachher" "$(wert nachher /tmp/p1.out)" 1; gleich "Lauf: geschrieben nur wlan-anschluss.sh (der Waechter war schon neu)" "$(wert geschrieben /tmp/p1.out)" "$W"
+pruefe "neu: wlan-anschluss.sh ist die Fassung des Programms" cmp -s $W $NEU/wlan-anschluss.sh; pruefe "neu: einrichtung-wlan.sh ist die Fassung des Programms" cmp -s $E $NEU/einrichtung-wlan.sh; pruefe "neu: WLAN_STAND=1" grep -qx WLAN_STAND=1 $W; pruefe "neu: ausfuehrbar" test -x $W -a -x $E
+pruefe "Rueckfall: alte wlan-anschluss.sh als .alt" cmp -s $W.alt $ALT/wlan-anschluss.sh; pruefe "Rueckfall: alter Waechter als .alt" cmp -s $E.alt $ALT/einrichtung-wlan.sh; verneine "kein .neu bleibt liegen" sh -c "ls /usr/libexec/vp-edge-light/ | grep -q 'neu$'"
+case " $(wert wege /tmp/p1.out | sed s/^ergaenzt=//) " in *" $KABELIP "*) pruef_ok "wege lief einmal, ergaenzte das Geraet ($(wert wege /tmp/p1.out))";; *) pruef_fehler "wege ergaenzte das Geraet nicht ($(wert wege /tmp/p1.out))";; esac; gleich "status: wege_fehlen leer" "$($W status | sed -n s/^wege_fehlen=//p)" ""
+pruefe "neu: eigener Weg der Box zum Geraet" weg_box; pruefe "neu: Box liest das Geraet (502)" tcp - $KABELIP 502; pruefe "neu: Heimnetz erreicht das Geraet (Weiterleitung)" ip netns exec kunde ping -c 2 -W 2 $KABELIP
+gleich "WLAN unveraendert (Adresse, relayd, Schnittstelle)" "$(lage)" "$LAGE0"; gleich "Konfiguration, cron, Hotplug, Regeln unveraendert" "$(konf)" "$KONF0"; OBEN1=$(oben); pruefe "WLAN ohne Neuanmeldung (vp_wlan oben $OBEN0 -> $OBEN1 s)" test "$OBEN1" -gt "$OBEN0"
+# Ein zweiter Lauf (zweiter Programmstart) schreibt nichts
+INODE=$(ls -i $W $E | awk '{print $1}' | tr '\n' ' '); ZEIT=$(date -r $W +%s)-$(date -r $E +%s); sleep 2
+@60 $P $W > /tmp/p2.out 2>&1; gleich "zweiter Lauf: nichts geschrieben" "$(wert geschrieben /tmp/p2.out)" ""; gleich "zweiter Lauf: kein wege" "$(wert wege /tmp/p2.out)" ""; gleich "zweiter Lauf: dieselben Dateien" "$(ls -i $W $E | awk '{print $1}' | tr '\n' ' ')$(date -r $W +%s)-$(date -r $E +%s)" "$INODE$ZEIT"
+# Kabelweg: eine Box am Kabel mit dem alten Stand - der Lauf ersetzt die Skripte, wege tut nichts, am Netz aendert sich nichts
+@120 $W kabel --ohne-kabel > /tmp/k.out; verneine "Kabelweg eingestellt: kein Relay mehr" uci -q get network.vp_relay; gleich "Kabelweg: kein WLAN-Weg (ohne Kabel an WAN: keins)" "$($W status | sed -n s/^modus=//p)" keins
+cp $ALT/wlan-anschluss.sh $ALT/einrichtung-wlan.sh /usr/libexec/vp-edge-light/; rm -f $W.alt $E.alt; NETZ0="$(konf) $(ip route show table all | md5sum | cut -c1-32)"; sleep 2
+@60 $P $W > /tmp/p3.out 2>&1; gleich "Kabelweg: eingespielt" "$(wert nachher /tmp/p3.out)" 1; gleich "Kabelweg: wege tut nichts" "$(wert wege /tmp/p3.out)" ""; gleich "Kabelweg: Netz und Konfiguration unveraendert" "$(konf) $(ip route show table all | md5sum | cut -c1-32)" "$NETZ0"

@@ -45,18 +45,29 @@
 #                LAN-Buchse auch, wenn relayd sie vor der WLAN-Adresse lernt
 #                (Netz-Neustart wie beim Booten, ifup, ifup unter Sperre, ohne
 #                Ereignis bis zum Takt); der ergaenzte Weg geht mit dem Geraet
+#   skripte-update  Selbstupdate der Skripte (internal/wlanstand, derselbe Lauf
+#                wie im bestaetigten Programm, als cmd/wlan-skripte-probe):
+#                eine Box mit dem alten Stand (VP_WLAN_ALTSTAND) im WLAN-Weg B,
+#                der eigene Weg zum Geraet fehlt; Abbruch mitten im Schreiben
+#                laesst die alte Fassung arbeiten, der naechste Lauf spielt
+#                die neue ein (alte als .alt daneben), wege_fehlen leer, WLAN
+#                und Konfiguration unveraendert; ein zweiter Lauf schreibt
+#                nichts; am Kabelweg aendert der Lauf am Netz nichts
+#                (braucht das Go-Werkzeug und git)
 # Dazu, ohne Urteil: messung-relay (die Messung aus dem Konzept, Abschnitt
 # 6.4: Zone und lokale Adresse am Relay) und messung-wege (zu eigene-wege:
 # Kernel bei fremdem Absender, Zeitleiste relayd/WLAN-Adresse bei Neustart
 # und ifup).
 #
-#   edge-light/test/wlan-anschluss-probe.sh [lauf ...]      (Vorgabe: alle dreizehn)
+#   edge-light/test/wlan-anschluss-probe.sh [lauf ...]      (Vorgabe: alle vierzehn)
 #   VP_WLAN_LABOR_CACHE=<verz>  Zwischenspeicher fuer Abbilder, Pakete, v86
 #                               (Vorgabe ~/.cache/vp-wlan-labor, rund 250 MB)
 #   VP_WLAN_LABOR_AUS=<verz>    Protokolle, je Lauf <lauf>.log (Vorgabe: neu unter /tmp)
 #   VP_WLAN_LABOR_LAST=<n>      hoechste Last vor jedem Lauf (Vorgabe: Kerne x 1,5);
 #                               darueber wartet die Probe bis zu 30 min
 #   FRIST_FAKTOR=<n>            alle Fristen strecken; LAUT=1 Konsole mitlesen
+#   VP_WLAN_ALTSTAND=<git-ref>  alter Stand der Skripte fuer skripte-update
+#                               (Vorgabe edge-light-2026.11.17, vor wege)
 #
 # Braucht node >= 22, curl, tar; einmal rund 115 MB aus dem Netz (hole.sh).
 # Dauer je Lauf drei bis sechs Minuten auf einem ruhigen Rechner.
@@ -70,7 +81,8 @@ HOTPLUG91="$HIER/../openwrt/files/etc/hotplug.d/iface/91-vp-einrichtung"
 KERN="$HIER/../../edge-app/core"
 CACHE="${VP_WLAN_LABOR_CACHE:-$HOME/.cache/vp-wlan-labor}"
 AUS="${VP_WLAN_LABOR_AUS:-$(mktemp -d "${TMPDIR:-/tmp}/vp-wlan-probe.XXXXXX")}"
-LAEUFE="${*:-scan messen verbinden falsch kabel stoerfaelle einrichtung ohne-cloud werkstatt fenster routerausfall eigene-wege einrichtung-weg}"
+ALTSTAND="${VP_WLAN_ALTSTAND:-edge-light-2026.11.17}"
+LAEUFE="${*:-scan messen verbinden falsch kabel stoerfaelle einrichtung ohne-cloud werkstatt fenster routerausfall eigene-wege einrichtung-weg skripte-update}"
 
 command -v node >/dev/null 2>&1 || { echo "FEHLER: node fehlt (>= 22)" >&2; exit 2; }
 [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ] || { echo "FEHLER: node >= 22 noetig" >&2; exit 2; }
@@ -94,6 +106,19 @@ case " $LAEUFE " in *" einrichtung-weg "*)
   command -v go >/dev/null 2>&1 || { echo "FEHLER: der Lauf einrichtung-weg braucht das Go-Werkzeug (oder den Lauf weglassen)" >&2; exit 2; }
   echo "== baue einrichtung-probe (GOOS=linux GOARCH=386)"
   (cd "$KERN" && GOOS=linux GOARCH=386 CGO_ENABLED=0 go build -trimpath -o "$hdb/skript/einrichtung-probe" ./cmd/einrichtung-probe)
+  ;;
+esac
+# skripte-update: der alte Stand der Skripte (aus Git) und der Lauf des
+# Selbstupdates (cmd/wlan-skripte-probe) fuer das 32-Bit-OpenWrt.
+case " $LAEUFE " in *" skripte-update "*)
+  command -v go >/dev/null 2>&1 || { echo "FEHLER: der Lauf skripte-update braucht das Go-Werkzeug (oder den Lauf weglassen)" >&2; exit 2; }
+  mkdir -p "$hdb/skript/alt"
+  for f in wlan-anschluss.sh einrichtung-wlan.sh; do
+    git -C "$HIER" show "$ALTSTAND:edge-light/openwrt/files/usr/libexec/vp-edge-light/$f" >"$hdb/skript/alt/$f" ||
+      { echo "FEHLER: $f im Stand $ALTSTAND nicht lesbar (git fetch --tags?)" >&2; exit 2; }
+  done
+  echo "== baue wlan-skripte-probe (GOOS=linux GOARCH=386), alter Stand $ALTSTAND"
+  (cd "$KERN" && GOOS=linux GOARCH=386 CGO_ENABLED=0 go build -trimpath -o "$hdb/skript/wlan-skripte-probe" ./cmd/wlan-skripte-probe)
   ;;
 esac
 (cd "$hdb" && COPYFILE_DISABLE=1 tar --format=ustar --uid 0 --gid 0 --uname root --gname root \

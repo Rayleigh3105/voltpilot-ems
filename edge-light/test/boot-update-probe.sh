@@ -411,6 +411,96 @@ else
   echo "  uebersprungen: $ECHT fehlt (edge-light/scripts/build.sh amd64)"
 fi
 
+schritt "12. Selbstupdate der WLAN-Skripte mit dem echten Programm (amd64)"
+# Das bestaetigte Programm erneuert wlan-anschluss.sh und einrichtung-wlan.sh
+# aus seinen eingebetteten Kopien (agent/wlan_pflege.go, internal/wlanstand),
+# eigener Stand WLAN_STAND. Der Container hat kein WLAN: das ist die Box am
+# Kabel - der Lauf ersetzt die Skripte, und am Netz aendert sich nichts. Das
+# WLAN selbst (WLAN-Weg B, wege, Abbruch mitten im Schreiben) zeigt der Lauf
+# skripte-update von wlan-anschluss-probe.sh. Der alte Stand kommt aus Git
+# (VPBU_WLAN_ALTSTAND, Vorgabe edge-light-2026.11.17: vor wege). Wie Fall 11:
+# erst edge-light/scripts/build.sh amd64.
+if [ -f "$ECHT" ]; then
+  WD=/usr/libexec/vp-edge-light
+  WA=$WD/wlan-anschluss.sh
+  WE=$WD/einrichtung-wlan.sh
+  WALT="${VPBU_WLAN_ALTSTAND:-edge-light-2026.11.17}"
+  WQ="$HIER/../openwrt/files/usr/libexec/vp-edge-light"
+  WSTAND="$(sed -n 's/^WLAN_STAND=\([0-9][0-9]*\)$/\1/p' "$WQ/wlan-anschluss.sh")"
+  for f in wlan-anschluss.sh einrichtung-wlan.sh; do
+    git -C "$HIER" show "$WALT:edge-light/openwrt/files/usr/libexec/vp-edge-light/$f" |
+      docker exec -i "$C" sh -c "cat >/probe/alt-$f"
+    docker cp "$WQ/$f" "$C:/probe/soll-$f" >/dev/null
+  done
+  # netz: alles, was das Einspielen nie aendern darf (Konfiguration, cron,
+  # Hotplug-Haken, Wege und Regeln), als eine Pruefsumme.
+  netz='{ for k in $(ls /etc/config); do uci export $k; done; cat /etc/crontabs/root; ls -l /etc/hotplug.d/iface/; cat /etc/hotplug.d/iface/*; ip route show table all; ip rule; } 2>&1 | md5sum'
+  x "uci set vp-edge-light.main.portal_url=http://127.0.0.1:9 && uci commit vp-edge-light"
+  alter_wlan_stand() { x "cp /probe/alt-wlan-anschluss.sh $WA && cp /probe/alt-einrichtung-wlan.sh $WE && chmod 0755 $WA $WE && rm -f $WA.* $WE.*"; }
+  echtes_ende() {
+    x 'kill $(pidof vp-edge-light) 2>/dev/null' || true
+    i=0; while ! x '[ -f /probe/lauf.rc ]' >/dev/null 2>&1; do i=$((i + 1)); [ "$i" -gt 15 ] && break; sleep 1; done
+  }
+  pruef "Ausgangslage: der alte Stand traegt keinen WLAN_STAND, kennt wege nicht" "! grep -q '^WLAN_STAND=' /probe/alt-wlan-anschluss.sh && ! grep -q 'befehl_wege' /probe/alt-wlan-anschluss.sh"
+
+  echo "-- 12a. waehrend der Probe spielt das Programm nichts ein"
+  frisch
+  alter_wlan_stand
+  x "mkdir -p $RAM && gzip -1 -n -c /probe/echt >$RAM/kandidat.gz
+     rel=\$(/probe/echt version)
+     sha=\$(sha256sum /probe/echt | cut -d' ' -f1); gz=\$(sha256sum $RAM/kandidat.gz | cut -d' ' -f1)
+     size=\$(wc -c </probe/echt); gzsize=\$(wc -c <$RAM/kandidat.gz)
+     printf '{\"release\":\"%s\",\"release_seq\":80,\"arch\":\"linux/amd64\",\"sha256\":\"%s\",\"size\":%s,\"gz_sha256\":\"%s\",\"gz_size\":%s,\"zuweisung\":\"z-wlan\",\"state_schema\":1}' \"\$rel\" \"\$sha\" \"\$size\" \"\$gz\" \"\$gzsize\" >$RAM/kandidat.json"
+  lauf
+  warte "die echte Fassung startet zur Probe (Marke start)" "grep -qx 'start 80 z-wlan' $FEST/versuche" 60
+  # Die erste Pruefung der WLAN-Pflege kommt nach ~45 s.
+  sleep 55
+  pruef "waehrend der Probe bleiben die alten Skripte" "cmp -s $WA /probe/alt-wlan-anschluss.sh && cmp -s $WE /probe/alt-einrichtung-wlan.sh && [ ! -e $WA.alt ]"
+  pruef "die Probe laeuft weiter" "[ -f $RAM/probe.json ]"
+  echtes_ende
+  strom_aus
+
+  echo "-- 12b. als bestaetigte Fassung: die WLAN-Skripte werden erneuert"
+  x "gzip -1 -n -c /probe/echt >$LD/$N.gz
+     sha=\$(sha256sum /probe/echt | cut -d' ' -f1); gz=\$(sha256sum $LD/$N.gz | cut -d' ' -f1)
+     size=\$(wc -c </probe/echt); gzsize=\$(wc -c <$LD/$N.gz)
+     printf '%s  $N\n%s  $N.gz\ngroesse %s %s\n' \"\$sha\" \"\$gz\" \"\$size\" \"\$gzsize\" >$LD/$N.sha256"
+  # Strom weg mitten in einem frueheren Schreiben: der halbe Rest stoert nicht.
+  x "printf '#!/bin/sh\nWLAN_STA' >$WA.neu"
+  NETZ0="$(x "$netz")"
+  lauf
+  warte "das bestaetigte Programm spielt die WLAN-Skripte ein (WLAN_STAND=$WSTAND)" "grep -qx 'WLAN_STAND=$WSTAND' $WA" 100
+  pruef "wlan-anschluss.sh ist byte-gleich mit der Quelle" "cmp -s $WA /probe/soll-wlan-anschluss.sh"
+  pruef "einrichtung-wlan.sh ist byte-gleich mit der Quelle" "cmp -s $WE /probe/soll-einrichtung-wlan.sh"
+  pruef "beide ausfuehrbar (cron ruft sie direkt)" "[ -x $WA ] && [ -x $WE ]"
+  pruef "die alten Fassungen liegen als .alt daneben" "cmp -s $WA.alt /probe/alt-wlan-anschluss.sh && cmp -s $WE.alt /probe/alt-einrichtung-wlan.sh"
+  pruef "kein halber Schreibrest mehr (.neu)" "! ls $WD | grep -q 'neu\$'"
+  pruef "das Programm meldet das Einspielen" "grep -q 'WLAN-Skripte erneuert' /probe/lauf.out /probe/lauf.err"
+  pruef "status zeigt keinen fehlenden Weg (wege_fehlen leer)" "$WA status | grep -qx 'wege_fehlen='"
+  pruef "Konfiguration, cron, Hotplug, Wege unveraendert (Kabel: nichts Schlechteres)" "[ \"\$($netz)\" = '$NETZ0' ]"
+  pruef "das Programm laeuft dabei weiter" '[ ! -f /probe/lauf.rc ]'
+  echtes_ende
+
+  echo "-- 12c. ein zweiter Start schreibt nichts"
+  VOR_WLAN="$(x "ls -i $WA $WE | awk '{print \$1}' | tr '\n' ' '; date -r $WA +%s; date -r $WE +%s")"
+  lauf
+  warte "die bestaetigte Fassung laeuft wieder" 'pidof vp-edge-light' 30
+  sleep 55
+  pruef "zweiter Start schreibt nichts (Inode und Zeit beider Skripte)" "[ \"\$(ls -i $WA $WE | awk '{print \$1}' | tr '\n' ' '; date -r $WA +%s; date -r $WE +%s)\" = '$VOR_WLAN' ]"
+  echtes_ende
+
+  echo "-- 12d. ohne WLAN-Skripte legt das Programm keine an"
+  x "rm -f $WA $WE $WA.* $WE.*"
+  lauf
+  warte "die bestaetigte Fassung laeuft wieder" 'pidof vp-edge-light' 30
+  sleep 55
+  pruef "kein wlan-anschluss.sh, kein einrichtung-wlan.sh angelegt" "[ ! -e $WA ] && [ ! -e $WE ] && ! ls $WD | grep -q wlan"
+  echtes_ende
+  x 'uci set vp-edge-light.main.portal_url=https://portal.voltpilot.de && uci commit vp-edge-light'
+else
+  echo "  uebersprungen: $ECHT fehlt (edge-light/scripts/build.sh amd64)"
+fi
+
 echo
 echo "$OK bestanden, $FEHLER fehlgeschlagen"
 [ "$FEHLER" = 0 ]

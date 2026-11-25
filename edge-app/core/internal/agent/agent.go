@@ -692,6 +692,9 @@ type Agent struct {
 	// erneuert Loader und Dienst-Init aus den eingebetteten Kopien
 	// (loader_pflege.go, nur Edge Light).
 	loaderPflege loaderPflegeState
+	// wlanPflege: die Testnaehte der Pflege der WLAN-Skripte (wlan_pflege.go,
+	// nur Edge Light).
+	wlanPflege wlanPflegeState
 	// otaRoots overrides the BAKED trust root - a TEST SEAM only (the repo
 	// carries no private key, so a test must mint its own throwaway root).
 	// nil = the production path: otaverify.BakedRoots(), i.e. rootkeys.json.
@@ -1241,6 +1244,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	// ohne Loader-Pfade kehrt die Schleife sofort zurueck.
 	a.done.Add(1)
 	go a.loaderPflegeLoop(ctx, loaderPflegeErsterBlick, loaderPflegeTakt)
+	// Ebenso die WLAN-Skripte der Box (wlan_pflege.go); nur Edge Light.
+	a.done.Add(1)
+	go a.wlanPflegeLoop(ctx, wlanPflegeErsterBlick, loaderPflegeTakt)
 
 	a.done.Add(2)
 	go a.setpointLoop(ctx)
