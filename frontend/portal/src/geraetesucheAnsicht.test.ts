@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { GERAETESUCHE_GRUPPEN, type GeraetesucheFund } from './geraetesuche';
+import { initialeVerbindung } from './komponentenAssistent';
 import {
   GRUPPEN_TITEL,
+  DEYE_LOGGER_OHNE_ZUGANG,
+  DEYE_MODBUS_TCP_HINWEIS,
   bauart,
   dauerText,
   endHinweis,
@@ -129,6 +132,68 @@ describe('Gerätesuche · ein Fund in Worten', () => {
     expect(merkmalText('v5_kopf_seriennummer').roh).toBe(false);
     expect(merkmalText('deye_typ_0x0006').text).toBe('Typregister 0x0000 meldet 0x0006.');
     expect(merkmalText('kostal_neu_123')).toEqual({ text: 'kostal_neu_123', roh: true });
+  });
+});
+
+describe('Gerätesuche · Deye-Logger ohne Solarman V5 (Feld 25.11.2026)', () => {
+  const stick = (over: Partial<GeraetesucheFund>): GeraetesucheFund => fund({
+    schluessel: 'deye_logger:192.168.178.62:502', erkenner: 'deye_logger', art: 'wechselrichter', hersteller: 'deye',
+    modell: null, modellName: null, seriennummer: null, familie: null, spannung: null, erkennung: 'wahrscheinlich',
+    anbindung: 'uebernehmen', hindernis: 'lokale_api_aus',
+    merkmale: ['deye_logger_seite', 'deye_logger_pcs_local_web', 'solarman_port_zu', 'modbus_port_zu', 'funkmodul_mxchip'],
+    verbindung: { communication: 'deye_modbus_tcp', ip: '192.168.178.62', port: 502, unit_id: 1 },
+    ...over,
+  });
+
+  it('Modbus TCP aus: „Deye-Logger ohne lokalen Zugang", der Weg zum Einschalten und RS485 als Alternative', () => {
+    expect(fundTitel(stick({}))).toBe(DEYE_LOGGER_OHNE_ZUGANG);
+    expect(fundZeile(stick({}), true)).toBe('Datenlogger · 192.168.178.62');
+    expect(fundHinweis(stick({}))).toBe(DEYE_MODBUS_TCP_HINWEIS);
+    expect(DEYE_MODBUS_TCP_HINWEIS).toContain('Modbus TCP im Logger ein');
+    expect(DEYE_MODBUS_TCP_HINWEIS).toContain('„Modbus Tcp“');
+    expect(DEYE_MODBUS_TCP_HINWEIS).toContain('erneut');
+    expect(DEYE_MODBUS_TCP_HINWEIS).toContain('RS485');
+    // Ein Hindernis bietet keinen Knopf; erst nach dem Einschalten und erneutem Suchen.
+    expect(fundAktion(stick({}), 'braucht_hilfe', true)).toEqual({ art: 'keine' });
+    for (const m of stick({}).merkmale) expect(merkmalText(m).roh).toBe(false);
+  });
+
+  it('die Docker-Box liest den Weg nicht: kein Einschalt-Hinweis, der dort nichts änderte', () => {
+    expect(fundHinweis(stick({ anbindung: 'nicht_mit_dieser_box' }))).toBe('Diese Box liest es noch nicht; andere VoltPilot-Boxen schon.');
+  });
+
+  it('Modbus TCP an: ein Deye wie über Solarman - kein Logger-Titel, kein Hindernis-Satz', () => {
+    const an = stick({ hindernis: null, erkennung: 'sicher', familie: 'hybrid_3p', spannung: 'lv', seriennummer: 'AB12345678',
+      merkmale: ['deye_logger_seite', 'deye_logger_pcs_local_web', 'solarman_port_zu', 'deye_typ_0x0005', 'deye_seriennummer_0x0003'] });
+    expect(fundTitel(an)).toBe('Deye Hybrid-Wechselrichter');
+    expect(fundZeile(an, false)).toBe('Wechselrichter · Hybrid, 3-phasig, Niedervolt');
+    expect(fundHinweis(an)).toBeNull();
+    expect(fundAktion(an, 'bereit', true)).toEqual({ art: 'uebernehmen', bestaetigen: false });
+    expect(fundAktion(stick({ hindernis: null, merkmale: ['deye_logger_seite', 'modbus_port_offen'] }), 'bereit', true))
+      .toEqual({ art: 'uebernehmen', bestaetigen: true });
+  });
+
+  it('Übernahme über die Vorlage des Wegs: Adresse, Port und Geräteadresse aus der Suche, der Weg aus der Vorlage', () => {
+    const vorlage = {
+      ...GS_DEYE_HV[0],
+      templateRef: 'builtin:deye:sun-25k-sg02hp3:deye_modbus_tcp',
+      communication: 'deye_modbus_tcp',
+      transportSchema: [
+        { key: 'transport', label: 'Verbindungsweg', type: 'select', default: 'deye_modbus_tcp',
+          options: [{ value: 'deye_modbus_tcp', label: 'Modbus TCP (Datenlogger mit Modbus TCP, Port 502)' }] },
+        { key: 'ip', label: 'IP-Adresse des Datenloggers', type: 'text', required: true },
+        { key: 'port', label: 'Port', type: 'number', default: 502 },
+        { key: 'unit_id', label: 'Geräteadresse (Modbus-Unit-ID)', type: 'number', default: 1 },
+      ],
+    } as (typeof GS_DEYE_HV)[number];
+    const an = stick({ hindernis: null, erkennung: 'sicher', verbindung: { communication: 'deye_modbus_tcp', ip: '192.168.178.62', port: 502, unit_id: 1 } });
+    const vor = vorbelegung(an, vorlage);
+    expect(vor).toEqual({ ip: '192.168.178.62', port: 502, unit_id: 1 });
+    expect(initialeVerbindung(vorlage, vor)).toEqual({ transport: 'deye_modbus_tcp', ip: '192.168.178.62', port: 502, unit_id: 1 });
+  });
+
+  it('die go-e behält ihren Satz', () => {
+    expect(fundHinweis(fund({ hindernis: 'lokale_api_aus' }))).toContain('HTTP API v2');
   });
 });
 

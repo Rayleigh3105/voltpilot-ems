@@ -164,6 +164,7 @@ export function herstellerName(h: string | null): string | null {
  */
 export function fundTitel(f: GeraetesucheFund): string {
   if (f.modellName && f.modellName.trim()) return f.modellName.trim();
+  if (deyeLoggerOhneZugang(f)) return DEYE_LOGGER_OHNE_ZUGANG;
   const h = herstellerName(f.hersteller);
   if (f.modell && f.modell.trim()) return h && !f.modell.toLowerCase().startsWith(h.toLowerCase()) ? `${h} ${f.modell.trim()}` : f.modell.trim();
   if (h && f.art === 'wechselrichter' && f.familie?.startsWith('hybrid')) return `${h} Hybrid-Wechselrichter`;
@@ -181,6 +182,7 @@ export function bauart(f: GeraetesucheFund): string | null {
 
 /** „3 Schaltausgänge" bzw. das Wort der Art. */
 export function artText(f: GeraetesucheFund): string {
+  if (deyeLoggerOhneZugang(f)) return 'Datenlogger';
   if (f.art === 'schaltaktor' && f.kanaele !== null && f.kanaele > 0) {
     return f.kanaele === 1 ? '1 Schaltausgang' : `${f.kanaele} Schaltausgänge`;
   }
@@ -217,6 +219,11 @@ const MERKMAL_SATZ: Record<string, string> = {
   sma_seriennummer_30057: 'Seriennummer aus dem SMA-Register 30057.',
   ebyte_modelltabelle_0x0c80: 'Modelltabelle des Moduls ab Register 0x0C80.',
   laufender_leser: 'Ihre Box liest dieses Gerät schon.',
+  deye_logger_seite: 'Die Startseite lädt die Skripte der Deye-Logger-Weboberfläche (Sprachdateien, aes.js, rsa.js, utils.js).',
+  deye_logger_pcs_local_web: 'Die Weboberfläche nennt in utils.js ihren Schlüssel PCS_LOCAL_WEB.',
+  solarman_port_zu: 'Port 8899 (Solarman V5) ist nicht offen.',
+  modbus_port_zu: 'Port 502 (Modbus TCP) ist nicht offen.',
+  funkmodul_mxchip: 'Das WLAN-Modul ist von MXCHIP (Herstellerliste der MAC-Adressen).',
 };
 
 export function merkmalText(code: string): { text: string; roh: boolean } {
@@ -280,6 +287,23 @@ export const WALLBOX_OCPP_HINWEIS =
   'Eine Wallbox binden Sie über „Gerät hinzufügen“ → „Ladesäule mit OCPP 1.6“ an: Tragen Sie die dort angezeigte Adresse '
   + 'in der Wallbox als OCPP-Server ein.';
 
+/** „Deye-Logger ohne lokalen Zugang": ein Deye-Logger-Stick, dessen Modbus TCP aus ist (Feld 25.11.2026, DYDA_WiBLE). */
+export const DEYE_LOGGER_OHNE_ZUGANG = 'Deye-Logger ohne lokalen Zugang';
+
+/**
+ * Der Logger liest sich erst, wenn Modbus TCP an ist (Port 502, Geräteadresse 1). Den alten Weg über Solarman V5 (8899)
+ * bietet er nicht. VoltPilot meldet sich nie am Logger an; einschalten muss es der Kunde selbst.
+ */
+export const DEYE_MODBUS_TCP_HINWEIS =
+  'Schalten Sie zuerst Modbus TCP im Logger ein: in seiner Weboberfläche „Aktivieren“ wählen, als Protokoll „Modbus Tcp“ '
+  + 'und „Default“ einstellen, bestätigen – der Logger startet neu. Suchen Sie danach erneut. Alternativ schließen Sie den '
+  + 'Deye per RS485 direkt an die Box an.';
+
+/** Ein Deye-Logger, den die Box erkennt, aber (noch) nicht lesen kann: Modbus TCP im Logger aus. */
+export function deyeLoggerOhneZugang(f: Pick<GeraetesucheFund, 'erkenner' | 'hindernis'>): boolean {
+  return f.erkenner === 'deye_logger' && f.hindernis === 'lokale_api_aus';
+}
+
 /** Der eine Satz, warum ein Fund Hilfe braucht oder nicht anbindbar ist; null = keiner nötig. */
 export function fundHinweis(f: GeraetesucheFund): string | null {
   if (f.abgleich === 'adresse_geaendert') {
@@ -298,6 +322,11 @@ export function fundHinweis(f: GeraetesucheFund): string | null {
   if (f.art === 'wallbox' && f.anbindung === 'kein_leseweg') return WALLBOX_OCPP_HINWEIS;
   if (f.hindernis === 'geschuetzt') {
     return 'Passwortschutz ist an. Schalten Sie ihn in der App des Geräts aus und suchen Sie erneut – VoltPilot meldet sich nie an.';
+  }
+  if (deyeLoggerOhneZugang(f)) {
+    // Die Docker-Box liest den Weg auch mit Modbus TCP nicht: Einschalten allein hilft dort nicht.
+    if (f.anbindung === 'nicht_mit_dieser_box') return 'Diese Box liest es noch nicht; andere VoltPilot-Boxen schon.';
+    return DEYE_MODBUS_TCP_HINWEIS;
   }
   if (f.hindernis === 'lokale_api_aus') {
     return 'Die lokale Schnittstelle ist aus. Schalten Sie in der go-e-App „HTTP API v2“ ein und suchen Sie erneut.';

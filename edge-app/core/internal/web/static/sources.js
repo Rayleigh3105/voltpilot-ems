@@ -95,6 +95,7 @@
 
   function commLabel(c) {
     if (c === "solarman_v5") return "Solarman-V5 (WiFi-Datenlogger)";
+    if (c === "deye_modbus_tcp") return "Modbus TCP (Datenlogger mit Modbus TCP)";
     if (c === "goe_http_api") return "go-e HTTP-API";
     if (c === "shelly_http") return "Shelly HTTP-API";
     if (c === "ebyte_modbus_tcp") return "Ebyte I/O-Modul (Modbus TCP)";

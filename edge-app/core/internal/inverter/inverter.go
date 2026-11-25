@@ -31,7 +31,14 @@ const SchemaVersion = "1.0"
 
 // Communication methods.
 const (
-	CommSolarmanV5      = "solarman_v5"       // Deye WiFi datalogger, Modbus-RTU over TCP 8899
+	CommSolarmanV5 = "solarman_v5" // Deye WiFi datalogger, Modbus-RTU over TCP 8899
+	// CommDeyeModbusTCP reads a Deye through the Modbus TCP of its logger stick
+	// (plain MBAP frames, port 502, unit 1): the newer sticks (field 25.11.2026,
+	// DYDA_WiBLE) offer no Solarman V5 on 8899; Modbus TCP is switched on in the
+	// stick's web page. Same register map, decoder and control as solarman_v5 -
+	// only the transport differs. Edge Light only (Go core); the Docker box's
+	// Node-RED does not read it.
+	CommDeyeModbusTCP   = "deye_modbus_tcp"
 	CommModbusTCP       = "modbus_tcp"        // generic Modbus/SunSpec over TCP 502
 	CommFroniusSolarAPI = "fronius_solar_api" // Fronius Solar API (local HTTP/JSON), like HA
 	// CommFroniusSunSpec reads a Fronius inverter over real SunSpec Modbus TCP
@@ -248,6 +255,8 @@ const (
 // Default ports per communication.
 const (
 	defaultSolarmanPort       = 8899
+	defaultDeyeModbusPort     = 502 // Modbus TCP of a Deye logger stick (switched on in the stick)
+	defaultDeyeModbusUnitID   = 1   // the inverter behind the stick answers at unit 1 (unit 0 stays silent, field 25.11.2026)
 	defaultModbusPort         = 502
 	defaultFroniusPort        = 80 // Fronius Solar API (HTTP); GEN24 self-signed HTTPS uses insecure_tls
 	defaultFroniusSunSpecPort = 502
@@ -331,6 +340,11 @@ type Transport struct {
 	Family        string  `json:"family,omitempty"`
 	Note          string  `json:"note,omitempty"`
 	Fields        []Field `json:"fields"`
+	// EigeneVorlage: a way that is not the model's default still gets its own
+	// built-in template (BuiltinTemplates) - the cloud keeps ONE communication
+	// per template, so a way the portal must offer needs its own row. Today
+	// only the Deye over its stick's Modbus TCP.
+	EigeneVorlage bool `json:"-"`
 }
 
 // ValidationError carries a customer-facing German message; the web layer maps
@@ -577,6 +591,28 @@ func solarmanFields() []Field {
 	}
 }
 
+// deyeModbusFields is the Deye over the Modbus TCP of its logger stick: the
+// address of the stick, port 502 and the inverter's unit, then every Deye
+// option of the Solarman way (same decoder, same control).
+func deyeModbusFields() []Field {
+	out := []Field{
+		{Key: "ip", Label: "IP-Adresse des Datenloggers", Type: "text", Required: true,
+			Help: "Die IP des Deye-Datenloggers (WiFi-Stick) im lokalen Netz. Modbus TCP muss in seiner Weboberfläche eingeschaltet sein: „Aktivieren“ wählen, als Protokoll „Modbus Tcp“ und „Default“ einstellen, bestätigen - der Logger startet danach neu."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultDeyeModbusPort,
+			Help: "Modbus-TCP-Port des Datenloggers, üblicherweise 502."},
+		{Key: "unit_id", Label: "Geräteadresse (Modbus-Unit-ID)", Type: "number", Default: defaultDeyeModbusUnitID,
+			Help: "Die Modbus-Adresse des Wechselrichters hinter dem Datenlogger, meist 1."},
+	}
+	for _, f := range solarmanFields() {
+		switch f.Key {
+		case "ip", "port", "serial", "mb_slave_id":
+		default:
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func modbusFields() []Field {
 	return []Field{
 		{Key: "ip", Label: "IP-Adresse des Wechselrichters", Type: "text", Required: true,
@@ -703,8 +739,11 @@ func deyeFamilies() []Family {
 // ha-solarman's supported Deye lines (deye_sg04lp3 / deye_hybrid / deye_string /
 // deye_2mppt+deye_4mppt); adding a model is a one-line edit here, no code change.
 func deyeModels() []Model {
+	// Every Deye reads over Solarman V5 (the default) or over the Modbus TCP of
+	// a newer logger stick - the same register map, only the transport.
 	m := func(id, label, family string, ratedKw float64, note string) Model {
-		return Model{ID: id, Label: label, Family: family, RatedKw: ratedKw, Note: note}
+		return Model{ID: id, Label: label, Family: family, RatedKw: ratedKw, Note: note,
+			Transports: []string{CommSolarmanV5, CommDeyeModbusTCP}}
 	}
 	// mv ist dasselbe Modell MIT seinen Typenschild-Varianten (Model.Aliases):
 	// derselbe Eintrag, dieselbe Kennung, dieselbe Registerkarte - nur weitere
@@ -1616,6 +1655,15 @@ func DefaultCatalog() Catalog {
 					Communication: CommSolarmanV5,
 					Label:         "Solarman-V5 (WiFi-Datenlogger, TCP 8899)",
 					Fields:        solarmanFields(),
+				}, {
+					// Newer logger sticks without Solarman V5: the same Deye over the
+					// stick's Modbus TCP (switched on in the stick). Second way, so
+					// Solarman stays the default of every Deye model.
+					Communication: CommDeyeModbusTCP,
+					EigeneVorlage: true,
+					Label:         "Modbus TCP (Datenlogger mit Modbus TCP, Port 502)",
+					Note:          "Neuere Deye-Datenlogger ohne Solarman V5: Modbus TCP in der Weboberfläche des Loggers einschalten („Aktivieren“, Protokoll „Modbus Tcp“, „Default“).",
+					Fields:        deyeModbusFields(),
 				}},
 				// Tier 3: Deye's only control lever is the Time-of-Use window in EEPROM
 				// (write-on-change). The register map is bench-pending, so an actual
@@ -2376,7 +2424,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	// only deye-decode drops a WHOLE reading over an implausible SoC, every other
 	// decoder simply omits the channel. Cleared here once (the Channel pattern
 	// above) so a transport added later cannot silently inherit it.
-	if transport.Communication != CommSolarmanV5 {
+	if transport.Communication != CommSolarmanV5 && transport.Communication != CommDeyeModbusTCP {
 		conn.AllowMissingSoc = false
 		conn.SocFromVoltage = nil
 	}
@@ -2389,19 +2437,35 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	}
 
 	switch transport.Communication {
-	case CommSolarmanV5:
-		conn.Serial = strings.TrimSpace(conn.Serial)
-		if conn.Serial == "" {
-			return Selection{}, invalid("Für Deye ist die Datenlogger-Seriennummer erforderlich.")
-		}
-		if conn.Port == 0 {
-			conn.Port = defaultSolarmanPort
-		}
-		if conn.MbSlaveID == 0 {
-			conn.MbSlaveID = 1
-		}
-		if conn.MbSlaveID < 1 || conn.MbSlaveID > 247 {
-			return Selection{}, invalid("Die Modbus-Slave-ID muss zwischen 1 und 247 liegen.")
+	case CommSolarmanV5, CommDeyeModbusTCP:
+		if transport.Communication == CommDeyeModbusTCP {
+			// The stick's Modbus TCP: no logger serial, the unit is the inverter's
+			// address. mb_slave_id mirrors it - the Deye control reads that key.
+			conn.Serial = ""
+			if conn.Port == 0 {
+				conn.Port = defaultDeyeModbusPort
+			}
+			if conn.UnitID == 0 {
+				conn.UnitID = defaultDeyeModbusUnitID
+			}
+			if conn.UnitID < 1 || conn.UnitID > 247 {
+				return Selection{}, invalid("Die Geräteadresse muss zwischen 1 und 247 liegen.")
+			}
+			conn.MbSlaveID = conn.UnitID
+		} else {
+			conn.Serial = strings.TrimSpace(conn.Serial)
+			if conn.Serial == "" {
+				return Selection{}, invalid("Für Deye ist die Datenlogger-Seriennummer erforderlich.")
+			}
+			if conn.Port == 0 {
+				conn.Port = defaultSolarmanPort
+			}
+			if conn.MbSlaveID == 0 {
+				conn.MbSlaveID = 1
+			}
+			if conn.MbSlaveID < 1 || conn.MbSlaveID > 247 {
+				return Selection{}, invalid("Die Modbus-Slave-ID muss zwischen 1 und 247 liegen.")
+			}
 		}
 		// 0 = auto-detect the LV/HV scale from the device register 0x0000 (the
 		// default); 1 or 10 is a manual override. See deye/deye-decode.js.
@@ -2437,7 +2501,10 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 			return Selection{}, invalid("Die Batterie-Strategie der Fernsteuerung muss „Nur Leistung\" (0) oder „Leistung + SoC-Grenze\" (5) sein.")
 		}
 		// fields of the other transports are not part of this one.
-		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
+		if transport.Communication == CommSolarmanV5 {
+			conn.UnitID = 0
+		}
+		conn.Profile, conn.InsecureTLS, conn.ModelType = "", false, ""
 		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
 		conn.ByteOrder = ""
 	case CommModbusTCP:
@@ -2820,8 +2887,14 @@ func (s Selection) BusPayload() []byte {
 		"port": s.Connection.Port,
 	}
 	switch s.Communication {
-	case CommSolarmanV5:
-		conn["serial"] = s.Connection.Serial
+	case CommSolarmanV5, CommDeyeModbusTCP:
+		if s.Communication == CommDeyeModbusTCP {
+			// No logger serial; the unit rides as unit_id and as mb_slave_id (the
+			// key the Deye read and control paths take).
+			conn["unit_id"] = s.Connection.UnitID
+		} else {
+			conn["serial"] = s.Connection.Serial
+		}
 		conn["mb_slave_id"] = s.Connection.MbSlaveID
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 		// invert_batt_sign is the READ-path battery sign (firmware-dependent per

@@ -40568,7 +40568,7 @@ components:
           items:
             type: string
             enum: [solarman, shelly, goe, netztechnik, modbus_offen, sunspec, fronius_solar_api, kaco_aiswei, kostal,
-              huawei, sma, victron, opendtu_ahoy, ebyte, wago, mdns, ssdp, funkmodul]
+              huawei, sma, victron, opendtu_ahoy, ebyte, wago, deye_logger, mdns, ssdp, funkmodul]
         gruppen:
           type: array
           description: Alle sechs Gruppen in der Reihenfolge von `GeraetesucheGruppe.gruppe`.
@@ -40624,7 +40624,7 @@ components:
         erkenner:
           type: string
           enum: [solarman, shelly, goe, netztechnik, modbus_offen, sunspec, fronius_solar_api, kaco_aiswei, kostal,
-            huawei, sma, victron, opendtu_ahoy, ebyte, wago]
+            huawei, sma, victron, opendtu_ahoy, ebyte, wago, deye_logger]
         art:
           type: string
           enum: [wechselrichter, wallbox, schaltaktor, zaehler, io_modul, sps, dtu, modbus_geraet, router, zugangspunkt]

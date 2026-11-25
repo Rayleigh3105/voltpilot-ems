@@ -416,6 +416,12 @@ func DeriveWith(reg entities.Registry, cat inverter.Catalog, current []sources.S
 		if err != nil {
 			return Plan{}, fmt.Errorf("Anbindung von %q: %w", e.ID, err)
 		}
+		// The Deye over its stick's Modbus TCP is not the model's default way:
+		// the cloud names it in the driver's communication (a template of its
+		// own) - the box takes it as the chosen way, never the default.
+		if d.Communication == inverter.CommDeyeModbusTCP && strings.TrimSpace(conn.Transport) == "" {
+			conn.Transport = inverter.CommDeyeModbusTCP
+		}
 
 		if role == RoleInverter {
 			if invEntity != "" {

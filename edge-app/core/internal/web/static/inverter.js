@@ -58,6 +58,7 @@
 
   function commLabel(id) {
     return id === "solarman_v5" ? "Solarman-V5 (WiFi-Datenlogger)"
+      : id === "deye_modbus_tcp" ? "Modbus TCP (Datenlogger mit Modbus TCP)"
       : id === "modbus_tcp" ? "Modbus TCP"
       : id;
   }

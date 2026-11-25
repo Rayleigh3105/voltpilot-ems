@@ -137,6 +137,10 @@ type StatusExtension struct {
 // Stellplätze as capabilities, answers the probe op koppel_test and reports
 // the heartbeat block koppel (layer1/koppel.go). Only Edge Light has Layer 1;
 // the Docker box never reports it.
+//
+// deye_modbus_tcp (25.11.2026): Layer 1 reads and steers a Deye over the
+// Modbus TCP of its logger stick (layer1/deyemodbus.go). Only the Go core;
+// the Docker box's Node-RED does not read that way.
 func BuiltSupports(boxArt string) []string {
 	out := []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
 		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component"}
@@ -144,7 +148,7 @@ func BuiltSupports(boxArt string) []string {
 	out = append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
 		"modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten")
 	if geraetesuche.GoKern(boxArt) {
-		out = append(out, "koppelbild")
+		out = append(out, "koppelbild", "deye_modbus_tcp")
 	}
 	return out
 }

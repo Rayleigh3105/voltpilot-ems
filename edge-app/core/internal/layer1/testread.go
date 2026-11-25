@@ -65,7 +65,7 @@ func (r *Runtime) testRead(ctx context.Context, req *testReadRequest) testReadRe
 		return r.probeUnits(ctx, req)
 	}
 	switch req.Communication {
-	case CommSolarmanV5:
+	case CommSolarmanV5, CommDeyeModbusTCP:
 		p, why := planSolarman(&req.selection)
 		if p == nil {
 			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
@@ -153,7 +153,7 @@ func (r *Runtime) testSolarman(ctx context.Context, p *solarmanPlan, role string
 	}
 	defer release()
 
-	sess, err := solarmanv5.Dial(ctx, r.opts.Dialer, p.Addr, p.Serial, p.Slave, r.opts.ConnectTimeout, r.opts.ReadTimeout)
+	sess, err := r.deyeVerbinde(ctx, p)
 	if err != nil {
 		return testReadResult{ErrorCode: testconn.ErrUnreachable}
 	}

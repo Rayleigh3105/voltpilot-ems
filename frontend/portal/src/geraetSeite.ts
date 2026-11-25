@@ -353,6 +353,7 @@ export const ROLLEN_WORT: Record<string, string> = {
 /** Die drei Kommunikationsarten in Kundenworten. */
 const COMM_WORT: Record<string, string> = {
   solarman_v5: 'Solarman-Logger (WLAN-Stick)',
+  deye_modbus_tcp: 'Modbus TCP über den Datenlogger (WLAN-Stick)',
   modbus_tcp: 'Modbus über das Netzwerk',
   fronius_sunspec: 'SunSpec über das Netzwerk',
   sunspec_tcp: 'SunSpec über das Netzwerk',

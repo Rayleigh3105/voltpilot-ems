@@ -445,7 +445,8 @@ func TestJedesKatalogPaarHatEinenErkenner(t *testing.T) {
 	for _, b := range []Bekannt{{Communication: "solarman_v5", IP: "10.77.0.35", Serial: "0x1234"},
 		{Communication: "shelly_http", IP: "10.77.0.36"}, {Communication: "fronius_sunspec", IP: "10.77.0.37"},
 		{Communication: "modbus_tcp", IP: "10.77.0.38", Rolle: "plant-controller"}, {Communication: "kaco_http", IP: "10.77.0.39"},
-		{Communication: "shelly_em_http", IP: "10.77.0.40"}, {Communication: "sunspec_tcp", IP: "10.77.0.41"}} {
+		{Communication: "shelly_em_http", IP: "10.77.0.40"}, {Communication: "sunspec_tcp", IP: "10.77.0.41"},
+		{Communication: "deye_modbus_tcp", IP: "10.77.0.42", UnitID: 1}} {
 		f, ok := bekanntFund(b)
 		if !ok || !f.LiestBoxSchon {
 			t.Fatalf("%+v: %+v", b, f)
@@ -656,7 +657,8 @@ func TestHTTPWiederholungImTakt(t *testing.T) {
 // Only the device's first request, only once: a device that never answers in
 // time gets /shelly twice and every later request of the port 80 chain (and
 // of the network gear) once - the chain does not double. An answer that does
-// not match is never repeated.
+// not match is never repeated. "/" comes twice, once per recogniser: the
+// Deye logger's start page, then the page title of the network gear.
 func TestHTTPWiederholungNurEinmalJeGeraet(t *testing.T) {
 	takt := Takt{JeSekunde: 100000, Zeitlimit: 100 * time.Millisecond}
 	stumm := &wackel{geraet: http.NotFoundHandler(), verzug: 300 * time.Millisecond, verloren: 99}
@@ -666,7 +668,7 @@ func TestHTTPWiederholungNurEinmalJeGeraet(t *testing.T) {
 	}
 	pfade, _ := stumm.gesehen()
 	want := []string{"/shelly", "/shelly", "/api/status?filter=sse,typ,fwv", "/solar_api/GetAPIVersion.cgi",
-		"/api/system/status", "/api/system", "/"}
+		"/api/system/status", "/api/system", "/", "/"}
 	if !reflect.DeepEqual(pfade, want) {
 		t.Fatalf("silent device: %v, want %v", pfade, want)
 	}

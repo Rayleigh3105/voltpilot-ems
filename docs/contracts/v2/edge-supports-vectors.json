@@ -127,6 +127,13 @@
       "advertised": true,
       "box_arten": ["edge_light", "edge_industrie"],
       "evidence": "edge-app/core/internal/layer1/koppel_test.go"
+    },
+    {
+      "name": "deye_modbus_tcp",
+      "meaning": "Die Box liest und steuert einen Deye über das Modbus TCP seines Datenlogger-Sticks (Kommunikation deye_modbus_tcp, Port 502, Geräteadresse 1): derselbe Leseplan, Decoder und Steuerweg wie über Solarman V5, nur der Transport ist reines Modbus TCP. Erst dann legt die Cloud einen Deye auf diesem Weg an; eine ältere Box fiele auf den Solarman-Weg zurück und lehnte die Anlage ohne Logger-Seriennummer ab.",
+      "advertised": true,
+      "box_arten": ["edge_light", "edge_industrie"],
+      "evidence": "edge-app/core/internal/layer1/deyemodbus_test.go"
     }
   ],
   "cases": [
