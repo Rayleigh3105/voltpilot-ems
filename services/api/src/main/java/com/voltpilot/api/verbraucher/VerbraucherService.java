@@ -163,7 +163,7 @@ public class VerbraucherService {
         int standardFolger = 0;
 
         for (EntityRow row : zeilen) {
-            if (!steuerbar(row)) {
+            if (!inDerZone(row, chargePointIds)) {
                 continue;
             }
             boolean ladepunkt = istLadepunkt(row.entityType());
@@ -257,7 +257,7 @@ public class VerbraucherService {
         Map<UUID, String> chargePointIds = entities.chargePointIdsByEntity(siteId);
         List<RanglisteProjektion.Kandidat> out = new ArrayList<>();
         for (EntityRow row : entities.entitiesForSite(siteId)) {
-            if (!steuerbar(row)) {
+            if (!inDerZone(row, chargePointIds)) {
                 continue;
             }
             out.add(kandidat(row.id(), istLadepunkt(row.entityType()),
@@ -270,6 +270,26 @@ public class VerbraucherService {
     private boolean steuerbar(EntityRow row) {
         EntityType type = catalog.find(row.entityType());
         return type != null && "consumer".equals(type.category()) && type.controllable();
+    }
+
+    /**
+     * Steht diese Entitaet in der Zone (und damit unter Steuerung › Laden)? Ein steuerbarer
+     * Verbraucher - und eine OCPP-Saeule nur, solange eine Box in Betrieb sie meldet
+     * (vp-ladepunkte-doppelt).
+     *
+     * <p>⚠ Die {@code ev-charger}-Komponente ist das MODELL einer gemeldeten Saeule
+     * ({@code ChargerComponentComposer}); ohne Meldung gibt es an der Anlage keine Saeule, die
+     * sie meint. Liegen geblieben ist sie, wenn die Box die Saeule nicht mehr meldet, wenn ihre
+     * Box ausgebaut ist oder wenn die Ruecknahme sie nicht loeschen durfte (Beleg, Zaehlerbaum).
+     * Gezeigt hiesse das einen Ladepunkt, den der Aufbau nicht kennt, und nach dem erneuten
+     * Eintragen derselben Saeule zwei. Gespeichert bleibt sie trotzdem: diese Regel liest nur.
+     */
+    private boolean inDerZone(EntityRow row, Map<UUID, String> chargePointIds) {
+        if (!steuerbar(row)) {
+            return false;
+        }
+        return !ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType())
+                || chargePointIds.containsKey(row.id());
     }
 
     /**
