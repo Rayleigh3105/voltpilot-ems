@@ -357,6 +357,69 @@ public class MeasurementSelectionService {
         return new Automatik(true, revision, List.of(pointKey), List.of());
     }
 
+    /** Wer die dv.*-Punkte der Direktvermarktungs-Zustellung in den Messplan legt. */
+    public static final String DIREKTVERMARKTUNG_AKTEUR = "system:direktvermarktung-zustellung";
+
+    /**
+     * Die vier Nachweis-Punkte der Direktvermarktung (Konzept d2 §5.4 "Nachweis", Vertrag
+     * direktvermarktung-zustellung.md §5). Box-Zeilen (entity NULL) ohne Katalogeintrag: synthetische
+     * Punkte des Kerns selbst - er veröffentlicht sie aus dem Anschluss-Stand und quittiert den Plan
+     * (edge-app {@code dvMesspunktVorlagen}, der Zwilling dieser Liste), nie ein Geräte-Lesezugriff.
+     */
+    public static final List<String> DIREKTVERMARKTUNG_PUNKTE = List.of(
+            "dv.vorgabe_pct", "dv.grenze_kw", "dv.verbunden", "dv.lebenszeichen_alter_s");
+
+    /** Takt der dv.*-Punkte: fest, wie der Herzschlag-Spiegel in Minutenauflösung gedacht ist. */
+    static final int DIREKTVERMARKTUNG_KADENZ_S = 60;
+
+    /**
+     * Legt die dv.*-Punkte in den Messplan der Zustell-Box ({@code an=true}, nach der Profil-Zustellung)
+     * bzw. wählt sie ab ({@code an=false}, nach der geloescht-Quittung). Wie bei
+     * {@link #automatischAuswaehlen} bleibt eine Abwahl von Hand stehen: eingeschaltet wird nur ein Punkt
+     * OHNE Zeile, abgeschaltet nur eine Zeile dieses Akteurs. Ohne Budget-Prüfung, mit Absicht: vier feste
+     * Punkte im 60-s-Takt ohne Geräte-Socket sind durch Konstruktion beschränkt. Wirft für keinen
+     * erwarteten Zustand - der Aufruf steht im Zustell-Abgleich.
+     */
+    @Transactional
+    public void direktvermarktungsPunkte(UUID deviceId, boolean an) {
+        DeviceScope scope = repository.lockDevice(deviceId);
+        if (scope == null) {
+            return;
+        }
+        List<Row> current = repository.current(deviceId);
+        long revision = repository.revision(deviceId);
+        for (String pointKey : DIREKTVERMARKTUNG_PUNKTE) {
+            Row old = current.stream()
+                    .filter(r -> r.entityId() == null && pointKey.equals(r.pointKey()))
+                    .findFirst().orElse(null);
+            if (an ? old != null : old == null || !old.enabled()
+                    || !DIREKTVERMARKTUNG_AKTEUR.equals(old.changedBy())) {
+                continue;
+            }
+            MeasurementRetention retention = direktvermarktungRetention(pointKey);
+            revision++;
+            Row saved = repository.save(scope, null, pointKey, an, DIREKTVERMARKTUNG_KADENZ_S, revision,
+                    catalog.version(), DIREKTVERMARKTUNG_AKTEUR, ANSTOSS_NAME, PENDING_REASON, null, retention);
+            repository.appendEvent(scope, null, pointKey, revision,
+                    UUID.nameUUIDFromBytes(("direktvermarktung:" + deviceId + ":" + revision)
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                    an, DIREKTVERMARKTUNG_KADENZ_S, saved.enabledAt(), saved.disabledAt(), catalog.version(),
+                    DIREKTVERMARKTUNG_AKTEUR, ANSTOSS_NAME, PENDING_REASON, null, retention);
+        }
+    }
+
+    /** D6 je dv.*-Punkt: Zustände als Ereignis-Historie, Leistungsgrenze als 5-Minuten-Spur, das
+     * Lebenszeichen-Alter nur roh (ein wachsendes Alter hat kein sinnvolles Aggregat). */
+    private static MeasurementRetention direktvermarktungRetention(String pointKey) {
+        return switch (pointKey) {
+            case "dv.vorgabe_pct", "dv.verbunden" ->
+                    new MeasurementRetention("state_event", MeasurementRetention.RAW_DAYS, null, "event_history");
+            case "dv.grenze_kw" ->
+                    new MeasurementRetention("live_power", MeasurementRetention.RAW_DAYS, 300, "five_minute");
+            default -> new MeasurementRetention("unclassified", MeasurementRetention.RAW_DAYS, null, "none");
+        };
+    }
+
     public static State notDelivered(State state, String reason) {
         return new State(state.deviceId(), state.siteId(), state.entityId(), state.desiredRevision(),
                 state.catalogVersion(), state.status(), reason, state.activationNotice(),

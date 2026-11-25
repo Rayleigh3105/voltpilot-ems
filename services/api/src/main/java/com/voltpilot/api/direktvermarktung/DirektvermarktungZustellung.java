@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.entities.LeadDeviceService;
+import com.voltpilot.api.measurement.MeasurementConfigPublisher;
+import com.voltpilot.api.measurement.MeasurementSelectionService;
 import com.voltpilot.api.repo.DirektvermarktungRepository;
 import com.voltpilot.api.repo.DirektvermarktungRepository.Eintrag;
 import com.voltpilot.api.repo.DirektvermarktungRepository.Zustellung;
@@ -59,23 +61,32 @@ public class DirektvermarktungZustellung {
     private final LeadDeviceService leadDevices;
     private final BoxFaehigkeiten faehigkeiten;
     private final ObjectProvider<DirektvermarktungPublisher> publisher;
+    private final ObjectProvider<MeasurementSelectionService> messplan;
+    private final ObjectProvider<MeasurementConfigPublisher> messplanPublisher;
     private final ObjectMapper json;
     private final Clock clock;
 
     public DirektvermarktungZustellung(DirektvermarktungRepository repo, VermarkterLaufzeitKatalog laufzeit,
             LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten,
-            ObjectProvider<DirektvermarktungPublisher> publisher, ObjectMapper json) {
-        this(repo, laufzeit, leadDevices, faehigkeiten, publisher, json, Clock.systemUTC());
+            ObjectProvider<DirektvermarktungPublisher> publisher,
+            ObjectProvider<MeasurementSelectionService> messplan,
+            ObjectProvider<MeasurementConfigPublisher> messplanPublisher, ObjectMapper json) {
+        this(repo, laufzeit, leadDevices, faehigkeiten, publisher, messplan, messplanPublisher, json,
+                Clock.systemUTC());
     }
 
     DirektvermarktungZustellung(DirektvermarktungRepository repo, VermarkterLaufzeitKatalog laufzeit,
             LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten,
-            ObjectProvider<DirektvermarktungPublisher> publisher, ObjectMapper json, Clock clock) {
+            ObjectProvider<DirektvermarktungPublisher> publisher,
+            ObjectProvider<MeasurementSelectionService> messplan,
+            ObjectProvider<MeasurementConfigPublisher> messplanPublisher, ObjectMapper json, Clock clock) {
         this.repo = repo;
         this.laufzeit = laufzeit;
         this.leadDevices = leadDevices;
         this.faehigkeiten = faehigkeiten;
         this.publisher = publisher;
+        this.messplan = messplan;
+        this.messplanPublisher = messplanPublisher;
         this.json = json;
         this.clock = clock;
     }
@@ -148,7 +159,35 @@ public class DirektvermarktungZustellung {
                 daten("box", zielBox.toString(), "revision", String.valueOf(revision),
                         "fingerabdruck", zugang.fingerabdruck()),
                 jetzt);
+        // §5.4 "Nachweis": die vier dv.*-Punkte wandern in den Messplan der Zustell-Box.
+        messpunkteSetzen(zielBox, true);
         return Ergebnis.ZUGESTELLT;
+    }
+
+    /**
+     * Nimmt die dv.*-Punkte wieder aus dem Messplan einer Box - gerufen von der geloescht-Quittung
+     * ({@code DirektvermarktungQuittungListener}), wenn die Box ihr Profil losgeworden ist.
+     */
+    public void messpunkteAbwaehlen(UUID boxId) {
+        messpunkteSetzen(boxId, false);
+    }
+
+    /** Best-effort wie {@code AnlagensteuerungMessplan.zustellen}: der Mess-Abgleich holt sonst nach. */
+    private void messpunkteSetzen(UUID boxId, boolean an) {
+        MeasurementSelectionService selections = messplan.getIfAvailable();
+        if (selections == null) {
+            return;
+        }
+        try {
+            selections.direktvermarktungsPunkte(boxId, an);
+            MeasurementConfigPublisher p = messplanPublisher.getIfAvailable();
+            if (p != null) {
+                p.publish(selections.requireDevice(boxId), selections.forPublishing(boxId));
+            }
+        } catch (RuntimeException e) {
+            log.warn("direktvermarktung: Messplan der Box {} nicht sofort nachgefuehrt (der Mess-Abgleich "
+                    + "holt nach): {}", boxId, e.getMessage());
+        }
     }
 
     /**

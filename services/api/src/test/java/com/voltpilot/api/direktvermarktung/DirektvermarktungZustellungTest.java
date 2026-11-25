@@ -63,7 +63,8 @@ class DirektvermarktungZustellungTest {
         publisher = mock(DirektvermarktungPublisher.class);
         VermarkterLaufzeitKatalog laufzeit = new VermarkterLaufzeitKatalog(JSON);
         zustellung = new DirektvermarktungZustellung(repo, laufzeit, lead, faehigkeiten,
-                provider(publisher), JSON, Clock.fixed(JETZT, ZoneOffset.UTC));
+                provider(publisher), leererProvider(), leererProvider(), JSON,
+                Clock.fixed(JETZT, ZoneOffset.UTC));
         TenantContext.set(TENANT);
     }
 
@@ -86,6 +87,12 @@ class DirektvermarktungZustellungTest {
         ObjectProvider<DirektvermarktungPublisher> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(p);
         return provider;
+    }
+
+    /** Ohne Spring: Messplan und Config-Publisher fehlen, die Zustellung bleibt vollstaendig. */
+    @SuppressWarnings("unchecked")
+    private static <T> ObjectProvider<T> leererProvider() {
+        return mock(ObjectProvider.class);
     }
 
     @Test

@@ -131,7 +131,9 @@ public class DirektvermarktungQuittungListener extends Rueckmeldeweg {
                     ? zugestellt(tenantId, siteId, deviceId, fingerabdruck, jetzt)
                     : geloescht(tenantId, siteId, deviceId, fingerabdruck, jetzt));
             if (Boolean.TRUE.equals(abgleichen)) {
-                // Nach dem Commit: der Rückzug ist quittiert, die neue Box darf jetzt bedient werden.
+                // Nach dem Commit: der Rückzug ist quittiert - die dv.*-Punkte verlassen den Messplan
+                // der alten Box, und die neue Box darf jetzt bedient werden.
+                zustellung.messpunkteAbwaehlen(deviceId);
                 zustellung.abgleichen(siteId);
             }
         } finally {
