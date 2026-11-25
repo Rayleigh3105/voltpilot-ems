@@ -71,13 +71,27 @@ jobs:
           go-version: '1.24'
           cache: false
       - name: Brücke im Container
-        run: sh services/werkstatt-dienst/test/bruecke-probe.sh
+        run: |
+          set -o pipefail
+          sh services/werkstatt-dienst/test/bruecke-probe.sh 2>&1 | tee /tmp/ci-bruecke-probe.log
       - name: Dienst-Bild unter restricted
-        run: sh services/werkstatt-dienst/test/dienst-container-probe.sh
+        run: |
+          set -o pipefail
+          sh services/werkstatt-dienst/test/dienst-container-probe.sh 2>&1 | tee /tmp/ci-dienst-container-probe.log
       # Ganzer Lauf ab frischem OpenWrt (echtes OpenWrt, Brücke, Wartungsserver);
       # braucht jq und Internet für die Box (apk, wget über die Brücke).
       - name: Lauf ab OpenWrt im Container
-        run: sh services/werkstatt-dienst/test/box-probe.sh
+        run: |
+          set -o pipefail
+          sh services/werkstatt-dienst/test/box-probe.sh 2>&1 | tee /tmp/ci-box-probe.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Container-Proben" \
+            /tmp/ci-bruecke-probe.log /tmp/ci-dienst-container-probe.log /tmp/ci-box-probe.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   build:
     name: Build & Push werkstatt-dienst
