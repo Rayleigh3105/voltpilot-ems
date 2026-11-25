@@ -132,6 +132,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   modell: SUB_CHUNK.modell,
   geraet: SUB_CHUNK.geraet,
   box: SUB_CHUNK.box,
+  direktvermarktung: SUB_CHUNK.direktvermarktung,
   ladevorgaenge: SUB_CHUNK.ladevorgaenge,
   lastspitzen: SUB_CHUNK.lastspitzen,
   steuerung: SUB_CHUNK.steuerung,

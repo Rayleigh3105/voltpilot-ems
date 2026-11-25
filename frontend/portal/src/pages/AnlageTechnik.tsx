@@ -49,6 +49,8 @@ import { koordinatenLabel } from '../anlageStandort';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { EinspeiseverguetungBlatt } from '../components/EinspeiseverguetungBlatt';
 import { angabeMoeglich, ruhtErklaerung, verguetungFolge, verguetungZeile } from '../einspeiseverguetung';
+import type { DirektvermarktungStatus } from '../direktvermarktung';
+import { anzeige as direktvermarktungAnzeige } from '../direktvermarktung';
 import { DangerZone } from '../components/DangerZone';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfoTip } from '../components/InfoTip';
@@ -264,6 +266,18 @@ export function TechnikSection({
   const [verguetungKey, setVerguetungKey] = useState(0);
   const verguetung = verguetungGeladen?.siteId === site.id ? verguetungGeladen.stand : null;
   const setVerguetung = (stand: Einspeiseverguetung) => setVerguetungGeladen({ siteId: site.id, stand });
+  // Die Zeile „Direktvermarktung" (Konzept vp-direktvermarktung-konzept d2 §7.3): nur der Stand für die
+  // Unterzeile - die Seite selbst holt ihren eigenen, vollständigen Stand erneut.
+  const [dvGeladen, setDvGeladen] = useState<{ siteId: string; status: DirektvermarktungStatus } | null>(null);
+  const dvStatus = dvGeladen?.siteId === site.id ? dvGeladen.status : null;
+  useEffect(() => {
+    let cancelled = false;
+    const id = site.id;
+    api.direktvermarktung(id).then((status) => !cancelled && setDvGeladen({ siteId: id, status })).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [site.id]);
   const [schaltBusy, setSchaltBusy] = useState<Folge['key'] | null>(null);
   const [schaltFehler, setSchaltFehler] = useState<{ key: Folge['key']; text: string } | null>(null);
   // „Ein Ort fürs Laden" Scheibe 4 (E5 = A): die Zeile „Anschlussgrenze" zeigt
@@ -701,6 +715,17 @@ export function TechnikSection({
               )}
             </>
           )}
+          <Zeile
+            id="technik-direktvermarktung"
+            icon="shield"
+            kat="dynamic"
+            label="Direktvermarktung"
+            wert={direktvermarktungAnzeige(dvStatus?.aktuell ?? null, dvStatus?.partner?.name ?? null,
+              dvStatus?.stand ?? null, new Date()).statuszeile}
+            sub={dvStatus?.aktuell ? null : 'Strom direkt an der Börse verkaufen'}
+            recht="anlage.verwalten"
+            onClick={() => { window.location.hash = hashForRoute(anlageRoute(site.id, 'direktvermarktung')); }}
+          />
           {vpGeld.map((s) => (
             <Zeile
               key={s.id}

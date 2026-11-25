@@ -92,12 +92,15 @@ export type AnlagenSub =
   // Rückweg. Welche Logik und welche Ansicht stehen im Hash (`logikHash`).
   | 'logik'
   | 'geraet'
-  | 'box';
+  | 'box'
+  // Direktvermarktung (Konzept vp-direktvermarktung-konzept d2): der Anschluss an einen Direktvermarkter
+  // (z. B. luox energy) - eine Ebene unter „Anlage" wie die Box-Seite, eigener Rückweg.
+  | 'direktvermarktung';
 
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'prognosemodelle',
   'technik', 'modell', 'steuerung', 'laden', 'regeln', 'lastspitzen', 'ladevorgaenge', 'befehle',
-  'geraet', 'box', 'energiebilanz', 'logik',
+  'geraet', 'box', 'energiebilanz', 'logik', 'direktvermarktung',
 ]);
 
 /**

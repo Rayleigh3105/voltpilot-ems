@@ -8617,6 +8617,12 @@ export function ablehnungCode(e: unknown): string | null {
   return typeof body?.code === 'string' ? body.code : null;
 }
 
+/** Der Grund einer Ablehnung (`grund` im JSON-Körper, Muster `SteuerwegController`/`SiteDirektvermarktungController`). */
+export function ablehnungGrund(e: unknown): string | null {
+  const body = e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { grund?: unknown }) : null;
+  return typeof body?.grund === 'string' ? body.grund : null;
+}
+
 /**
  * Portal-Admin tenant switcher: when set, every request carries the selected
  * tenant as `X-Tenant-Id`. The backend honors the header ONLY for

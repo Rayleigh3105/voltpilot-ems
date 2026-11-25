@@ -1,0 +1,110 @@
+/*
+ * Direktvermarktung (Konzept vp-direktvermarktung-konzept d2) - komponenten-LOKAL (Muster `Erloese.css`):
+ * `index.css` bleibt unangetastet, nur neue `.vp-dv-*`-Klassen, auf den gemeinsamen Tokens.
+ */
+
+.vp-dv-seite {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--vp-space-4) 0 var(--vp-space-8);
+}
+
+.vp-dv-seite h1 {
+  font-family: var(--vp-font-heading);
+  font-size: 1.5rem;
+  margin: var(--vp-space-3) 0 var(--vp-space-5);
+}
+
+.vp-dv-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4);
+}
+
+.vp-dv-freigabe {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vp-space-3);
+}
+
+.vp-dv-freigabe-zahl {
+  font-family: var(--vp-c-font, inherit);
+  font-size: var(--vp-c-fs-48, 48px);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--vp-action, #2c5282);
+}
+
+.vp-dv-hinweis {
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.9rem;
+}
+
+.vp-dv-partnerliste {
+  list-style: none;
+  margin: var(--vp-space-3) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-dv-partnerzeile {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 12px);
+  cursor: pointer;
+}
+
+.vp-dv-partnerkuerzel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--vp-flow-grid-soft, #e2f6f5);
+  color: var(--vp-flow-grid, #0ea5a3);
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.vp-dv-chipreihe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+}
+
+.vp-dv-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--vp-bg-light, #f3f6fa);
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.78rem;
+}
+
+.vp-dv-zustimmzeile {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+}
+
+.vp-dv-fussreihe {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+}
+
+.vp-dv-beenden summary {
+  cursor: pointer;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-dv-beenden[open] summary {
+  margin-bottom: var(--vp-space-3);
+}
