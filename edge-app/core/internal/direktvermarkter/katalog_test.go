@@ -28,6 +28,9 @@ func TestLuoxProfileMatchesTheCatalog(t *testing.T) {
 	if p.Modbus.Unit != 1 {
 		t.Errorf("unit = %d, want 1", p.Modbus.Unit)
 	}
+	if p.Modbus.Port != 502 {
+		t.Errorf("port = %d, want 502 (F2)", p.Modbus.Port)
+	}
 	if p.Modbus.WordOrder != "little" {
 		t.Errorf("wortfolge = %q, want the resolved provisional default 'little' (F3 open)", p.Modbus.WordOrder)
 	}
@@ -51,6 +54,10 @@ func TestLuoxProfileMatchesTheCatalog(t *testing.T) {
 	}
 	if p.Rules.OnStale != "ausnahme_0x0b" {
 		t.Errorf("bei_veraltet = %q, want the resolved provisional default (F8 open)", p.Rules.OnStale)
+	}
+	if p.Rules.WirktAuf != direktvermarkter.WirktAufEinspeisung {
+		t.Errorf("vorgabe_wirkt_auf = %q, want the resolved provisional base %q (F5 open, E2 = A)",
+			p.Rules.WirktAuf, direktvermarkter.WirktAufEinspeisung)
 	}
 
 	setpoint, ok := p.ByMeaning("vermarkter_vorgabe_pct")
