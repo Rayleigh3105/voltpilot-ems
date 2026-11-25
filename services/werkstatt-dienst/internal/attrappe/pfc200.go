@@ -109,6 +109,18 @@ if [ "$*" = "-u +%s" ]; then echo $(( $(/bin/date -u +%s) + v )); else exec /bin
 	"pidof": `#!/bin/sh
 [ "$1" = dockerd ] && [ -e "$VP_PFC_WURZEL/var/lib/pfc-attrappe/docker/laeuft" ]
 `,
+	"docker": `#!/bin/sh
+# docker ps -a --format '{{.Names}}<TAB>{{.Image}}<TAB>{{.Status}}': die
+# Container der Attrappe, wie vor dem Ausschalten gelistet (Schritt docker).
+Z="$VP_PFC_WURZEL/var/lib/pfc-attrappe"
+case "$*" in
+  "ps -a --format"*)
+    [ -e "$Z/docker/laeuft" ] || { echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2; exit 1; }
+    cat "$Z/docker/container" 2>/dev/null || true
+    ;;
+  *) exit 2 ;;
+esac
+`,
 	"dropbear": `#!/bin/sh
 echo "Dropbear v2022.82" >&2
 `,

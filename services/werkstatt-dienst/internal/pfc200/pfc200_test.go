@@ -275,7 +275,7 @@ func TestLaufAbWerk(t *testing.T) {
 		t.Fatalf("Zustand %s im Schritt %s: %s\nBeleg: %v\nAufrufe:\n%s", z, l.Stand().Schritt, l.Stand().Grund, a.belege(t, l)[l.Stand().Schritt], strings.Join(a.p.Aufrufe(), "\n"))
 	}
 	b := a.belege(t, l)
-	for _, s := range []string{"erkennen", "fassungen", "internet", "zugaenge", "notfall", "programm", "tunnel_schluessel", "tunnel_adresse", "tunnel", "netze", "neustart", "probe", "internet_weg", "uebergabe"} {
+	for _, s := range []string{"erkennen", "docker", "fassungen", "internet", "zugaenge", "notfall", "programm", "tunnel_schluessel", "tunnel_adresse", "tunnel", "netze", "neustart", "probe", "internet_weg", "uebergabe"} {
 		if b[s].Leer() {
 			t.Errorf("Schritt %s ohne Beleg", s)
 		}
@@ -540,18 +540,6 @@ func (a *aufbau) unveraendert(t *testing.T) {
 
 func TestErkennenHaeltAnOhneZuAendern(t *testing.T) {
 	t.Parallel()
-	t.Run("Docker läuft", func(t *testing.T) {
-		t.Parallel()
-		a := neu(t)
-		a.p.Setze("docker/install", "installed")
-		a.p.Setze("docker/aktiv", "active")
-		a.p.Setze("docker/laeuft", "1")
-		s := a.halt(t, "erkennen", faelle.PFCDockerAn)
-		a.unveraendert(t)
-		if !strings.Contains(strings.Join(s.Loesung.Schritte, " "), "keine fremden Container") || !s.NochmalMoeglich {
-			t.Fatalf("Lösung %+v, nochmal %v", s.Loesung, s.NochmalMoeglich)
-		}
-	})
 	t.Run("kein 750-8212", func(t *testing.T) {
 		t.Parallel()
 		a := neu(t)
@@ -630,6 +618,100 @@ func (a *aufbau) erkennenBisZumWarten(t *testing.T, fall string) (*lauf.Lauf, <-
 			}
 		}
 	}
+}
+
+// Läuft Docker, schaltet der Schritt docker ihn mit dem Werkzeug der Firmware
+// aus, statt anzuhalten; fremde Container fasst er dabei nie an.
+func TestDockerAusschalten(t *testing.T) {
+	t.Parallel()
+	t.Run("läuft mit fremden Containern: wird ausgeschaltet, Container bleiben stehen", func(t *testing.T) {
+		t.Parallel()
+		a := neu(t)
+		a.p.Setze("docker/install", "installed")
+		a.p.Setze("docker/aktiv", "active")
+		a.p.Setze("docker/laeuft", "1")
+		a.p.Setze("docker/container", "mqttbroker\teclipse-mosquitto:2\tUp 3 days\nnanoclient\tubirch/ubirch-client:latest\tUp 3 days")
+		l, z := a.fahre(t, pfc200.AbWerk)
+		if z != lauf.Fertig {
+			t.Fatalf("Zustand %s im Schritt %s: %s\n%s", z, l.Stand().Schritt, l.Stand().Grund, a.log.String())
+		}
+		b := a.belege(t, l)
+		if v := wert(t, b["docker"], "container_vorher"); !strings.Contains(v, "mqttbroker") || !strings.Contains(v, "nanoclient") {
+			t.Fatalf("Container vor dem Ausschalten im Beleg: %q", v)
+		}
+		if v := wert(t, b["docker"], "docker_nachher"); !strings.Contains(v, "inactive") {
+			t.Fatalf("Docker-Stand nachher im Beleg: %q", v)
+		}
+		var dockerAufrufe []string
+		for _, z := range a.p.Aufrufe() {
+			if strings.Contains(z, "docker") {
+				dockerAufrufe = append(dockerAufrufe, z)
+			}
+		}
+		// Genau "config_docker deactivate": nie "remove" oder "install" (die
+		// laut Firmware-Quelltext das Paket deinstallieren und /home/docker
+		// löschen) und nie "activate" (das wäre das Gegenteil).
+		if len(dockerAufrufe) != 1 || !strings.HasSuffix(strings.TrimSpace(dockerAufrufe[0]), "config_docker deactivate") {
+			t.Fatalf("Docker-Aufrufe: %v, erwartet genau einen (config_docker deactivate)", dockerAufrufe)
+		}
+		// Die Container selbst stehen der Attrappe nach weiter, der Dienst hat sie nie gelöscht.
+		if a.p.Lies("docker/container") == "" {
+			t.Error("die Containerliste der Attrappe ist weg: der Dienst darf keinen Container anfassen")
+		}
+	})
+
+	t.Run("läuft ohne Container: wird trotzdem ausgeschaltet", func(t *testing.T) {
+		t.Parallel()
+		a := neu(t)
+		a.p.Setze("docker/install", "installed")
+		a.p.Setze("docker/aktiv", "active")
+		a.p.Setze("docker/laeuft", "1")
+		l, z := a.fahre(t, pfc200.AbWerk)
+		if z != lauf.Fertig {
+			t.Fatalf("Zustand %s im Schritt %s: %s\n%s", z, l.Stand().Schritt, l.Stand().Grund, a.log.String())
+		}
+		b := a.belege(t, l)
+		if v := wert(t, b["docker"], "container_vorher"); v != "keine" {
+			t.Fatalf("Container vor dem Ausschalten im Beleg: %q", v)
+		}
+	})
+
+	t.Run("schon aus: der Dienst ändert nichts", func(t *testing.T) {
+		t.Parallel()
+		a := neu(t)
+		l, z := a.fahre(t, pfc200.AbWerk)
+		if z != lauf.Fertig {
+			t.Fatalf("Zustand %s im Schritt %s: %s\n%s", z, l.Stand().Schritt, l.Stand().Grund, a.log.String())
+		}
+		b := a.belege(t, l)
+		if v := wert(t, b["docker"], "docker"); !strings.Contains(v, "schon aus") {
+			t.Fatalf("Beleg docker: %q", v)
+		}
+		for _, z := range a.p.Aufrufe() {
+			if strings.Contains(z, "docker") {
+				t.Errorf("Aufruf %q, obwohl Docker schon aus war", z)
+			}
+		}
+	})
+
+	t.Run("Ausschalten scheitert: der Lauf hält mit pfc_docker_an an, nichts gelöscht", func(t *testing.T) {
+		t.Parallel()
+		a := neu(t)
+		a.p.Setze("docker/install", "installed")
+		a.p.Setze("docker/aktiv", "active")
+		a.p.Setze("docker/laeuft", "1")
+		a.p.Setze("docker/scheitert", "1")
+		s := a.halt(t, "docker", faelle.PFCDockerAn)
+		if !strings.Contains(s.Grund, "Docker") {
+			t.Fatalf("Grund: %q", s.Grund)
+		}
+		if a.p.Lies("docker/aktiv") != "active" {
+			t.Error("Docker steht nach dem gescheiterten Ausschalten nicht mehr als aktiv")
+		}
+		if !a.p.NimmtAn("root", "wago") {
+			t.Error("das Werkspasswort von root gilt nicht mehr, obwohl der Lauf beim Schritt docker angehalten hat")
+		}
+	})
 }
 
 // Der Schalter steht nach dem Handgriff „feste Adresse“ noch auf STOP: Der

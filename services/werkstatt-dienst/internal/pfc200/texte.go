@@ -11,6 +11,7 @@ const Name = "Edge Industrie"
 const (
 	titelErkennen         = "PFC200 erkennen"
 	titelErkennenHalb     = "Halb eingerichteten PFC200 erkennen"
+	titelDocker           = "Docker ausschalten"
 	titelFassungen        = "Fassungen der Freigabe bereitlegen"
 	titelInternet         = "Internet über die Brücke (befristet) und Uhr stellen"
 	titelZugaenge         = "Zugänge: drei Passwörter, Anmeldung nur noch mit Schlüssel"
@@ -43,7 +44,9 @@ const (
 	FesteAdresseHandgriff = "Betriebsartenschalter auf STOP, Reset-Taster (RST) länger als 8 Sekunden halten, bis die Leuchte SYS orange blinkt, dann den Schalter wieder auf RUN."
 	SchalterAufRun        = "Den Betriebsartenschalter des PFC200 auf RUN stellen. Der Dienst macht von selbst weiter."
 	KabelInX2             = "Das orange Kabel WERKSTATT in die Buchse X2 des PFC200 stecken, die Buchse X1 bleibt leer. Der Dienst macht von selbst weiter."
-	DockerAus             = "In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten, wenn die Container nicht gebraucht werden. Dann das orange Kabel kurz abziehen."
+	// DockerAus ist der Handgriff, wenn der Dienst Docker nicht selbst
+	// ausschalten konnte (Schritt docker, Fall PFCDockerAn): der Fallback von Hand.
+	DockerAus = "In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten. Dann das orange Kabel kurz abziehen."
 )
 
 // Sätze an der Abnahme und auf der Abschlussseite.

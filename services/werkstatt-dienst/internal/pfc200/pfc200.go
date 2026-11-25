@@ -314,6 +314,7 @@ func (l *Lauf) Schritte(e Einstieg) []lauf.Schritt {
 	}
 	return []lauf.Schritt{
 		{Kennung: "erkennen", Titel: titelErkennen, Frist: 2*z.Verbinden + z.Schalter + time.Minute, Tun: l.erkennen},
+		{Kennung: "docker", Titel: titelDocker, Frist: z.Verbinden + 2*time.Minute, Tun: l.dockerAusschalten},
 		{Kennung: "fassungen", Titel: titelFassungen, Frist: 15 * time.Minute, Tun: l.fassungenHolen},
 		{Kennung: "internet", Titel: titelInternet, Frist: z.Netz + 3*time.Minute, Tun: l.internetAn},
 		{Kennung: "zugaenge", Titel: titelZugaenge, Frist: z.SSHDienst + 4*time.Minute, Tun: l.zugaengeSetzen},

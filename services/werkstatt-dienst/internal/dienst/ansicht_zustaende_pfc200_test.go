@@ -269,7 +269,7 @@ func TestAnsichtZustaendePFC200(t *testing.T) {
 		"angehalten_passwort_fremd": {fremd, lauf.Handgriff{Was: pfc200.ZurSeite, Fall: faelle.PasswortFremd,
 			Grund: "Das Werkspasswort wird abgewiesen, und kein Lauf dieser Werkstatt kennt das Gerät."}},
 		"angehalten_pfc_docker_an": {abWerk, lauf.Handgriff{Was: pfc200.DockerAus, Fall: faelle.PFCDockerAn,
-			Grund: "Auf dem Gerät läuft Docker (installiert, aktiv). Der Dienst beendet keine fremden Container; mit Docker stimmen Weiterleitung und Firewall des Geräts nicht."}},
+			Grund: "Docker ist nach dem Ausschalten weiter active (Dienst läuft: ja)"}},
 		"angehalten_pfc_falsches_geraet": {nil, lauf.Handgriff{Was: pfc200.ZurSeite, Fall: faelle.PFCFalschesGeraet,
 			Grund: "Das Gerät ist kein PFC200 750-8212 (Bestellnummer \"750-8101\")."}},
 		"angehalten_pfc_schon_eingerichtet": {abWerk, lauf.Handgriff{Was: pfc200.ZurSeite, Fall: faelle.PFCSchonEingerichtet,

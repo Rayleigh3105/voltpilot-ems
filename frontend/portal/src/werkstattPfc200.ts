@@ -40,7 +40,7 @@ export const PRUEFUNGEN_PFC200_WORT = zahlwort(PRUEFUNGEN_PFC200.length);
  * gibt es nicht: Die SPS gehört nicht in die Werkstatt.
  */
 export const PHASEN_PFC200 = [
-  { id: 'erkannt', titel: 'Erkannt', klein: 'PFC200 erkannt, Firmware gelesen', schritte: ['erkennen'] },
+  { id: 'erkannt', titel: 'Erkannt', klein: 'PFC200 erkannt, Firmware gelesen', schritte: ['erkennen', 'docker'] },
   { id: 'absichern', titel: 'Absichern', klein: 'Dateien der Freigabe, drei Passwörter, Notfall-Schlüssel', schritte: ['fassungen', 'internet', 'zugaenge', 'notfall'] },
   { id: 'software', titel: 'Software', klein: `${EDGE_INDUSTRIE} einspielen`, schritte: ['programm'] },
   { id: 'anmelden', titel: 'Bei VoltPilot anmelden', klein: 'Geräteschlüssel und Wartungstunnel', schritte: ['tunnel_schluessel', 'einloesen', 'tunnel_adresse', 'tunnel'] },
@@ -56,6 +56,10 @@ export const SCHRITT_TEXT_PFC200: Record<string, { titel: string; tut: string }>
   erkennen: {
     titel: 'PFC200 erkennen',
     tut: 'Liest Bestellnummer, Firmware und Seriennummer und prüft, ob die Werkspasswörter noch gelten, das Kabel in X2 steckt und der Schalter auf RUN steht. Am Gerät ändert sich dabei nichts.',
+  },
+  docker: {
+    titel: 'Docker ausschalten',
+    tut: 'Läuft auf dem Gerät Docker, schaltet der Dienst es aus (Web-Oberfläche-Äquivalent); fremde Container fasst er dabei nie an. Läuft kein Docker, ändert sich nichts.',
   },
   fassungen: {
     titel: 'Dateien der Freigabe bereitlegen',
@@ -116,7 +120,7 @@ export const WAS_PFC200: Record<string, string> = {
   pfc_schalter_stop: 'Solange der Betriebsartenschalter auf STOP steht, macht der Dienst nicht weiter. Nach dem Handgriff „feste Adresse“ steht er oft noch dort.',
   pfc_kabel_x1: 'Der Lauf trennt später die zwei Buchsen. Steckte das Kabel dann in X1, erreichte der Dienst das Gerät nicht mehr.',
   pfc_passwort: 'Ein früherer Lauf dieser Werkstatt hat ihn angefangen und nicht fertig gemacht. Er ist nicht abgenommen und mit keinem Kunden gekoppelt. Nur darum nennt die Werkstatt hier den Werksreset.',
-  pfc_docker_an: 'Auf dem Gerät läuft Docker. Fremde Container beendet der Dienst nicht, und mit Docker stimmen Weiterleitung und Firewall des Geräts nicht.',
+  pfc_docker_an: 'Der Dienst konnte Docker nicht selbst ausschalten. Fremde Container fasst er dabei nie an.',
   pfc_falsches_geraet: 'An der Werkbank werden von WAGO nur PFC200 mit der Bestellnummer 750-8212 eingerichtet.',
   pfc_schon_eingerichtet: `Auf ihm liegt schon ${EDGE_INDUSTRIE}, aber kein Lauf dieser Werkstatt kennt ihn.`,
   pfc_notfall_schluessel: 'Der Notfall-Schlüssel der Werkstatt ist von einer Art, die der PFC200 nicht annimmt. Am Gerät wurde nichts geändert.',
