@@ -13,12 +13,14 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 /**
- * Der Partnerkatalog ({@code catalog/direktvermarkter/*.json}, E6 = A "Partnerkatalog als Daten"): die
- * Datei gehört dem parallelen Auftrag vp-direktvermarktung-bau; diese Klasse liest nur, was dort landet
- * (Maven-Ressource im {@code pom.xml} dieses Moduls, Zielpfad {@code direktvermarkter/}, Muster
- * {@code catalog/control-profiles}/{@code measurement-points}). Ohne einen einzigen Partner - weil der
- * Ordner (noch) leer ist oder gar nicht existiert - liefert sie schlicht eine leere Liste; das ist kein
- * Fehler, sondern "noch kein Partner im Katalog" (Bildschirm 2, "Startseite, noch nicht verbunden").
+ * Der Partnerkatalog ({@code catalog/direktvermarkter/profiles/*.json}, PR #1999, E6 = A "Partnerkatalog als
+ * Daten"): die Datei ist die von Hand gepflegte Wahrheit (Konzept-Beispiel 5.3, jetzt real: {@code luox.json});
+ * diese Klasse liest nur, was dort steht (Maven-Ressource im {@code pom.xml} dieses Moduls, Quelle
+ * {@code .../profiles}, Zielpfad {@code direktvermarkter/}, Muster {@code catalog/control-profiles}/
+ * {@code measurement-points}). Die GEPACKTE Sicht unter {@code edge-app/core/internal/direktvermarkter/} ist
+ * nur für den Go-Kern der Box - diese Klasse liest das Profil selbst, nicht die gepackte Sicht. Ohne einen
+ * einzigen Partner liefert sie schlicht eine leere Liste; das ist kein Fehler, sondern "noch kein Partner im
+ * Katalog" (Bildschirm 2, "Startseite, noch nicht verbunden").
  */
 @Component
 public class PartnerKatalog {

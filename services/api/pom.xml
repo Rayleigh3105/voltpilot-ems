@@ -283,13 +283,12 @@
                     <include>bohrlehre.3mf</include>
                 </includes>
             </resource>
-            <!-- Direktvermarktung (E6 = A, "Partnerkatalog als Daten"): der Partnerkatalog
-                 catalog/direktvermarkter/*.json ist die eine von Hand gepflegte Wahrheit (Muster
-                 catalog/control-profiles) und gehört dem parallelen Auftrag vp-direktvermarktung-bau; diese
-                 Quelle existiert schon jetzt, damit DirektvermarktenKatalog die Profile liest, sobald sie landen
-                 - fehlt der Ordner (noch), kopiert Maven schlicht nichts, kein Build-Fehler. -->
+            <!-- Direktvermarktung (E6 = A, "Partnerkatalog als Daten"): catalog/direktvermarkter/profiles/*.json
+                 ist die eine von Hand gepflegte Wahrheit (PR #1999, catalog/direktvermarkter/README.md "Aufbau");
+                 die GEPACKTE Sicht unter edge-app/core/internal/direktvermarkter/ ist nur für den Go-Kern der
+                 Box, die Cloud liest das Profil selbst. -->
             <resource>
-                <directory>${project.basedir}/../../catalog/direktvermarkter</directory>
+                <directory>${project.basedir}/../../catalog/direktvermarkter/profiles</directory>
                 <targetPath>direktvermarkter</targetPath>
                 <includes>
                     <include>*.json</include>
