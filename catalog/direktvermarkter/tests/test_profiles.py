@@ -55,6 +55,9 @@ class CatalogTest(unittest.TestCase):
         luox = next(p for p in view["partner"] if p["id"] == "luox")
         self.assertEqual(luox["modbus"]["wortfolge"], "little")
         self.assertEqual(luox["regeln"]["bei_veraltet"], "ausnahme_0x0b")
+        # F5 still open: the authored base (decision E2 = A) travels resolved,
+        # without its question marker - the box cannot run on a question.
+        self.assertEqual(luox["regeln"]["vorgabe_wirkt_auf"], "einspeisung_netzpunkt")
 
     def test_runtime_derivative_carries_no_vpn_or_portal_fields(self):
         # Stage 1 is the box-side Modbus interface only; OpenVPN, the
@@ -63,8 +66,9 @@ class CatalogTest(unittest.TestCase):
         view = runtime_view(list(BY_ID.values()))
         for entry in view["partner"]:
             self.assertEqual(set(entry), {"id", "modbus", "register", "regeln"})
-            self.assertEqual(set(entry["modbus"]), {"unit", "wortfolge", "funktionen", "verbindungen"})
-            self.assertEqual(set(entry["regeln"]), {"lebenszeichen_frist_s", "ruhewert_pct", "bei_veraltet"})
+            self.assertEqual(set(entry["modbus"]), {"port", "unit", "wortfolge", "funktionen", "verbindungen"})
+            self.assertEqual(set(entry["regeln"]),
+                             {"lebenszeichen_frist_s", "ruhewert_pct", "vorgabe_wirkt_auf", "bei_veraltet"})
 
     def test_runtime_derivative_keeps_the_band(self):
         view = runtime_view(list(BY_ID.values()))
