@@ -6,7 +6,12 @@ name: Werkstatt-Dienst
 # von Hand (werkstatt-prod), der Tag-Bump der übrigen Dienste fasst ihn nicht an;
 # den Tag setzt der Betreiber im gitops-Repo (services/werkstatt-dienst/docs/runbook.md).
 #
-# Secrets wie deploy.yaml: FORGEJO_USERNAME / FORGEJO_PASSWORD (Registry).
+# Secrets wie deploy.yaml: FORGEJO_USERNAME / FORGEJO_PASSWORD (Registry; der
+# Schritt "CI-Fehlerbericht" unten liest sie zusaetzlich fuer die Forgejo-API
+# - kein neues Geheimnis). Scheitert ein Schritt, haengt tools/ci/report-
+# failure.sh die letzten ~200 Zeilen seiner Ausgabe an eine feste Forgejo-
+# Issue an: diese Forgejo-Version hat keine Log-Route in der API, ein roter
+# Lauf war bislang nur im Browser lesbar.
 
 on:
   workflow_dispatch:
@@ -28,11 +33,26 @@ jobs:
           go-version: '1.24'
           cache: false
       - name: gofmt
-        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+        run: |
+          set -o pipefail
+          gofmt -l . | tee /tmp/ci-gofmt.log
+          test ! -s /tmp/ci-gofmt.log
       - name: go vet
-        run: go vet ./...
+        run: |
+          set -o pipefail
+          go vet ./... 2>&1 | tee /tmp/ci-govet.log
       - name: go test
-        run: go test -race ./...
+        run: |
+          set -o pipefail
+          go test -race ./... 2>&1 | tee /tmp/ci-gotest.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (Go, Skripte)" \
+            /tmp/ci-gofmt.log /tmp/ci-govet.log /tmp/ci-gotest.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   # Die Container-Proben brauchen Docker; die Brücken-Probe zusätzlich
   # --privileged (Netz-Namensräume im Container). Der Bau wartet nicht auf
