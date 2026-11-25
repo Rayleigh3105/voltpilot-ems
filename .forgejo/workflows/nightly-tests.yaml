@@ -34,6 +34,13 @@ name: Nightly test gate (main, no deploy)
 # lokalen Vergleichswerkzeug tools/buehne-vorher-nachher/run.sh gesetzt
 # (PID-eindeutig) - in diesem Workflow bleibt die Property leer, also
 # Testcontainers-Standardname (zufaellig, kollisionssicher).
+#
+# Secrets: FORGEJO_USERNAME/FORGEJO_PASSWORD, nur fuer den Schritt "CI-
+# Fehlerbericht" je Job - wie in werkstatt-dienst.yaml haengt tools/ci/
+# report-failure.sh bei einem roten Schritt dessen letzte ~200 Log-Zeilen an
+# eine feste Forgejo-Issue an (diese Forgejo-Version hat keine Log-Route in
+# der API, ein roter Lauf war bislang nur im Browser lesbar). Kein neues
+# Geheimnis, dieselben Secrets wie fuer die Registry anderswo im Repo.
 
 on:
   schedule:
@@ -142,7 +149,9 @@ jobs:
       - name: Maven test
         if: matrix.type == 'jvm'
         working-directory: ${{ matrix.path }}
-        run: ./mvnw -B test
+        run: |
+          set -o pipefail
+          ./mvnw -B test 2>&1 | tee /tmp/ci-maven-test.log
 
       # ---- Python services --------------------------------------------------
       - name: Set up Python
@@ -155,9 +164,10 @@ jobs:
         if: matrix.type == 'python'
         working-directory: ${{ matrix.path }}
         run: |
+          set -o pipefail
           python -m pip install --upgrade pip
           pip install ${{ matrix.pip_install }}
-          pytest ${{ matrix.pytest_args }}
+          pytest ${{ matrix.pytest_args }} 2>&1 | tee /tmp/ci-pytest.log
 
       # Diagnose fuer optimization. Die vier `docker run`-Wegwerf-Postgres-
       # Fixtures (test_kundenbereich_db.py, test_ladepunkt_db.py,
@@ -207,17 +217,32 @@ jobs:
       - name: Typecheck
         if: matrix.type == 'frontend'
         working-directory: ${{ matrix.path }}
-        run: npm run typecheck
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee /tmp/ci-typecheck.log
 
       - name: Vitest
         if: matrix.type == 'frontend'
         working-directory: ${{ matrix.path }}
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/ci-vitest.log
 
       - name: Build
         if: matrix.type == 'frontend'
         working-directory: ${{ matrix.path }}
-        run: npm run build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee /tmp/ci-build.log
+
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (${{ matrix.name }})" \
+            /tmp/ci-maven-test.log /tmp/ci-pytest.log /tmp/ci-typecheck.log /tmp/ci-vitest.log /tmp/ci-build.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   # services/api in acht Teilen, als KETTE (api-2 wartet auf api-1 ...), nicht als Matrix.
   # Forgejo vergibt wartende Jobs nach dem Zeitpunkt, zu dem sie wartend wurden
@@ -249,7 +274,16 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Maven test (Teil 1 von 8)
-        run: bash tools/tests/api-teil.sh 1 8
+        run: |
+          set -o pipefail
+          bash tools/tests/api-teil.sh 1 8 2>&1 | tee /tmp/ci-api-1.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (api-1)" /tmp/ci-api-1.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   api-2:
     name: Test (api-2)
@@ -266,7 +300,16 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Maven test (Teil 2 von 8)
-        run: bash tools/tests/api-teil.sh 2 8
+        run: |
+          set -o pipefail
+          bash tools/tests/api-teil.sh 2 8 2>&1 | tee /tmp/ci-api-2.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (api-2)" /tmp/ci-api-2.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   api-3:
     name: Test (api-3)
@@ -283,7 +326,16 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Maven test (Teil 3 von 8)
-        run: bash tools/tests/api-teil.sh 3 8
+        run: |
+          set -o pipefail
+          bash tools/tests/api-teil.sh 3 8 2>&1 | tee /tmp/ci-api-3.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (api-3)" /tmp/ci-api-3.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   api-4:
     name: Test (api-4)
@@ -300,7 +352,16 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Maven test (Teil 4 von 8)
-        run: bash tools/tests/api-teil.sh 4 8
+        run: |
+          set -o pipefail
+          bash tools/tests/api-teil.sh 4 8 2>&1 | tee /tmp/ci-api-4.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (api-4)" /tmp/ci-api-4.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   api-5:
     name: Test (api-5)
@@ -317,7 +378,16 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Maven test (Teil 5 von 8)
-        run: bash tools/tests/api-teil.sh 5 8
+        run: |
+          set -o pipefail
+          bash tools/tests/api-teil.sh 5 8 2>&1 | tee /tmp/ci-api-5.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (api-5)" /tmp/ci-api-5.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   api-6:
     name: Test (api-6)
@@ -334,7 +404,16 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Maven test (Teil 6 von 8)
-        run: bash tools/tests/api-teil.sh 6 8
+        run: |
+          set -o pipefail
+          bash tools/tests/api-teil.sh 6 8 2>&1 | tee /tmp/ci-api-6.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (api-6)" /tmp/ci-api-6.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   api-7:
     name: Test (api-7)
@@ -351,7 +430,16 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Maven test (Teil 7 von 8)
-        run: bash tools/tests/api-teil.sh 7 8
+        run: |
+          set -o pipefail
+          bash tools/tests/api-teil.sh 7 8 2>&1 | tee /tmp/ci-api-7.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (api-7)" /tmp/ci-api-7.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
   api-8:
     name: Test (api-8)
@@ -368,7 +456,16 @@ jobs:
           java-version: "21"
           cache: maven
       - name: Maven test (Teil 8 von 8)
-        run: bash tools/tests/api-teil.sh 8 8
+        run: |
+          set -o pipefail
+          bash tools/tests/api-teil.sh 8 8 2>&1 | tee /tmp/ci-api-8.log
+      - name: CI-Fehlerbericht
+        if: failure()
+        run: |
+          "$GITHUB_WORKSPACE/tools/ci/report-failure.sh" "Test (api-8)" /tmp/ci-api-8.log
+        env:
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
   # Red-run notification. Forgejo markiert den Lauf (Actions-Tab, Commit-
   # Status) bereits rot, sobald eine Matrixzeile scheitert - derselbe
   # bestehende Weg wie im Deploy-Gate (deploy.yaml:notify-failure). Diese
