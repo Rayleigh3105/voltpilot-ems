@@ -84,6 +84,7 @@ export function boxLast(boxId: string, datenquellen: readonly UemsDatenquelle[] 
 export const BOX_FAEHIGKEITEN: TabellenEintrag[] = [
   { code: 'data_sources', name: 'Rückmeldung je Datenquelle', ab_release: null },
   { code: 'geraetesuche', name: 'Gerätesuche', ab_release: null },
+  { code: 'direktvermarktung', name: 'Direktvermarktung', ab_release: null },
 ];
 
 export interface BoxQuelleZeile {

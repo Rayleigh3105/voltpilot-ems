@@ -1,0 +1,182 @@
+{
+  "_comment": [
+    "Geteilte Vektoren der Direktvermarktungs-Zustellung (direktvermarktung-zustellung.md §5):",
+    "der Herzschlag-Block `direktvermarktung` und seine Spiegelung in direktvermarktung_stand.",
+    "Leser: Go edge-app/core/internal/cloud/direktvermarktung_test.go (die Blockform ist genau",
+    "das, was die Box sendet) und Java DirektvermarktungStandBlockTest (die Spiegelung ist genau",
+    "das, was die Cloud speichert). `stand` nennt jede Spalte; null heisst NULL - Unbekannt ist",
+    "keine Null. `zustand_aus_lage` ist die grobe Nachfuehrung des Anschluss-Zustands; null",
+    "heisst: der Zustand bleibt stehen."
+  ],
+  "schema_version": "1.0",
+  "herkunft": "vp-direktvermarktung-konzept d2 §5.4 (Lagen), §5.7 (Zustellung, Tabelle direktvermarktung_stand); Firstmate-Auftrag vp-dv-zustellung 25.11.2026",
+  "lagen": [
+    "ohne_profil",
+    "ohne_zugang",
+    "zugang_ungueltig",
+    "baut_auf",
+    "tunnel_oben",
+    "verbunden",
+    "vorgabe_aktiv",
+    "abgelaufen",
+    "tunnel_unten"
+  ],
+  "quittung_ereignisse": ["zugestellt", "geloescht"],
+  "zustand_aus_lage": {
+    "ohne_profil": null,
+    "ohne_zugang": null,
+    "zugang_ungueltig": "gestoert",
+    "baut_auf": "verbindet",
+    "tunnel_oben": "wartet_auf_partner",
+    "verbunden": "verbunden",
+    "vorgabe_aktiv": "verbunden",
+    "abgelaufen": "verbunden",
+    "tunnel_unten": "gestoert"
+  },
+  "bloecke": [
+    {
+      "name": "vorgabe_aktiv_voll",
+      "block": {
+        "partner": "luox",
+        "lage": "vorgabe_aktiv",
+        "revision": 3,
+        "zugang_fingerabdruck": "SHA256:beispiel",
+        "vorgabe_pct": 30,
+        "grenze_kw": 3.0,
+        "lebenszeichen_am": "2026-11-25T12:29:48Z",
+        "letzte_abfrage_am": "2026-11-25T12:29:48Z",
+        "letzte_schreibung_am": "2026-11-25T12:29:48Z",
+        "abfragen_je_minute": 1.0,
+        "tunnel": {
+          "oben_seit": "2026-11-25T11:00:00Z",
+          "handshake_am": "2026-11-25T12:29:30Z",
+          "gegenstelle": "vpn.luox.example:1194"
+        },
+        "werte": {
+          "einspeisung_w": 1200,
+          "erzeugung_w": 3000,
+          "netzbetreiber_pct": 100,
+          "referenz_w": 10000
+        }
+      },
+      "stand": {
+        "tunnel_oben_seit": "2026-11-25T11:00:00Z",
+        "handshake_am": "2026-11-25T12:29:30Z",
+        "gegenstelle": "vpn.luox.example:1194",
+        "letzte_abfrage_am": "2026-11-25T12:29:48Z",
+        "abfragen_je_minute": 1.0,
+        "letzte_schreibung_am": "2026-11-25T12:29:48Z",
+        "vorgabe_pct": 30,
+        "lebenszeichen_am": "2026-11-25T12:29:48Z",
+        "einspeisung_w": 1200,
+        "erzeugung_w": 3000,
+        "netzbetreiber_pct": 100,
+        "referenz_w": 10000
+      },
+      "zustand": "verbunden"
+    },
+    {
+      "name": "ohne_zugang_traegt_nur_die_lage",
+      "block": {
+        "partner": "luox",
+        "lage": "ohne_zugang",
+        "revision": 1
+      },
+      "stand": {
+        "tunnel_oben_seit": null,
+        "handshake_am": null,
+        "gegenstelle": null,
+        "letzte_abfrage_am": null,
+        "abfragen_je_minute": null,
+        "letzte_schreibung_am": null,
+        "vorgabe_pct": null,
+        "lebenszeichen_am": null,
+        "einspeisung_w": null,
+        "erzeugung_w": null,
+        "netzbetreiber_pct": null,
+        "referenz_w": null
+      },
+      "zustand": null
+    },
+    {
+      "name": "baut_auf_ohne_tunnel_und_ohne_werte",
+      "block": {
+        "partner": "luox",
+        "lage": "baut_auf",
+        "revision": 2,
+        "zugang_fingerabdruck": "SHA256:beispiel",
+        "vorgabe_pct": 100
+      },
+      "stand": {
+        "tunnel_oben_seit": null,
+        "handshake_am": null,
+        "gegenstelle": null,
+        "letzte_abfrage_am": null,
+        "abfragen_je_minute": null,
+        "letzte_schreibung_am": null,
+        "vorgabe_pct": 100,
+        "lebenszeichen_am": null,
+        "einspeisung_w": null,
+        "erzeugung_w": null,
+        "netzbetreiber_pct": null,
+        "referenz_w": null
+      },
+      "zustand": "verbindet"
+    },
+    {
+      "name": "abgelaufen_grenze_faellt_nie_auf_null",
+      "block": {
+        "partner": "luox",
+        "lage": "abgelaufen",
+        "revision": 3,
+        "zugang_fingerabdruck": "SHA256:beispiel",
+        "vorgabe_pct": 100,
+        "lebenszeichen_am": "2026-11-25T12:00:00Z",
+        "letzte_abfrage_am": "2026-11-25T12:20:00Z",
+        "tunnel": {
+          "oben_seit": "2026-11-25T11:00:00Z",
+          "handshake_am": "2026-11-25T12:19:30Z",
+          "gegenstelle": "vpn.luox.example:1194"
+        }
+      },
+      "stand": {
+        "tunnel_oben_seit": "2026-11-25T11:00:00Z",
+        "handshake_am": "2026-11-25T12:19:30Z",
+        "gegenstelle": "vpn.luox.example:1194",
+        "letzte_abfrage_am": "2026-11-25T12:20:00Z",
+        "abfragen_je_minute": null,
+        "letzte_schreibung_am": null,
+        "vorgabe_pct": 100,
+        "lebenszeichen_am": "2026-11-25T12:00:00Z",
+        "einspeisung_w": null,
+        "erzeugung_w": null,
+        "netzbetreiber_pct": null,
+        "referenz_w": null
+      },
+      "zustand": "verbunden"
+    },
+    {
+      "name": "unbekannte_lage_wird_gespiegelt_aber_bewegt_keinen_zustand",
+      "block": {
+        "partner": "luox",
+        "lage": "ein_neues_wort",
+        "revision": 4
+      },
+      "stand": {
+        "tunnel_oben_seit": null,
+        "handshake_am": null,
+        "gegenstelle": null,
+        "letzte_abfrage_am": null,
+        "abfragen_je_minute": null,
+        "letzte_schreibung_am": null,
+        "vorgabe_pct": null,
+        "lebenszeichen_am": null,
+        "einspeisung_w": null,
+        "erzeugung_w": null,
+        "netzbetreiber_pct": null,
+        "referenz_w": null
+      },
+      "zustand": null
+    }
+  ]
+}

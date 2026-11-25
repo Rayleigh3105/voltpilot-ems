@@ -21,6 +21,7 @@ import (
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/direktvermarkter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 )
@@ -55,6 +56,8 @@ type Link struct {
 	onRegisterWrite     func(payload []byte)
 	onDesiredDownlink   func(payload []byte)
 	onMeasurementConfig func(payload []byte) bool
+	onDirektvermarktung func(payload []byte)
+	onDvZugang          func(payload []byte)
 	onControlCert       func(payload []byte)
 	onChargingConfig    func(payload []byte)
 	onChargingBoost     func(payload []byte)
@@ -205,6 +208,19 @@ type Options struct {
 	// been durably adopted; false keeps the QoS1 delivery unacknowledged so the
 	// broker retries it.
 	OnMeasurementConfig func(payload []byte) bool
+	// OnDirektvermarktung receives the RETAINED direct-marketing profile on
+	// .../v2/direktvermarktung (contract
+	// docs/contracts/v2/direktvermarktung-zustellung.md). An EMPTY payload IS
+	// forwarded - it withdraws the connection (retained-clear: Beenden,
+	// Sperren, Box-Tausch), and the box deletes its access and acknowledges.
+	// nil = the delivery is not wired.
+	OnDirektvermarktung func(payload []byte)
+	// OnDirektvermarktungZugang receives the NON-RETAINED one-time access
+	// answer on .../v2/direktvermarktung-zugang (same contract). NON-retained
+	// on purpose: key material must never linger on the broker; a box that
+	// missed the answer simply asks again with the fingerprint it still does
+	// not have. nil = the delivery is not wired.
+	OnDirektvermarktungZugang func(payload []byte)
 	// OnConnect is called with the connection state on every transition.
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
@@ -258,6 +274,8 @@ func New(o Options) (*Link, error) {
 		onRegisterWrite:     o.OnRegisterWrite,
 		onDesiredDownlink:   o.OnDesiredDownlink,
 		onMeasurementConfig: o.OnMeasurementConfig,
+		onDirektvermarktung: o.OnDirektvermarktung,
+		onDvZugang:          o.OnDirektvermarktungZugang,
 		onConnect:           o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
@@ -356,6 +374,8 @@ func (l *Link) buildDownlinkRoutes() []downlinkRoute {
 	add("v2/probe", l.onProbeRequest, false)
 	add("v2/register-write", l.onRegisterWrite, false)
 	add("v2/desired", l.onDesiredDownlink, false)
+	add("v2/"+direktvermarkter.TopicProfil, l.onDirektvermarktung, true)
+	add("v2/"+direktvermarkter.TopicZugang, l.onDvZugang, false)
 	if l.onMeasurementConfig != nil {
 		routes = append(routes, downlinkRoute{l.topic("v2/measurement-config"), func(_ pahomqtt.Client, msg pahomqtt.Message) {
 			handleMeasurementConfigMessage(l.onMeasurementConfig, msg)
@@ -1823,6 +1843,9 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 		}
 		if extension.Koppel != nil {
 			payload["koppel"] = extension.Koppel
+		}
+		if extension.Direktvermarktung != nil {
+			payload["direktvermarktung"] = extension.Direktvermarktung
 		}
 	}
 	if l.version != "" {

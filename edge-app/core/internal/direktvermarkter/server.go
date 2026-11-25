@@ -33,17 +33,33 @@ const (
 )
 
 // Event is one state change this interface records (vp-direktvermarktung-
-// konzept d2 §5.4 Nachweis). Stage 1 only exposes it to the caller (onEvent);
-// writing it to the box's flash event list is Stage 2.
+// konzept d2 §5.4 Nachweis). The Anschluss writes it to the box's flash event
+// list (internal/ereignisliste) and the agent mirrors it into the heartbeat.
+//
+// ⚠ onEvent runs while the server's mutex is HELD (read/write fire before
+// their deferred Unlock): the callback must never call back into Server and
+// must hand slow work (flash I/O) off to a channel or goroutine.
 type Event struct {
 	Kind string
 	At   time.Time
+	// Pct carries the newly effective set-point for EventSetpointWritten;
+	// nil for every other kind.
+	Pct *int
 }
 
 // EventWatchdogExpired fires once per expiry, when the watchdog register has
 // not been rewritten within the profile's lebenszeichen_frist_s and the
 // set-point is forced back to the rest value.
 const EventWatchdogExpired = "lebenszeichen_abgelaufen"
+
+// EventSetpointWritten fires when a write CHANGES the decoded partner
+// set-point (the register value, not the watchdog-gated effective limit) -
+// one entry per change, never one per repeated identical write.
+const EventSetpointWritten = "vorgabe_geschrieben"
+
+// EventFirstQuery fires on the partner's first successful request after none
+// (the §5.4 transition out of "tunnel_oben"/"wartet_auf_abfrage").
+const EventFirstQuery = "partner_liest"
 
 // The subset of vp-direktvermarktung-konzept d2 §5.4's connection states this
 // package can actually observe: it has no tunnel, so "ohne_profil",
@@ -86,8 +102,10 @@ type Server struct {
 	staleAfter   time.Duration
 	holding      map[uint16]uint16 // holding registers, by individual 16-bit word address
 	lastQuery    time.Time
+	lastWrite    time.Time
 	lastWatchdog time.Time
-	watchdogDone bool // the current expiry has already been applied + the event fired
+	queries      uint64 // successful partner requests (reads and writes)
+	watchdogDone bool   // the current expiry has already been applied + the event fired
 
 	onEvent func(Event)
 	now     func() time.Time
@@ -244,6 +262,63 @@ func (s *Server) fireLocked(ev *Event) {
 	if ev != nil && s.onEvent != nil {
 		s.onEvent(*ev)
 	}
+}
+
+func (s *Server) fireAllLocked(evs []Event) {
+	if s.onEvent == nil {
+		return
+	}
+	for _, ev := range evs {
+		s.onEvent(ev)
+	}
+}
+
+// ServerStand is one consistent snapshot of the interface for the heartbeat
+// block and the dv.* measurement points (§5.4 "Stand"/"Nachweis"). Zero times
+// mean "never".
+type ServerStand struct {
+	State            string
+	EffektivPct      int  // the watchdog-gated effective set-point
+	Aktiv            bool // a limit below the rest value is in effect
+	LetzteAbfrage    time.Time
+	LetzteSchreibung time.Time
+	Lebenszeichen    time.Time // when the watchdog register was last written
+	WerteStand       time.Time // when SetValues last refreshed the input cache
+	Abfragen         uint64    // successful partner requests since start
+	Werte            map[string]float64
+}
+
+// Stand returns the snapshot, applying a pending watchdog expiry first so the
+// report never shows an effective limit the watchdog no longer covers.
+func (s *Server) Stand() ServerStand {
+	now := s.now()
+	s.mu.Lock()
+	ev := s.checkWatchdogLocked(now)
+	werte := make(map[string]float64, len(s.values))
+	for k, v := range s.values {
+		werte[k] = v
+	}
+	pct := s.setpointLocked()
+	aktiv := false
+	if !s.watchdogFreshLocked(now) {
+		pct = s.profile.Rules.RestPct
+	} else {
+		aktiv = pct < s.profile.Rules.RestPct
+	}
+	st := ServerStand{
+		State:            s.stateLocked(now),
+		EffektivPct:      pct,
+		Aktiv:            aktiv,
+		LetzteAbfrage:    s.lastQuery,
+		LetzteSchreibung: s.lastWrite,
+		Lebenszeichen:    s.lastWatchdog,
+		WerteStand:       s.valuesAt,
+		Abfragen:         s.queries,
+		Werte:            werte,
+	}
+	s.mu.Unlock()
+	s.fireLocked(ev)
+	return st
 }
 
 // stateLocked distinguishes a watchdog that EXPIRED (was fresh, then went
@@ -511,8 +586,11 @@ func (s *Server) read(table string, start, count uint16) ([]uint16, byte) {
 	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ev := s.checkWatchdogLocked(now)
-	defer s.fireLocked(ev)
+	var evs []Event
+	if ev := s.checkWatchdogLocked(now); ev != nil {
+		evs = append(evs, *ev)
+	}
+	defer func() { s.fireAllLocked(evs) }()
 
 	out := make([]uint16, count)
 	for i := range out {
@@ -538,7 +616,11 @@ func (s *Server) read(table string, start, count uint16) ([]uint16, byte) {
 		}
 		out[i] = v
 	}
+	if s.lastQuery.IsZero() {
+		evs = append(evs, Event{Kind: EventFirstQuery, At: now})
+	}
 	s.lastQuery = now
+	s.queries++
 	return out, 0
 }
 
@@ -549,8 +631,12 @@ func (s *Server) write(addr uint16, values []uint16) byte {
 	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ev := s.checkWatchdogLocked(now)
-	defer s.fireLocked(ev)
+	var evs []Event
+	if ev := s.checkWatchdogLocked(now); ev != nil {
+		evs = append(evs, *ev)
+	}
+	defer func() { s.fireAllLocked(evs) }()
+	setpointVorher := s.setpointLocked()
 
 	trial := make(map[uint16]uint16, len(s.holding))
 	for k, v := range s.holding {
@@ -588,10 +674,19 @@ func (s *Server) write(addr uint16, values []uint16) byte {
 		}
 	}
 	s.holding = trial
+	if s.lastQuery.IsZero() {
+		evs = append(evs, Event{Kind: EventFirstQuery, At: now})
+	}
 	s.lastQuery = now
+	s.lastWrite = now
+	s.queries++
 	if touchedWatchdog {
 		s.lastWatchdog = now
 		s.watchdogDone = false
+	}
+	if nachher := s.setpointLocked(); nachher != setpointVorher {
+		pct := nachher
+		evs = append(evs, Event{Kind: EventSetpointWritten, At: now, Pct: &pct})
 	}
 	return 0
 }

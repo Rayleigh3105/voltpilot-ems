@@ -35,6 +35,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlprofile"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/direktvermarkter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ebyte"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
@@ -523,6 +524,16 @@ type Agent struct {
 	priceFeedMu     sync.Mutex
 	priceFeedMirror *pricefeed.Feed
 
+	// Direktvermarktung (agent/direktvermarktung.go): the delivered partner
+	// connection - profile, access store, heartbeat block. dvDir overrides the
+	// box-kind default directory in tests only.
+	dvMu            sync.Mutex
+	dv              *direktvermarkter.Anschluss
+	dvDir           string
+	dvLetzteAnfrage time.Time
+	dvRateCount     uint64
+	dvRateAt        time.Time
+
 	// Einheitsmodell Stufe 1 (agent/component_apply.go): WHO owns this plant's
 	// device configuration, and which push revision was last applied. The
 	// configuration itself stays where it always was (invStore + srcStore) -
@@ -983,6 +994,9 @@ func New(cfg config.Config) (*Agent, error) {
 	// this plant's activation). Missing/corrupt = no platform grant, and the
 	// retained redelivery repairs it on the next cloud connect.
 	a.loadControlCert()
+	// Restore the delivered direct-marketing profile (same pattern): a box that
+	// boots offline keeps the connection it legitimately had.
+	a.loadDirektvermarktung()
 	// Restore the applied v2 entity registry (persisted across restarts); its
 	// per-entity retained configs are re-published once the bus is up in Start.
 	a.entStore = es
@@ -1635,6 +1649,10 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// siehe override.go.
 		OnDesiredDownlink:   a.onDesiredDownlink,
 		OnMeasurementConfig: a.onMeasurementConfig,
+		// Direktvermarktung-Zustellung: das retained Partnerprofil und die
+		// nicht-retained Einmal-Zugangsantwort - siehe direktvermarktung.go.
+		OnDirektvermarktung:       a.onDirektvermarktung,
+		OnDirektvermarktungZugang: a.onDirektvermarktungZugang,
 		OnConnect: func(connected bool) {
 			a.handleLinkConnect(link, connected)
 		},
@@ -1671,11 +1689,13 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 			soc := a.lastRawSoc
 			a.mu.Unlock()
 			a.logControlGateDivergence(snap)
+			a.dvNachfassen()
 			if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 				a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
 				a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
 				a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports(a.boxArt()),
-					GemeinsameSteuerung: a.gemeinsameSteuerung(), Logik: a.logikSummary(), Koppel: a.koppelSummary()}); err != nil {
+					GemeinsameSteuerung: a.gemeinsameSteuerung(), Logik: a.logikSummary(), Koppel: a.koppelSummary(),
+					Direktvermarktung: a.dvSummary()}); err != nil {
 				slog.Warn("status publish failed", "err", err)
 			}
 			return true
@@ -5703,6 +5723,11 @@ func (a *Agent) Stop() {
 		a.priceFeedMirror.Close()
 	}
 	a.priceFeedMu.Unlock()
+	a.dvMu.Lock()
+	if a.dv != nil {
+		a.dv.Close()
+	}
+	a.dvMu.Unlock()
 	if a.Bus != nil {
 		_ = a.Bus.Close()
 	}
