@@ -14,7 +14,9 @@
 # Tunnel-Adresse. Darum hier kein procd-respawn: zwei Aufseher wuerden sich in
 # die Quere kommen. Der Daemon selbst verbindet mit wachsender Pause neu
 # (connect-retry in der Konfiguration).
+# shellcheck disable=SC2034 # START/STOP liest /etc/rc.common
 START=85
+# shellcheck disable=SC2034
 STOP=15
 
 KONFIG=/etc/vp-edge-light/vermarkter/openvpn.conf
