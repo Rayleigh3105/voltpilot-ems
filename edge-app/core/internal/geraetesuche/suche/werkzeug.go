@@ -240,6 +240,10 @@ type modbus struct {
 	port int
 	c    net.Conn
 	tid  uint16
+	// seit is when c was connected; ruhe is how long after that the first
+	// request waits (set by a recogniser whose device needs it: Huawei).
+	seit time.Time
+	ruhe time.Duration
 }
 
 func (g *geraet) modbus(port int) *modbus { return &modbus{g: g, port: port} }
@@ -266,7 +270,10 @@ func (m *modbus) lies(ctx context.Context, b *budget, unit byte, addr, count uin
 		if err != nil {
 			return nil, err
 		}
-		m.c = c
+		m.c, m.seit = c, time.Now()
+	}
+	if err := m.warteRuhe(ctx); err != nil {
+		return nil, err
 	}
 	m.tid++
 	adu := make([]byte, 12)
@@ -290,6 +297,23 @@ func (m *modbus) lies(ctx context.Context, b *budget, unit byte, addr, count uin
 		return nil, err
 	}
 	return regs, nil
+}
+
+// warteRuhe holds the request until m.ruhe has passed since the connect; an
+// ended ctx ends the wait with its error.
+func (m *modbus) warteRuhe(ctx context.Context) error {
+	rest := time.Until(m.seit.Add(m.ruhe))
+	if m.ruhe <= 0 || rest <= 0 {
+		return nil
+	}
+	t := time.NewTimer(rest)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 func (m *modbus) austausch(adu []byte, unit byte, count uint16) ([]uint16, error) {
