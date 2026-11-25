@@ -327,12 +327,23 @@ public class DeviceChargerStatusRepository {
                 + "WHERE device_id = ? AND charge_point_id = ?", entityId, deviceId, chargePointId);
     }
 
-    /** Die Säulen einer Anlage, die noch KEINE Komponente haben (Geräte-Id + Kennung + Name). */
+    /**
+     * Die Säulen einer Anlage, die noch KEINE Komponente haben (Geräte-Id + Kennung + Name).
+     *
+     * <p>⚠ Ohne die ZURÜCKGENOMMENEN Kennungen (Grabstein in {@code site_charge_point_allowlist},
+     * vp-ladepunkte-doppelt): ein Herzschlag, den die Box noch vor der Rücknahme geschrieben hat, legt
+     * die gelöschte Zeile ehrlich wieder an - aus ihr darf aber keine neue Komponente werden, sonst
+     * stünde die entfernte Säule als namenloser „Ladepunkt" unter Laden und bliebe dort liegen, sobald
+     * die Box sie nicht mehr meldet. Wer die Kennung wieder einträgt, belebt sie; dann entsteht die
+     * Komponente beim nächsten Herzschlag wie beim ersten Mal.
+     */
     public List<UnboundCharger> unbound(UUID siteId) {
         return jdbc.query(
-                "SELECT device_id, charge_point_id, label FROM device_charge_point "
-                        + "WHERE site_id = ? AND entity_id IS NULL "
-                        + "ORDER BY device_id, charge_point_id",
+                "SELECT c.device_id, c.charge_point_id, c.label FROM device_charge_point c "
+                        + "WHERE c.site_id = ? AND c.entity_id IS NULL AND NOT EXISTS ("
+                        + "SELECT 1 FROM site_charge_point_allowlist a WHERE a.site_id = c.site_id "
+                        + "AND a.charge_point_id = c.charge_point_id AND a.removed_at IS NOT NULL) "
+                        + "ORDER BY c.device_id, c.charge_point_id",
                 (rs, n) -> new UnboundCharger(rs.getObject("device_id", UUID.class),
                         rs.getString("charge_point_id"), rs.getString("label")),
                 siteId);
@@ -340,6 +351,24 @@ public class DeviceChargerStatusRepository {
 
     /** Eine Säule ohne Komponente. */
     public record UnboundCharger(UUID deviceId, String chargePointId, String label) {}
+
+    /**
+     * Die Komponenten, an die eine Kennung dieser Anlage gebunden ist - je Box höchstens eine
+     * (vp-ladepunkte-doppelt: die Rücknahme räumt sie mit der gemeldeten Zeile ab).
+     */
+    public List<UUID> entityIdsOf(UUID siteId, String chargePointId) {
+        return jdbc.query("SELECT DISTINCT entity_id FROM device_charge_point "
+                + "WHERE site_id = ? AND charge_point_id = ? AND entity_id IS NOT NULL",
+                (rs, n) -> rs.getObject("entity_id", UUID.class), siteId, chargePointId);
+    }
+
+    /** Ob noch irgendeine gemeldete Säule (gleich welcher Box) diese Komponente trägt. */
+    public boolean isBound(UUID entityId) {
+        Boolean gebunden = jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM device_charge_point WHERE entity_id = ?)",
+                Boolean.class, entityId);
+        return Boolean.TRUE.equals(gebunden);
+    }
 
     /**
      * Löscht die GEMELDETE ZEILE einer Kennung (Aufbau und Ladesäulen-Seite lesen beide von hier) -

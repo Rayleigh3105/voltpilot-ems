@@ -955,6 +955,154 @@ class ChargerApiTest {
     }
 
     /**
+     * vp-ladepunkte-doppelt: eine Wallbox im Aufbau entfernt und wieder hinzugefügt - unter
+     * Steuerung › Laden standen danach ZWEI Ladepunkte, obwohl der Aufbau keine Säule mehr zeigte.
+     *
+     * <p>Der Weg ist genau der des Portals: „Ladesäule entfernen" im Aufbau ist
+     * {@code DELETE …/charging-config/charge-points/{kennung}}, Laden liest {@code GET …/verbraucher},
+     * der Aufbau {@code GET …/chargers}. Zwei Lücken führten zum Bild:
+     * <ol>
+     *   <li>die Rücknahme löschte die gemeldete Zeile, aber nicht die Komponente, die aus ihr
+     *       entstanden war - Laden liest Komponenten, also blieb „Wallbox Garage" stehen;</li>
+     *   <li>ein Herzschlag, den die Box noch VOR der Rücknahme geschrieben hatte, legte die Zeile
+     *       ohne Bindung wieder an, und aus ihr wurde eine ZWEITE Komponente (ohne Namen: „Ladepunkt"),
+     *       die liegen blieb, sobald die Box die Säule nicht mehr meldete.</li>
+     * </ol>
+     */
+    @Test
+    void eineEntfernteWallboxVerschwindetAusLadenUndNeuHinzufuegenGibtGenauEinenLadepunkt()
+            throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepunkt-Doppelt");
+        try {
+            UUID device = claim(customer, site, "edge-ladepunkt-doppelt");
+            String anlage = "/api/v1/sites/" + site;
+
+            // 0 · Der bewährte Weg: eingetragen, die Säule meldet sich → genau EIN Ladepunkt.
+            postJson(anlage + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "WB-GARAGE-7", "label", "Wallbox Garage"));
+            heartbeat(site, device, wallboxGarage("2026-11-20T08:00:00Z", true));
+            assertThat(ladepunkte(getJson(anlage + "/verbraucher", customer)))
+                    .containsExactly("Wallbox Garage@WB-GARAGE-7");
+
+            // 1 · „Ladesäule entfernen": der Aufbau zeigt keine Säule mehr - und Laden auch nicht.
+            deleteJson(anlage + "/charging-config/charge-points/WB-GARAGE-7", customer);
+            assertThat(getJson(anlage + "/chargers", customer).get("chargers")).isEmpty();
+            assertThat(ladepunkte(getJson(anlage + "/verbraucher", customer)))
+                    .as("die Komponente der entfernten Säule bleibt nicht unter Laden stehen")
+                    .isEmpty();
+            assertThat(chargerEntities(getJson(anlage + "/entities", customer))).isZero();
+
+            // 2 · Ein Herzschlag, den die Box noch vor der Rücknahme schrieb: die Zeile steht als
+            //     ehrliches Echo wieder im Aufbau, aber für eine zurückgenommene Kennung entsteht
+            //     keine neue Komponente.
+            heartbeat(site, device, wallboxGarage("2026-11-20T08:01:00Z", true));
+            assertThat(getJson(anlage + "/chargers", customer).get("chargers")).hasSize(1);
+            assertThat(ladepunkte(getJson(anlage + "/verbraucher", customer))).isEmpty();
+
+            // 3 · Die Box hat die Rücknahme übernommen und meldet die Säule nicht mehr.
+            heartbeat(site, device, wallboxGarage("2026-11-20T08:02:00Z", false));
+            assertThat(getJson(anlage + "/chargers", customer).get("chargers")).isEmpty();
+            assertThat(ladepunkte(getJson(anlage + "/verbraucher", customer))).isEmpty();
+            assertThat(chargerEntities(getJson(anlage + "/entities", customer)))
+                    .as("nichts ist liegen geblieben").isZero();
+
+            // 4 · Neu hinzufügen: eintragen, die Säule meldet sich → wieder genau EIN Ladepunkt,
+            //     auch nach dem nächsten Herzschlag.
+            postJson(anlage + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "WB-GARAGE-7"));
+            heartbeat(site, device, wallboxGarage("2026-11-20T08:03:00Z", true));
+            heartbeat(site, device, wallboxGarage("2026-11-20T08:04:00Z", true));
+            assertThat(ladepunkte(getJson(anlage + "/verbraucher", customer)))
+                    .containsExactly("Wallbox Garage@WB-GARAGE-7");
+            assertThat(chargerEntities(getJson(anlage + "/entities", customer))).isOne();
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * vp-ladepunkte-doppelt, die Lesefläche: Laden zeigt eine OCPP-Komponente nur, solange eine
+     * Box in Betrieb ihre Säule meldet - auch wenn die Komponente selbst bleiben muss.
+     *
+     * <p>Zwei Wege lassen eine Komponente ohne Säule zurück, ohne dass die Rücknahme sie löschen
+     * darf oder soll: die Box meldet eine Säule nicht mehr (ein Herzschlag löscht nie eine
+     * Komponente), und eine Komponente, die im Zählerbaum hängt, ist durch den Fremdschlüssel
+     * geschützt. Die Rücknahme der Kennung gelingt trotzdem - ihr Aufräumen läuft in einem
+     * eigenen Sicherungspunkt.
+     */
+    @Test
+    void einLadepunktOhneGemeldeteSaeuleStehtNichtUnterLadenUndDieRuecknahmeGelingtImmer()
+            throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepunkt-ohne-Saeule");
+        UUID haengtAn = null;
+        try {
+            UUID device = claim(customer, site, "edge-ladepunkt-ohne-saeule");
+            String anlage = "/api/v1/sites/" + site;
+
+            // 1 · Die Box meldet eine Säule nicht mehr: die Komponente bleibt, Laden zeigt sie nicht.
+            postJson(anlage + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "saeule-1", "label", "Hof Nord"));
+            heartbeat(site, device, twoStations());
+            assertThat(ladepunkte(getJson(anlage + "/verbraucher", customer))).hasSize(2);
+            heartbeat(site, device, oneStation());
+            assertThat(chargerEntities(getJson(anlage + "/entities", customer))).isEqualTo(2);
+            assertThat(ladepunkte(getJson(anlage + "/verbraucher", customer)))
+                    .containsExactly("Hof Nord@saeule-1");
+            assertThat(getJson(anlage + "/verbraucher", customer).get("ladepunkte").get("gesamt")
+                    .asInt()).isOne();
+
+            // 2 · Eine Komponente im Zählerbaum lässt sich nicht löschen - die Rücknahme gelingt
+            //     trotzdem, und Laden zeigt den Ladepunkt nicht mehr.
+            String hofNord = getJson(anlage + "/chargers", customer).get("chargers").get(0)
+                    .get("entityId").asText();
+            haengtAn = UUID.randomUUID();
+            try (Connection c = superuser(); Statement st = c.createStatement()) {
+                st.execute("INSERT INTO measurement_point (id, tenant_id, site_id, role, label) VALUES ('"
+                        + haengtAn + "', '" + TENANT_A + "', '" + site + "', 'consumer', 'Unterverteilung')");
+                st.execute("INSERT INTO komponente_haengt_an (tenant_id, komponente_id, haengt_an, gueltig_ab) "
+                        + "VALUES ('" + TENANT_A + "', '" + hofNord + "', '" + haengtAn + "', DATE '2026-11-01')");
+            }
+            JsonNode nach = deleteJson(anlage + "/charging-config/charge-points/saeule-1", customer);
+            assertThat(ids(nach.get("removedChargePointIds"))).containsExactly("saeule-1");
+            assertThat(getJson(anlage + "/chargers", customer).get("chargers")).isEmpty();
+            assertThat(ladepunkte(getJson(anlage + "/verbraucher", customer))).isEmpty();
+            assertThat(chargerEntities(getJson(anlage + "/entities", customer)))
+                    .as("die geschützte Komponente bleibt gespeichert").isEqualTo(2);
+        } finally {
+            if (haengtAn != null) {
+                try (Connection c = superuser(); Statement st = c.createStatement()) {
+                    st.execute("DELETE FROM komponente_haengt_an WHERE haengt_an = '" + haengtAn + "'");
+                }
+            }
+            deleteSite(site);
+        }
+    }
+
+    /** Die Ladepunkte unter Steuerung › Laden als „Name@Kennung" (Kennung null = keine Säule). */
+    private static List<String> ladepunkte(JsonNode verbraucher) {
+        List<String> out = new java.util.ArrayList<>();
+        for (JsonNode e : verbraucher.get("verbraucher")) {
+            if (e.path("ladepunkt").asBoolean()) {
+                out.add(e.path("name").asText() + "@" + e.path("chargePointId").asText(null));
+            }
+        }
+        return out;
+    }
+
+    /** Eine Wallbox in der Garage, wie die Box sie meldet - mit oder ohne die Säule. */
+    private static String wallboxGarage(String reportedAt, boolean mitSaeule) {
+        String saeule = """
+                {"id":"WB-GARAGE-7","label":"Wallbox Garage","connected":true,"ready":true,
+                 "connectors":[{"id":1,"status":"Available","charging":false}]}""";
+        return """
+                {"reported_at":"%s","enabled":true,"control_enabled":true,
+                 "grid_limit_kw":35,"budget_kw":11,"connector_count":%d,
+                 "chargers":[%s]}""".formatted(reportedAt, mitSaeule ? 1 : 0, mitSaeule ? saeule : "");
+    }
+
+    /**
      * P7 — die FAHRZEUG-PROFILE: dieselbe Säule, zwei Karten, zwei Steuerarten.
      *
      * <p>⚠ Der Schlüssel ist der Pseudonym, den die BOX meldet - der Test fährt

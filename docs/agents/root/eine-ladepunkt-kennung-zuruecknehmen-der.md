@@ -52,6 +52,19 @@ zurücknimmt, verhält sich zeichengleich wie vorher.
   Weg hinaus (RLS-gefenced wie jede `/sites/**`-Route; eine Kennung, die diese
   Anlage nicht (mehr) führt, ist ein **404** — nie ein stiller Erfolg über
   etwas, das es nicht gab).
+- **⚠ Die Komponente der Säule geht mit (vp-ladepunkte-doppelt, 25.11.2026).**
+  Laden (`GET …/verbraucher`) liest Komponenten, der Aufbau die gemeldeten Zeilen;
+  eine Rücknahme, die nur die Zeile löschte, ließ den Ladepunkt unter Laden stehen,
+  und ein Herzschlag aus der Zeit vor der Rücknahme legte einen zweiten an.
+  `ChargingConfigService.remove` löscht deshalb die gebundene `ev-charger`-Komponente
+  mit (`LadepunktKomponenteAbbau`, Weg wie „Komponente entfernen", eigener
+  Sicherungspunkt: Beleg oder Zählerbaum lassen sie stehen, die Rücknahme gilt
+  trotzdem); `DeviceChargerStatusRepository.unbound` komponiert für eine
+  zurückgenommene Kennung nichts Neues; `VerbraucherService` zeigt eine
+  `ev-charger`-Komponente nur, solange eine Box in Betrieb ihre Säule meldet.
+  Den Altbestand räumt `V20261125100000` ab. Beweise:
+  `ChargerApiTest.eineEntfernteWallbox…`, `…einLadepunktOhneGemeldeteSaeule…`,
+  `LadepunktOhneSaeuleMigrationTest`.
 - **Unclaim räumt weiterhin nur den retained Slot** — die Zeilen sterben am
   FK-Cascade, und ein DELETE von der falschen Verbindung aus wäre die
   dokumentierte Selbst-Blockade der Steuerungs-Freigabe.

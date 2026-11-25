@@ -336,6 +336,12 @@ describe('Eine Kennung wieder entfernen', () => {
     expect(alles).toContain('jederzeit wieder eintragen');
   });
 
+  it('sagt, dass der Ladepunkt auch unter Steuerung › Laden verschwindet (vp-ladepunkte-doppelt)', () => {
+    const zeile = entfernenFolgen('Hof Nord').find((f) => f.includes('Steuerung › Laden'));
+    expect(zeile).toContain('„Hof Nord“');
+    expect(zeile).toContain('Ladeziel');
+  });
+
   it('behauptet keine sofortige Wirkung am Gerät', () => {
     // Das Dokument reist retained - wann die Box es abholt, entscheidet sie.
     expect(ENTFERNEN_HINWEIS).toContain('das nächste Mal verbunden');

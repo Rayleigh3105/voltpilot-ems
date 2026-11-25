@@ -2882,6 +2882,15 @@ paths:
         Box kennt das Feld nicht und behält die Kennung - der Vorzustand, nie
         eine falsche Handlung; die Rücknahme wirkt dort erst nach dem nächsten
         Edge-Release. RLS-gefenced (fremde Anlage 404).
+
+
+        DIE KOMPONENTE GEHT MIT (vp-ladepunkte-doppelt): die gemeldete Zeile der
+        Säule wird gelöscht und mit ihr die `ev-charger`-Komponente, die die
+        Plattform aus ihr komponiert hatte - sie steht danach nicht mehr unter
+        Steuerung › Laden. Eine Komponente, die ein Beleg oder der Zählerbaum
+        festhält, bleibt gespeichert; die Rücknahme gelingt trotzdem. Für eine
+        zurückgenommene Kennung entsteht keine neue Komponente, auch wenn die
+        Box sie noch einmal meldet.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: chargePointId, in: path, required: true, schema: { type: string, maxLength: 64 } }

@@ -116,6 +116,8 @@ public class ChargingConfigService {
     private volatile LadeparkNetzgrenzeRepository zugestellt;
     /** Audit W-02: die Steuerprofile, in die die Nennleistung des Anbindens reist; ohne (Einzeltests) nichts. */
     private volatile ConsumerRepository consumers;
+    /** vp-ladepunkte-doppelt: räumt die Komponente einer zurückgenommenen Säule ab; ohne (Einzeltests) nichts. */
+    private volatile LadepunktKomponenteAbbau komponentenAbbau;
     /** UEMS AP-15 IP-16: die Boxen einer Anlage mit scharfer oder angehaltener Gemeinsamer Steuerung. */
     private volatile LadeparkJeBox verbund;
     /** Die Uhr, an der „heute am Standort“ hängt — nur Tests stellen sie ({@link #uhrStellen}). */
@@ -358,6 +360,12 @@ public class ChargingConfigService {
     @Autowired(required = false)
     void profileLesen(ConsumerRepository consumers) {
         this.consumers = consumers;
+    }
+
+    /** vp-ladepunkte-doppelt: wie {@link #grenzenLesen} - ein Setter, damit Einzeltests den Dienst unverändert bauen. */
+    @Autowired(required = false)
+    void komponentenAbbauen(LadepunktKomponenteAbbau komponentenAbbau) {
+        this.komponentenAbbau = komponentenAbbau;
     }
 
     /**
@@ -875,14 +883,46 @@ public class ChargingConfigService {
         UUID tenantId = TenantContext.get();
         String id = chargePointId == null ? "" : chargePointId.trim();
         boolean warZugelassen = configs.removeChargePoint(siteId, id, actor);
+        List<UUID> komponenten = chargers.entityIdsOf(siteId, id);
         boolean hatteZeile = chargers.deleteChargePoint(siteId, id);
         if (!warZugelassen && !hatteZeile) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Diese Anlage führt keine eingetragene Ladepunkt-Kennung \"" + id + "\".");
         }
+        komponentenAbbauen(siteId, id, komponenten);
         ChargingConfigDto saved = configs.forSite(siteId);
         push(tenantId, siteId, saved);
         return saved;
+    }
+
+    /**
+     * Die Komponenten der zurückgenommenen Säule gehen mit ihrer Zeile (vp-ladepunkte-doppelt): sonst
+     * stünde unter Steuerung › Laden ein Ladepunkt, den der Aufbau nicht mehr zeigt, und ein erneutes
+     * Eintragen legte daneben einen zweiten an.
+     *
+     * <p>Nur eine Komponente, die danach KEINE gemeldete Säule mehr trägt; jede in ihrem eigenen
+     * Sicherungspunkt ({@link LadepunktKomponenteAbbau}). Was dort abgelehnt wird (Beleg eines
+     * Berichtsstands, Zählerbaum), bleibt gespeichert - die Rücknahme der Kennung gilt trotzdem.
+     */
+    private void komponentenAbbauen(UUID siteId, String chargePointId, List<UUID> komponenten) {
+        LadepunktKomponenteAbbau abbau = komponentenAbbau;
+        if (abbau == null) {
+            return;
+        }
+        for (UUID entityId : komponenten) {
+            if (chargers.isBound(entityId)) {
+                continue;
+            }
+            try {
+                if (abbau.entferne(siteId, entityId)) {
+                    log.info("Komponente {} der zurückgenommenen Säule {} an Anlage {} entfernt",
+                            entityId, chargePointId, siteId);
+                }
+            } catch (RuntimeException e) {
+                log.info("Komponente {} der zurückgenommenen Säule {} an Anlage {} bleibt gespeichert: {}",
+                        entityId, chargePointId, siteId, e.toString());
+            }
+        }
     }
 
     /**
