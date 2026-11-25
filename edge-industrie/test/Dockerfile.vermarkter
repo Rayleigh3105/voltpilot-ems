@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+# Testbild der Direktvermarkter-Probe (edge-industrie/test/vermarkter-probe.sh):
+# die echten Programme aus edge-app/core (Datenspiegel-Server des Partners und
+# gestellter luox) auf einem Alpine mit OpenVPN, iptables und socat - die
+# PFC200-Attrappe der Probe. Kontext ist edge-app/core:
+#   docker build -f ../../edge-industrie/test/Dockerfile.vermarkter .
+# Den Helfer vp-vermarkter und den Stand-in des Firmware-OpenVPN-Init-Skripts
+# kopiert die Probe zur Laufzeit hinein (docker cp), damit genau der Stand des
+# Arbeitsverzeichnisses geprueft wird. Nur fuer Entwicklung und Test - nie
+# Teil einer Kundeninstallation.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+ARG TARGETOS TARGETARCH
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w" -o /out/vp-direktvermarkter-server ./cmd/vp-direktvermarkter-server
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w" -o /out/vp-luox-sim ./cmd/vp-luox-sim
+
+FROM alpine:3.20
+RUN apk add --no-cache openvpn iptables socat && \
+    addgroup -S voltpilot && adduser -S -G voltpilot voltpilot
+COPY --from=build /out/vp-direktvermarkter-server /usr/local/bin/vp-direktvermarkter-server
+COPY --from=build /out/vp-luox-sim /usr/local/bin/vp-luox-sim
+# root bleibt der Standard: die Box-Seite braucht den root-Helfer; die Probe
+# startet die Programme des Box-Programms ausdruecklich als voltpilot.

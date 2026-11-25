@@ -214,6 +214,9 @@ func (r *Runtime) erzeugerTakt(ctx context.Context) {
 	r.erzMu.Lock()
 	erg := r.erz.Beende(runde, antworten)
 	r.erzMu.Unlock()
+	if r.opts.VermarkterPfad != "" {
+		r.vermarkterWerte(erg.Bilder, ziele, r.opts.Now())
+	}
 	for _, n := range erg.Nachrichten {
 		raw, err := json.Marshal(n.Payload)
 		if err != nil {

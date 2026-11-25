@@ -414,6 +414,10 @@ Nach einem bestandenen Schalt-Test und der Freigabe dieses Stellplatzes trägt d
 Die Freigabe hängt an der Form des Angebots (Art, Ziel, Nummer, Band): ändert das Anlagenprogramm sie, fällt die Freigabe, wie bei den Schreibwerten des [Modbus-Geräts](./modbus-geraet.md).
 Je Kommando trägt eine Steuerung höchstens einen freigegebenen Stellplatz, weil der Schiedsrichter je Gerät einen Wert je Kommando gewährt.
 
+**Die Vertragsgrenze des Direktvermarkters** (Nebenversion 1.1, Konzept d2 §5.5) geht nicht über den Schiedsrichter: auf dem Stellplatz, dessen Angebot `limit_w` mit dem Ziel des Partnerprofils trägt (Einspeisung; bietet die Anlage nur die ganze Erzeugung, ist deren Kappe der sichere Ersatz, nie umgekehrt), schreibt die Box das Minimum aus dem Wunsch des Schiedsrichters und der Partner-Grenze und nennt den bindenden Grund.
+Sie reitet nicht auf den Steuertoren der Box (der Partner muss auch ohne VoltPilot-Cloud begrenzen können); die SPS behält ihre eigene Freigabe, das Band und die Frist.
+Eine Grenze begrenzt und fordert nie an; ohne frisches Lebenszeichen des Partners gibt es keine Grenze.
+
 | Art | Kommando des Schiedsrichters | Umrechnung beim Schreiben |
 |---|---|---|
 | `limit_w` | `limit_kw` | kW · 1000, gerundet auf ganze W |
