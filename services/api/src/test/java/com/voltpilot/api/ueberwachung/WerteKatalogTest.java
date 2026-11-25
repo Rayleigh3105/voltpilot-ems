@@ -42,14 +42,18 @@ class WerteKatalogTest {
     }
 
     @Test
-    void nurDieFuenfAbWerkEintraegeHabenEinenVorschlag() {
+    void nurDieAbWerkEintraegeHabenEinenVorschlag() {
         // Scheibe 1: box.erreichbar, datenquelle.liefert_daten. "Ein Ort fürs Laden" Scheibe 4 (E6 = A) fügt
         // die zwei Ladepunkt-Meldungen ab Werk hinzu (eigener Test unten für ihre Vorgaben); Steuerlogik Stufe 3
-        // die Störung einer scharfen Logik (Bericht 8.5: Störungen gehen als Meldung hinaus).
+        // die Störung einer scharfen Logik (Bericht 8.5: Störungen gehen als Meldung hinaus). Die Direktvermarktung
+        // (Konzept d2 §5.7 "Alarme") sät ihre fünf nur an Anlagen mit einem Anschluss über den Entwurf hinaus.
         assertThat(katalog.mitVorschlagAbWerk())
                 .extracting(WerteKatalog.Eintrag::wertart)
                 .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten",
-                        "ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp", "steuerlogik.stoerung");
+                        "ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp", "steuerlogik.stoerung",
+                        "direktvermarktung.verbindung_weg", "direktvermarktung.partner_liest_nicht",
+                        "direktvermarktung.anlage_folgt_nicht", "direktvermarktung.zugang_laeuft_ab",
+                        "direktvermarktung.zugang_laeuft_gleich_ab");
     }
 
     @Test
@@ -145,15 +149,15 @@ class WerteKatalogTest {
     @Test
     void entscheid9aKeinScheibe5EintragHatEinenVorschlagAbWerk() {
         // 9A: kein Läufer legt ab Werk eine Überwachung auf Energiemanagement-Zahlen an - nur
-        // eine selbst angelegte. mitVorschlagAbWerk() bleibt darum unverändert bei den
-        // Scheibe-1-, Ladepunkt- und Steuerlogik-Einträgen (siehe nurDieFuenfAbWerkEintraegeHabenEinenVorschlag oben).
+        // eine selbst angelegte. mitVorschlagAbWerk() bleibt darum bei den Scheibe-1-, Ladepunkt-,
+        // Steuerlogik- und Direktvermarktung-Einträgen (siehe nurDieAbWerkEintraegeHabenEinenVorschlag oben).
         for (String wertart : List.of("kennzahl.bezugsbasis", "energieziel.kurs", "messstelle.menge",
                 "messstelle.beobachtung", "messstelle.monat_unvollstaendig")) {
             assertThat(katalog.eintrag(wertart).vorschlag()).as(wertart).isNull();
         }
         assertThat(katalog.mitVorschlagAbWerk()).extracting(WerteKatalog.Eintrag::wertart)
-                .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten",
-                        "ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp", "steuerlogik.stoerung");
+                .allSatisfy(wertart -> assertThat(wertart.startsWith("kennzahl.") || wertart.startsWith("messstelle.")
+                        || wertart.startsWith("energieziel.") || wertart.startsWith("anlage.")).isFalse());
     }
 
     @Test
@@ -207,5 +211,30 @@ class WerteKatalogTest {
         assertThat(katalog.eintrag("ladepunkt.ziel_wird_knapp").vorschlag().ziel()).containsExactly("knapp");
         assertThat(katalog.eintrag("ladepunkt.auto_angesteckt").vorlage().ziel()).containsExactly("angesteckt");
         assertThat(katalog.eintrag("ladepunkt.ladung_fertig").vorlage().ziel()).containsExactly("fertig");
+    }
+
+    @Test
+    void dieDirektvermarktungEintraegeTragenDieKonzeptFristen() {
+        // Konzept vp-direktvermarktung-konzept d2 §5.7 "Alarme": verbindung_weg 15 Min. (3 Min. Handshake-
+        // Frische des Lesers + 720 s), partner_liest_nicht 60 Min. (15 Min. Abfrage-Frische + 2700 s),
+        // anlage_folgt_nicht 5 Min., zugang_laeuft_ab 30 und - als eigene Wertart, weil ein aktiver Alarm
+        // keine zweite Meldung schickt - 7 Tage. Alle ab Werk gesät an Anlagen mit Anschluss, "Unbekannt hält".
+        for (String wertart : List.of("direktvermarktung.verbindung_weg", "direktvermarktung.partner_liest_nicht",
+                "direktvermarktung.anlage_folgt_nicht", "direktvermarktung.zugang_laeuft_ab",
+                "direktvermarktung.zugang_laeuft_gleich_ab")) {
+            WerteKatalog.Eintrag e = katalog.eintrag(wertart);
+            assertThat(e).as(wertart).isNotNull();
+            assertThat(e.leser().art()).as(wertart).isEqualTo("direktvermarktung");
+            assertThat(e.bezug()).as(wertart).isEqualTo("anlage");
+            assertThat(e.recht()).as(wertart).isEqualTo("messwerte.ansehen");
+            assertThat(e.bedingungen()).as(wertart).containsExactly("zustand");
+            assertThat(e.zustaende()).as(wertart).containsAll(e.vorschlag().ziel());
+        }
+        assertThat(katalog.eintrag("direktvermarktung.verbindung_weg").vorschlag().dauerS()).isEqualTo(720);
+        assertThat(katalog.eintrag("direktvermarktung.partner_liest_nicht").vorschlag().dauerS()).isEqualTo(2700);
+        assertThat(katalog.eintrag("direktvermarktung.anlage_folgt_nicht").vorschlag().dauerS()).isEqualTo(300);
+        assertThat(katalog.eintrag("direktvermarktung.zugang_laeuft_ab").vorschlag().schwere()).isEqualTo("hinweis");
+        assertThat(katalog.eintrag("direktvermarktung.zugang_laeuft_gleich_ab").vorschlag().schwere())
+                .isEqualTo("warnung");
     }
 }

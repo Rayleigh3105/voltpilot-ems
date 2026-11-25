@@ -90,6 +90,14 @@ public class UeberwachungsService {
     void steuerlogikLeser(SteuerlogikWerteLeser steuerlogikLeser) {
         this.steuerlogikLeser = steuerlogikLeser;
     }
+
+    /** Direktvermarktung-Zustellung §6 (optional wie der Steuerlogik-Leser). */
+    private DirektvermarktungWerteLeser direktvermarktungLeser;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void direktvermarktungLeser(DirektvermarktungWerteLeser direktvermarktungLeser) {
+        this.direktvermarktungLeser = direktvermarktungLeser;
+    }
     private final ZugriffRepository zugriffe;
     private final PriceRepository preise;
     private final PeakShavingRepository peakShaving;
@@ -148,6 +156,7 @@ public class UeberwachungsService {
             case "erzeuger" -> erzeugerLeser;
             case "ladepunkt" -> ladepunktLeser;
             case "steuerlogik" -> steuerlogikLeser;
+            case "direktvermarktung" -> direktvermarktungLeser;
             default -> null;
         };
     }
@@ -328,6 +337,8 @@ public class UeberwachungsService {
                 case "datenquelle_status" -> repo.anlagenMitDatenquelle();
                 case "wallbox_meldet_sich_nicht", "ziel_wird_knapp" -> repo.anlagenMitLadepunkt();
                 case "stoerung" -> repo.anlagenMitScharferLogik();
+                case "verbindung", "partner_abfrage", "einspeisegrenze", "zugang_frist_30", "zugang_frist_7" ->
+                        repo.anlagenMitDirektvermarktung();
                 default -> List.of();
             };
             for (UUID anlageId : anlagen) {
@@ -490,6 +501,12 @@ public class UeberwachungsService {
         } else {
             lesung = leser.lese(eintrag, bezug, jetzt);
             erfuellung = BedingungsPruefung.pruefen(bedingung, lesung);
+            if (leser == direktvermarktungLeser && direktvermarktungLeser != null && !lesung.bekannt()) {
+                // "Unbekannt hält" (Konzept §5.7): eine stumme Box sagt nicht, dass der Partner wieder
+                // liest oder die Anlage wieder folgt - ein ausgelöster Alarm HÄLT wie beim Erzeuger-Leser;
+                // auslösen kann Unbekannt weiterhin nie.
+                erfuellung = new BedingungsPruefung.Erfuellung(false, true);
+            }
         }
         long dauerS = bedingung.path("dauer_s").asLong(0);
         long erholenS = bedingung.path("erholen_s").asLong(300);
