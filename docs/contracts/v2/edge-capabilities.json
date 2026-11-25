@@ -50,13 +50,6 @@
       "ermoeglicht": "„Geräte suchen“: die Box sucht lesend in ihrem Heimnetz nach Wechselrichtern, Zählern, Wallboxen und Schaltern und meldet die Funde (docs/contracts/v2/mqtt-geraetesuche.md); das Portal übernimmt sie mit einem Tipp in den Anlege-Fluss.",
       "ohne": "Der Knopf „Geräte suchen“ bleibt ausgegraut mit „Update nötig für: Gerätesuche“ und „Update planen“; Geräte kommen nur von Hand über „Gerät hinzufügen“ dazu.",
       "ab_release": null
-    },
-    {
-      "code": "direktvermarktung",
-      "name": "Direktvermarktung",
-      "ermoeglicht": "Die Box nimmt die Direktvermarktungs-Zustellung an (docs/contracts/v2/direktvermarktung-zustellung.md): Partnerprofil, Zugang, Quittung, Herzschlag-Block `direktvermarktung`.",
-      "ohne": "Die Direktvermarktungs-Seite zeigt „Update nötig für: Direktvermarktung“ und „Update planen“; Profil und Zugang werden an diese Box nicht zugestellt.",
-      "ab_release": null
     }
   ],
   "keine_faehigkeit": [
