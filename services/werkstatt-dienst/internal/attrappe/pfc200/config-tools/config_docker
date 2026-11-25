@@ -1,21 +1,25 @@
 #!/bin/sh
-# config_docker activate|remove - wie das WBM es im Hintergrund ruft (Docker >
-# Aktivieren/Deaktivieren). "remove" ist der Gegenpart zu "activate": Docker
-# aus, dockerd endet; Container, Abbilder und Datenträger bleiben unberührt.
+# config_docker install|remove|activate|deactivate - wie die WAGO-Firmware
+# (FW22 V03.10.08, projectroot/etc/config-tools/config_docker im Quelltext
+# von WAGO/pfc-firmware-sdk-G2). "deactivate" stoppt/deaktiviert nur den
+# Dienst dockerd (kein Paket, keine Daten); "remove" ruft "deactivate" und
+# danach "opkg remove docker", dessen postrm /home/docker, /etc/docker und
+# /home/wago-docker löscht. Der Dienst ruft darum nie remove oder install,
+# nur deactivate.
 . "$(dirname "$0")/attrappe.sh"
+merke "$*"
 case "${1:-}" in
   activate)
     setze docker/aktiv active
     setze docker/laeuft 1
     ;;
-  remove)
-    if [ "$(lies docker/scheitert '')" = "1" ]; then
-      merke "$*"
-      falsch "Docker deaktivieren fehlgeschlagen (Attrappe)"
-    fi
+  deactivate)
+    [ "$(lies docker/scheitert '')" = "1" ] && falsch "Docker deaktivieren fehlgeschlagen (Attrappe)"
     setze docker/aktiv inactive
     rm -f "$Z/docker/laeuft"
     ;;
+  remove | install)
+    falsch "die Attrappe nimmt kein $1: das löscht Pakete und Daten (/home/docker), der Dienst darf Docker nur de/aktivieren"
+    ;;
   *) falsch "Invalid parameter (${1:-})" ;;
 esac
-merke "$*"

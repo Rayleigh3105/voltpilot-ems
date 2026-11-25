@@ -648,13 +648,11 @@ func TestDockerAusschalten(t *testing.T) {
 				dockerAufrufe = append(dockerAufrufe, z)
 			}
 		}
-		if len(dockerAufrufe) != 1 || !strings.Contains(dockerAufrufe[0], "config_docker remove") {
-			t.Fatalf("Docker-Aufrufe: %v, erwartet genau einen (config_docker remove)", dockerAufrufe)
-		}
-		for _, z := range dockerAufrufe {
-			if strings.Contains(z, "activate") || strings.Contains(z, "uninstall") || strings.Contains(z, "opkg") {
-				t.Fatalf("Aufruf fasst Docker mehr an als Ausschalten: %q", z)
-			}
+		// Genau "config_docker deactivate": nie "remove" oder "install" (die
+		// laut Firmware-Quelltext das Paket deinstallieren und /home/docker
+		// löschen) und nie "activate" (das wäre das Gegenteil).
+		if len(dockerAufrufe) != 1 || !strings.HasSuffix(strings.TrimSpace(dockerAufrufe[0]), "config_docker deactivate") {
+			t.Fatalf("Docker-Aufrufe: %v, erwartet genau einen (config_docker deactivate)", dockerAufrufe)
 		}
 		// Die Container selbst stehen der Attrappe nach weiter, der Dienst hat sie nie gelöscht.
 		if a.p.Lies("docker/container") == "" {

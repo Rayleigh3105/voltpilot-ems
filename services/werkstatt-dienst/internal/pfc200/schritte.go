@@ -298,11 +298,17 @@ echo "docker_laeuft=$(if pidof dockerd >/dev/null 2>&1; then echo ja; else echo 
 const befehlDockerContainer = "command -v docker >/dev/null 2>&1 && docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' 2>/dev/null"
 
 // dockerAusschalten ist der erste Schritt, der das Gerät ändern darf: Läuft
-// Docker, schaltet der Dienst ihn mit dem Werkzeug der Firmware aus (dem
-// WBM-Äquivalent unter „Docker“), bevor ein späterer Schritt sich auf
-// Weiterleitung und Firewall verlässt. Fremde Container, Abbilder und
-// Datenträger fasst er dabei nie an: kein Beenden, kein Löschen, keine
-// Deinstallation von Docker selbst. Läuft kein Docker, ändert sich nichts.
+// Docker, schaltet der Dienst ihn mit "config_docker deactivate" aus (stoppt
+// dockerd und nimmt den Dienst aus dem Start, wie die Firmware es für das
+// WBM tut), bevor ein späterer Schritt sich auf Weiterleitung und Firewall
+// verlässt. Fremde Container, Abbilder und Datenträger fasst er dabei nie
+// an: kein Beenden, kein Löschen, keine Deinstallation von Docker selbst.
+// "config_docker remove" (und "install") ruft der Dienst nie: Laut dem
+// Quelltext der Firmware (WAGO/pfc-firmware-sdk-G2, Tag FW22-V03.10.08,
+// projectroot/etc/config-tools/config_docker) deinstalliert "remove" das
+// Paket (opkg remove docker) und sein postrm löscht dabei /home/docker
+// (Container, Abbilder, Datenträger), /etc/docker und /home/wago-docker.
+// Läuft kein Docker, ändert sich nichts.
 func (l *Lauf) dockerAusschalten(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
 	b := protokoll.Beleg{}
 	w, err := l.werte(ctx, befehlDockerStand)
@@ -320,7 +326,7 @@ func (l *Lauf) dockerAusschalten(ctx context.Context, _ *lauf.Kontext) (protokol
 	container := dockerContainerBeleg(erg.Aus)
 	b = b.Mit("container_vorher", container)
 
-	if _, err := l.fuehre(ctx, Werkzeuge+"/config_docker remove", ""); err != nil {
+	if _, err := l.fuehre(ctx, Werkzeuge+"/config_docker deactivate", ""); err != nil {
 		return b, lauf.Handgriff{Was: DockerAus, Fall: faelle.PFCDockerAn, Grund: "Docker ließ sich nicht ausschalten: " + err.Error()}
 	}
 	w, err = l.werte(ctx, befehlDockerStand)
@@ -332,7 +338,7 @@ func (l *Lauf) dockerAusschalten(ctx context.Context, _ *lauf.Kontext) (protokol
 		return b, lauf.Handgriff{Was: DockerAus, Fall: faelle.PFCDockerAn,
 			Grund: "Docker ist nach dem Ausschalten weiter " + w["docker_aktiv"] + " (Dienst läuft: " + w["docker_laeuft"] + ")"}
 	}
-	return b.Mit("docker", "ausgeschaltet ("+Werkzeuge+"/config_docker remove), Container unverändert stehen gelassen: "+container), nil
+	return b.Mit("docker", "ausgeschaltet ("+Werkzeuge+"/config_docker deactivate), Container unverändert stehen gelassen: "+container), nil
 }
 
 // dockerContainerBeleg macht aus der Ausgabe von docker ps eine Zeile für den
