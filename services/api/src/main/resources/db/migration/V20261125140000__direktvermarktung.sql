@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS direktvermarktung (
 
 CREATE INDEX IF NOT EXISTS idx_direktvermarktung_site ON direktvermarktung (site_id, erstellt_am DESC);
 CREATE INDEX IF NOT EXISTS idx_direktvermarktung_tenant ON direktvermarktung (tenant_id, site_id);
+-- Selbstbezug des Wechsels (Abschnitt 6): die RI-Pruefung dieser Fremdschluessel-Spalte braucht
+-- einen vollen, nicht-partiellen Index (LoeschzugIndexdeckungTest).
+CREATE INDEX IF NOT EXISTS idx_direktvermarktung_folgt_auf ON direktvermarktung (folgt_auf);
 
 -- "Ein Anschluss je Anlage, genau ein aktiver Partner" (5.1) UND "nie zwei aktiv" (Abschnitt 6):
 -- hoechstens ein Eintrag je Anlage, der weder beendet noch schon auf ein Ende terminiert ist. Der
@@ -86,6 +89,7 @@ CREATE TABLE IF NOT EXISTS direktvermarktung_zugang (
 
 CREATE INDEX IF NOT EXISTS idx_direktvermarktung_zugang_dv ON direktvermarktung_zugang (direktvermarktung_id);
 CREATE INDEX IF NOT EXISTS idx_direktvermarktung_zugang_site ON direktvermarktung_zugang (site_id);
+CREATE INDEX IF NOT EXISTS idx_direktvermarktung_zugang_tenant ON direktvermarktung_zugang (tenant_id, site_id);
 -- Absichtlich KEIN plattformweiter Unique-Index auf `fingerabdruck` hier: unter FORCE ROW LEVEL
 -- SECURITY saehe ein Mandant mit einer schlichten WHERE-Pruefung nie das Zertifikat eines anderen
 -- Mandanten, waehrend ein naiver Unique-Index ueber Mandantengrenzen hinweg schon durch die
@@ -112,6 +116,7 @@ CREATE TABLE IF NOT EXISTS direktvermarktung_protokoll (
 );
 
 CREATE INDEX IF NOT EXISTS idx_direktvermarktung_protokoll_site ON direktvermarktung_protokoll (site_id, am DESC);
+CREATE INDEX IF NOT EXISTS idx_direktvermarktung_protokoll_tenant ON direktvermarktung_protokoll (tenant_id, site_id);
 CREATE INDEX IF NOT EXISTS idx_direktvermarktung_protokoll_dv ON direktvermarktung_protokoll (direktvermarktung_id)
     WHERE direktvermarktung_id IS NOT NULL;
 
@@ -132,6 +137,8 @@ CREATE TABLE IF NOT EXISTS direktvermarktung_stand (
     referenz_w              INTEGER,
     gemeldet_am             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_direktvermarktung_stand_tenant ON direktvermarktung_stand (tenant_id);
 
 -- -----------------------------------------------------------------------------
 -- Rechte + RLS (Muster V20261115230000__steuerweg.sql)

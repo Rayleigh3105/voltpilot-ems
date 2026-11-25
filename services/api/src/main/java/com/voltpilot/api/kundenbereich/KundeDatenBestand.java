@@ -122,6 +122,12 @@ public final class KundeDatenBestand {
                 "komponente_geraete_rueckfall", "komponente_haengt_an", "kostenstelle", "netzanschluss",
                 "netzanschluss_aenderung", "netzanschluss_grenze", "netzanschluss_kennzeichen",
                 "netzanschluss_vorschlag_entscheidung", "prozess", "register_einheit"));
+        // Anschluss an einen Direktvermarkter (vp-direktvermarktung-konzept, Stufe 3): der Eintrag
+        // haelt die Zustimmung des Kunden (Zeitpunkt, Rolle, Textfassung) fest - ein eigenes
+        // Loeschen wuerde diesen Nachweis vernichten; Zugangsdatei-Chiffrat, Protokoll und der letzte
+        // Stand der Box gehoeren zu demselben Anschluss (eigene Gruppe wie "ocpp", nicht verstreut).
+        m.put("direktvermarktung", List.of("direktvermarktung", "direktvermarktung_zugang",
+                "direktvermarktung_protokoll", "direktvermarktung_stand"));
         // LinkedHashMap, nicht Map.copyOf: die Reihenfolge IST die Reihenfolge der 409-Liste.
         return Collections.unmodifiableMap(m);
     }
