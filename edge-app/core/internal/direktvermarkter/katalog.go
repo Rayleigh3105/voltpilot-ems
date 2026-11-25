@@ -11,10 +11,11 @@
 // Unlike catalog/control-profiles, this derivative carries the FULL register
 // map and Modbus access settings, because the data-mirror server this
 // package's twin feeds (Stage 1 item 2) needs them to run; it still carries
-// only what Stage 1 reads - OpenVPN, the contract link and the setup steps
-// stay the portal's and Stage 2's job, and 'vorgabe_wirkt_auf'/'referenz'
-// stay out because nothing wires the partner limit into composeCurtailment
-// yet.
+// what the box reads - OpenVPN, the contract link and the setup steps
+// stay the portal's and the tunnel helper's job. Since Stage 4 (PFC200) the
+// derivative also carries 'vorgabe_wirkt_auf' and 'referenz' (resolved, F5/F6
+// markers stripped): the edge needs them to turn the partner's percentage
+// into a Koppelbild limit_w wish.
 //
 // Two fields the authored catalog can still mark "offen (Fxx)" (word order
 // F3, stale-value behaviour F8) always arrive here RESOLVED to a provisional
@@ -61,7 +62,14 @@ type Modbus struct {
 type Rules struct {
 	WatchdogDeadlineS int    `json:"lebenszeichen_frist_s"`
 	RestPct           int    `json:"ruhewert_pct"`
-	OnStale           string `json:"bei_veraltet"` // resolved, e.g. "ausnahme_0x0b"
+	// AppliesTo is what the partner's percentage limits (resolved base of
+	// 'vorgabe_wirkt_auf', F5 open): "einspeisung_netzpunkt" or a value
+	// containing "erzeugung" for the whole generation.
+	AppliesTo string `json:"vorgabe_wirkt_auf"`
+	// Reference is the 100%-base of the percentage (resolved base of
+	// 'referenz', F6 open): "installierte_leistung_wp" today.
+	Reference string `json:"referenz"`
+	OnStale   string `json:"bei_veraltet"` // resolved, e.g. "ausnahme_0x0b"
 }
 
 // Profile is one packaged partner profile.

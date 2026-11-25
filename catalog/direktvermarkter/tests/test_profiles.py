@@ -64,7 +64,11 @@ class CatalogTest(unittest.TestCase):
         for entry in view["partner"]:
             self.assertEqual(set(entry), {"id", "modbus", "register", "regeln"})
             self.assertEqual(set(entry["modbus"]), {"unit", "wortfolge", "funktionen", "verbindungen"})
-            self.assertEqual(set(entry["regeln"]), {"lebenszeichen_frist_s", "ruhewert_pct", "bei_veraltet"})
+            self.assertEqual(set(entry["regeln"]),
+                             {"lebenszeichen_frist_s", "ruhewert_pct", "vorgabe_wirkt_auf", "referenz", "bei_veraltet"})
+            # Stage 4: the open markers (F5, F6) never reach the box - only the base value does.
+            self.assertNotIn("(", entry["regeln"]["vorgabe_wirkt_auf"])
+            self.assertNotIn("(", entry["regeln"]["referenz"])
 
     def test_runtime_derivative_keeps_the_band(self):
         view = runtime_view(list(BY_ID.values()))

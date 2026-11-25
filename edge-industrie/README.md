@@ -20,6 +20,7 @@ edge-industrie/
 ├── files/
 │   ├── etc/init.d/vp-edge-industrie       Dienst-Skript (start, stop, restart, status)
 │   ├── etc/init.d/vp-wartung              Dienst-Skript des Wartungstunnels
+│   ├── etc/init.d/vp-vermarkter           Direktvermarkter-Tunnel: der EINE root-Helfer (OpenVPN der Firmware, Firewall, Waechter)
 │   └── home/voltpilot/
 │       ├── konfig                         Einstellungen (Schlüssel = Wert)
 │       └── libexec/boot.sh                Loader: Start aus dem RAM, Tausch, Probe, Behalten, Zurück
@@ -34,7 +35,10 @@ edge-industrie/
     ├── install-probe.sh                   install.sh, Dienst und Loader gegen BusyBox-Linux für ARMv7 im Container
     ├── update-probe.sh                    das Update im Loader, dieselben Fälle wie boot-update-probe.sh der Mango
     ├── wartung-probe.sh                   wartung.sh, Dienst und vp-wartung gegen einen Wartungsserver im Kleinen
-    └── fernlauf-probe.sh                  fernlauf.sh mit install.sh: sichern, neue Fassung, nur der Dienst startet neu, Rücknahme Byte für Byte
+    ├── fernlauf-probe.sh                  fernlauf.sh mit install.sh: sichern, neue Fassung, nur der Dienst startet neu, Rücknahme Byte für Byte
+    ├── vermarkter-probe.sh                vp-vermarkter mit echtem OpenVPN-Tunnel im Container: Umleitung nur am Tunnel, Ablehnungen, Widerruf
+    ├── Dockerfile.vermarkter              Testbild der Direktvermarkter-Probe (Partner-Server und gestellter luox aus edge-app/core)
+    └── attrappe/openvpn-init              Stand-in des Firmware-Init-Skripts /etc/init.d/openvpn für die Probe
 ```
 
 ## Was auf dem Gerät entsteht
@@ -51,6 +55,9 @@ edge-industrie/
 | `/home/voltpilot/programm/` | das entpackte Programm, nur wenn `/tmp` keine Programme startet | voltpilot |
 | `/home/voltpilot/wartung/` | Wartungstunnel: Programm `vp-wartung`, Schlüssel der Box, Einstellungen, Ereignisliste (nur mit `wartung.sh`) | root (0700) |
 | `/etc/init.d/vp-wartung`, `/etc/rc.d/S99_vp-wartung` | Dienst-Skript des Wartungstunnels und sein Link (nur mit `wartung.sh`) | root |
+| `/etc/init.d/vp-vermarkter`, `/etc/rc.d/S99_vp-vermarkter` | der Direktvermarkter-Helfer und sein Start-Link (heute von Hand, später über die Werkstatt) | root |
+| `/home/voltpilot/vermarkter/` | Direktvermarktung: `partner` (Katalog-Kennung) und `zugang/` (Gegenstelle und Schlüssel, aus der Cloud-Zustellung) | voltpilot |
+| `/etc/openvpn/vp-vermarkter.conf`, `/etc/openvpn/vp-vermarkter/` | vom Helfer erzeugte OpenVPN-Konfiguration und Schlüsselkopien (0600) | root |
 
 Die Wurzel des Geräts bekommt nur die Dienst-Skripte und ihre Links.
 Alles andere liegt unter `/home/voltpilot`.
@@ -123,6 +130,30 @@ Was im Tunnel gilt:
 - Der Server im Tunnel zeigt die Host-Schlüssel des Geräts (`/etc/dropbear/dropbear_ecdsa_host_key`, `dropbear_rsa_host_key`), keinen eigenen.
 - Kein SFTP: Dateien gehen wie bei `install.sh` über `cat | ssh`.
 - Das Protokoll des Programms geht an syslog, Marke `vp-wartung`; wer wann angemeldet war, steht in `/home/voltpilot/wartung/ereignisse`.
+
+## Direktvermarktung
+
+Die Box ist die Direktvermarktungsschnittstelle der Anlage (vp-direktvermarktung-konzept d2, Stufe 4; Entscheide E1 bis E6 = A vom 25.11.2026): ein OpenVPN-Tunnel zum Partner und darin ein Modbus-Server mit der Registerbelegung des Partnerprofils.
+Der Tunnel gehört zum System, nicht zum Box-Programm, und läuft über das OpenVPN der WAGO-Firmware; die SPS behält 502 und ihre eigene Freigabe.
+
+| Teil | Wer |
+|---|---|
+| `/etc/init.d/vp-vermarkter` | der EINE root-Helfer: schreibt aus `/home/voltpilot/vermarkter/zugang` die OpenVPN-Konfiguration (nie die Datei des Partners im Ganzen), startet den Tunnel über das Firmware-Init-Skript und setzt die Firewall-Regeln; ein Wächter prüft alle 10 s den Soll-Stand (Zustellung und Widerruf wirken ohne Neustart). Jeden Aufruf ohne root und jedes fremde Verb lehnt er ab (PS-D14). |
+| Umleitung | TCP 502 wird NUR an der Tunnel-Schnittstelle `tun-vermarkter` auf 1512 umgeleitet (PS-D12); 502 an X1/X2 bleibt bei der SPS, 1502 beim Datenspiegel. Unter Linux können Wildcard-`:1502` (Datenspiegel) und Tunnel-Adresse`:1502` nicht nebeneinander lauschen, darum der eigene Port - der Partner sieht nur 502. |
+| Schnittstelle | das Box-Programm (`internal/layer1/vermarkter.go`) bindet die Tunnel-Adresse:1512, antwortet aus dem Erzeuger-Bild der Anlagensteuerung und nimmt die Vorgabe des Partners an (`internal/direktvermarkter`, Profil aus dem Katalog; `/home/voltpilot/vermarkter/partner` nennt den Partner). |
+| Wunsch | die wirksame Vorgabe (Prozent mal Referenzleistung, nur mit frischem Lebenszeichen) geht als Koppelbild-Wunsch `limit_w` mit Grund `vertrag` an die SPS - das Minimum aus Fahrplan und Partner, der bindende Grund wird genannt (Koppelbild 1.1, Konzept §5.5). Die SPS entscheidet wie bei jedem Wunsch; fällt die Edge aus, läuft er nach 60 s ab. |
+| Firewall | eingehend am Tunnel nur TCP 1512, alles andere fällt - auch bei ausgeschalteter Geräte-Firewall (Fragment unter `/var/run/firewall/iptables/default/`, das die Firmware in beiden Zuständen nachlädt); keine Weiterleitung; keine Routen, kein DNS, kein Gateway vom Partner (`route-nopull`, `pull-filter ignore`); `remote-cert-tls server`; Prozess nach dem Start als `nobody`. |
+
+Einrichten (heute von Hand; das Werkstatt-Paket und die Zustellung aus der Cloud sind eigene Stufen):
+
+```bash
+cat edge-industrie/files/etc/init.d/vp-vermarkter | ssh root@<pfc-ip> 'cat >/etc/init.d/vp-vermarkter && chmod 755 /etc/init.d/vp-vermarkter && ln -sf /etc/init.d/vp-vermarkter /etc/rc.d/S99_vp-vermarkter'
+ssh root@<pfc-ip> /etc/init.d/vp-vermarkter start     # ohne Zugang ein sauberer Leerlauf
+ssh root@<pfc-ip> /etc/init.d/vp-vermarkter status    # dienst, zugang, openvpn, tunnel, umleitung als schluessel=wert
+```
+
+Der Zugang liegt unter `/home/voltpilot/vermarkter/zugang/`: `gegenstelle` (eine Zeile `host port proto`; Port und Protokoll sind bei luox offen, F1), `ca.pem`, `zertifikat.pem`, `schluessel.pem`, optional `ta.key` mit `ta-richtung`.
+Was nur ein echtes Gerät zeigen kann (PS-D11 bis PS-D13 am Test-PFC200), steht unten bei den Annahmen; alles andere belegt `test/vermarkter-probe.sh` mit einem echten Tunnel im Container.
 
 ## Einstellungen
 
@@ -256,6 +287,9 @@ Die Prüfsteine PS-P… sind die des PFC200-Konzepts (Abschnitt 7, „Prüfstein
 | Das Gerät erreicht den Wartungsserver ausgehend über UDP 51820 und löst seinen Namen auf | kein Handshake; `status` sagt es, das Programm versucht es weiter und löst den Namen neu auf | Werkstatt-Lauf |
 | Die Uhr des Geräts steht nicht hinter dem letzten Handshake (WireGuard verwirft ältere Zeitstempel) | kein Handshake, bis die Uhr gestellt ist; Fristen der Fenster-Schlüssel hängen nicht an der Uhr | Werkstatt-Lauf (Zeitabgleich) |
 | Ein Firmware-Update lässt `/home/voltpilot` stehen, die Wurzel nicht | Dienst-Skript und Link fehlen danach; `install.sh` erneut ausführen | PS-P17 |
+| `/etc/init.d/openvpn` der Firmware startet und stoppt einen einzelnen Tunnel über `start <name>`/`stop <name>` (PID `/run/openvpn/<name>.pid`, Status `<name>.status`) | `vp-vermarkter status` sagt `openvpn=steht`; der Wächter versucht es weiter | an der Quelle belegt (pfc-firmware-sdk-G2, `projectroot/etc/init.d/openvpn`, FW22 und FW24); am Gerät PS-D11 |
+| Das Firmware-OpenVPN ist ohne iproute2 gebaut (Netlink) und kennt `pull-filter`, `remote-cert-tls` (OpenVPN 2.5) | der Tunnel startet nicht; syslog (Marke `ovpn-vp-vermarkter`) nennt die Zeile | an der Quelle belegt (`rules/openvpn.make`: `--disable-iproute2`, openvpn 2.5.x); am Gerät PS-D11 |
+| Die Geräte-Firewall lädt `/var/run/firewall/iptables/default/*` mit `iptables-restore -n` nach - ein- wie ausgeschaltet | nach einem Firewall-Neuaufbau fehlte die Umleitung, bis der Wächter sie neu setzt (höchstens 10 s); `status` sagt `umleitung=fehlt` | an der Quelle belegt (`ipfirewall.sh`: `set_dynamic_default`; WAGOs eigener Docker-Hook nutzt denselben Weg); am Gerät PS-D12 |
 
 ## Handgriffe für Stufe 0
 

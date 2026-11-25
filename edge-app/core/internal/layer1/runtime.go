@@ -71,6 +71,12 @@ type Options struct {
 	// path decision, day budget - the flow's 'file' context); "" keeps them
 	// in memory only.
 	SteuerAblage string
+	// VermarkterPfad is the directory of the direct-marketer connection on
+	// Edge Industrie (vermarkter.go): <pfad>/partner names the catalog
+	// profile, <pfad>/zugang holds the tunnel access the root helper
+	// vp-vermarkter reads. "" = no partner interface (Edge Light runs its
+	// own, zone-bound path; Stufe 2 of the concept).
+	VermarkterPfad string
 	Dialer       solarmanv5.Dialer
 	Now          func() time.Time
 	Logger       *slog.Logger
@@ -125,6 +131,10 @@ type Runtime struct {
 	erzEnt     map[string]erzeugerbild.BindungsEntitaet
 	erzQuellen map[string]erzeugerbild.BindungsQuelle
 	erzBindSig string
+
+	// the direct-marketer connection on Edge Industrie (vermarkter.go).
+	vermMu sync.Mutex
+	verm   *vermarkterZustand
 
 	// the data mirror (spiegel.go): the learned want set, its round-robin
 	// position, and when each logger's export-limit register was last read.
@@ -269,6 +279,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 	close(r.ready)
 	go r.runSources(ctx)
 	go r.runErzeuger(ctx)
+	if r.opts.VermarkterPfad != "" {
+		go r.runVermarkter(ctx)
+	}
 	go r.runMesswerte(ctx)
 	go r.runSteuern(ctx)
 	go r.runAbregeln(ctx)

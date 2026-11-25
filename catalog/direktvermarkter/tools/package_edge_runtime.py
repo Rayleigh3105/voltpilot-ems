@@ -10,11 +10,11 @@ profiles.
 Unlike the control profiles, this derivative DOES carry the full register map
 and the Modbus access settings: the box needs them to run the partner's
 data-mirror server (vp-direktvermarktung-konzept d2, Stage 1). It still
-carries only what Stage 1 reads today: 'vorgabe_wirkt_auf' and 'referenz'
-(regeln) stay out, because nothing wires the partner limit into
-composeCurtailment yet (that is Stage 2) - adding them here before any code
-reads them would just be dead weight, the same discipline the control
-profiles already follow.
+carries what the box reads. Since Stage 4 (PFC200) that includes
+'vorgabe_wirkt_auf' and 'referenz' (regeln): the edge turns the partner's
+percentage into a Koppelbild limit_w wish on the matching Stellplatz and
+needs both. Their open markers (F5, F6) resolve to their base value, like
+word order below - one place to flip once luox answers.
 
 Two fields are still genuinely open with luox (section 11 of the concept, F3
 and F8) and the box cannot run without a concrete answer for either. The
@@ -67,6 +67,8 @@ def runtime_view(profiles: list[dict[str, Any]]) -> dict[str, Any]:
             "regeln": {
                 "lebenszeichen_frist_s": p["regeln"]["lebenszeichen_frist_s"],
                 "ruhewert_pct": p["regeln"]["ruhewert_pct"],
+                "vorgabe_wirkt_auf": _resolve_offen(p["regeln"]["vorgabe_wirkt_auf"], "einspeisung_netzpunkt"),
+                "referenz": _resolve_offen(p["regeln"]["referenz"], "installierte_leistung_wp"),
                 "bei_veraltet": _resolve_offen(p["regeln"]["bei_veraltet"], vectors["bei_veraltet_laufzeit"]),
             },
         })
