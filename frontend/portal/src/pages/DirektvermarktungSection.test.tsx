@@ -30,6 +30,11 @@ beforeEach(() => {
   direktvermarktung.mockReset();
 });
 
+/** Relativ zur wirklichen Uhr des Testlaufs - ein fester Zeitstempel wäre flaky (Muster `e2e/direktvermarktung.spec.ts`). */
+function vorSekunden(s: number): string {
+  return new Date(Date.now() - s * 1000).toISOString();
+}
+
 describe('DirektvermarktungSection (Konzept vp-direktvermarktung-konzept d2 §7)', () => {
   it('ohne Anschluss: Startseite mit "Direktvermarkter wählen"', async () => {
     direktvermarktung.mockResolvedValue(status({}));
@@ -59,14 +64,16 @@ describe('DirektvermarktungSection (Konzept vp-direktvermarktung-konzept d2 §7)
       },
       partner: { partner: 'luox', name: 'luox energy', vertragLink: null },
       stand: {
-        tunnelObenSeit: '2026-11-25T11:55:00Z', handshakeAm: '2026-11-25T11:59:50Z', gegenstelle: '10.44.0.1',
-        letzteAbfrageAm: '2026-11-25T11:59:40Z', abfragenJeMinute: 4, letzteSchreibungAm: '2026-11-25T11:58:00Z',
-        vorgabePct: 100, lebenszeichenAm: '2026-11-25T11:59:40Z', einspeisungW: 12345, erzeugungW: 14100,
+        tunnelObenSeit: vorSekunden(300), handshakeAm: vorSekunden(10), gegenstelle: '10.44.0.1',
+        letzteAbfrageAm: vorSekunden(12), abfragenJeMinute: 4, letzteSchreibungAm: vorSekunden(240),
+        vorgabePct: 100, lebenszeichenAm: vorSekunden(12), einspeisungW: 12345, erzeugungW: 14100,
         netzbetreiberPct: 100, referenzW: 85000,
       },
     }));
     render(<DirektvermarktungSection site={SITE} />);
-    expect(await screen.findByText('100 %')).toBeInTheDocument();
+    expect(await screen.findByText('100')).toBeInTheDocument();
+    expect(screen.getByText('%')).toBeInTheDocument();
+    expect(screen.getByText('Haus', { exact: false })).toBeInTheDocument();
     expect(screen.queryByText(/nicht geladen/i)).not.toBeInTheDocument();
   });
 

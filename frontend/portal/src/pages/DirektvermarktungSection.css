@@ -63,13 +63,40 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--vp-radius-sm, 10px);
   background: var(--vp-flow-grid-soft, #e2f6f5);
   color: var(--vp-flow-grid, #0ea5a3);
   font-weight: 700;
   font-size: 0.75rem;
+}
+
+.vp-dv-partnerkuerzel.is-weiterer {
+  background: var(--vp-bg-light, #f3f6fa);
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 1rem;
+}
+
+.vp-dv-partnertext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vp-dv-partnertext small {
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 400;
+}
+
+.vp-dv-partnerzeile.is-gewaehlt {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 1px var(--vp-action, #2c5282);
+}
+
+.vp-dv-partnerzeile.is-weiterer {
+  border-style: dashed;
 }
 
 .vp-dv-chipreihe {
@@ -100,6 +127,14 @@
   gap: var(--vp-space-3);
 }
 
+.vp-dv-fussnotiz {
+  text-align: center;
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
 .vp-dv-beenden summary {
   cursor: pointer;
   color: var(--vp-text-muted, #6c757d);
@@ -107,4 +142,252 @@
 
 .vp-dv-beenden[open] summary {
   margin-bottom: var(--vp-space-3);
+}
+
+/* Die Statuszeile-Farbe (§7.2 Regel 5/6): grün frei, Bernstein begrenzt/gestört (kein Fehler), rot nur Geld-Fall,
+   grau unbekannt/Einrichtung. `vp-status-line` selbst kennt nur grün (Standard) und `.stale` (grau). */
+.vp-status-line[data-farbe="bernstein"] .vp-status-dot {
+  background: #b45309;
+  box-shadow: 0 0 0 4px color-mix(in srgb, #b45309 22%, transparent);
+}
+.vp-status-line[data-farbe="rot"] .vp-status-dot {
+  background: var(--vp-industry-end, #b91c1c);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--vp-industry-end, #b91c1c) 22%, transparent);
+}
+.vp-status-line[data-farbe="bernstein"] {
+  color: #8a5300;
+}
+.vp-status-line[data-farbe="rot"] {
+  color: var(--vp-industry-end, #b91c1c);
+}
+
+/* --- Verbindungsbild (§7.5) ------------------------------------------------------------------------------ */
+
+.vp-dv-bild {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-2) 0;
+}
+
+.vp-dv-knoten {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 64px;
+}
+
+.vp-dv-knoten small {
+  font-size: 0.72rem;
+  color: var(--vp-text-muted, #6c757d);
+  text-align: center;
+}
+
+.vp-dv-kreis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-bg-light, #f3f6fa);
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-dv-kreis.is-ok {
+  border-color: color-mix(in srgb, var(--vp-ok-ink, #2e7d32) 35%, transparent);
+  color: var(--vp-ok-ink, #2e7d32);
+  background: var(--vp-mint-start, #eaf7ee);
+}
+
+.vp-dv-kreis.vp-dv-partner {
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: var(--vp-industry-end, #b91c1c);
+  background: #fdecea;
+  border-color: color-mix(in srgb, var(--vp-industry-end, #b91c1c) 35%, transparent);
+}
+
+.vp-dv-kreis.is-warnung {
+  color: #8a5300;
+  background: #fff4e5;
+  border-color: color-mix(in srgb, #8a5300 35%, transparent);
+}
+
+.vp-dv-kreis.vp-dv-partner.is-verbunden {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--vp-ok-ink, #2e7d32) 45%, transparent);
+}
+
+.vp-dv-strecke {
+  flex: 1 1 24px;
+  height: 2px;
+  min-width: 20px;
+  max-width: 40px;
+  background: var(--vp-border, #e2e8f0);
+}
+
+.vp-dv-strecke.is-offen {
+  background: repeating-linear-gradient(90deg, var(--vp-border, #cbd5e1) 0 6px, transparent 6px 12px);
+}
+
+.vp-dv-strecke.is-laufend {
+  background: repeating-linear-gradient(90deg, #8a5300 0 6px, transparent 6px 12px);
+}
+
+.vp-dv-strecke.is-fest {
+  background: var(--vp-ok-ink, #2e7d32);
+}
+
+.vp-dv-strecke.is-bruch {
+  background: repeating-linear-gradient(90deg, #b45309 0 5px, transparent 5px 9px);
+}
+
+/* --- Blatt-Kopf mit Fortschritt (§7, "X von 4") ---------------------------------------------------------- */
+
+.vp-dv-blatttitel {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vp-space-2);
+}
+
+.vp-dv-blatttitel small {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-dv-zurueck {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  color: var(--vp-text, #1a202c);
+  cursor: pointer;
+}
+
+/* --- "Das darf X" / "Beenden": Icon-Zeilen --------------------------------------------------------------- */
+
+.vp-dv-zustimmliste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+
+.vp-dv-zustimmliste li {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+}
+
+.vp-dv-zustimmicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-paleblue-start, #eef4fb);
+  color: var(--vp-action, #2c5282);
+}
+
+.vp-dv-bleibt b {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.vp-dv-bleibt p {
+  margin: 0;
+}
+
+/* --- Die große Zahl im ruhigen Alltag --------------------------------------------------------------------- */
+
+.vp-dv-kennzeichnung {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-dv-freigabe-zahl small {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+.vp-dv-balken {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--vp-bg-light, #eef1f5);
+  overflow: hidden;
+}
+
+.vp-dv-balken-fuellung {
+  height: 100%;
+  background: var(--vp-action, #2c5282);
+  border-radius: 999px;
+  transition: width var(--vp-motion-page, 0.3s) ease;
+}
+
+.vp-dv-flussbalken {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.vp-dv-fluss-haus { background: var(--vp-flow-load, #8b5cf6); }
+.vp-dv-fluss-netz { background: var(--vp-flow-grid, #0ea5a3); }
+
+.vp-dv-flusslegende {
+  display: flex;
+  gap: var(--vp-space-4);
+  font-size: 0.85rem;
+  color: var(--vp-text, #1a202c);
+}
+
+.vp-dv-flusslegende i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.vp-dv-punkt-haus { background: var(--vp-flow-load, #8b5cf6); }
+.vp-dv-punkt-netz { background: var(--vp-flow-grid, #0ea5a3); }
+
+/* --- Beenden: Datumswahl ---------------------------------------------------------------------------------- */
+
+.vp-dv-datumwahl {
+  display: flex;
+  gap: var(--vp-space-2);
+}
+
+.vp-dv-datumknopf {
+  flex: 1;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-bg-light, #f8fafc);
+  cursor: pointer;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.vp-dv-datumknopf.is-gewaehlt {
+  background: #fff;
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 1px var(--vp-action, #2c5282);
 }

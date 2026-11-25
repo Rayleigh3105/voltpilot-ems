@@ -212,3 +212,70 @@ export function fortschrittIndex(eintrag: DirektvermarktungEintrag | null): numb
 export const ZUSTIMMUNG_TEXTFASSUNG_1 =
   'luox liest Einspeisung, Erzeugung, Vorgabe des Netzbetreibers und Anlagenleistung. luox darf die Erzeugung '
   + 'auf 0 bis 100 % stellen. Nicht: Speicher, Verbraucher, Ihr Netz, die Box.';
+
+/** Die drei Zeilen "Das darf X an Ihrer Anlage" (§7, Blatt Zustimmen) - ein Icon-Name je Zeile, von der Seite gewählt. */
+export const ZUSTIMMUNG_ZEILEN = [
+  { icon: 'eye', text: 'Sehen, was Ihre Anlage einspeist' },
+  { icon: 'sliders', text: 'Die Einspeisung begrenzen' },
+  { icon: 'lock', text: 'Nichts sonst, nie ins Heimnetz' },
+] as const;
+
+// --- Verbindungsbild (§7.2 Regel 1, §7.5 "Verbindungsbild") ----------------------------------------------------
+
+/** Wie eine Strecke des Bildes gezeichnet wird: gestrichelt (offen), pulsierend (baut auf), fest (verbunden), rot (gebrochen). */
+export type VerbindungsLinie = 'offen' | 'laufend' | 'fest' | 'bruch';
+
+export interface VerbindungsbildStand {
+  /** Zeigt die Seite das Bild überhaupt? Im ruhigen Alltag (verbunden, frei oder begrenzt) tritt die große Zahl an seine Stelle. */
+  zeigen: boolean;
+  anlageBox: VerbindungsLinie;
+  boxPartner: VerbindungsLinie;
+  /** Warnzeichen am Partner-Knoten statt Haken (§7.2 Regel 6 "Unbekannt ist nicht getrennt" eingeschlossen). */
+  partnerWarnung: boolean;
+}
+
+/**
+ * Das Verbindungsbild aus Zustand und Lage - nie ein eigener Stand, immer hergeleitet (§5.1). Die Box ist
+ * lokal bekannt (die Anlage-Box-Strecke steht fest, sobald überhaupt eingerichtet wird); nur die
+ * Partner-Strecke kennt einen Bruch.
+ */
+export function verbindungsbild(eintrag: DirektvermarktungEintrag | null,
+    stand: DirektvermarktungStandDaten | null, jetzt: Date): VerbindungsbildStand {
+  if (!eintrag || eintrag.zustand === 'beendet' || eintrag.zustand === 'entwurf'
+      || eintrag.zustand === 'wartet_auf_zugang') {
+    return { zeigen: true, anlageBox: 'offen', boxPartner: 'offen', partnerWarnung: false };
+  }
+  if (eintrag.zustand === 'endet') {
+    return { zeigen: false, anlageBox: 'fest', boxPartner: 'fest', partnerWarnung: false };
+  }
+  const lage = lageFor(stand, jetzt);
+  switch (lage) {
+    case 'unbekannt':
+      return { zeigen: true, anlageBox: 'fest', boxPartner: 'offen', partnerWarnung: false };
+    case 'baut_auf':
+      return { zeigen: true, anlageBox: 'fest', boxPartner: 'laufend', partnerWarnung: false };
+    case 'tunnel_oben':
+      return { zeigen: true, anlageBox: 'fest', boxPartner: 'fest', partnerWarnung: false };
+    case 'tunnel_unten':
+      return { zeigen: true, anlageBox: 'fest', boxPartner: 'bruch', partnerWarnung: true };
+    // Ruhiger Alltag (verbunden, frei oder von luox begrenzt, oder die Grenze gerade abgelaufen): die große
+    // Zahl trägt die Aussage, das Bild träte nur in den Weg.
+    case 'vorgabe_aktiv':
+    case 'abgelaufen':
+    case 'verbunden':
+    default:
+      return { zeigen: false, anlageBox: 'fest', boxPartner: 'fest', partnerWarnung: false };
+  }
+}
+
+/**
+ * "Wohin der Strom geht" (§7.5), vereinfacht auf Haus/Netz: mehr (Speicher, abgeregelt) bräuchte Felder, die der
+ * Herzschlag-Block heute nicht führt - lieber zwei ehrliche Zahlen als zwei erfundene. `null` ohne beide Werte.
+ */
+export function wohinDerStromGeht(stand: DirektvermarktungStandDaten | null): { hausW: number; netzW: number } | null {
+  if (!stand || stand.einspeisungW == null || stand.erzeugungW == null) return null;
+  const netzW = Math.max(0, stand.einspeisungW);
+  const hausW = Math.max(0, stand.erzeugungW - stand.einspeisungW);
+  if (hausW === 0 && netzW === 0) return null;
+  return { hausW, netzW };
+}

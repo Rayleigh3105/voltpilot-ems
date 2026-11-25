@@ -4,6 +4,8 @@ import {
   fortschrittIndex,
   lageFor,
   partnerFragtNichtAb,
+  verbindungsbild,
+  wohinDerStromGeht,
   type DirektvermarktungEintrag,
   type DirektvermarktungStandDaten,
 } from './direktvermarktung';
@@ -146,5 +148,58 @@ describe('fortschrittIndex (§7.5 "Fortschritt")', () => {
 
   it('verbunden: Station 4 (luox prüft)', () => {
     expect(fortschrittIndex(eintrag({ zustand: 'verbunden' }))).toBe(4);
+  });
+});
+
+describe('verbindungsbild (§7.5 "Verbindungsbild")', () => {
+  it('vor der Einrichtung: beide Strecken offen, kein Haken', () => {
+    expect(verbindungsbild(null, null, JETZT)).toEqual({
+      zeigen: true, anlageBox: 'offen', boxPartner: 'offen', partnerWarnung: false,
+    });
+  });
+
+  it('im Entwurf: ebenfalls beide Strecken offen', () => {
+    expect(verbindungsbild(eintrag({ zustand: 'entwurf' }), null, JETZT).boxPartner).toBe('offen');
+  });
+
+  it('Tunnel baut auf: Anlage-Box fest, Box-Partner läuft', () => {
+    const s = verbindungsbild(eintrag({ zustand: 'verbindet' }), stand({ handshakeAm: null }), JETZT);
+    expect(s).toEqual({ zeigen: true, anlageBox: 'fest', boxPartner: 'laufend', partnerWarnung: false });
+  });
+
+  it('getrennt (tunnel_unten): Box-Partner-Strecke bricht, Warnzeichen am Partner', () => {
+    const s = verbindungsbild(eintrag({ zustand: 'gestoert' }), stand({ handshakeAm: vorMinuten(10) }), JETZT);
+    expect(s).toEqual({ zeigen: true, anlageBox: 'fest', boxPartner: 'bruch', partnerWarnung: true });
+  });
+
+  it('ruhiger Alltag (verbunden, frei): das Bild tritt zurück, die große Zahl übernimmt', () => {
+    const s = verbindungsbild(eintrag({ zustand: 'verbunden' }), stand({
+      handshakeAm: vorMinuten(1), letzteAbfrageAm: vorMinuten(1), lebenszeichenAm: vorMinuten(1), vorgabePct: 100,
+    }), JETZT);
+    expect(s.zeigen).toBe(false);
+  });
+
+  it('luox begrenzt: ebenfalls zurück - die Zahl und der Bernstein-Chip tragen die Aussage', () => {
+    const s = verbindungsbild(eintrag({ zustand: 'verbunden' }), stand({
+      handshakeAm: vorMinuten(1), letzteAbfrageAm: vorMinuten(1), lebenszeichenAm: vorMinuten(1), vorgabePct: 0,
+    }), JETZT);
+    expect(s.zeigen).toBe(false);
+  });
+});
+
+describe('wohinDerStromGeht', () => {
+  it('ohne beide Werte: null, nie eine erfundene Null', () => {
+    expect(wohinDerStromGeht(null)).toBeNull();
+    expect(wohinDerStromGeht(stand({ einspeisungW: null, erzeugungW: 1000 }))).toBeNull();
+  });
+
+  it('Haus ist Erzeugung minus Einspeisung, Netz ist die Einspeisung', () => {
+    expect(wohinDerStromGeht(stand({ einspeisungW: 12345, erzeugungW: 14100 }))).toEqual({
+      hausW: 1755, netzW: 12345,
+    });
+  });
+
+  it('beide 0: null statt einer leeren Leiste', () => {
+    expect(wohinDerStromGeht(stand({ einspeisungW: 0, erzeugungW: 0 }))).toBeNull();
   });
 });

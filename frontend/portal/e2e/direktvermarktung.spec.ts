@@ -92,12 +92,14 @@ test.describe('Direktvermarktung: der Kunde kommt allein durch (PS-D18)', () => 
       await page.getByRole('button', { name: /Weiter mit/ }).click();
 
       // Blatt: Zustimmen.
-      await expect(page.getByText('luox liest Einspeisung', { exact: false })).toBeVisible();
+      await expect(page.getByText('Sehen, was Ihre Anlage einspeist')).toBeVisible();
+      await expect(page.getByText('BLEIBT IMMER SO')).toBeVisible();
       await page.getByRole('checkbox').check();
       await page.getByRole('button', { name: 'Zustimmen' }).click();
 
       // Zurück auf der Seite: wartet auf die Zugangsdatei.
-      await expect(page.getByText(/schickt die Zugangsdatei/)).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Zugangsdatei hochladen' })).toBeVisible();
+      await expect(page.getByText(/hat sie per E-Mail geschickt/)).toBeVisible();
       await keinUeberlauf(page);
     });
   }

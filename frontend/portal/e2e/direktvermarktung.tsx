@@ -40,7 +40,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <div className="vp-content">
       <header className="vp-topbar">
-        <div className="crumbs">Anlage › Einstellungen › Direktvermarktung</div>
+        {/* Die echte Schale zeigt hier den Anlagen-Umschalter ("Portfolio › {Name} ▾"), nicht den Seitenpfad -
+            der ist Sache der eigenen Brotkrume der Seite (eigenerRueckweg, Muster GeraetBrotkrume). */}
+        <div className="crumbs">Portfolio › {site.name} ▾</div>
       </header>
       <main className="vp-main">
         <DirektvermarktungSection site={site} />
