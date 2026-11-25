@@ -156,8 +156,16 @@ func TestAnsichtZustaende(t *testing.T) {
 		l := lauf.Neu(jetzt, "2026-11-mango-1", "mango")
 		laufen.Add(1)
 		go func() { defer laufen.Done(); laeufer.Fahre(ctx, l, nil, schritte) }()
+		// 2000 statt vormals 500: dieselbe Frist wie schon im PFC200-Vektor
+		// (ansicht_zustaende_pfc200_test.go) - jeder Aufruf durchläuft bis zu
+		// len(echte) belegte Schritte, jeder mit einem eigenen Protokoll-
+		// Schreibzugriff, bevor der hängende Schritt selbst erreicht ist. Auf
+		// dem CI-Runner (geteilt, unter -race) reichten 500 * 5 ms (2,5 s)
+		// nicht: Issue #1995, Lauf 649, hielt genau am Schritt
+		// tunnel_schluessel mit "Lauf kommt nicht an", obwohl der Stand zu
+		// diesem Zeitpunkt den gesuchten Zustand schon fast erreicht hatte.
 		for i := 0; !fertig(l.Stand()); i++ {
-			if i > 500 {
+			if i > 2000 {
 				t.Fatalf("Lauf kommt nicht an: %+v", l.Stand())
 			}
 			time.Sleep(5 * time.Millisecond)
