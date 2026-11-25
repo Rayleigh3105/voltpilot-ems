@@ -29,8 +29,8 @@ edge-light/test/steuerlogik-probe.sh       # Steuerlogik: Logik-Dienst baut, Box
 edge-light/test/steuerlogik-scharf-probe.sh # Steuerlogik scharf: echte Schaltanfragen an einen gestellten Shelly, Schutz, Zurueck, Stilllegen, zweiter Herr
 edge-light/test/install-probe.sh    # install.sh gegen OpenWrt im Container (nach build.sh amd64)
 edge-light/test/boot-speicher-probe.sh  # Speicherpruefung des Loaders gegen OpenWrt im Container
-edge-light/test/boot-update-probe.sh    # Update im Loader (Tausch, Probe, Behalten, Zurueck, Strom weg) gegen OpenWrt im Container
-edge-light/test/wlan-anschluss-probe.sh # WLAN-Anschluss (Kabel oder WLAN), Einrichtungs-WLAN und Einrichtungsseite gegen OpenWrt 25.12.5 mit simuliertem Funk im Emulator (test/wlan-labor)
+edge-light/test/boot-update-probe.sh    # Update im Loader (Tausch, Probe, Behalten, Zurueck, Strom weg), Selbstupdate von Loader und WLAN-Skripten gegen OpenWrt im Container
+edge-light/test/wlan-anschluss-probe.sh # WLAN-Anschluss (Kabel oder WLAN), Einrichtungs-WLAN, Einrichtungsseite und Selbstupdate der Skripte gegen OpenWrt 25.12.5 mit simuliertem Funk im Emulator (test/wlan-labor)
 edge-light/labor/laborbau.sh <aus> <seq> [mipsle|amd64]  # Laborbeweis: Wegwerf-Wurzel, Labor-Fassungen P1-P11 (labor/README.md)
 edge-light/labor/labor-probe.sh     # Trockenlauf des Labor-Pakets gegen OpenWrt im Container (echte Programme)
 ```
@@ -108,7 +108,7 @@ edge-light/
     ├── mango-labtest.sh       Start + Messung auf einem echten Mango per SSH (ohne Portal)
     ├── service-tunnel-probe.sh  service-tunnel.sh gegen OpenWrt im Container (Wechsel alt → Wartungsserver)
     ├── wartung-anmeldung-probe.sh  Fenster-Schlüssel: echte SSH-Anmeldung durch einen echten Tunnel (OpenWrt 25.12, Tunnel-Dienst aus dem Repo); Protokoll der Box und Ereignisliste
-    ├── wlan-anschluss-probe.sh  WLAN-Anschluss der Box (scan, messen, verbinden, kabel, Störfälle), Einrichtungs-WLAN (Fenster, Zone, Notweg) und Einrichtungsseite (Ende-zu-Ende) gegen OpenWrt mit simuliertem Funk
+    ├── wlan-anschluss-probe.sh  WLAN-Anschluss der Box (scan, messen, verbinden, kabel, Störfälle), Einrichtungs-WLAN (Fenster, Zone, Notweg), Einrichtungsseite (Ende-zu-Ende) und Selbstupdate der Skripte durch das Programm gegen OpenWrt mit simuliertem Funk
     └── wlan-labor/            das Labor dazu: OpenWrt 25.12.5 im Emulator v86, mac80211_hwsim, Abbilder und Pakete per hole.sh außerhalb des Repos
 ```
 

@@ -39,7 +39,8 @@
 #      mit dem Grund aus dem Urteil des Programms zurueck
 #  11. kein Loader-Selbstupdate (echtes Programm): als bestaetigte Fassung
 #      schreibt es weder an den Pfad des Mango-Loaders (auch wenn es dort
-#      duerfte) noch aendert es den Loader des PFC200
+#      duerfte) noch aendert es den Loader des PFC200; die WLAN-Skripte der
+#      Mango im alten Stand am selben Ort bleiben ebenfalls unberuehrt
 #
 #   edge-industrie/scripts/build.sh
 #   edge-industrie/test/update-probe.sh
@@ -426,10 +427,15 @@ schritt "11. Kein Loader-Selbstupdate mit dem echten Programm (ARMv7)"
 # Das Programm bringt den Mango-Loader eingebettet mit (agent/loader_pflege)
 # und erneuert ihn auf einer Mango am Pfad /usr/libexec/vp-edge-light/boot.sh.
 # Auf dem PFC200 liegt dort kein Loader: es schreibt nichts - hier sogar, wenn
-# es an dem Pfad schreiben DUERFTE (auf dem Geraet gehoert er root).
+# es an dem Pfad schreiben DUERFTE (auf dem Geraet gehoert er root). Ebenso die
+# WLAN-Skripte der Mango (agent/wlan_pflege.go pflegt sie nur auf Edge Light):
+# hier im alten Stand ohne WLAN_STAND hingelegt, damit eine Pflege sie ersetzen
+# WUERDE.
 if [ -f "$ECHT" ]; then
   frisch
   r 'mkdir -p /usr/libexec/vp-edge-light && chown voltpilot /usr/libexec/vp-edge-light'
+  r "cd /usr/libexec/vp-edge-light && printf '#!/bin/sh\n# alter Stand ohne WLAN_STAND\n' >wlan-anschluss.sh && cp wlan-anschluss.sh einrichtung-wlan.sh && chmod 0755 wlan-anschluss.sh einrichtung-wlan.sh && chown voltpilot wlan-anschluss.sh einrichtung-wlan.sh"
+  WLAN_VOR="$(r 'cd /usr/libexec/vp-edge-light && sha256sum wlan-anschluss.sh einrichtung-wlan.sh')"
   x "gzip -1 -n -c /probe/echt >$LD/$N.gz
      sha=\$(sha256sum /probe/echt | cut -d' ' -f1); gz=\$(sha256sum $LD/$N.gz | cut -d' ' -f1)
      size=\$(wc -c </probe/echt); gzsize=\$(wc -c <$LD/$N.gz)
@@ -437,10 +443,12 @@ if [ -f "$ECHT" ]; then
   VOR="$(r "sha256sum $LADER | cut -d' ' -f1")"
   lauf
   warte "die bestaetigte Fassung (echtes Programm) laeuft" "$echt_laeuft" 90
-  # Die Pflege-Pruefung des Programms kommt nach ~30 s; im Emulator grosszuegig.
-  sleep 60
+  # Die Pflege-Pruefungen des Programms kommen nach ~30 s (Loader) und ~45 s
+  # (WLAN-Skripte); im Emulator grosszuegig.
+  sleep 75
   pruef "das Programm laeuft weiter" "$echt_laeuft && [ ! -f /probe/lauf.rc ]"
-  pruef "nichts am Pfad des Mango-Loaders geschrieben" '[ -z "$(ls -A /usr/libexec/vp-edge-light)" ] && [ ! -e /etc/init.d/vp-edge-industrie ]'
+  pruef "nichts am Pfad des Mango-Loaders geschrieben" '[ "$(ls -A /usr/libexec/vp-edge-light | tr "\n" " ")" = "einrichtung-wlan.sh wlan-anschluss.sh " ] && [ ! -e /etc/init.d/vp-edge-industrie ]'
+  pruef "die WLAN-Skripte am Pfad der Mango sind unveraendert" "[ \"\$(cd /usr/libexec/vp-edge-light && sha256sum wlan-anschluss.sh einrichtung-wlan.sh)\" = '$WLAN_VOR' ]"
   pruef "der Loader des PFC200 ist unveraendert" "[ \"\$(sha256sum $LADER | cut -d' ' -f1)\" = $VOR ]"
   echt_ende
   ksetze portal_url https://portal.voltpilot.de

@@ -46,7 +46,6 @@ package agent
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"os"
@@ -54,6 +53,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flashdatei"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/loaderstand"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otalight"
 )
@@ -108,37 +108,15 @@ func (a *Agent) loaderPflegeLoop(ctx context.Context, ersterBlick, takt time.Dur
 		slog.Error("Loader-Pflege: der eingebettete Loader traegt keinen Stand - nichts wird eingespielt")
 		return
 	}
-	versuche := 0
-	if !otaWait(ctx, ersterBlick) {
-		return
-	}
-	for {
-		fertig, err := a.loaderPflegen()
-		if err != nil {
-			versuche++
-			slog.Warn("Loader-Pflege: Einspielen gescheitert", "err", err,
-				"versuch", versuche, "hoechstens", loaderPflegeVersucheMax)
-			if versuche >= loaderPflegeVersucheMax {
-				slog.Error("Loader-Pflege: aufgegeben bis zum naechsten Programmstart")
-				return
-			}
-		}
-		if fertig {
-			return
-		}
-		if !otaWait(ctx, takt) {
-			return
-		}
-	}
+	pflegeWiederholen(ctx, "Loader-Pflege", ersterBlick, takt, a.loaderPflegen)
 }
 
 // loaderPflegen prueft einmal und spielt noetigenfalls ein. fertig heisst:
 // nichts mehr zu tun in diesem Programmlauf (eingespielt, aktuell, neuer als
 // wir, oder kein Loader vorhanden); err verlangt einen weiteren Versuch.
 func (a *Agent) loaderPflegen() (fertig bool, err error) {
-	if _, serr := os.Stat(filepath.Join(a.otaRAMDir(), otalight.FileProbe)); serr == nil {
-		// Eine Fassung laeuft zur Probe (wir selbst oder eine verwaiste
-		// Marke) - die Pflege wartet auf das Urteil der Wache.
+	if a.probeLaeuft() {
+		// Die Pflege wartet auf das Urteil der Wache.
 		return false, nil
 	}
 	ist := 0
@@ -174,40 +152,46 @@ func (a *Agent) loaderPflegen() (fertig bool, err error) {
 	return true, nil
 }
 
-// schreibeAtomar ersetzt eine Datei, ohne je eine halbe zu hinterlassen:
-// temporaere Datei im selben Verzeichnis, fsync, zuruecklesen und gegen die
-// Pruefsumme vergleichen (ein beschaedigt geschriebener Stand wird verworfen),
-// atomar umbenennen, Verzeichnis fsyncen. Strom weg an jeder Stelle laesst
-// die alte oder die neue Datei zurueck.
+// schreibeAtomar ersetzt eine Datei, ohne je eine halbe zu hinterlassen
+// (internal/flashdatei: temporaere Datei, fsync, zuruecklesen und gegen die
+// Pruefsumme vergleichen, atomar umbenennen, Verzeichnis fsyncen).
 func (a *Agent) schreibeAtomar(pfad string, inhalt []byte) error {
-	tmp := pfad + ".neu"
-	_ = os.Remove(tmp)
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-	if err != nil {
-		return err
+	return flashdatei.Ersetzen(pfad, inhalt, flashdatei.Optionen{NachSchreiben: a.loaderPflege.nachSchreiben})
+}
+
+// probeLaeuft: eine Fassung laeuft zur Probe (wir selbst oder eine verwaiste
+// Marke) - dann urteilt erst die Wache des Loaders, und keine Pflege schreibt
+// in den Flash.
+func (a *Agent) probeLaeuft() bool {
+	_, err := os.Stat(filepath.Join(a.otaRAMDir(), otalight.FileProbe))
+	return err == nil
+}
+
+// pflegeWiederholen fuehrt pflegen aus, bis es fertig meldet: zuerst nach
+// ersterBlick, danach im takt. Nach loaderPflegeVersucheMax gescheiterten
+// Versuchen gibt es bis zum naechsten Programmstart auf (Flash schonen). was
+// nennt die Pflege im Protokoll (Loader-Pflege, WLAN-Skripte).
+func pflegeWiederholen(ctx context.Context, was string, ersterBlick, takt time.Duration, pflegen func() (bool, error)) {
+	versuche := 0
+	if !otaWait(ctx, ersterBlick) {
+		return
 	}
-	_, werr := f.Write(inhalt)
-	serr := f.Sync()
-	cerr := f.Close()
-	if werr != nil || serr != nil || cerr != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("schreiben nach %s: write=%v sync=%v close=%v", tmp, werr, serr, cerr)
+	for {
+		fertig, err := pflegen()
+		if err != nil {
+			versuche++
+			slog.Warn(was+": Einspielen gescheitert", "err", err,
+				"versuch", versuche, "hoechstens", loaderPflegeVersucheMax)
+			if versuche >= loaderPflegeVersucheMax {
+				slog.Error(was + ": aufgegeben bis zum naechsten Programmstart")
+				return
+			}
+		}
+		if fertig {
+			return
+		}
+		if !otaWait(ctx, takt) {
+			return
+		}
 	}
-	if hook := a.loaderPflege.nachSchreiben; hook != nil {
-		hook(tmp)
-	}
-	zurueck, err := os.ReadFile(tmp)
-	if err != nil || sha256.Sum256(zurueck) != sha256.Sum256(inhalt) {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("%s nach dem Schreiben nicht wie geschrieben (err=%v) - verworfen", tmp, err)
-	}
-	if err := os.Rename(tmp, pfad); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if dir, derr := os.Open(filepath.Dir(pfad)); derr == nil {
-		_ = dir.Sync()
-		_ = dir.Close()
-	}
-	return nil
 }

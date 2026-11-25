@@ -5,6 +5,7 @@
 # edge-light/docs/mango.md "Ohne Kabel zum Router"). Darueber erreicht ein
 # Handy NUR die Einrichtungsseite der Box (:8484); aendern laesst sich dort
 # erst etwas nach Eingabe der Kennung, die unten auf der Box steht.
+# Seinen Stand fuer das Selbstupdate traegt wlan-anschluss.sh (WLAN_STAND).
 #
 #   einrichtung-wlan.sh takt       der Waechter, aus cron jede Minute (ergaenzt
 #                                  dabei auch die eigenen Wege der Box zu den
