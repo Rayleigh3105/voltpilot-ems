@@ -99,6 +99,19 @@ public class BerichtKaskade implements BerichteNaht {
         return b == null || jetzt == null ? jetzt : b.instant();
     }
 
+    /**
+     * Der Datenstand einer Bildung, mit der Bühne davor ({@link #rechenzeit}): auf der Bühne (oder in einem Testlauf mit
+     * eigener Uhr, {@link #uhrStellen}) IST die gestellte Uhr "jetzt" - ohne diese Umleitung nähme {@link #datenstand}
+     * immer die ECHTE DB-Uhr, sobald die gestellte Uhr (ein fester oder zurückgesetzter Zeitpunkt) hinter ihr liegt, und
+     * ein Testlauf mit einem fest in der Vergangenheit liegenden {@code jetzt} würde zur Zeitbombe (UemsStrukturAenderung-
+     * Test, Befund 25.11.2026). In Produktion (keine Bühne) bleibt es bei der echten Klammer aus {@code jetzt} und der
+     * DB-Uhr - diese Methode ist nur die Testnaht, das Produktionsverhalten ändert sich nicht.
+     */
+    private Instant datenstandGestellt(Connection con, Instant jetzt, String anlass) throws SQLException {
+        Clock b = buehne;
+        return b == null ? datenstand(con, jetzt, anlass) : aufDieSekunde(rechenzeit(jetzt));
+    }
+
     @Override
     public List<Bericht> betroffene(Connection con, KorrekturKaskade.Betroffen b) throws SQLException {
         Set<UUID> messstellen = KennzahlKaskade.messstellen(con, b);
@@ -246,7 +259,7 @@ public class BerichtKaskade implements BerichteNaht {
         BerichtAbzugBildung.Ergebnis e;
         try {
             TenantContext.set(tenant);
-            e = bildung.bilden(con, id, datenstand(con, rechenzeit(jetzt), anlass), GEBILDET_VON);
+            e = bildung.bilden(con, id, datenstandGestellt(con, jetzt, anlass), GEBILDET_VON);
         } finally {
             if (vorher == null) {
                 TenantContext.clear();
@@ -338,7 +351,7 @@ public class BerichtKaskade implements BerichteNaht {
                 nr = rs.getInt(2);
             }
         }
-        Instant zeitpunkt = datenstand(con, rechenzeit(jetzt), anlass);
+        Instant zeitpunkt = datenstandGestellt(con, jetzt, anlass);
         String schluessel = tenant + ":" + stand + ":" + art + ":" + anlass + ":" + fassung + ":" + status;
         ObjectNode m = meldung(ANGESTOSSEN, schluessel, zeitpunkt, kennung);
         boolean neu;

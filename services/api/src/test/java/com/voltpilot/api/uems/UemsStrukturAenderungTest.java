@@ -13,10 +13,12 @@ import java.sql.Connection;
 import java.sql.Date;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -97,6 +99,7 @@ class UemsStrukturAenderungTest {
     private static JsonNode referenz;
     private static BerichtAbzugBildung bildung;
     private static StrukturAenderungLaeufer laeufer;
+    private static BerichtKaskade kaskade;
     private static UUID st1Oktober;
     private static UUID uOktober;
     private static UUID uDezember;
@@ -122,7 +125,8 @@ class UemsStrukturAenderungTest {
         referenz = JSON.readTree(Files.readString(V2.resolve("uems-referenzunternehmen.json")));
         bildung = new BerichtAbzugBildung(new MeasurementCatalog(JSON), JSON,
                 new BerichtRegelwerk("VoltPilot Test", Map.of("bericht", "1.1")));
-        laeufer = new StrukturAenderungLaeufer(new JdbcTemplate(admin), new BerichtKaskade(bildung), 200);
+        kaskade = new BerichtKaskade(bildung);
+        laeufer = new StrukturAenderungLaeufer(new JdbcTemplate(admin), kaskade, 200);
 
         ahrenberg();
         st1Oktober = freigegeben("BR-2026-0001", "monatsbericht_standort", "standort", IDS.get("ST-1"), "monat", "2026-10",
@@ -161,30 +165,39 @@ class UemsStrukturAenderungTest {
         long zeile = messstelleAenderung("MS-07", "verteilung_geaendert", VERTEILUNG_ALT, VERTEILUNG_NEU,
                 beginn(OKT_AB), true, Instant.parse("2026-11-20T09:00:00Z"));
         Instant takt = Instant.parse("2026-11-20T09:05:00Z");
-        StrukturAenderungLaeufer.Lauf lauf = laeufer.lauf(takt);
+        // Die Bühnen-Uhr der Kaskade auf den Takt dieses Falls stellen (BerichtKaskade#uhrStellen): sonst nähme
+        // BerichtKaskade#datenstand immer die ECHTE DB-Uhr, sobald der feste Takt (20.11.2026) hinter ihr liegt -
+        // Zeitbombe, Befund 25.11.2026. Am Ende der Methode wieder lösen, damit spätere Fälle (B9 ff.) ihre eigene,
+        // noch nicht abgelaufene Zeit unverändert gegen die echte DB-Uhr prüfen.
+        kaskade.uhrStellen(Clock.fixed(takt, ZoneOffset.UTC));
+        try {
+            StrukturAenderungLaeufer.Lauf lauf = laeufer.lauf(takt);
 
-        assertThat(lauf.gescheitert()).isEmpty();
-        assertThat(gelesen(MESSSTELLE, zeile)).isEqualTo("verteilung_rueckwirkend · 2");
-        String kennung = "verteilung_rueckwirkend/MS-07/2026-10-01/2026-11-20/messstelle_aenderung-" + zeile;
-        assertThat(anstoesse(kennung)).containsExactly("BR-2026-0002 Nr. 1 | verteilung_rueckwirkend | offen | Fassung -");
-        assertThat(BerichtRegeln.anlass(kennung))
-                .isEqualTo("Verteilung MS-07 berichtigt, gilt ab 01.10.2026, eingetragen 20.11.2026");
-        assertThat(stand(uOktober, 1)).as("Nr. 1 bleibt Byte für Byte").isEqualTo(nr1Vorher);
-        assertThat(entwurf(uOktober)).isEqualTo(takt + " kaskade");
-        assertThat(bericht(st1Oktober)).as("ST-1 ist nicht betroffen").isEqualTo(st1Vorher);
-        assertThat(anstoesseAn(uDezember)).isEmpty();
-        assertThat(anstoesseAn(uJahr)).isEmpty();
+            assertThat(lauf.gescheitert()).isEmpty();
+            assertThat(gelesen(MESSSTELLE, zeile)).isEqualTo("verteilung_rueckwirkend · 2");
+            String kennung = "verteilung_rueckwirkend/MS-07/2026-10-01/2026-11-20/messstelle_aenderung-" + zeile;
+            assertThat(anstoesse(kennung)).containsExactly("BR-2026-0002 Nr. 1 | verteilung_rueckwirkend | offen | Fassung -");
+            assertThat(BerichtRegeln.anlass(kennung))
+                    .isEqualTo("Verteilung MS-07 berichtigt, gilt ab 01.10.2026, eingetragen 20.11.2026");
+            assertThat(stand(uOktober, 1)).as("Nr. 1 bleibt Byte für Byte").isEqualTo(nr1Vorher);
+            assertThat(entwurf(uOktober)).isEqualTo(takt + " kaskade");
+            assertThat(bericht(st1Oktober)).as("ST-1 ist nicht betroffen").isEqualTo(st1Vorher);
+            assertThat(anstoesseAn(uDezember)).isEmpty();
+            assertThat(anstoesseAn(uJahr)).isEmpty();
 
-        List<JsonNode> angestossen = meldungen(BerichtKaskade.ANGESTOSSEN, kennung);
-        assertThat(angestossen).hasSize(1);
-        assertThat(angestossen.get(0).path("anstoss_art").asText()).isEqualTo("verteilung_rueckwirkend");
-        assertThat(angestossen.get(0).path("nr").asInt()).isEqualTo(1);
-        assertThat(angestossen.get(0).has("anlass_fassung")).as("Pfad 2 hat keine Fassung").isFalse();
-        assertThat(meldungen(BerichtKaskade.NEU_GEBILDET, kennung)).hasSize(1);
+            List<JsonNode> angestossen = meldungen(BerichtKaskade.ANGESTOSSEN, kennung);
+            assertThat(angestossen).hasSize(1);
+            assertThat(angestossen.get(0).path("anstoss_art").asText()).isEqualTo("verteilung_rueckwirkend");
+            assertThat(angestossen.get(0).path("nr").asInt()).isEqualTo(1);
+            assertThat(angestossen.get(0).has("anlass_fassung")).as("Pfad 2 hat keine Fassung").isFalse();
+            assertThat(meldungen(BerichtKaskade.NEU_GEBILDET, kennung)).hasSize(1);
 
-        String nachher = berichtsTabellen();
-        assertThat(laeufer.lauf(takt.plusSeconds(300)).gelesen()).as("nichts zweimal").isZero();
-        assertThat(berichtsTabellen()).isEqualTo(nachher);
+            String nachher = berichtsTabellen();
+            assertThat(laeufer.lauf(takt.plusSeconds(300)).gelesen()).as("nichts zweimal").isZero();
+            assertThat(berichtsTabellen()).isEqualTo(nachher);
+        } finally {
+            kaskade.uhrStellen(null);
+        }
     }
 
     // ============================================================================================ B9
@@ -317,18 +330,26 @@ class UemsStrukturAenderungTest {
         long spaet = messstelleAenderung("MS-12", "ort_korrigiert", "{}", "{}", beginn(OKT_AB), true,
                 Instant.parse("2026-11-24T09:00:00Z"));
         Instant takt = Instant.parse("2026-11-24T09:05:00Z");
-        assertThat(laeufer.lauf(takt).gescheitert()).isEmpty();
+        // Bühnen-Uhr auf diesen Takt, aus demselben Grund wie in B8 (Zeitbombe gegen die echte DB-Uhr) - danach wieder
+        // lösen.
+        kaskade.uhrStellen(Clock.fixed(takt, ZoneOffset.UTC));
+        try {
+            assertThat(laeufer.lauf(takt).gescheitert()).isEmpty();
 
-        assertThat(gelesen(MESSSTELLE, frueh)).isEqualTo("zuordnung_rueckwirkend · 0");
-        assertThat(anstoesse("zuordnung_rueckwirkend/MS-12/2026-10-01/2026-11-05/messstelle_aenderung-" + frueh)).isEmpty();
-        assertThat(gelesen(MESSSTELLE, spaet)).isEqualTo("zuordnung_rueckwirkend · 4");
-        assertThat(anstoesse("zuordnung_rueckwirkend/MS-12/2026-10-01/2026-11-24/messstelle_aenderung-" + spaet))
-                .containsExactly("BR-2026-0001 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -",
-                        "BR-2026-0002 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -");
-        assertThat(entwurf(st1Oktober)).isEqualTo(takt + " kaskade");
-        assertThat(entwurf(uOktober)).isEqualTo(takt + " kaskade");
-        assertThat(anstoesseAn(uDezember)).isEmpty();
-        assertThat(anstoesseAn(uJahr)).isEmpty();
+            assertThat(gelesen(MESSSTELLE, frueh)).isEqualTo("zuordnung_rueckwirkend · 0");
+            assertThat(anstoesse("zuordnung_rueckwirkend/MS-12/2026-10-01/2026-11-05/messstelle_aenderung-" + frueh))
+                    .isEmpty();
+            assertThat(gelesen(MESSSTELLE, spaet)).isEqualTo("zuordnung_rueckwirkend · 4");
+            assertThat(anstoesse("zuordnung_rueckwirkend/MS-12/2026-10-01/2026-11-24/messstelle_aenderung-" + spaet))
+                    .containsExactly("BR-2026-0001 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -",
+                            "BR-2026-0002 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -");
+            assertThat(entwurf(st1Oktober)).isEqualTo(takt + " kaskade");
+            assertThat(entwurf(uOktober)).isEqualTo(takt + " kaskade");
+            assertThat(anstoesseAn(uDezember)).isEmpty();
+            assertThat(anstoesseAn(uJahr)).isEmpty();
+        } finally {
+            kaskade.uhrStellen(null);
+        }
     }
 
     // ============================================================================================ Gebäude
