@@ -18,6 +18,7 @@ import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -48,6 +49,7 @@ public class DirektvermarktungQuittungListener extends Rueckmeldeweg {
     private final BrokerVerbindung verbindung;
     private final Clock clock;
 
+    @Autowired
     public DirektvermarktungQuittungListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
