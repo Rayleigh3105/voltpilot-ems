@@ -125,7 +125,9 @@ type telegramVector struct {
 	WordOrder       string `json:"wortfolge"`
 	RequestHex      string `json:"anfrage_hex"`
 	ResponseHex     string `json:"antwort_hex"`
-	WantSetpointPct *int   `json:"erwartet_vermarkter_vorgabe_pct"`
+	WantSetpointPct *int   `json:"erwartet_vermarkter_vorgabe_pct"` // effective limit (srv.Limit()), legacy name
+	WantEffPct      *int   `json:"erwartet_effektiv_vorgabe_pct"`   // effective limit (srv.Limit())
+	WantEffAktiv    *bool  `json:"erwartet_effektiv_aktiv"`
 }
 
 type watchdogVector struct {
@@ -168,9 +170,12 @@ func loadVectorFile(t *testing.T) vectorFile {
 
 // TestTelegramVectors replays the catalog's raw Modbus telegrams (PS-D23):
 // read a known feed-in value under both F3 hypotheses, write within/outside
-// the band, write an unknown address, renew the watchdog via FC16 and read
-// the set-point back. Vectors sharing a "gruppe" run against ONE server, in
-// order, so the write-then-read sequence is meaningful.
+// the band, write an unknown address, renew the watchdog via FC16, read the
+// set-point back, and - the review 25.11.2026 case - write a valid set-point
+// WITHOUT ever touching the watchdog: the write still succeeds and the
+// register holds it, but the EFFECTIVE limit (Limit()) stays at the rest
+// value until the watchdog is fresh. Vectors sharing a "gruppe" run against
+// ONE server, in order, so the write-then-read sequence is meaningful.
 func TestTelegramVectors(t *testing.T) {
 	p := testProfile(t)
 	byGroup := map[string][]telegramVector{}
@@ -211,7 +216,16 @@ func TestTelegramVectors(t *testing.T) {
 				}
 				if v.WantSetpointPct != nil {
 					if pct, _ := srv.Limit(); pct != *v.WantSetpointPct {
-						t.Errorf("%s: set-point = %d, want %d", v.Name, pct, *v.WantSetpointPct)
+						t.Errorf("%s: effective limit = %d, want %d", v.Name, pct, *v.WantSetpointPct)
+					}
+				}
+				if v.WantEffPct != nil || v.WantEffAktiv != nil {
+					pct, active := srv.Limit()
+					if v.WantEffPct != nil && pct != *v.WantEffPct {
+						t.Errorf("%s: effective limit = %d, want %d", v.Name, pct, *v.WantEffPct)
+					}
+					if v.WantEffAktiv != nil && active != *v.WantEffAktiv {
+						t.Errorf("%s: effective active = %v, want %v", v.Name, active, *v.WantEffAktiv)
 					}
 				}
 			}

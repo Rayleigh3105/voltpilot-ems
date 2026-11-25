@@ -95,18 +95,58 @@ wait_until() { # url python-expr-on-d desc tries delay_s
   done
 }
 
+# modbus_check sends one raw MBAP request straight from the sidecar (plain
+# socket, no library) and compares the raw response byte for byte - the same
+# telegram-vector style as catalog/direktvermarkter/vectors/luox.json, but
+# across real containers.
+modbus_check() { # host port request-hex want-hex desc
+  docker exec -i -e VP_HOST="$1" -e VP_PORT="$2" -e VP_REQ="$3" -e VP_WANT="$4" -e VP_DESC="$5" "$PROBE" python3 - <<'PY'
+import os, socket, sys
+host, port = os.environ["VP_HOST"], int(os.environ["VP_PORT"])
+req = bytes.fromhex(os.environ["VP_REQ"])
+want = bytes.fromhex(os.environ["VP_WANT"])
+s = socket.create_connection((host, port), timeout=5)
+s.sendall(req)
+head = b""
+while len(head) < 7:
+    head += s.recv(7 - len(head))
+length = int.from_bytes(head[4:6], "big")
+body = b""
+while len(body) < length - 1:
+    body += s.recv(length - 1 - len(body))
+got = head + body
+s.close()
+if got != want:
+    print(f"{os.environ['VP_DESC']}: got {got.hex()}, want {want.hex()}", file=sys.stderr)
+    sys.exit(1)
+print(f"OK {os.environ['VP_DESC']}: {got.hex()}")
+PY
+}
+
 SERVER_URL="http://${SERVER}:8080"
 POLLER_URL="http://${POLLER}:8081"
 
-echo "==> Server + gestellter luox starten (Lebenszeichen-Frist auf 3s verkürzt für einen schnellen Lauf)"
+echo "==> Server starten (Lebenszeichen-Frist auf 3s verkürzt für einen schnellen Lauf), noch ohne den Abfrager"
 docker run -d --name "$SERVER" --network "$NET" "$IMAGE" \
   vp-direktvermarkter-server -modbus :1502 -http :8080 -watchdog-deadline 3s >/dev/null \
   || fail "Server startete nicht"
+wait_until "$SERVER_URL/zustand" "True" "Server erreichbar" 20 0.5
+
+echo "==> Review 25.11.2026 (PR #1999): Schreiben im Band wird IMMER angenommen, auch ohne je das Lebenszeichen geschrieben zu haben"
+modbus_check "$SERVER" 1502 "000800000006010600020028" "000800000006010600020028" \
+  "FC6 Vorgabe 40% ohne Lebenszeichen wird angenommen (kein 0x03)" \
+  || fail "Schreiben ohne Lebenszeichen wurde fälschlich abgelehnt"
+modbus_check "$SERVER" 1502 "000900000006010300020001" "0009000000050103020028" \
+  "Register hält 40% trotz fehlendem Lebenszeichen" \
+  || fail "Register spiegelt den Schreibzugriff nicht wider"
+assert_json "$SERVER_URL/zustand" "d['vorgabe_pct']==100 and not d['vorgabe_aktiv']" \
+  "wirksame Grenze bleibt bei 100%, solange kein frisches Lebenszeichen da ist (das Register hält trotzdem 40%)"
+
+echo "==> gestellter luox starten"
 docker run -d --name "$POLLER" --network "$NET" "$IMAGE" \
   vp-luox-sim -server "${SERVER}:1502" -interval 1s -http :8081 >/dev/null \
   || fail "Abfrager startete nicht"
-
-wait_until "$SERVER_URL/zustand" "True" "Server erreichbar" 20 0.5
+wait_until "$POLLER_URL/status" "True" "Abfrager erreichbar" 20 0.5
 
 echo "==> Messwerte einspielen (nie ein Gerätelesen - nur der Zwischenspeicher)"
 post "$SERVER_URL/werte" '{"werte":{"nvp_einspeisung_w":2350,"erzeugung_w":3100,"netzbetreiber_vorgabe_pct":100,"referenz_w":10000}}' \
@@ -134,8 +174,12 @@ echo "==> Lebenszeichen-Ablauf: Abfrager hört auf, es zu schreiben"
 post "$POLLER_URL/lebenszeichen" '{"aktiv":false}' || fail "Lebenszeichen liess sich nicht anhalten"
 wait_until "$SERVER_URL/zustand" "d['zustand']=='abgelaufen' and d['vorgabe_pct']==100 and not d['vorgabe_aktiv']" \
   "Lebenszeichen abgelaufen, Vorgabe zurück auf Ruhewert 100%" 20 1
-echo "    -> der Abfrager versucht weiter 30% zu schreiben, aber der Wächter lässt es nicht durch:"
-wait_until "$POLLER_URL/status" "d['vorgabe_antwort'].get('angenommen')==False" "weitere Schreibversuche abgelehnt, solange das Lebenszeichen fehlt" 20 0.5
+echo "    -> der Abfrager schreibt weiter 30% in das Register (das Schreiben selbst wird nicht gesperrt),"
+echo "       aber die WIRKSAME Grenze bleibt bei 100%, solange kein frisches Lebenszeichen da ist:"
+wait_until "$POLLER_URL/status" "d['vorgabe_antwort'].get('angenommen')==True" \
+  "weitere Schreibversuche werden angenommen (kein 0x03 nur wegen des fehlenden Lebenszeichens)" 20 0.5
+assert_json "$SERVER_URL/zustand" "d['vorgabe_pct']==100 and not d['vorgabe_aktiv']" \
+  "wirksame Grenze bleibt trotz angenommener Schreibzugriffe bei 100%"
 
 echo "==> Lebenszeichen wieder aktiv - Vorgabe erneut wirksam"
 post "$POLLER_URL/lebenszeichen" '{"aktiv":true}' || fail "Lebenszeichen liess sich nicht fortsetzen"

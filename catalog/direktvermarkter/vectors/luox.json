@@ -45,7 +45,7 @@
     {
       "name": "lebenszeichen_schreiben_fc16",
       "gruppe": "schreibfolge",
-      "beschreibung": "FC16 auf Halteregister 3-4 (lebenszeichen, u32=42, Wortfolge little); erneuert die Frist. Läuft zuerst: solange das Lebenszeichen nie geschrieben wurde, lässt der Server keine von 100% abweichende Vorgabe zu (Wächter, nicht nur Anzeige)",
+      "beschreibung": "FC16 auf Halteregister 3-4 (lebenszeichen, u32=42, Wortfolge little); erneuert die Frist, damit die folgenden Vorgaben auch EFFEKTIV wirken (siehe schreiben_ohne_lebenszeichen für den Fall ohne)",
       "wortfolge": "little",
       "anfrage_hex": "00050000000b01100003000204002a0000",
       "antwort_hex": "000500000006011000030002",
@@ -87,6 +87,22 @@
       "beschreibung": "FC3 auf Halteregister 5 - keine Bedeutung dort, Ausnahme 0x02",
       "anfrage_hex": "000700000006010300050001",
       "antwort_hex": "000700000003018302"
+    },
+    {
+      "name": "schreiben_ohne_lebenszeichen",
+      "gruppe": "ohne_lebenszeichen",
+      "beschreibung": "Review 25.11.2026 (PR #1999): FC6 Vorgabe 40% auf einem frischen Server, OHNE je das Lebenszeichen geschrieben zu haben - innerhalb des Bands, wird angenommen (kein 0x03 nur wegen eines fehlenden Lebenszeichens, F4 lässt die Reihenfolge offen)",
+      "anfrage_hex": "000800000006010600020028",
+      "antwort_hex": "000800000006010600020028",
+      "erwartet_effektiv_vorgabe_pct": 100,
+      "erwartet_effektiv_aktiv": false
+    },
+    {
+      "name": "lesen_register_ohne_lebenszeichen",
+      "gruppe": "ohne_lebenszeichen",
+      "beschreibung": "FC3 auf Halteregister 2 - das REGISTER hält den eben geschriebenen Wert (40%), unabhängig vom fehlenden Lebenszeichen; nur die WIRKSAME Grenze (Limit()) bleibt bei 100%",
+      "anfrage_hex": "000900000006010300020001",
+      "antwort_hex": "0009000000050103020028"
     }
   ],
 

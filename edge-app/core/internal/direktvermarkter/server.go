@@ -61,13 +61,18 @@ const (
 // writes to the partner set-point and watchdog registers. One Server serves
 // one partner profile.
 //
-// The watchdog is a GATE on the set-point, not just a timer an outside
-// reader can observe: a write that moves the set-point away from the rest
-// value is refused (ILLEGAL DATA VALUE) unless the watchdog is already fresh
-// or is renewed in the very same request. Without this, a partner that keeps
-// rewriting the set-point every cycle but never touches the watchdog could
-// hold a limit alive forever - exactly what the Lumenaza table's watchdog
-// line exists to prevent.
+// A write to the set-point register is accepted whenever it is inside the
+// band - the register always holds whatever was last written, regardless of
+// the watchdog (F4 leaves open whether luox writes the set-point or the
+// watchdog first, and refusing a valid write could fail luox's own
+// Fernsteuerbarkeitstest). The WATCHDOG gates the EFFECTIVE limit instead
+// (concept §5.4: "die Grenze gilt, solange das Lebenszeichen frisch ist"):
+// Limit() and State() report the rest value whenever the watchdog is not
+// fresh, even if the register itself holds something else. The moment the
+// watchdog is found stale, the register is forced back to the rest value
+// and an event fires (review 25.11.2026, PR #1999) - after that, a later
+// write still always succeeds in-band, but the effective limit stays at
+// rest until the watchdog is fresh again.
 //
 // Not wired into composeCurtailment, the heartbeat or the PLC request yet -
 // that is Stage 2 (Mango) and Stage 4 (PFC200) of the concept. This package
@@ -152,18 +157,29 @@ func (s *Server) SetValues(at time.Time, values map[string]float64) {
 	}
 }
 
-// Limit is the resulting partner limit (concept §5.4): pct is the current
-// set-point register value, active reports whether it is currently backed by
-// a fresh watchdog (StateLimitActive) rather than resting at 100% or expired.
+// Limit is the resulting partner limit (concept §5.4): pct is the EFFECTIVE
+// set-point - the register's value while the watchdog is fresh, the rest
+// value whenever it is not, regardless of what the register itself holds.
+// active reports whether a limit below the rest value is currently in
+// effect (StateLimitActive).
 func (s *Server) Limit() (pct int, active bool) {
 	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ev := s.checkWatchdogLocked(now)
-	pct = s.setpointLocked()
-	active = ev == nil && !s.lastWatchdog.IsZero() && now.Sub(s.lastWatchdog) < s.watchdogDeadline() && pct < s.profile.Rules.RestPct
+	raw := s.setpointLocked()
+	if !s.watchdogFreshLocked(now) {
+		s.fireLocked(ev)
+		return s.profile.Rules.RestPct, false
+	}
 	s.fireLocked(ev)
-	return pct, active
+	return raw, raw < s.profile.Rules.RestPct
+}
+
+// watchdogFreshLocked reports whether the watchdog has ever been written and
+// is within the profile's deadline.
+func (s *Server) watchdogFreshLocked(now time.Time) bool {
+	return !s.lastWatchdog.IsZero() && now.Sub(s.lastWatchdog) < s.watchdogDeadline()
 }
 
 // State is the connection state (the subset of concept §5.4 this package can
@@ -230,14 +246,18 @@ func (s *Server) fireLocked(ev *Event) {
 	}
 }
 
+// stateLocked distinguishes a watchdog that EXPIRED (was fresh, then went
+// stale - checkWatchdogLocked already forced the register back to rest) from
+// one that was simply never written yet, which is StateConnected, not
+// StateExpired: nothing has expired there.
 func (s *Server) stateLocked(now time.Time) string {
 	if s.lastQuery.IsZero() {
 		return StateWaitingForQuery
 	}
-	if s.lastWatchdog.IsZero() || now.Sub(s.lastWatchdog) >= s.watchdogDeadline() {
+	if !s.lastWatchdog.IsZero() && now.Sub(s.lastWatchdog) >= s.watchdogDeadline() {
 		return StateExpired
 	}
-	if s.setpointLocked() < s.profile.Rules.RestPct {
+	if s.watchdogFreshLocked(now) && s.setpointLocked() < s.profile.Rules.RestPct {
 		return StateLimitActive
 	}
 	return StateConnected
@@ -548,36 +568,19 @@ func (s *Server) write(addr uint16, values []uint16) byte {
 			touchedWatchdog = true
 		}
 	}
-	// The watchdog is a GATE on the set-point, not just a timer the outside
-	// can observe: once it is stale, re-asserting a non-rest set-point every
-	// cycle without ever touching the watchdog register must not keep a
-	// limit alive. A write that also renews the watchdog in the SAME
-	// request (both registers in one FC16, F4 open) counts as fresh.
-	watchdogFresh := touchedWatchdog || (!s.lastWatchdog.IsZero() && now.Sub(s.lastWatchdog) < s.watchdogDeadline())
-
+	// A write within the band is always accepted, regardless of the
+	// watchdog (review 25.11.2026, PR #1999): F4 leaves open whether luox
+	// writes the set-point or the watchdog first, and refusing a valid
+	// in-band write here could fail luox's own Fernsteuerbarkeitstest. The
+	// watchdog instead gates the EFFECTIVE limit (Limit/State), never this
+	// write path.
 	for _, r := range s.profile.Register {
-		if r.Table != "holding" {
+		if r.Table != "holding" || r.Band == nil {
 			continue
 		}
 		words := make([]uint16, r.Words())
 		for i := range words {
 			words[i] = trial[r.Address+uint16(i)]
-		}
-		if r.Meaning == setpointMeaning {
-			val, ok := Decode(words, r.Type, s.profile.Modbus.WordOrder)
-			if !ok {
-				return excIllegalDataValue
-			}
-			if r.Band != nil && (int(val) < r.Band[0] || int(val) > r.Band[1]) {
-				return excIllegalDataValue
-			}
-			if !watchdogFresh && int(val) != s.profile.Rules.RestPct {
-				return excIllegalDataValue
-			}
-			continue
-		}
-		if r.Band == nil {
-			continue
 		}
 		val, ok := Decode(words, r.Type, s.profile.Modbus.WordOrder)
 		if !ok || int(val) < r.Band[0] || int(val) > r.Band[1] {
