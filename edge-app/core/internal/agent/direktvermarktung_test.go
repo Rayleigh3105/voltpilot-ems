@@ -56,7 +56,6 @@ func (f *fakeVermarkter) Status() vermarktertunnel.Status {
 	return vermarktertunnel.Status{Lage: vermarktertunnel.LageVerbunden}
 }
 
-
 func TestVermarkterGrenzenKomponiertDasMinimum(t *testing.T) {
 	a := &Agent{}
 	fv := &fakeVermarkter{kw: 3.6, wirktAuf: direktvermarkter.WirktAufEinspeisung, aktiv: true}
