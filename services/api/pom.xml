@@ -294,6 +294,17 @@
                     <include>*.json</include>
                 </includes>
             </resource>
+            <!-- Die GEPACKTE Laufzeit-Sicht derselben Profile (package_edge_runtime.py, mit aufgelösten
+                 "offen (Fxx)"-Werten): die Zustellung bettet den Partner-Teilbaum BYTE-GLEICH in das
+                 retained Profil-Dokument ein, damit Cloud und Box-Einbettung nie zwei driftende
+                 Auflösungen tragen (docs/contracts/v2/direktvermarktung-zustellung.md §2). -->
+            <resource>
+                <directory>${project.basedir}/../../edge-app/core/internal/direktvermarkter</directory>
+                <targetPath>direktvermarkter-laufzeit</targetPath>
+                <includes>
+                    <include>profiles.json</include>
+                </includes>
+            </resource>
         </resources>
         <!-- Load the canonical dev realm (single source of truth) onto the test
              classpath so the Keycloak Testcontainer imports the same realm the
@@ -556,6 +567,10 @@
                         <!-- PFC200 Stufe 4: the Koppelbild heartbeat listener (block `koppel`) is ON in
                              production; its tests drive handle() directly. -->
                         <voltpilot.koppelbild.mqtt-listener-enabled>false</voltpilot.koppelbild.mqtt-listener-enabled>
+                        <!-- Direktvermarktung-Zustellung: die drei MQTT-Eingänge und der Abgleich-Takt sind
+                             in PRODUKTION an; Tests rufen handle() bzw. abgleichen()/run() selbst. -->
+                        <voltpilot.direktvermarktung.mqtt-listener-enabled>false</voltpilot.direktvermarktung.mqtt-listener-enabled>
+                        <voltpilot.direktvermarktung.zustellung-enabled>false</voltpilot.direktvermarktung.zustellung-enabled>
                         <!-- Lasttest Rang 5: die Flotten-Antworten der Admin-Seiten werden in PRODUKTION 15 s
                              festgehalten (AdminFlottenSpeicher). Tests schreiben zwischen zwei Abrufen direkt in
                              die Datenbank und erwarten den neuen Stand - im Testlauf hält der Speicher nichts fest.

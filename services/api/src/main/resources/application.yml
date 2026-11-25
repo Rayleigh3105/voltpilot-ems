@@ -474,6 +474,14 @@ voltpilot:
   # production default ON, Surefire turns it off and its tests call handle() directly.
   koppelbild:
     mqtt-listener-enabled: ${VOLTPILOT_KOPPELBILD_MQTT_LISTENER_ENABLED:true}
+  # Direktvermarktung-Zustellung (docs/contracts/v2/direktvermarktung-zustellung.md): die drei
+  # MQTT-Eingänge (Herzschlag-Block, Zugangs-Anfrage, Quittung) und der Zustell-Abgleich-Takt -
+  # Produktion AN, Surefire schaltet beides ab; Tests rufen handle() bzw. abgleichen()/run() selbst.
+  # Der Schlüssel der Zugangs-Ablage (AES-256-GCM) kommt NUR aus der Umgebung, nie aus einer Datei.
+  direktvermarktung:
+    mqtt-listener-enabled: ${VOLTPILOT_DIREKTVERMARKTUNG_MQTT_LISTENER_ENABLED:true}
+    zustellung-enabled: ${VOLTPILOT_DIREKTVERMARKTUNG_ZUSTELLUNG_ENABLED:true}
+    partnerzugang-schluessel: ${VP_PARTNERZUGANG_SCHLUESSEL:}
   # Steuerlogik Stufe 2 (docs/contracts/v2/steuerlogik.md): `dienst.base-url` is
   # the logic service beside the api (edge-app/core/cmd/vp-logik-dienst, compose
   # service "logik-dienst") that reads, checks and packs a logic - the api never
