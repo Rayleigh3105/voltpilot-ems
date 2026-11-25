@@ -28,8 +28,11 @@ def main() -> int:
     ausgabe = sys.argv[1]
     light = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     repo = os.path.dirname(light)
+    # safe.directory nur für diesen Aufruf: der CI-Checkout kann einem anderen
+    # Benutzer gehören als der Schritt, der dieses Skript ausführt; ohne das
+    # lehnt git mit "dubious ownership" ab (exit 128).
     namen = subprocess.run(
-        ["git", "-C", repo, "ls-files", "-z", "--", "edge-light/openwrt"],
+        ["git", "-c", f"safe.directory={repo}", "-C", repo, "ls-files", "-z", "--", "edge-light/openwrt"],
         check=True, capture_output=True,
     ).stdout.decode().split("\0")
     namen = sorted(n for n in namen if n)
