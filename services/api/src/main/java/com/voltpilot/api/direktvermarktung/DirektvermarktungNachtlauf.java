@@ -1,5 +1,6 @@
 package com.voltpilot.api.direktvermarktung;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -20,7 +21,8 @@ import org.springframework.stereotype.Component;
  * bis zum nächsten Takt liegen, holt es dann aber nach (Teil-Index auf {@code startdatum}/{@code ende}).
  *
  * <p>⚠ Wie jeder {@code @Scheduled} ist er im TESTLAUF AUS und in Produktion AN (AGENTS.md, Muster
- * {@code AblaufLaeufer}).
+ * {@code AblaufLaeufer}). Beendete Kundenbereiche lässt er aus ({@link BeendeteKundenbereiche},
+ * {@code LaeuferBeendetArchitekturTest}) - ohne Spring gilt {@link BeendeteKundenbereiche#KEINE}.
  */
 @Component
 public class DirektvermarktungNachtlauf {
@@ -30,6 +32,13 @@ public class DirektvermarktungNachtlauf {
     private final JdbcTemplate adminJdbc;
     private final DirektvermarktungService dienst;
     private final Clock clock;
+
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     @Autowired
     public DirektvermarktungNachtlauf(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -52,6 +61,7 @@ public class DirektvermarktungNachtlauf {
     public void lauf(LocalDate heute) {
         List<UUID> mandanten = adminJdbc.queryForList("SELECT id FROM tenant ORDER BY created_at, id", UUID.class);
         for (UUID tenant : mandanten) {
+            if (beendete.beendet(tenant)) continue; // beendeter Kundenbereich: der Läufer lässt ihn aus
             try {
                 TenantContext.set(tenant);
                 dienst.naechtlicheUebergaenge(heute);
