@@ -57,6 +57,17 @@ noch nicht auswertet, bleibt draußen: OpenVPN, der Vertragslink, die Einrichtun
 bedeuten). Eine wissens-only-Änderung (Name, Vertragstext, Einrichtungsschritte) lässt die gepackte
 Sicht bytegleich.
 
+## Das Fähigkeitswort `direktvermarktung`
+
+`edge-app/core/internal/direktvermarkter.Capability` definiert das Wort, meldet es aber noch
+nicht: `cloud.BuiltSupports()` und sein Vertrag (`docs/contracts/v2/edge-supports-vectors.json`)
+werden Byte für Byte gegen `services/api`s `EdgeSupports.NAMES` (Java) und `frontend/portal`s
+`BOX_FAEHIGKEITEN` (TS) geprüft; es dort einzutragen - auch nur reserviert - hieße, Java- und
+TS-Dateien zu ändern, was diese reine Box-Schnittstellen-Stufe nicht tut (Firstmate-Entscheid vom
+25.11.2026, Option A). Stufe 2/4 trägt die Konstante in `BuiltSupports()` zusammen mit dem
+passenden Vertrags-/Java-/TS-Eintrag nach, sobald der Herzschlag tatsächlich etwas Wahres zu
+sagen hat.
+
 ## Prüfen
 
 Nur Standardbibliothek, ohne Netz- oder Gerätezugriff (der JSON-Schema-Evaluator ist der des
