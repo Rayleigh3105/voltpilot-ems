@@ -335,7 +335,7 @@ func (r *Runtime) pollOnce(ctx context.Context) {
 		return
 	}
 	switch s.Communication {
-	case CommSolarmanV5:
+	case CommSolarmanV5, CommDeyeModbusTCP:
 		p, why := planSolarman(s)
 		if p == nil {
 			r.idle(why)
@@ -450,7 +450,7 @@ func (r *Runtime) pollSolarman(ctx context.Context, p *solarmanPlan) {
 	seq := r.seq
 	r.mu.Unlock()
 
-	sess, err := solarmanv5.Dial(ctx, r.opts.Dialer, p.Addr, p.Serial, p.Slave, r.opts.ConnectTimeout, r.opts.ReadTimeout)
+	sess, err := r.deyeVerbinde(ctx, p)
 	if err != nil {
 		r.readFailed(p, err)
 		return

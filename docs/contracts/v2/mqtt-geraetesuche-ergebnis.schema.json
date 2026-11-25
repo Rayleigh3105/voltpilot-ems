@@ -277,7 +277,7 @@
             "geschuetzt",
             "lokale_api_aus"
           ],
-          "description": "geschuetzt = das Gerät verlangt eine Anmeldung (401/403, Shelly auth_en); die Box meldet sich nie an. lokale_api_aus = go-e antwortet ohne lokale API v2."
+          "description": "geschuetzt = das Gerät verlangt eine Anmeldung (401/403, Shelly auth_en); die Box meldet sich nie an. lokale_api_aus = go-e antwortet ohne lokale API v2; ein Deye-Logger (deye_logger) hat Modbus TCP aus (502 zu)."
         },
         "verbindung": {
           "$ref": "#/$defs/verbindung"
@@ -310,7 +310,8 @@
             "kostal_modbus",
             "huawei_modbus",
             "ebyte_modbus_tcp",
-            "modbus_tcp"
+            "modbus_tcp",
+            "deye_modbus_tcp"
           ],
           "description": "Die Kommunikationsart der Vorlagen (builtin.json). Pflicht bei anbindung uebernehmen und selbst_beschreiben (Leser-Regel)."
         },
@@ -352,7 +353,8 @@
         "victron",
         "opendtu_ahoy",
         "ebyte",
-        "wago"
+        "wago",
+        "deye_logger"
       ],
       "description": "Die Erkenner, die einen Fund erzeugen (Tabelle erkennungskatalog in geraetesuche-vectors.json)."
     },
@@ -419,6 +421,7 @@
         "opendtu_ahoy",
         "ebyte",
         "wago",
+        "deye_logger",
         "mdns",
         "ssdp",
         "funkmodul"

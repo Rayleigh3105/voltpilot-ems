@@ -364,6 +364,13 @@ func (a *Agent) entityWriteTarget(entityID string) (installerwrite.Target, regis
 			Message: "Diese Komponente wird über den Solarman-Logger gelesen. Bitte den " +
 				"primären Wechselrichter als Ziel wählen."}
 	}
+	// The same for a Deye over its stick's Modbus TCP: the stick is the primary
+	// lane's, never a second socket past the Deye executor.
+	if d.Communication == inverter.CommDeyeModbusTCP {
+		return installerwrite.Target{}, registerwrite.Verdict{Code: registerwrite.ErrNotSupported,
+			Message: "Diese Komponente wird über den Deye-Datenlogger (Modbus TCP) gelesen; ein freier " +
+				"Registerzugriff ist dort nicht vorgesehen."}
+	}
 	// A channel consumer of an I/O module (and the module itself) is written
 	// only by the core executor, behind the arbiter, the guards and the device
 	// watchdog. A free register write there would switch a relay past all of

@@ -133,7 +133,7 @@ vollständig) und die **neuen** `funde[]` seit dem vorigen Stand. Der Stand ist 
 | `erkennung` | `sicher` (Selbstauskunft: Register, `/shelly`, `/api/status`), `wahrscheinlich` (Merkmale ohne Selbstauskunft; Übernehmen nur mit Bestätigung), `unbekannt` (nur erreichbar) |
 | `anbindung` | was diese Box-Art damit kann: `uebernehmen`, `selbst_beschreiben` (genau bei `unbekannt`), `nicht_mit_dieser_box` (die andere Box-Art liest es schon), `kein_leseweg` (keine Box-Art liest es), `nur_anzeige` (genau bei Netz-Technik) |
 | `verbindung` | in den Schlüsseln der Vorlagen (`communication`, `ip`, `port`, `serial`, `unit_id`). `communication` ist die des Katalog-Paars und Pflicht bei `uebernehmen`/`selbst_beschreiben`; `solarman_v5` braucht `serial` (Logger) |
-| `hindernis` | `geschuetzt` (Anmeldung verlangt), `lokale_api_aus` (go-e ohne lokale API v2) |
+| `hindernis` | `geschuetzt` (Anmeldung verlangt), `lokale_api_aus` (go-e ohne lokale API v2; Deye-Logger mit ausgeschaltetem Modbus TCP) |
 | `merkmale` | 1 bis 8 Wörter, woran erkannt („Woran erkannt?“) |
 
 Die Box meldet die Wallbox (`goe`/`wallbox`) wie im Katalog als `uebernehmen`. Die Cloud gibt sie dem Portal als `kein_leseweg` weiter (`GeraetesucheDienst.fuerPortal`, auch in den Zählern des Protokolls): Die HTTP-Schnittstelle ist nur lesend, die Box kann dem Gerät keine Rolle zuordnen, und der Anlege-Weg lehnt die Vorlage als Verbraucher mit 422 ab. Das Portal nennt statt eines Knopfs den Weg über „Ladesäule mit OCPP 1.6“. Der Vertrag mit der Box ändert sich nicht.
@@ -143,6 +143,20 @@ Katalog legt je Paar und Box-Art fest, welches Wort die Box meldet: Fronius (Sol
 das WAGO-Registerbild liest heute nur die Docker-Box (Huawei seit 04.11.2026 und SunSpec seit 06.11.2026 lesen beide
 Box-Arten); die Shelly-Zähler (Pro 3EM, Profil dreiphasig, `shelly_em_http`) liest seit 06.11.2026 nur Edge Light – die
 Docker-Box meldet sie weiter als `kein_leseweg` (Folgepaket); SMA, Victron und OpenDTU/Ahoy liest keine.
+
+**Deye-Logger ohne Solarman V5** (`deye_logger`/`wechselrichter`, additiv seit 25.11.2026). Neuere Deye-Logger-Sticks
+(Feld: DYDA_WiBLE, WLAN-Modul MXCHIP) bieten 8899 nicht an; ihr Modbus TCP (Port 502, Geräteadresse 1, reine
+MBAP-Rahmen) ist ab Werk aus. Die Box erkennt den Stick nur an dem, was er **vor jeder Anmeldung** ausliefert: `GET /`
+lädt `js/lan_*.js`, `aes.js`, `rsa.js` und `utils.js` (`deye_logger_seite`), `GET /js/utils.js` nennt `PCS_LOCAL_WEB`
+und `encryptUrl` (`deye_logger_pcs_local_web`) – nie eine Anmeldung, nie eine CGI des Sticks. Sie meldet ihn nur, wenn
+sie 8899 und 502 an dem Gerät geprüft hat und 8899 nicht offen ist (`solarman_port_zu`; antwortet 8899, gewinnt
+`solarman`). Ist 502 offen, liest sie wie der Solarman-Erkenner FC 3 auf 0x0000–0x0007 an Geräteadresse 1: ein Deye-Typ
+der Quelle macht den Fund `sicher` (mit Familie, Spannung, Seriennummer), sonst bleibt er `wahrscheinlich`
+(`modbus_port_offen`). Ist 502 zu, ist er `wahrscheinlich` mit `hindernis: lokale_api_aus` (`modbus_port_zu`): das
+Portal sagt, wie Modbus TCP im Logger einzuschalten ist, und nennt RS485 an der Box als anderen Weg. Die Verbindung ist
+immer `deye_modbus_tcp`, Port 502, `unit_id` 1; Edge Light meldet `uebernehmen`, die Docker-Box `nicht_mit_dieser_box`.
+Das MXCHIP-Funkmodul ist nur ein Merkmal (`funkmodul_mxchip`), nie allein ein Fund. Ältere Leser überlesen das
+unbekannte Paar (Fund) bzw. den unbekannten Erkenner (Liste `erkenner`).
 
 ### Datenschutz (DP-3 A)
 

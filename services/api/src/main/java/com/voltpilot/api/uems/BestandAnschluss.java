@@ -90,6 +90,8 @@ public final class BestandAnschluss {
             Map.entry("sunspec_tcp", new Transport("sunspec_modbus", 502, 1, Weg.MODBUS)),
             Map.entry("fronius_sunspec", new Transport("sunspec_modbus", 502, 1, Weg.MODBUS)),
             Map.entry("solarman_v5", new Transport("solarman_v5", 8899, 1, Weg.SOLARMAN)),
+            // Deye über das Modbus TCP seines Datenlogger-Sticks: reines Modbus TCP, Geräteadresse 1.
+            Map.entry("deye_modbus_tcp", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
             Map.entry("kaco_http", new Transport("http", 8484, null, Weg.HTTP)),
             Map.entry("fronius_solar_api", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("goe_http_api", new Transport("http", 80, null, Weg.HTTP)),

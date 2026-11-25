@@ -73,7 +73,7 @@ type sourceNote struct {
 func ReadsAsSource(comm, role string) string {
 	switch comm {
 	case goeapi.Family, CommHuaweiModbus, CommKacoSerial, CommSunSpecTCP, CommFroniusSunSpec, CommFroniusSolarAPI,
-		CommKacoHTTP, CommKacoModbus, CommSolarmanV5:
+		CommKacoHTTP, CommKacoModbus, CommSolarmanV5, CommDeyeModbusTCP:
 		return ""
 	case CommShellyEM:
 		if role == sources.RoleErzeuger {
@@ -219,16 +219,17 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 			}
 			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: mp.IP, Port: mp.Port, Addr: mp.Addr, Modbus: mp})
 			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): modbus_tcp " + mp.Addr + " -> Leseplan (Profil " + mp.Profile + ")"})
-		case comm == CommSolarmanV5:
+		case comm == CommSolarmanV5 || comm == CommDeyeModbusTCP:
 			// The store node: a Deye family with measurement registers, the
-			// logger serial, port 8899 - the same plan as the primary inverter.
+			// logger serial, port 8899 - the same plan as the primary inverter
+			// (over the stick's Modbus TCP: port 502, the unit, no serial).
 			dp, why := planSolarman(&selection{Family: family, Communication: comm, Connection: conn})
 			if dp == nil {
 				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
 				continue
 			}
 			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: dp.IP, Port: dp.Port, Addr: dp.Addr, Deye: dp})
-			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): solarman_v5 " + dp.Addr + " -> Leseplan (Deye-Familie " + family + ")"})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): " + comm + " " + dp.Addr + " -> Leseplan (Deye-Familie " + family + ")"})
 		case comm == CommFroniusSolarAPI:
 			// The store node: no family check, port 80, https only with insecure_tls.
 			fp, why := planFronius(&selection{Family: family, Communication: comm, Connection: conn})

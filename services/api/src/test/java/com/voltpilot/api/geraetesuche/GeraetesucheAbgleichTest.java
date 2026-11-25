@@ -26,6 +26,7 @@ class GeraetesucheAbgleichTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static GeraetesucheBericht.Ergebnis docker;
     private static GeraetesucheBericht.Ergebnis edgeLight;
+    private static GeraetesucheBericht.Ergebnis deyeLogger;
 
     @BeforeAll
     static void lade() throws Exception {
@@ -38,6 +39,8 @@ class GeraetesucheAbgleichTest {
                 docker = e;
             } else if ("edge_light_fertig".equals(c.path("name").asText())) {
                 edgeLight = e;
+            } else if ("edge_light_deye_logger".equals(c.path("name").asText())) {
+                deyeLogger = e;
             }
         }
         assertThat(docker).isNotNull();
@@ -194,6 +197,25 @@ class GeraetesucheAbgleichTest {
                 .containsExactly("builtin:deye:sun-12k-sg04lp3", "builtin:deye:sun-8k-g");
     }
 
+    /**
+     * Ein Deye am Modbus TCP seines Datenloggers (Feld 25.11.2026): übernommen wird er über die Vorlagen dieses Wegs -
+     * dieselben Modelle wie über Solarman, nur mit {@code deye_modbus_tcp}; ohne Spannung die ganze Familie.
+     */
+    @Test
+    void einDeyeAmModbusTcpDesDatenloggersBekommtDieVorlagenDiesesWegs() throws Exception {
+        List<ComponentTemplateDto> katalog = builtinKatalog();
+        GeraetesucheBericht.Fund lv = fund(deyeLogger, "deye_logger:AB12345678");
+        assertThat(lv.spannung()).isEqualTo("lv");
+        assertThat(GeraetesucheAbgleich.vorlagen(lv, katalog)).hasSize(5)
+                .allMatch(r -> r.contains("-sg04lp3") && r.endsWith(":deye_modbus_tcp"));
+        // Modbus TCP im Logger aus: ohne gelesenen Typ jedes Deye-Modell dieses Wegs; das Hindernis entscheidet die
+        // Gruppe (braucht Hilfe), übernommen wird erst nach dem Einschalten und erneuten Suchen.
+        GeraetesucheBericht.Fund aus = fund(deyeLogger, "deye_logger:192.168.178.63:502");
+        assertThat(aus.hindernis()).isEqualTo("lokale_api_aus");
+        assertThat(GeraetesucheAbgleich.vorlagen(aus, katalog)).hasSize(37)
+                .allMatch(r -> r.startsWith("builtin:deye:") && r.endsWith(":deye_modbus_tcp"));
+    }
+
     @Test
     void einDeyeHybridMitGemeldeterSpannungBekommtNurDieModelleDieserSpannung() throws Exception {
         List<ComponentTemplateDto> katalog = builtinKatalog();
@@ -257,8 +279,9 @@ class GeraetesucheAbgleichTest {
     void dieSpannungEinerVorlageFolgtIhremTypschluesselWieIhreNotiz() throws Exception {
         JsonNode templates = JSON.readTree(getClass().getResourceAsStream("/componenttemplates/builtin.json"))
                 .path("templates");
-        int hv = 0;
-        int lv = 0;
+        // Gezählt je Modell: ein Deye hat zwei Vorlagen (Solarman V5 und Modbus TCP des Datenloggers).
+        java.util.Set<String> hv = new java.util.HashSet<>();
+        java.util.Set<String> lv = new java.util.HashSet<>();
         for (JsonNode t : templates) {
             String model = t.path("model").asText();
             String note = t.path("note").asText();
@@ -266,14 +289,13 @@ class GeraetesucheAbgleichTest {
                     : note.contains("Niedervolt-Speicher (LV)") ? "lv" : null;
             if (erwartet != null) {
                 assertThat(GeraetesucheAbgleich.spannung(model)).as(model).isEqualTo(erwartet);
-                hv += "hv".equals(erwartet) ? 1 : 0;
-                lv += "lv".equals(erwartet) ? 1 : 0;
+                ("hv".equals(erwartet) ? hv : lv).add(model);
             } else if ("hybrid_3p".equals(t.path("family").asText())) {
                 throw new AssertionError("hybrid_3p ohne Spannung in der Notiz: " + model);
             }
         }
-        assertThat(hv).isEqualTo(8);
-        assertThat(lv).isEqualTo(5);
+        assertThat(hv).hasSize(8);
+        assertThat(lv).hasSize(5);
         assertThat(GeraetesucheAbgleich.spannung("sun-10k-g03")).isNull();
         assertThat(GeraetesucheAbgleich.spannung(null)).isNull();
     }

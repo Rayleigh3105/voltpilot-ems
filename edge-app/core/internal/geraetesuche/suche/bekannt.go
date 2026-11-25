@@ -36,6 +36,8 @@ func bekanntPaar(b Bekannt) (erk, art string, ok bool) {
 		return "huawei", "wechselrichter", true
 	case "ebyte_modbus_tcp":
 		return "ebyte", "io_modul", true
+	case deyeModbusTCP:
+		return "deye_logger", "wechselrichter", true
 	case "modbus_tcp":
 		if b.Rolle == "plant-controller" {
 			return "wago", "sps", true

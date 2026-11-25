@@ -79,6 +79,13 @@ public class RegisterWriteTargets {
      * (primärer Wechselrichter, Komponente, gemeldete Quelle) und wurde dreimal
      * verschieden formuliert.
      */
+    /** Deye über das Modbus TCP seines Datenlogger-Sticks: die Box lässt dort keinen freien Registerzugriff zu. */
+    private static final String DEYE_MODBUS_TCP = "deye_modbus_tcp";
+
+    static final String DEYE_DATENLOGGER_NUR_STEUERUNG =
+            "Dieser Deye wird über das Modbus TCP seines Datenloggers gelesen; den Logger bedient nur die "
+            + "Wechselrichtersteuerung der Box, ein freier Registerzugriff ist dort nicht vorgesehen.";
+
     static final String HTTP_KEIN_MODBUS =
             "Dieses Gerät wird über seine Web-Schnittstelle gelesen - Modbus-Register gibt es "
             + "dort nicht.";
@@ -207,6 +214,9 @@ public class RegisterWriteTargets {
         } else if (communication != null && CORE_OWNED_TRANSPORTS.contains(communication)) {
             writable = false;
             reason = NUR_VERBRAUCHERSTEUERUNG;
+        } else if (DEYE_MODBUS_TCP.equals(communication)) {
+            writable = false;
+            reason = DEYE_DATENLOGGER_NUR_STEUERUNG;
         }
         // ⚠ Die FAMILIE der Quelle wird NICHT übernommen: die freie Lane nennt
         // einen Endpunkt, kein eingerichtetes Gerät, und die Box kann dort nicht
@@ -332,6 +342,9 @@ public class RegisterWriteTargets {
         } else if (communication != null && CORE_OWNED_TRANSPORTS.contains(communication)) {
             writable = false;
             reason = NUR_VERBRAUCHERSTEUERUNG;
+        } else if (DEYE_MODBUS_TCP.equals(communication)) {
+            writable = false;
+            reason = DEYE_DATENLOGGER_NUR_STEUERUNG;
         } else if (host == null) {
             writable = false;
             reason = "Für dieses Gerät ist keine IP-Adresse hinterlegt.";
