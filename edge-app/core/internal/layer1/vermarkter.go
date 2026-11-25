@@ -300,7 +300,7 @@ func (r *Runtime) vermarkterGrenzeW() (grenzeW int32, ziel string, ok bool) {
 		if z.installiertAt.IsZero() {
 			referenzW = 0
 		}
-		ziel = vermarkterZielName(z.profil.Rules.AppliesTo)
+		ziel = vermarkterZielName(z.profil.Rules.WirktAuf)
 	}
 	r.vermMu.Unlock()
 	if z == nil || z.server == nil {
@@ -330,8 +330,8 @@ func (r *Runtime) vermarkterGrenzeW() (grenzeW int32, ziel string, ok bool) {
 // vermarkterZielName maps the profile's 'vorgabe_wirkt_auf' onto the
 // Koppelbild target vocabulary (contract §7): the grid-point feed-in by
 // default (F5), the whole generation when the profile says so.
-func vermarkterZielName(appliesTo string) string {
-	if strings.Contains(appliesTo, "erzeugung") {
+func vermarkterZielName(wirktAuf string) string {
+	if wirktAuf == direktvermarkter.WirktAufErzeugung {
 		return "erzeugung_gesamt"
 	}
 	return "einspeisung"

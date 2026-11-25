@@ -182,7 +182,10 @@ Zuweisung desselben Release versucht wieder).
   Programm selbst aus eingebetteten Kopien (Loader-Selbstupdate,
   `edge-light/docs/boot-und-updates.md#loader-selbstupdate`); wer `boot.sh`
   oder das Init-Skript ändert, erhöht `LOADER_STAND` und schreibt
-  `edge-app/core/internal/loaderstand/stand-verlauf` fort.
+  `edge-app/core/internal/loaderstand/stand-verlauf` fort. Ebenso die
+  WLAN-Skripte (`edge-light/docs/boot-und-updates.md#wlan-skripte`): wer
+  `wlan-anschluss.sh` oder `einrichtung-wlan.sh` ändert, erhöht `WLAN_STAND`
+  und schreibt `edge-app/core/internal/wlanstand/stand-verlauf` fort.
 
 ### Portal
 

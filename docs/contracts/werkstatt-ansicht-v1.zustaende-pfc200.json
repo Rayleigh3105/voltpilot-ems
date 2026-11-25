@@ -111,6 +111,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel",
         "einloesen",
@@ -156,6 +157,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -1037,6 +1043,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel",
         "einloesen",
@@ -1075,6 +1082,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -1364,6 +1376,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel"
       ],
@@ -1397,6 +1410,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -1654,6 +1672,158 @@
       }
     }
   },
+  "laeuft_grundprogramm": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.1.17",
+            "macs": [
+              "00:30:de:43:b8:7b"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "freigabe_pfc200": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-pfc200-1",
+        "box_art": "pfc200",
+        "erteilt_von": "Regel: neueste Fassung",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "edge_industrie": {
+          "fassung": "edge-industrie-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "skripte_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "wartung_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss_geraet": "pfc200",
+    "lauf": {
+      "kennung": "2026-11-04-102855-pfc2",
+      "freigabe": "2026-11-pfc200-1",
+      "box_art": "pfc200",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "grundprogramm",
+      "titel": "Grundprogramm einspielen",
+      "erledigt": [
+        "erkennen",
+        "docker",
+        "fassungen",
+        "internet",
+        "zugaenge",
+        "notfall"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "WAGO 750-8212 · Firmware 03.10.08(22) · Werkspasswörter: root, admin, user ab Werk"
+        },
+        {
+          "schritt": "docker",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "zugaenge",
+          "dauer_s": 0,
+          "zeile": "drei Passwörter gesetzt, nur verschlüsselt abgelegt · Werkspasswörter abgewiesen · Anmeldung mit Passwort aus (root mit dem neuen Passwort …"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "vorher": {
+        "system": "WAGO 750-8212 · Firmware 03.10.08(22)",
+        "edge_light": "kein VoltPilot"
+      }
+    }
+  },
   "laeuft_internet": {
     "schema": "vp-werkstatt-ansicht.v1",
     "zeit": "2026-11-04T10:29:00Z",
@@ -1900,6 +2070,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel",
         "einloesen",
@@ -1938,6 +2109,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -2095,6 +2271,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel",
         "einloesen",
@@ -2130,6 +2307,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -2272,6 +2454,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel",
         "einloesen",
@@ -2308,6 +2491,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -2601,6 +2789,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel",
         "einloesen",
@@ -2638,6 +2827,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -2788,7 +2982,8 @@
         "fassungen",
         "internet",
         "zugaenge",
-        "notfall"
+        "notfall",
+        "grundprogramm"
       ],
       "schritt_seit": "2026-11-04T10:29:00Z",
       "schritt_frist_s": 3600,
@@ -2820,6 +3015,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         }
@@ -2942,6 +3142,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel",
         "einloesen"
@@ -2976,6 +3177,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -3113,6 +3319,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm"
       ],
       "schritt_seit": "2026-11-04T10:29:00Z",
@@ -3145,6 +3352,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -3272,6 +3484,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel",
         "einloesen",
@@ -3311,6 +3524,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -4066,6 +4284,7 @@
         "internet",
         "zugaenge",
         "notfall",
+        "grundprogramm",
         "programm",
         "tunnel_schluessel",
         "einloesen",
@@ -4114,6 +4333,11 @@
         },
         {
           "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "grundprogramm",
           "dauer_s": 0,
           "zeile": "belegt"
         },

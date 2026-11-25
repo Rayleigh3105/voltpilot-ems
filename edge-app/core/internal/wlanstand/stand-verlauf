@@ -1,0 +1,9 @@
+# Verlauf der Staende der WLAN-Skripte von Edge Light (nur anhaengen, nie
+# umschreiben). Eine Zeile je Stand:
+# "<stand> <sha256 wlan-anschluss.sh> <sha256 einrichtung-wlan.sh>".
+# Der Test erzwingt streng steigende Staende und dass die LETZTE Zeile zu den
+# eingebetteten Kopien passt - wer eines der beiden Skripte aendert, muss
+# WLAN_STAND in wlan-anschluss.sh erhoehen und hier eine neue Zeile anhaengen,
+# sonst erreicht die Aenderung keine Box im Feld (der Rueckschritt-Schutz
+# vergleicht nur Staende). Eigener Zaehler, unabhaengig von LOADER_STAND.
+1 e0bee97be27fee7b4a113cba04feb82097b4c7c5d15147c315cd72f99862e5d4 92c5df661361d912742dfff91b1d9fd4b8f6fb49c6452ae55886f8d4611d6393

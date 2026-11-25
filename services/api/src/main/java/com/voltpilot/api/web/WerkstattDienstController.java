@@ -98,7 +98,7 @@ public class WerkstattDienstController {
                         f.beendetAm(), f.obergrenze(), null, null,
                         new IndustrieDto(f.edgeLight().fassung(), f.edgeLight().quelle(),
                                 f.edgeLight().programmSha256(), f.edgeLight().skripteSha256(),
-                                f.edgeLight().wartungSha256()));
+                                f.edgeLight().wartungSha256(), f.edgeLight().grundprogrammSha256()));
             }
             return new FreigabeDto(SCHEMA, f.kennung(), f.boxArt(), von, f.gueltigAb(), f.gueltigBis(), f.beendetAm(),
                     f.obergrenze(),
@@ -110,12 +110,15 @@ public class WerkstattDienstController {
 
     /**
      * Die Edge-Industrie-Fassung einer Freigabe für den PFC200 (Go:
-     * {@code freigabe.Industrie}): Programm, Skriptstand und Tunnel-Programm.
+     * {@code freigabe.Industrie}): Programm, Skriptstand, Tunnel-Programm und,
+     * optional, das Grundprogramm (Boot-Applikation des Basisprojekts).
      */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record IndustrieDto(String fassung, String quelle,
             @JsonProperty("programm_sha256") String programmSha256,
             @JsonProperty("skripte_sha256") String skripteSha256,
-            @JsonProperty("wartung_sha256") String wartungSha256) {
+            @JsonProperty("wartung_sha256") String wartungSha256,
+            @JsonProperty("grundprogramm_sha256") String grundprogrammSha256) {
     }
 
     /**

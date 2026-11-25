@@ -10,6 +10,7 @@
           6,
           16
         ],
+        "port": 502,
         "unit": 1,
         "verbindungen": 2,
         "wortfolge": "little"
@@ -17,7 +18,6 @@
       "regeln": {
         "bei_veraltet": "ausnahme_0x0b",
         "lebenszeichen_frist_s": 900,
-        "referenz": "installierte_leistung_wp",
         "ruhewert_pct": 100,
         "vorgabe_wirkt_auf": "einspeisung_netzpunkt"
       },

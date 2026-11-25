@@ -1,8 +1,10 @@
 package layer1
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -19,15 +21,18 @@ import (
 // huaweiSim is a SUN2000 behind a Smart Dongle: Modbus TCP FC3 from an
 // absolute register image, ONE client at a time (a second connection is
 // refused and counted), `refuse` blocks answered with exception 2, `silent`
-// swallows every request.
+// swallows every request, `deaf` swallows every request that arrives sooner
+// than that after the connect (the Smart Dongle in the field, 25.11.2026).
 type huaweiSim struct {
 	ln      net.Listener
 	mu      sync.Mutex
 	regs    map[uint16]uint16
 	refuse  map[uint16]bool
 	silent  bool
+	deaf    time.Duration
 	units   []byte
 	refused atomic.Int32
+	unheard atomic.Int32
 }
 
 // peerClosed reports whether the client of c has already ended its session:
@@ -167,6 +172,7 @@ func (s *huaweiSim) set(regs map[uint16]uint16) {
 
 func (s *huaweiSim) serve(c net.Conn) {
 	defer c.Close()
+	connected := time.Now()
 	for {
 		hdr := make([]byte, 7)
 		if _, err := io.ReadFull(c, hdr); err != nil {
@@ -178,6 +184,11 @@ func (s *huaweiSim) serve(c net.Conn) {
 			return
 		}
 		s.mu.Lock()
+		if time.Since(connected) < s.deaf {
+			s.mu.Unlock()
+			s.unheard.Add(1)
+			continue
+		}
 		s.units = append(s.units, hdr[6])
 		silent, refuse, regs := s.silent, s.refuse, s.regs
 		addr := binary.BigEndian.Uint16(body[1:])
@@ -293,7 +304,8 @@ func TestASilentHuaweiTurnsTheLinkDownAndPublishesNoValue(t *testing.T) {
 
 func TestHuaweiConnectionTestClassifiesHonestly(t *testing.T) {
 	sim := startHuaweiSim(t, kundenanlage())
-	r := newRig(t, Options{Poll: time.Hour, FirstPoll: time.Hour, ConnectTimeout: 400 * time.Millisecond, ReadTimeout: 300 * time.Millisecond})
+	r := newRig(t, Options{Poll: time.Hour, FirstPoll: time.Hour, ConnectTimeout: 400 * time.Millisecond, ReadTimeout: 300 * time.Millisecond,
+		HuaweiConnectPause: 20 * time.Millisecond})
 	host, port := sim.addr()
 
 	ok := testRead(t, r, "ok", huaweiSel(host, port, nil))
@@ -354,9 +366,56 @@ func TestHuaweiConnectionTestClassifiesHonestly(t *testing.T) {
 	}
 }
 
+// The Smart Dongle leaves a request unanswered that comes right after the
+// connect (field, 25.11.2026: at once and after 0,3 s no answer, after 1 s an
+// answer). The driver waits HuaweiConnectPause (1 s by default) before its
+// first request; asking at once, the same dongle stays silent.
+func TestHuaweiWaitsAfterTheConnectBeforeItsFirstRequest(t *testing.T) {
+	if got := newRig(t, Options{Poll: time.Hour, FirstPoll: time.Hour}).rt.opts.HuaweiConnectPause; got != time.Second {
+		t.Fatalf("Vorgabe der Wartezeit: %v, want 1s", got)
+	}
+	sim := startHuaweiSim(t, kundenanlage())
+	sim.deaf = 300 * time.Millisecond
+	host, port := sim.addr()
+
+	waits := newRig(t, Options{Poll: time.Hour, FirstPoll: time.Hour, HuaweiConnectPause: 400 * time.Millisecond,
+		ConnectTimeout: 400 * time.Millisecond, ReadTimeout: 300 * time.Millisecond})
+	start := time.Now()
+	if res := testRead(t, waits, "wartet", huaweiSel(host, port, nil)); res["ok"] != true {
+		t.Fatalf("mit Wartezeit antwortet der Dongle: %v", res)
+	}
+	if d := time.Since(start); d < 400*time.Millisecond {
+		t.Fatalf("erste Anfrage nach %v, vor der Wartezeit", d)
+	}
+	if n := sim.unheard.Load(); n != 0 {
+		t.Fatalf("%d Anfragen in der tauben Zeit des Dongles", n)
+	}
+
+	atOnce := newRig(t, Options{Poll: time.Hour, FirstPoll: time.Hour, HuaweiConnectPause: -1,
+		ConnectTimeout: 400 * time.Millisecond, ReadTimeout: 200 * time.Millisecond})
+	if res := testRead(t, atOnce, "sofort", huaweiSel(host, port, nil)); res["error_code"] != "no_answer" {
+		t.Fatalf("sofort gefragt bleibt der Dongle stumm: %v", res)
+	}
+	if sim.unheard.Load() == 0 {
+		t.Fatal("die sofortige Anfrage muss in die taube Zeit fallen")
+	}
+}
+
+// The pause ends with the context: a cancelled read does not sit it out.
+func TestHuaweiPauseEndsWithTheContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := pauseAfterConnect(ctx, time.Hour); !errors.Is(err, context.Canceled) {
+		t.Fatalf("abgebrochener Kontext: %v", err)
+	}
+	if err := pauseAfterConnect(ctx, -1); err != nil {
+		t.Fatalf("ohne Wartezeit kein Fehler: %v", err)
+	}
+}
+
 func TestHuaweiPollAndConnectionTestShareTheOneClientLane(t *testing.T) {
 	sim := startHuaweiSim(t, kundenanlage())
-	r := newRig(t, Options{FirstPoll: 10 * time.Millisecond, Poll: 30 * time.Millisecond})
+	r := newRig(t, Options{FirstPoll: 10 * time.Millisecond, Poll: 30 * time.Millisecond, HuaweiConnectPause: 20 * time.Millisecond})
 	r.selectHuawei(sim, nil)
 	r.wait(localbus.TopicTelemetry, 2, 5*time.Second)
 	host, port := sim.addr()

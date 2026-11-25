@@ -610,6 +610,13 @@ type Agent struct {
 	mirMu       sync.Mutex
 	mirSettings mirror.Settings
 
+	// Direktvermarktung (agent/direktvermarktung.go + internal/
+	// vermarktertunnel): the partner tunnel manager with the partner's
+	// Modbus interface, and the last registered feed-in limit for its
+	// netzbetreiber register. Interface-typed as the test seam.
+	vermarkter   vermarkterDienst
+	vermarkterSt vermarkterState
+
 	// goeDoer executes go-e Charger control HTTP (nil = the default http.Client
 	// doer, set in Start; injectable for tests). The consumer-control loop
 	// (agent/consumer_control.go) reads the arbiter's clamped consumer command
@@ -692,6 +699,9 @@ type Agent struct {
 	// erneuert Loader und Dienst-Init aus den eingebetteten Kopien
 	// (loader_pflege.go, nur Edge Light).
 	loaderPflege loaderPflegeState
+	// wlanPflege: die Testnaehte der Pflege der WLAN-Skripte (wlan_pflege.go,
+	// nur Edge Light).
+	wlanPflege wlanPflegeState
 	// otaRoots overrides the BAKED trust root - a TEST SEAM only (the repo
 	// carries no private key, so a test must mint its own throwaway root).
 	// nil = the production path: otaverify.BakedRoots(), i.e. rootkeys.json.
@@ -1061,6 +1071,9 @@ func New(cfg config.Config) (*Agent, error) {
 	// default; the listener comes up in Start when enabled). After the inverter
 	// restore so the native unit follows the selection's mb_slave_id.
 	a.initMirror()
+	// Direktvermarktung: the partner tunnel manager (idles without a
+	// delivered anschluss.json; its loop starts in Start).
+	a.initVermarkter()
 	// A purge requested before a restart and not yet confirmed by the cloud is
 	// restored and re-sent once connected.
 	a.restorePendingPurge()
@@ -1166,6 +1179,10 @@ func (a *Agent) Start(ctx context.Context) error {
 		return err
 	}
 
+	// Direktvermarktung: the partner tunnel manager's convergence loop
+	// (agent/direktvermarktung.go). Idles without a delivered profile.
+	a.startVermarkter(ctx)
+
 	// v2 entity layer: telemetry wildcard subscription (id 6) + boot republish
 	// of the per-entity retained configs. The v2 uplink rides the shared
 	// store-and-forward buffer (E1b), drained by the publisher loop below.
@@ -1241,6 +1258,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	// ohne Loader-Pfade kehrt die Schleife sofort zurueck.
 	a.done.Add(1)
 	go a.loaderPflegeLoop(ctx, loaderPflegeErsterBlick, loaderPflegeTakt)
+	// Ebenso die WLAN-Skripte der Box (wlan_pflege.go); nur Edge Light.
+	a.done.Add(1)
+	go a.wlanPflegeLoop(ctx, wlanPflegeErsterBlick, loaderPflegeTakt)
 
 	a.done.Add(2)
 	go a.setpointLoop(ctx)
@@ -2116,6 +2136,10 @@ func (a *Agent) foldSiteSample(ts time.Time, measurements, primary map[string]fl
 		SocPct:      ptr("soc_pct"),
 		GridLimitKw: ptr("grid_limit_kw"),
 	})
+	// Direktvermarktung: the partner's interface answers from the SAME gated
+	// composite (agent/direktvermarktung.go) - a partner query never reads a
+	// device, and an absent channel stays absent.
+	a.feedVermarkter(ts, measurements)
 	// Local composition of the composed v2 entities for the device's OWN view
 	// (M-B3-local). Display-only: it feeds Topology() -> the :8484 entity tiles
 	// + Energiefluss, never the buffer/uplink (the cloud fans the very same v1
@@ -3003,6 +3027,16 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// so a dead optimizer must never hand the plant back its unlimited feed-in.
 	// nil = no limit configured -> byte-for-byte pre-feature behavior.
 	exportLimit := p.ExportLimit()
+	// DIREKTVERMARKTUNG (Stage 2, E2): the partner's FRESH set-point is a
+	// mandatory limit. Composed HERE, where the registered limit enters, so
+	// every consumer of exportLimit - composeCurtailment's watchdog with the
+	// battery-first cascade, the share guard, the no-reading safe static
+	// cap - holds min(registered limit, partner limit). An expired watchdog
+	// composes nothing (the interface already forced its register back to
+	// the rest value). vermarkterPvCap is the F5 "acts on generation"
+	// variant: the same limit as a PV cap, applied after the watchdog below.
+	a.merkeNetzgrenze(exportLimit)
+	exportLimit, vermarkterPvCap := a.vermarkterGrenzen(exportLimit)
 	// The v2 plan's site-level target / battery-entity reserve compose in
 	// (tighter wins, both staleness survivors). nil without a v2 plan - the
 	// v1 path is then byte-identical.
@@ -3959,6 +3993,12 @@ func (a *Agent) applySetpoint(now time.Time) {
 	}
 	pvLimit, curtailTrack, exportGuard, exportCap := a.composeCurtailment(now, readingAt, r, curtailKw, pvLimit, exportLimit,
 		inner, anteilCap)
+	// Direktvermarktung, F5 "acts on generation" variant only: the partner
+	// limit as a direct PV cap, most-restrictive-wins like every other cap.
+	// (The default feed-in reading composed into exportLimit above instead.)
+	if vermarkterPvCap != nil && (pvLimit == nil || *vermarkterPvCap < *pvLimit) {
+		pvLimit = vermarkterPvCap
+	}
 
 	// SPRUNGPROBE, second half (AP-15 IP-21): the feed-in watchdog that holds
 	// the producers back, regulates blind or lowers the discharge on this tick,

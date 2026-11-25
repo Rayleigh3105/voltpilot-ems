@@ -4,7 +4,8 @@
 # edge-light/docs/mango.md "Ohne Kabel zum Router"). Gehoert zum
 # Betriebssystem, NICHT zu vp-edge-light: das Programm ruft das Skript hoechstens
 # auf Knopfdruck auf und aendert selbst nie die Konfiguration
-# (edge-light/docs/boot-und-updates.md).
+# (edge-light/docs/boot-und-updates.md). Erneuern darf es das Skript und
+# einrichtung-wlan.sh aus seinen eingebetteten Kopien (WLAN_STAND unten).
 #
 #   wlan-anschluss.sh scan [--json]       Netze im 2,4-GHz-Band, staerkstes zuerst
 #   wlan-anschluss.sh messen <ssid>       Signal dieses Netzes am Platz der Box
@@ -86,6 +87,14 @@
 #   - Alle Abschnitte heissen vp_*: ein erneuter Lauf ersetzt sie, statt neue
 #     anzulegen, und fremde Eintraege (etwa ein Access Point) bleiben.
 set -u
+
+# Stand der WLAN-Skripte (dieses und einrichtung-wlan.sh). Das bestaetigte
+# Programm bringt beide eingebettet mit und spielt sie ein, wenn sein Stand
+# NEUER ist (edge-app/core/internal/wlanstand); kein Stand = 0. Wer eines der
+# beiden Skripte aendert, erhoeht ihn und schreibt wlanstand/stand-verlauf
+# fort - der Test des Pakets erzwingt das, sonst erreicht die Aenderung keine
+# Box im Feld.
+WLAN_STAND=1
 
 BEFEHL="${1:-}"
 RADIO="${VP_WLAN_RADIO:-radio0}"

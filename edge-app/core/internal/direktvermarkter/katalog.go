@@ -11,11 +11,10 @@
 // Unlike catalog/control-profiles, this derivative carries the FULL register
 // map and Modbus access settings, because the data-mirror server this
 // package's twin feeds (Stage 1 item 2) needs them to run; it still carries
-// what the box reads - OpenVPN, the contract link and the setup steps
-// stay the portal's and the tunnel helper's job. Since Stage 4 (PFC200) the
-// derivative also carries 'vorgabe_wirkt_auf' and 'referenz' (resolved, F5/F6
-// markers stripped): the edge needs them to turn the partner's percentage
-// into a Koppelbild limit_w wish.
+// only what Stage 1 reads - OpenVPN, the contract link and the setup steps
+// stay the portal's and Stage 2's job, and 'vorgabe_wirkt_auf'/'referenz'
+// stay out because nothing wires the partner limit into composeCurtailment
+// yet.
 //
 // Two fields the authored catalog can still mark "offen (Fxx)" (word order
 // F3, stale-value behaviour F8) always arrive here RESOLVED to a provisional
@@ -52,24 +51,35 @@ func (r Register) End() int { return int(r.Address) + r.Words() }
 
 // Modbus is the partner's Modbus access settings.
 type Modbus struct {
+	// Port is the TCP port the partner dials (F2 for luox: 502). On the
+	// Mango the interface binds <tunnel address>:<port>; the PFC200
+	// (Stage 4) redirects it at the tunnel interface instead.
+	Port        int    `json:"port"`
 	Unit        int    `json:"unit"`
 	WordOrder   string `json:"wortfolge"` // resolved: "little" or "big", never "offen (Fxx)"
 	Functions   []int  `json:"funktionen"`
 	Connections int    `json:"verbindungen"`
 }
 
+// The two resolved readings of regeln.vorgabe_wirkt_auf (F5 still open; the
+// provisional base is decision E2 = A of the concept).
+const (
+	// WirktAufEinspeisung: the set-point limits the feed-in at the grid
+	// connection point - the limit joins the registered feed-in limit in the
+	// export watchdog, and the battery cascade charges first.
+	WirktAufEinspeisung = "einspeisung_netzpunkt"
+	// WirktAufErzeugung: the set-point caps the generation - the same limit
+	// acts as a PV cap instead (no battery-first: charging does not reduce
+	// generation).
+	WirktAufErzeugung = "erzeugung"
+)
+
 // Rules is the partner's operating rules the box reads today.
 type Rules struct {
 	WatchdogDeadlineS int    `json:"lebenszeichen_frist_s"`
 	RestPct           int    `json:"ruhewert_pct"`
-	// AppliesTo is what the partner's percentage limits (resolved base of
-	// 'vorgabe_wirkt_auf', F5 open): "einspeisung_netzpunkt" or a value
-	// containing "erzeugung" for the whole generation.
-	AppliesTo string `json:"vorgabe_wirkt_auf"`
-	// Reference is the 100%-base of the percentage (resolved base of
-	// 'referenz', F6 open): "installierte_leistung_wp" today.
-	Reference string `json:"referenz"`
-	OnStale   string `json:"bei_veraltet"` // resolved, e.g. "ausnahme_0x0b"
+	WirktAuf          string `json:"vorgabe_wirkt_auf"` // resolved: WirktAufEinspeisung or WirktAufErzeugung
+	OnStale           string `json:"bei_veraltet"`      // resolved, e.g. "ausnahme_0x0b"
 }
 
 // Profile is one packaged partner profile.

@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ---------------------------------------------------------------- Modbus TCP
@@ -34,6 +35,23 @@ type Modbus struct {
 	units      map[byte]map[uint16]uint16
 	funktionen []byte
 	anfragen   int
+	taub       time.Duration
+	ueberhoert int
+}
+
+// Taub makes the server leave every request unanswered that arrives sooner
+// than d after its connect - a Huawei Smart Dongle (field, 25.11.2026).
+func (m *Modbus) Taub(d time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.taub = d
+}
+
+// Ueberhoert counts the requests left unanswered under Taub.
+func (m *Modbus) Ueberhoert() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.ueberhoert
 }
 
 // StartModbus listens on addr ("127.0.0.1:0" for a free port).
@@ -109,6 +127,7 @@ func (m *Modbus) serve() {
 
 func (m *Modbus) handle(c net.Conn) {
 	defer c.Close()
+	verbunden := time.Now()
 	for {
 		kopf := make([]byte, 7)
 		if _, err := io.ReadFull(c, kopf); err != nil {
@@ -121,6 +140,15 @@ func (m *Modbus) handle(c net.Conn) {
 		pdu := make([]byte, n-1)
 		if _, err := io.ReadFull(c, pdu); err != nil {
 			return
+		}
+		m.mu.Lock()
+		taub := time.Since(verbunden) < m.taub
+		if taub {
+			m.ueberhoert++
+		}
+		m.mu.Unlock()
+		if taub {
+			continue
 		}
 		antwort := m.antwort(kopf[6], pdu)
 		out := make([]byte, 7+len(antwort))

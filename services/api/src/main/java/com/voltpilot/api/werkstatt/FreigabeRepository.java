@@ -28,7 +28,8 @@ public class FreigabeRepository {
     private static final String SPALTEN = "id, kennung, box_art, gueltig_ab, gueltig_bis, obergrenze, "
             + "openwrt_fassung, openwrt_datei, openwrt_sha256, openwrt_quelle, edge_fassung, edge_quelle, "
             + "edge_programm_sha256, edge_skripte_sha256, notiz, erteilt_am, erteilt_von, erteilt_von_name, "
-            + "beendet_am, beendet_von, beendet_von_name, quelle, edge_release_seq, edge_wartung_sha256 ";
+            + "beendet_am, beendet_von, beendet_von_name, quelle, edge_release_seq, edge_wartung_sha256, "
+            + "edge_grundprogramm_sha256 ";
 
     /** Eine Zeile von Hand (bis 16.11.2026, „Werkstatt freigeben“). */
     public static final String VON_HAND = "formular";
@@ -44,14 +45,24 @@ public class FreigabeRepository {
      * Skriptstand - Edge Light für die Mango, Edge Industrie für den PFC200.
      * {@code wartungSha256}: das Tunnel-Programm {@code vp-wartung}, nur beim
      * PFC200 (die Mango richtet ihren Tunnel mit Skripten ein; dort {@code null}
-     * und nicht in der Antwort).
+     * und nicht in der Antwort). {@code grundprogrammSha256}: die Boot-
+     * Applikation des Basisprojekts, nur beim PFC200 und dort OPTIONAL (anders
+     * als {@code wartungSha256}) - das Basisprojekt ändert sich nicht mit jeder
+     * Fassung.
      */
     public record Programm(String fassung, String quelle, String programmSha256, String skripteSha256,
-            @JsonInclude(JsonInclude.Include.NON_NULL) String wartungSha256) {
+            @JsonInclude(JsonInclude.Include.NON_NULL) String wartungSha256,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String grundprogrammSha256) {
 
-        /** Eine Edge-Light-Fassung (ohne Tunnel-Programm). */
+        /** Eine Edge-Light-Fassung (ohne Tunnel-Programm, ohne Grundprogramm). */
         public Programm(String fassung, String quelle, String programmSha256, String skripteSha256) {
-            this(fassung, quelle, programmSha256, skripteSha256, null);
+            this(fassung, quelle, programmSha256, skripteSha256, null, null);
+        }
+
+        /** Eine Edge-Industrie-Fassung ohne Grundprogramm (die Fassung trägt keines). */
+        public Programm(String fassung, String quelle, String programmSha256, String skripteSha256,
+                String wartungSha256) {
+            this(fassung, quelle, programmSha256, skripteSha256, wartungSha256, null);
         }
     }
 
@@ -141,13 +152,13 @@ public class FreigabeRepository {
         return jdbc.queryForObject("INSERT INTO werkstatt_freigabe (kennung, box_art, gueltig_ab, gueltig_bis, "
                         + "obergrenze, openwrt_fassung, openwrt_datei, openwrt_sha256, openwrt_quelle, edge_fassung, "
                         + "edge_quelle, edge_programm_sha256, edge_skripte_sha256, notiz, erteilt_am, erteilt_von, "
-                        + "erteilt_von_name, quelle, edge_release_seq, edge_wartung_sha256) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '" + REGEL + "', ?, ?) RETURNING id",
+                        + "erteilt_von_name, quelle, edge_release_seq, edge_wartung_sha256, edge_grundprogramm_sha256) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '" + REGEL + "', ?, ?, ?) RETURNING id",
                 UUID.class, kennung, boxArt, Timestamp.from(gueltigAb), Timestamp.from(gueltigBis), obergrenze,
                 o == null ? null : o.fassung(), o == null ? null : o.datei(), o == null ? null : o.sha256(),
                 o == null ? null : o.quelle(), e.fassung(), e.quelle(), e.programmSha256(),
                 e.skripteSha256(), notiz, Timestamp.from(gueltigAb), akteur, akteurName, edgeReleaseSeq,
-                e.wartungSha256());
+                e.wartungSha256(), e.grundprogrammSha256());
     }
 
     // ── Anhalten und Fortsetzen (werkstatt_betrieb, nur anhängen) ─────────
@@ -186,7 +197,7 @@ public class FreigabeRepository {
                                 rs.getString("openwrt_sha256"), rs.getString("openwrt_quelle")),
                 new Programm(rs.getString("edge_fassung"), rs.getString("edge_quelle"),
                         rs.getString("edge_programm_sha256"), rs.getString("edge_skripte_sha256"),
-                        rs.getString("edge_wartung_sha256")),
+                        rs.getString("edge_wartung_sha256"), rs.getString("edge_grundprogramm_sha256")),
                 rs.getString("notiz"),
                 instant(rs, "erteilt_am"),
                 rs.getString("erteilt_von"),

@@ -182,14 +182,27 @@ type Manifest struct {
 	// an. Es steht hier, damit seine Pruefsumme signiert ist. Additiv wie
 	// Skripte: ein aelterer Stand ignoriert das Feld.
 	Wartung *Wartung `json:"wartung,omitempty"`
+	// Grundprogramm ist die CODESYS-Bootapplikation des Basisprojekts eines
+	// Edge-Industrie-Release (Modbus TCP, WAGO Telecontrol, VoltPilot-
+	// Bibliothek, leerer Klemmenbus; gebaut im Repo voltpilot-sps, nicht hier):
+	// Der Werkstatt-Dienst spielt sie beim Einrichten eines WAGO PFC200 auf die
+	// SPS-Laufzeit (nur Firmware 04.xx, CODESYS V3.5). Anders als Skripte und
+	// Wartung ist das Feld AUCH bei Edge Industrie optional: Ein Release ohne
+	// Grundprogramm bleibt gueltig (das Basisprojekt kommt aus einem eigenen
+	// Repo und eigenem Takt); der Werkstatt-Schritt haelt dann mit einem
+	// Handgriff an, statt etwas Falsches aufzuspielen. Kein Bestandteil des
+	// Updates, kein Eintrag in Artifacts, die Box wendet es nicht an.
+	Grundprogramm *Grundprogramm `json:"grundprogramm,omitempty"`
 }
 
 // Namen der Dateien am Release, die nur die Werkstatt braucht: der
-// Skriptstand je Linie und das Tunnel-Programm von Edge Industrie.
+// Skriptstand je Linie, das Tunnel-Programm und die Bootapplikation von Edge
+// Industrie.
 const (
 	SkripteDatei          = "edge-light-openwrt.tar.gz"
 	IndustrieSkripteDatei = "edge-industrie-skripte.tar.gz"
 	WartungDatei          = "vp-wartung-linux-arm"
+	GrundprogrammDatei    = "edge-industrie-grundprogramm.tar.gz"
 )
 
 // Skripte beschreibt den Skriptstand eines Edge-Light- oder
@@ -202,6 +215,14 @@ type Skripte struct {
 
 // Wartung beschreibt das Tunnel-Programm eines Edge-Industrie-Release.
 type Wartung struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
+// Grundprogramm beschreibt die CODESYS-Bootapplikation (Basisprojekt) eines
+// Edge-Industrie-Release.
+type Grundprogramm struct {
 	Name   string `json:"name"`
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
@@ -540,6 +561,20 @@ func (m *Manifest) checkProduced() error {
 		}
 		if m.Wartung.Size <= 0 {
 			return errors.New("wartung.size: groesser als 0")
+		}
+	}
+	if m.Grundprogramm != nil {
+		if !strings.HasPrefix(m.Release, IndustrieReleasePrefix) {
+			return fmt.Errorf("grundprogramm: die Bootapplikation traegt nur ein Edge-Industrie-Release (%sJJJJ.MM.N)", IndustrieReleasePrefix)
+		}
+		if m.Grundprogramm.Name != GrundprogrammDatei {
+			return fmt.Errorf("grundprogramm.name: '%s' statt '%s'", m.Grundprogramm.Name, GrundprogrammDatei)
+		}
+		if !sha256Re.MatchString(m.Grundprogramm.SHA256) {
+			return errors.New("grundprogramm.sha256: 64 Zeichen 0-9a-f")
+		}
+		if m.Grundprogramm.Size <= 0 {
+			return errors.New("grundprogramm.size: groesser als 0")
 		}
 	}
 	for i, a := range m.Artifacts {

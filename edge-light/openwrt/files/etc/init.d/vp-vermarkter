@@ -1,0 +1,42 @@
+#!/bin/sh /etc/rc.common
+# Direktvermarktung: der OpenVPN-Tunnel zum Partner startet MIT DEM SYSTEM,
+# nicht mit dem Programm (vp-direktvermarktung-konzept d2 §5.4 "Neustart und
+# Update", PS-D8). Dieses Skript startet beim Booten genau einmal den Daemon
+# aus der Konfiguration, die vp-edge-light aus Profil und Zugang erzeugt hat
+# (/etc/vp-edge-light/vermarkter/openvpn.conf, nie die Datei des Partners im
+# Ganzen). Ohne diese Datei ist kein Anschluss eingerichtet und nichts
+# startet.
+#
+# Die UEBERWACHUNG gehoert dem Programm: vp-edge-light prueft den Daemon ueber
+# pid- und Stand-Datei, startet ihn bei Ausfall mit wachsender Pause neu,
+# schreibt die Firewall-Regeln (Zone vermarkter + /etc/nftables.d/
+# 30-vp-vermarkter.nft) und bindet die Modbus-Schnittstelle an die
+# Tunnel-Adresse. Darum hier kein procd-respawn: zwei Aufseher wuerden sich in
+# die Quere kommen. Der Daemon selbst verbindet mit wachsender Pause neu
+# (connect-retry in der Konfiguration).
+# shellcheck disable=SC2034 # START/STOP liest /etc/rc.common
+START=85
+# shellcheck disable=SC2034
+STOP=15
+
+KONFIG=/etc/vp-edge-light/vermarkter/openvpn.conf
+RAM=/tmp/vp-vermarkter
+
+start() {
+	[ -s "$KONFIG" ] || return 0
+	command -v openvpn >/dev/null 2>&1 || {
+		logger -t vp-vermarkter "FEHLER: openvpn fehlt - der Anschluss an den Direktvermarkter bleibt unten"
+		return 1
+	}
+	mkdir -p "$RAM" && chmod 700 "$RAM"
+	# Laeuft schon (Neustart des Skripts, nicht der Box)? Dann nichts tun.
+	if [ -s "$RAM/openvpn.pid" ] && kill -0 "$(cat "$RAM/openvpn.pid")" 2>/dev/null; then
+		return 0
+	fi
+	openvpn --cd / --config "$KONFIG" || logger -t vp-vermarkter "FEHLER: openvpn startet nicht (logread -e openvpn)"
+}
+
+stop() {
+	[ -s "$RAM/openvpn.pid" ] || return 0
+	kill "$(cat "$RAM/openvpn.pid")" 2>/dev/null || true
+}

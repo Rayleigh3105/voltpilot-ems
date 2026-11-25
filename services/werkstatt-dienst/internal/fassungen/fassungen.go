@@ -54,6 +54,10 @@ const (
 	IndustrieSkripteDatei = "edge-industrie-skripte.tar.gz"
 	IndustrieProgramm     = "vp-edge-industrie-linux-arm"
 	WartungProgramm       = "vp-wartung-linux-arm"
+	// GrundprogrammDatei ist die CODESYS-Bootapplikation des Basisprojekts,
+	// gebaut im eigenen Repo voltpilot-sps. Anders als die übrigen Anhänge
+	// optional: Eine Fassung ohne sie bleibt gültig.
+	GrundprogrammDatei = "edge-industrie-grundprogramm.tar.gz"
 	// IndustrieWurzel ist das Verzeichnis im Skriptstand des PFC200.
 	IndustrieWurzel = "edge-industrie"
 )
@@ -82,12 +86,19 @@ func Dateien(f freigabe.Freigabe, bauart string) (abbild, programm, skripte Date
 }
 
 // DateienPFC200 gibt die Dateien einer Freigabe für den PFC200 zurück: das
-// Programm, den Skriptstand und das Tunnel-Programm.
-func DateienPFC200(f freigabe.Freigabe) (programm, skripte, wartung Datei) {
+// Programm, den Skriptstand, das Tunnel-Programm und (wenn die Fassung sie
+// trägt) die Bootapplikation des Basisprojekts. Ohne grundprogramm_sha256 in
+// der Freigabe ist grundprogramm der Nullwert (Sha256 leer): Der Schritt
+// grundprogramm erkennt das und hält mit einem Handgriff an, statt eine Datei
+// ohne Prüfsumme anzunehmen.
+func DateienPFC200(f freigabe.Freigabe) (programm, skripte, wartung, grundprogramm Datei) {
 	i := f.EdgeIndustrie
 	programm = Datei{Name: IndustrieProgramm, URL: verbinde(i.Quelle, IndustrieProgramm), Sha256: i.ProgrammSha256, Max: MaxProgramm}
 	skripte = Datei{Name: IndustrieSkripteDatei, URL: verbinde(i.Quelle, IndustrieSkripteDatei), Sha256: i.SkripteSha256, Max: MaxSkripte}
 	wartung = Datei{Name: WartungProgramm, URL: verbinde(i.Quelle, WartungProgramm), Sha256: i.WartungSha256, Max: MaxProgramm}
+	if i.GrundprogrammSha256 != "" {
+		grundprogramm = Datei{Name: GrundprogrammDatei, URL: verbinde(i.Quelle, GrundprogrammDatei), Sha256: i.GrundprogrammSha256, Max: MaxSkripte}
+	}
 	return
 }
 
