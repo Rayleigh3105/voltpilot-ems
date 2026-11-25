@@ -5,12 +5,57 @@ import (
 	"testing"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/pfc200"
 )
 
-// Die vier Fälle des Schritts grundprogramm, die der Dienst nie von selbst
-// löst: alte Firmware, kein Grundprogramm in der Fassung, eine falsche
-// Prüfsumme (hält schon im Schritt fassungen, nie am Gerät) und ein fremdes
-// Programm auf der SPS.
+// Trägt die Freigabe kein Grundprogramm, übergeht sich der Schritt (kein
+// Handgriff, nichts am Gerät geändert, der Lauf macht normal weiter) - auch
+// wenn die Firmware zu alt dafür wäre: Sonst bliebe jeder Lauf stehen,
+// solange noch keine Fassung ein Grundprogramm trägt.
+func TestGrundprogrammUebersprungenOhneGrundprogrammInDerFassung(t *testing.T) {
+	t.Parallel()
+	a := neu(t)
+	a.f.EdgeIndustrie.GrundprogrammSha256 = ""
+	l, z := a.fahre(t, pfc200.AbWerk)
+	if z != lauf.Fertig {
+		t.Fatalf("Zustand %s im Schritt %s: %s", z, l.Stand().Schritt, l.Stand().Grund)
+	}
+	g := wert(t, a.belege(t, l)["grundprogramm"], "grundprogramm")
+	if !strings.Contains(g, "übersprungen") || !strings.Contains(g, "kein Grundprogramm") {
+		t.Fatalf("Beleg nennt nicht übersprungen: %q", g)
+	}
+	for _, x := range a.p.Befehle() {
+		if strings.Contains(x, "PlcLogic") {
+			t.Fatalf("das Gerät wurde trotz fehlendem Grundprogramm angefasst: %q", x)
+		}
+	}
+}
+
+func TestGrundprogrammUebersprungenAuchBeiZuAlterFirmware(t *testing.T) {
+	t.Parallel()
+	a := neu(t)
+	a.f.EdgeIndustrie.GrundprogrammSha256 = ""
+	a.p.SetzeFirmware("03.10.08(22)")
+	l, z := a.fahre(t, pfc200.AbWerk)
+	if z != lauf.Fertig {
+		t.Fatalf("Zustand %s im Schritt %s: %s", z, l.Stand().Schritt, l.Stand().Grund)
+	}
+	g := wert(t, a.belege(t, l)["grundprogramm"], "grundprogramm")
+	if !strings.Contains(g, "übersprungen") {
+		t.Fatalf("Beleg nennt nicht übersprungen: %q", g)
+	}
+	for _, x := range a.p.Befehle() {
+		if strings.Contains(x, "PlcLogic") {
+			t.Fatalf("das Gerät wurde trotz fehlendem Grundprogramm angefasst: %q", x)
+		}
+	}
+}
+
+// Die drei verbliebenen Fälle des Schritts grundprogramm, die der Dienst nie
+// von selbst löst (nur wenn die Freigabe ein Grundprogramm trägt): alte
+// Firmware, eine falsche Prüfsumme (hält schon im Schritt fassungen, nie am
+// Gerät) und ein fremdes Programm auf der SPS.
 
 func TestGrundprogrammFirmwareZuAlt(t *testing.T) {
 	t.Parallel()
@@ -26,24 +71,6 @@ func TestGrundprogrammFirmwareZuAlt(t *testing.T) {
 	for _, z := range a.p.Befehle() {
 		if strings.Contains(z, "PlcLogic") {
 			t.Fatalf("das Gerät wurde trotz alter Firmware angefasst: %q", z)
-		}
-	}
-}
-
-func TestGrundprogrammFehltInDerFassung(t *testing.T) {
-	t.Parallel()
-	a := neu(t)
-	a.f.EdgeIndustrie.GrundprogrammSha256 = ""
-	s := a.halt(t, "grundprogramm", faelle.PFCKeinGrundprogramm)
-	if !strings.Contains(s.Grund, a.f.EdgeIndustrie.Fassung) {
-		t.Fatalf("Grund nennt nicht die Fassung: %s", s.Grund)
-	}
-	if !s.Loesung.ZurSeite {
-		t.Fatal("nicht zur Seite")
-	}
-	for _, z := range a.p.Befehle() {
-		if strings.Contains(z, "PlcLogic") {
-			t.Fatalf("das Gerät wurde trotz fehlendem Grundprogramm angefasst: %q", z)
 		}
 	}
 }

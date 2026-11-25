@@ -189,7 +189,7 @@ export const PRUEFUNGEN_PFC200 = [
   { id: 'dienste_zu', text: 'Firewall ein, nur die Soll-Dienste offen, Docker aus, Start nur vom internen Speicher' },
   { id: 'neustart', text: 'Neustart-Probe: Tunnel wieder oben, dieselbe Referenz, derselbe Host-Schlüssel, Schalter auf RUN' },
   { id: 'update_bereit', text: 'Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Industrie' },
-  { id: 'grundprogramm', text: 'Grundprogramm eingespielt: Prüfsumme gegen das signierte Manifest bestätigt, CODESYS-Laufzeit läuft, ihr Modbus-Server lauscht auf Port 503' },
+  { id: 'grundprogramm', text: 'Grundprogramm eingespielt (Prüfsumme gegen das signierte Manifest bestätigt, CODESYS-Laufzeit läuft, ihr Modbus-Server lauscht auf Port 503) oder, trägt die Fassung keines, übersprungen' },
 ] as const;
 
 /** Die Prüfliste eines Geräts der Werkstatt (`pfc200`; sonst die Mango). */

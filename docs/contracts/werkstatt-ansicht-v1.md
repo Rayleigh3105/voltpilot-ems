@@ -109,7 +109,7 @@ Dazu kommen:
 | `pfc_schon_eingerichtet` | auf dem Gerät liegt schon ein Dienst von VoltPilot, ohne Lauf dieser Werkstatt | – | nein | ja |
 | `pfc_notfall_schluessel` | der Notfall-Schlüssel des Dienstes ist von einer Art, die der SSH-Dienst des PFC200 nicht annimmt (er nimmt nur RSA und ECDSA); am Gerät ist nichts geändert | – | nein | ja |
 | `pfc_firmware_alt` | die Firmware ist älter als die Hauptlinie 04.xx; die CODESYS-V3.5-Laufzeit für das Grundprogramm gibt es erst ab dieser Linie; am Gerät ist nichts geändert | – | nein | ja |
-| `pfc_kein_grundprogramm` | die Fassung der Freigabe trägt kein Grundprogramm (kein `grundprogramm_sha256`); am Gerät ist nichts geändert | – | nein | ja |
+| `pfc_kein_grundprogramm` | **nicht mehr erzeugt** (Entscheid vom 25.11.2026): Trägt die Fassung kein Grundprogramm, übergeht der Schritt sich sichtbar (Beleg „übersprungen“) statt anzuhalten - sonst bliebe jeder Lauf stehen, solange keine Fassung eines trägt. Der Code bleibt im Vertrag stehen (nie umbenennen), erscheint aber in keiner Ansicht mehr | – | nein | ja |
 | `pfc_grundprogramm_fremd` | auf der SPS liegt schon eine Boot-Applikation, die nicht das Grundprogramm dieser Freigabe ist; der Dienst überschreibt sie nie von selbst; am Gerät ist nichts geändert | – | nein | ja |
 | `pfc_grundprogramm_laedt_nicht` | die CODESYS-Laufzeit ließ sich nicht neu starten, oder das Grundprogramm läuft danach nicht nachweisbar (Prozess, Modbus-Server auf Port 503) | von Hand mit CODESYS online eine Boot-Applikation erzeugen, oder eine Sicherung „PLC Runtime Project“ einspielen (Web-Oberfläche) | nein | ja |
 
