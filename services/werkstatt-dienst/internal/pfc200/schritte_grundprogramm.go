@@ -22,27 +22,47 @@ import (
 // Koppelprobe bleiben SPS-Programmierung nach dem Lauf (Abschnitt 6.7 im
 // Konzept vp-pfc200-edge-konzept), nicht Werkstatt.
 //
-// Beleg-Lage, nach Konzept-Abschnitt 6.7/7 (PS-P14): CODESYS sagt allgemein,
-// eine offline erzeugte Boot-Applikation lasse sich „mit externen Werkzeugen
-// auf die Steuerung kopieren“ ([C-BA]); ein CODESYS-Forumsbeitrag nennt für
-// WAGO dafür den Ordner /home/codesys/PlcLogic/Application ([C-FO], keine
-// Herstelleraussage). Welcher Dienst die Laufzeit danach neu einliest, ist an
-// keinem echten Gerät belegt (PS-P14 offen) - wie der Rest dieses Pakets ab
-// dem Schritt zugaenge (README: „nicht an einem echten Gerät gelaufen“). Der
-// Schritt versucht darum mehrere plausible Dienst-Namen und hält mit einem
-// Handgriff an, statt etwas Falsches stillschweigend anzunehmen; der zweite,
-// im Konzept genannte Weg (eine Sicherung „PLC Runtime Project“ einspielen)
-// ist laut Handbuch ein Weg über das WBM (Web-Oberfläche), nicht über ein
-// Werkzeug von /etc/config-tools - also nicht aus der Werkstatt heraus
-// aufrufbar; der Handgriff nennt ihn als Fallback für die Technik.
+// Belegt: WAGO/pfc-firmware-sdk-G2, Tag FW24-V04.02.13,
+// ptxproj/projectroot/etc/init.d/runtime - prepare_home_dir() legt /home/codesys
+// als Verweis auf /home/codesys_root an (oder auf /media/sd, wenn
+// CODESYS_HOMEDIR_SDCARD=enabled); start_codesys3()/start_eruntime() starten
+// das Programm /usr/bin/codesys3; der Fall-Block kennt NUR start und stop,
+// kein restart. ptxproj/projectroot/etc/config-tools/terminate_codesys ruft
+// darum zum Beenden "/etc/init.d/runtime stop" auf und wartet, bis
+// `pidof codesys3` leer ist. Der Dienst folgt genau diesem belegten Weg: stop,
+// auf das Ende des Prozesses warten, start.
+//
+// Nicht belegt, trotz Suche im SDK (Kconfig/make-Regeln kennen das
+// Komponenten-Paket cds3-tscsyncbootproject = "TscSyncBootproject", aber sein
+// Quelltext liegt in wago_intern/, nicht im öffentlichen SDK): der genaue
+// Ordner und die Dateien der Boot-Applikation. CODESYS sagt allgemein, eine
+// offline erzeugte Boot-Applikation lasse sich „mit externen Werkzeugen auf
+// die Steuerung kopieren“ ([C-BA]); ein CODESYS-Forumsbeitrag nennt für WAGO
+// dafür den Ordner /home/codesys/PlcLogic/Application ([C-FO], keine
+// Herstelleraussage) - plausibel, weil /home/codesys laut obigem Beleg real
+// und auf diesem Gerät sinnvoll ist, aber nicht WAGO-belegt. Ob ein Neustart
+// der Laufzeit eine dort von außen abgelegte Datei tatsächlich wie eine
+// online erzeugte Boot-Applikation lädt, ist an keinem echten Gerät bewiesen
+// (PS-P14 offen) - wie der Rest dieses Pakets ab dem Schritt zugaenge
+// (README: „nicht an einem echten Gerät gelaufen“). Lädt sie nicht
+// nachweisbar, hält der Schritt mit einem Handgriff an, statt etwas Falsches
+// anzunehmen; der zweite, im Konzept genannte Weg (eine Sicherung „PLC
+// Runtime Project“ einspielen) ist laut Handbuch ein Weg über das WBM
+// (Web-Oberfläche), nicht über ein Werkzeug von /etc/config-tools - also
+// nicht aus der Werkstatt heraus aufrufbar; der Handgriff nennt ihn als
+// Fallback für die Technik.
 
-// CodesysMindestlinie ist die erste Firmware-Hauptlinie mit der
+// CodesysMindestlinie ist die Firmware-Hauptlinie mit der
 // CODESYS-V3.5-Laufzeit (WAGO-Firmware 04.xx, FW23 und neuer; Entscheid D1
-// der Pi-Ablösung). Die Linie 03 (e!COCKPIT, das Test-Gerät dieses Pakets)
-// kann das Grundprogramm nicht laden.
+// der Pi-Ablösung). Belegt im selben init-Skript wie oben: Es liest
+// FIRMWARE="$(cat /etc/REVISIONS)" und prüft "${FIRMWARE:10:1}" == "4" (das
+// erste Zeichen der Hauptversion in "FIRMWARE=04.02.13(24)"), um CODESYS V3.5
+// von der älteren Linie zu unterscheiden. Die Linie 03 (e!COCKPIT, das
+// Test-Gerät dieses Pakets) kann das Grundprogramm nicht laden.
 const CodesysMindestlinie = 4
 
-// codesysBootApplikation ist der Ordner der Boot-Applikation auf dem Gerät.
+// codesysBootApplikation ist der Ordner der Boot-Applikation auf dem Gerät
+// (forumsbelegt, nicht WAGO-belegt - siehe oben).
 const codesysBootApplikation = "/home/codesys/PlcLogic/Application"
 
 // codesysMarke trägt die Prüfsumme des zuletzt von dieser Werkstatt
@@ -51,11 +71,9 @@ const codesysBootApplikation = "/home/codesys/PlcLogic/Application"
 // ein zweites Mal zu schreiben oder ein fremdes zu überschreiben.
 const codesysMarke = codesysBootApplikation + "/.vp-grundprogramm-sha256"
 
-// codesysDienstKandidaten sind die Namen, unter denen die BusyBox-Firmware
-// des PFC200 den Dienst der CODESYS-Laufzeit starten könnte. Keiner davon ist
-// an einem echten Gerät belegt (siehe oben): Der Neustart versucht sie der
-// Reihe nach und meldet deutlich, wenn keiner passt.
-var codesysDienstKandidaten = []string{"/etc/init.d/pfc-codesys3", "/etc/init.d/codesys3", "/etc/init.d/runtime"}
+// codesysLaufzeitDienst ist das einzige belegte Dienst-Skript der
+// CODESYS-Laufzeit (siehe oben).
+const codesysLaufzeitDienst = "/etc/init.d/runtime"
 
 // befehlGrundprogrammStand liest, was auf der SPS liegt, ohne etwas zu ändern.
 const befehlGrundprogrammStand = `D='` + codesysBootApplikation + `'
@@ -63,12 +81,15 @@ echo "marke=$(cat '` + codesysMarke + `' 2>/dev/null)"
 echo "dateien=$(find "$D" -mindepth 1 -maxdepth 1 ! -name '.vp-grundprogramm-sha256' 2>/dev/null | wc -l | tr -d ' ')"`
 
 // befehlGrundprogrammLaeuft prüft, OHNE eine Anlagen-Kopplung (Koppelprobe)
-// zu versuchen: läuft der Prozess der Laufzeit, und lauscht ihr
-// Modbus-TCP-Server (den das Grundprogramm immer anlegt, Konzept 4.4) auf der
-// Schleife. Kein Register wird gelesen - das bleibt dem späteren Koppelbild
-// vorbehalten; dieser Schritt beweist nur das Gerät, nicht die Anlage.
+// zu versuchen: läuft der Prozess der Laufzeit, und lauscht der
+// Modbus-TCP-Server, den das Grundprogramm anlegt (VoltPilot_Ethernet, Port
+// 503 - Basisprojekt voltpilot-sps, README Abschnitt 5 „Modbus_Server“; auf
+// JEDER Adresse geprüft, weil die Adresse von VoltPilot_Ethernet an der
+// Werkbank nicht feststeht). Kein Register wird gelesen - das bleibt dem
+// späteren Koppelbild vorbehalten; dieser Schritt beweist nur das Gerät,
+// nicht die Anlage.
 const befehlGrundprogrammLaeuft = `echo "codesys=$(if pidof codesys3 >/dev/null 2>&1; then echo laeuft; else echo nein; fi)"
-echo "modbus=$(if netstat -ltn 2>/dev/null | grep -q '127\.0\.0\.1:502 '; then echo laeuft; else echo nein; fi)"`
+echo "modbus=$(if netstat -ltn 2>/dev/null | grep -q ':503 '; then echo laeuft; else echo nein; fi)"`
 
 // firmwareHauptlinie liest die erste Zifferngruppe vor dem ersten Punkt
 // (03.10.08(22) -> 3, 04.02.13(24) -> 4).
@@ -78,18 +99,18 @@ func firmwareHauptlinie(firmware string) (int, bool) {
 	return n, err == nil
 }
 
-// codesysNeustart startet die CODESYS-Laufzeit neu, über den ersten
-// passenden Dienst-Namen aus codesysDienstKandidaten.
+// codesysNeustart startet die CODESYS-Laufzeit neu: stop, auf das Ende des
+// Prozesses warten, start (belegter Weg, siehe oben) - kein "restart", das
+// gibt es im Dienst-Skript nicht.
 func (l *Lauf) codesysNeustart(ctx context.Context) error {
-	skript := "for d in"
-	for _, d := range codesysDienstKandidaten {
-		skript += " " + shellWort(d)
-	}
-	skript += `; do
-  if [ -x "$d" ]; then "$d" restart >/dev/null 2>&1; exit $?; fi
-done
-echo "FEHLER: kein Dienst-Skript der CODESYS-Laufzeit gefunden (versucht: ` + strings.Join(codesysDienstKandidaten, ", ") + `)" >&2
-exit 9`
+	skript := codesysLaufzeitDienst + ` stop
+i=0
+while pidof codesys3 >/dev/null 2>&1 && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+if pidof codesys3 >/dev/null 2>&1; then
+  echo "FEHLER: codesys3 lief nach ` + codesysLaufzeitDienst + ` stop noch nach 10 s" >&2
+  exit 9
+fi
+exec ` + codesysLaufzeitDienst + ` start`
 	_, err := l.fuehre(ctx, skript, "")
 	return err
 }
@@ -157,7 +178,7 @@ func (l *Lauf) grundprogrammEinspielen(ctx context.Context, _ *lauf.Kontext) (pr
 			return err
 		}
 		if w2["codesys"] != "laeuft" || w2["modbus"] != "laeuft" {
-			return fmt.Errorf("CODESYS-Laufzeit %s, Modbus-Server auf der Schleife %s", orKeins(w2["codesys"]), orKeins(w2["modbus"]))
+			return fmt.Errorf("CODESYS-Laufzeit %s, Modbus-Server auf Port 503 %s", orKeins(w2["codesys"]), orKeins(w2["modbus"]))
 		}
 		return nil
 	})
@@ -166,6 +187,6 @@ func (l *Lauf) grundprogrammEinspielen(ctx context.Context, _ *lauf.Kontext) (pr
 			Grund: "Das Grundprogramm läuft nach dem Neustart der Laufzeit nicht nachweisbar (" + err.Error() +
 				"). Entweder von Hand mit CODESYS online eine Boot-Applikation erzeugen, oder eine Sicherung „PLC Runtime Project“ einspielen (Web-Oberfläche des Geräts)."}
 	}
-	l.belege["grundprogramm"] = fmt.Sprintf("Schritt grundprogramm: sha256 %s nach %s eingespielt, CODESYS-Laufzeit neu gestartet und läuft, ihr Modbus-Server lauscht auf 127.0.0.1:502 (kein Register gelesen, keine Koppelprobe)", soll, codesysBootApplikation)
-	return b.Mit("laeuft", "CODESYS läuft, Modbus-Server auf der Schleife"), nil
+	l.belege["grundprogramm"] = fmt.Sprintf("Schritt grundprogramm: sha256 %s nach %s eingespielt, CODESYS-Laufzeit neu gestartet und läuft, ihr Modbus-Server (VoltPilot_Ethernet) lauscht auf Port 503 (kein Register gelesen, keine Koppelprobe)", soll, codesysBootApplikation)
+	return b.Mit("laeuft", "CODESYS läuft, Modbus-Server auf Port 503"), nil
 }

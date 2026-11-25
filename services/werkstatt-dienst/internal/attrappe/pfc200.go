@@ -138,7 +138,7 @@ touch "$VP_PFC_WURZEL/var/lib/pfc-attrappe/neustart"
 	"netstat": `#!/bin/sh
 echo "tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN"
 [ -e "$VP_PFC_WURZEL/var/lib/pfc-attrappe/edge.laeuft" ] && echo "tcp        0      0 :::8484                 :::*                    LISTEN"
-[ -e "$VP_PFC_WURZEL/var/lib/pfc-attrappe/codesys/laeuft" ] && echo "tcp        0      0 127.0.0.1:502           0.0.0.0:*               LISTEN"
+[ -e "$VP_PFC_WURZEL/var/lib/pfc-attrappe/codesys/laeuft" ] && echo "tcp        0      0 192.168.1.17:503        0.0.0.0:*               LISTEN"
 exit 0
 `,
 	"ip": `#!/bin/sh
@@ -340,13 +340,14 @@ case "$was" in
 esac
 `
 
-// codesysInitSkript spielt den Dienst der CODESYS-Laufzeit nach (Schritt
-// grundprogramm): "restart" setzt die Marke, die pidof und netstat sehen.
+// codesysInitSkript spielt /etc/init.d/runtime nach (Schritt grundprogramm,
+// belegt: WAGO/pfc-firmware-sdk-G2 FW24-V04.02.13): "start" setzt die Marke,
+// die pidof und netstat sehen, "stop" nimmt sie weg; kein "restart".
 const codesysInitSkript = `#!/bin/sh
 Z="$VP_PFC_WURZEL/var/lib/pfc-attrappe/codesys"
 mkdir -p "$Z"
 case "$1" in
-  restart|start)
+  start)
     [ -e "$Z/startet-nicht" ] && { echo "FEHLER: Laufzeit startet nicht" >&2; exit 1; }
     touch "$Z/laeuft"
     ;;
@@ -471,11 +472,9 @@ func NeuerPFC200(t testing.TB) *PFC200 {
 	// gemeldete Firmware-Zeile ist diese; SetzeFirmware stellt sie für einen
 	// Test auf die ältere Linie zurück.
 	p.schreibe(filepath.Join(w, "etc/REVISIONS"), "FIRMWARE=04.02.13(24)\n", 0o644)
-	// codesys3: die CODESYS-V3.5-Laufzeit, als Dienst-Skript und über pidof/
-	// netstat sichtbar (Schritt grundprogramm). Der Name ist nicht an einem
-	// echten Gerät belegt (siehe pfc200.codesysBootApplikation); die Attrappe
-	// bietet ihn als einen der Kandidaten an, die der Dienst versucht.
-	p.schreibe(filepath.Join(w, "etc/init.d/codesys3"), codesysInitSkript, 0o755)
+	// /etc/init.d/runtime: der belegte Dienst der CODESYS-V3.5-Laufzeit
+	// (codesys3), über pidof/netstat sichtbar (Schritt grundprogramm).
+	p.schreibe(filepath.Join(w, "etc/init.d/runtime"), codesysInitSkript, 0o755)
 	p.schreibe(filepath.Join(w, "proc/sys/net/ipv4/ip_forward"), "0\n", 0o644)
 	// Ab Werk liegt kein Schlüssel auf dem Gerät; ein Test legt einen fremden dazu.
 	p.schreibe(filepath.Join(w, "root/.ssh/authorized_keys"), "", 0o600)

@@ -401,12 +401,11 @@ func TestLaufAbWerk(t *testing.T) {
 		"D='" + codesysOrdner + "'",
 		"mkdir -p '" + codesysOrdner + "' && tar -xzf - -C '" + codesysOrdner + "'",
 		"printf '%s' '" + a.f.EdgeIndustrie.GrundprogrammSha256 + "' > '" + codesysOrdner + "/.vp-grundprogramm-sha256'",
-		"for d in '/etc/init.d/pfc-codesys3' '/etc/init.d/codesys3' '/etc/init.d/runtime';",
+		"/etc/init.d/runtime stop",
 		"echo \"codesys=",
 	}
 	for _, z := range a.p.Befehle() {
-		spsBefehl := strings.Contains(z, "PlcLogic") || strings.Contains(z, "pidof codesys3") || strings.Contains(z, "init.d/codesys3") ||
-			strings.Contains(z, "init.d/pfc-codesys3") || strings.Contains(z, "init.d/runtime")
+		spsBefehl := strings.Contains(z, "PlcLogic") || strings.Contains(z, "pidof codesys3") || strings.Contains(z, "init.d/runtime")
 		if !spsBefehl {
 			if strings.Contains(z, "config_docker") && !strings.Contains(z, "deactivate") {
 				t.Errorf("config_docker jenseits von deactivate: %q", z)

@@ -111,7 +111,7 @@ Dazu kommen:
 | `pfc_firmware_alt` | die Firmware ist älter als die Hauptlinie 04.xx; die CODESYS-V3.5-Laufzeit für das Grundprogramm gibt es erst ab dieser Linie; am Gerät ist nichts geändert | – | nein | ja |
 | `pfc_kein_grundprogramm` | die Fassung der Freigabe trägt kein Grundprogramm (kein `grundprogramm_sha256`); am Gerät ist nichts geändert | – | nein | ja |
 | `pfc_grundprogramm_fremd` | auf der SPS liegt schon eine Boot-Applikation, die nicht das Grundprogramm dieser Freigabe ist; der Dienst überschreibt sie nie von selbst; am Gerät ist nichts geändert | – | nein | ja |
-| `pfc_grundprogramm_laedt_nicht` | die CODESYS-Laufzeit ließ sich nicht neu starten, oder das Grundprogramm läuft danach nicht nachweisbar (Prozess, Modbus-Server auf der Schleife) | von Hand mit CODESYS online eine Boot-Applikation erzeugen, oder eine Sicherung „PLC Runtime Project“ einspielen (Web-Oberfläche) | nein | ja |
+| `pfc_grundprogramm_laedt_nicht` | die CODESYS-Laufzeit ließ sich nicht neu starten, oder das Grundprogramm läuft danach nicht nachweisbar (Prozess, Modbus-Server auf Port 503) | von Hand mit CODESYS online eine Boot-Applikation erzeugen, oder eine Sicherung „PLC Runtime Project“ einspielen (Web-Oberfläche) | nein | ja |
 
 Am PFC200 heißt `passwort_fremd`: Das Werkspasswort wird abgewiesen oder ein Passwort ist nicht mehr das ab Werk, ohne Lauf dieser Werkstatt.
 Den Werksreset nennt der Dienst dann nie: Er löscht das SPS-Programm auf dem Gerät.

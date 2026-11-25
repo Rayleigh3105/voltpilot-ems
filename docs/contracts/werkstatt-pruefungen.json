@@ -109,7 +109,7 @@
         {
           "id": "grundprogramm",
           "regel": "Konzept PFC200 6.7",
-          "text": "Grundprogramm eingespielt: Prüfsumme gegen das signierte Manifest bestätigt, CODESYS-Laufzeit läuft, ihr Modbus-Server lauscht auf der Schleife"
+          "text": "Grundprogramm eingespielt: Prüfsumme gegen das signierte Manifest bestätigt, CODESYS-Laufzeit läuft, ihr Modbus-Server lauscht auf Port 503"
         }
       ]
     }
