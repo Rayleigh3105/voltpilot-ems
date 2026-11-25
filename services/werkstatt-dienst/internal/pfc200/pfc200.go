@@ -456,7 +456,7 @@ func (l *Lauf) fuehre(ctx context.Context, befehl string, ein string) (box.Ergeb
 		return erg, err
 	}
 	if erg.Code != 0 {
-		return erg, fmt.Errorf("auf dem Gerät: %q endete mit %d: %s", kurz(befehl, 70), erg.Code, letzte(geheim.Schwaerze(erg.Text()), 4))
+		return erg, fmt.Errorf("auf dem Gerät: %q endete mit %d: %s", kurz(befehl, 70), erg.Code, ausgabeOderHinweis(geheim.Schwaerze(erg.Text()), 4))
 	}
 	return erg, nil
 }
@@ -526,6 +526,18 @@ func letzte(s string, n int) string {
 		z = z[len(z)-n:]
 	}
 	return strings.Join(z, " | ")
+}
+
+// ausgabeOderHinweis gibt die letzten n Zeilen einer Ausgabe zurück, oder
+// einen Hinweis statt nichts: Manche Werkzeuge der Firmware geben bei einem
+// Fehler nichts aus (etwa config_linux_user bei user=root), und ein Satz, der
+// mitten im Nichts endet, liest sich wie eine abgeschnittene Anzeige statt
+// wie eine leere Ausgabe.
+func ausgabeOderHinweis(s string, n int) string {
+	if t := letzte(s, n); t != "" {
+		return t
+	}
+	return "(keine Ausgabe)"
 }
 
 // zeilenMit gibt die Zeilen zurück, die eines der Stichwörter enthalten.

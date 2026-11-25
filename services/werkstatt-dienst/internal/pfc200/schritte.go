@@ -667,7 +667,15 @@ func (l *Lauf) zugaengeSetzen(ctx context.Context, _ *lauf.Kontext) (protokoll.B
 	b = b.Mit("passwort_age", text)
 	l.passwortAge = text
 	for i, u := range benutzer {
-		if _, err := l.fuehre(ctx, Werkzeuge+"/config_linux_user user="+u.name+" hash="+shellWort(hashes[i]), ""); err != nil {
+		// config_linux_user lehnt user=root grundsaetzlich ab (WAGO-Quelltext
+		// config_linux_user.c/shadow_functions.c, FW22 und FW24+ gleich: exit 2,
+		// ohne jede Ausgabe). root hat durch den Lauf-Schluessel oben schon eine
+		// Shell, darum setzt usermod den Hash direkt.
+		befehl := Werkzeuge + "/config_linux_user user=" + u.name + " hash=" + shellWort(hashes[i])
+		if u.name == "root" {
+			befehl = "usermod -p " + shellWort(hashes[i]) + " root"
+		}
+		if _, err := l.fuehre(ctx, befehl, ""); err != nil {
 			return b, fmt.Errorf("Passwort von %s setzen: %w", u.name, err)
 		}
 	}
