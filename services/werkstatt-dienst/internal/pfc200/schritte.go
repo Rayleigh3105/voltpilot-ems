@@ -434,9 +434,11 @@ func dnsListe(roh string) ([]string, error) {
 
 // befehlInternet prüft den Weg des Geräts ins Internet: Name, Weg, Uhr und
 // Zertifikat in einem (curl prüft das Zertifikat des Portals; mit der Uhr ab
-// Werk gälte es als noch nicht gültig).
+// Werk gälte es als noch nicht gültig). Die Adresse ist die des Geräts
+// (geraetPortalURL), nie die des Dienstes im Cluster: Das Gerät kann eine
+// Cluster-interne Adresse nie auflösen.
 func (l *Lauf) befehlInternet() string {
-	adresse := shellWort(l.k.portalURL() + "/api/v1/edge/trust-set/trust-set.json")
+	adresse := shellWort(l.k.geraetPortalURL() + "/api/v1/edge/trust-set/trust-set.json")
 	return `echo "weg=$(ip -4 route show default 2>/dev/null | head -n 1)"
 if command -v curl >/dev/null 2>&1; then
   if curl -fsS --max-time 20 -o /dev/null ` + adresse + ` 2>/tmp/vp-werkstatt-internet.err; then echo internet=ja; else echo internet=nein; fi
@@ -531,7 +533,7 @@ func (l *Lauf) internetAn(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg
 	if err != nil {
 		return b.Mit("standardweg", w["weg"]).Mit("internet", w["internet"]), fmt.Errorf("kein Internet über die Brücke: %w", err)
 	}
-	b = b.Mit("standardweg", w["weg"]).Mit("internet", l.k.portalURL()+" erreichbar über die Brücke, Zertifikat geprüft (befristet, am Ende entfernt)")
+	b = b.Mit("standardweg", w["weg"]).Mit("internet", l.k.geraetPortalURL()+" erreichbar über die Brücke, Zertifikat geprüft (befristet, am Ende entfernt)")
 
 	// Zeitabgleich ein: Er bleibt nach dem Lauf an, sonst scheitern beim
 	// Kunden TLS und der Wartungstunnel an einer falschen Uhr.

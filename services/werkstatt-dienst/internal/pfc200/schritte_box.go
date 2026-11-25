@@ -117,7 +117,7 @@ func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protoko
 	if err != nil {
 		return nil, err
 	}
-	env := []string{"VP_TRUST_SET_DIR=" + dir, "VP_PORTAL_URL=" + l.k.portalURL()}
+	env := []string{"VP_TRUST_SET_DIR=" + dir, "VP_PORTAL_URL=" + l.k.geraetPortalURL()}
 	if l.pfadManifest != "" {
 		env = append(env, "VP_INDUSTRIE_MANIFEST="+l.pfadManifest)
 	}
@@ -139,12 +139,12 @@ func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protoko
 	if r.Code != 0 || !strings.Contains(r.Ausgabe, "Pruefsumme auf dem Geraet bestaetigt") {
 		return b, fmt.Errorf("install.sh endete mit %d: %s", r.Code, letzte(r.Ausgabe, 4))
 	}
-	// Das Portal des Dienstes gilt auch für das Gerät (in der Probe ein anderes
-	// als das der Vorgabe).
-	if l.k.PortalURL != "" {
-		if _, err := l.fuehre(ctx, konfigSetzen("portal_url", l.k.portalURL()), ""); err != nil {
-			return b, err
-		}
+	// Die vom Gerät aus erreichbare Adresse des Portals gilt dauerhaft für das
+	// Gerät (in der Probe eine andere als die Vorgabe) - nie die Adresse des
+	// Dienstes im Cluster (l.k.portalURL, oben nur für den eigenen Abruf des
+	// Vertrauens-Sets).
+	if _, err := l.fuehre(ctx, konfigSetzen("portal_url", l.k.geraetPortalURL()), ""); err != nil {
+		return b, err
 	}
 	if _, err := l.fuehre(ctx, dienstEdge+" restart >/dev/null 2>&1 </dev/null", ""); err != nil {
 		return b, err

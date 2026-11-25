@@ -292,22 +292,23 @@ func dienstLaufen(log *slog.Logger) error {
 	var pk *pfc200.Konfig
 	if k.PFC200.An {
 		pk = &pfc200.Konfig{
-			Werkbank:   wb,
-			Fassungen:  mk.Fassungen,
-			Arbeit:     k.Arbeit,
-			LanNetz:    k.LanNetz,
-			LanBruecke: k.LanBruecke,
-			DNS:        k.DNS,
-			Zeitserver: k.PFC200.Zeitserver,
-			Notfall:    k.PFC200.Notfall,
-			Empfaenger: empf,
-			WartungPub: k.WartungPub,
-			WartungEP:  k.WartungEndpunkt,
-			BoxNetz:    k.BoxNetz,
-			PortalURL:  k.PortalURL,
-			Spuren:     ablage,
-			Zeiten:     pfc200.VorgabeZeiten,
-			Log:        log.With("logger", "pfc200"),
+			Werkbank:        wb,
+			Fassungen:       mk.Fassungen,
+			Arbeit:          k.Arbeit,
+			LanNetz:         k.LanNetz,
+			LanBruecke:      k.LanBruecke,
+			DNS:             k.DNS,
+			Zeitserver:      k.PFC200.Zeitserver,
+			Notfall:         k.PFC200.Notfall,
+			Empfaenger:      empf,
+			WartungPub:      k.WartungPub,
+			WartungEP:       k.WartungEndpunkt,
+			BoxNetz:         k.BoxNetz,
+			PortalURL:       k.PortalURL,
+			GeraetPortalURL: k.GeraetPortalURL,
+			Spuren:          ablage,
+			Zeiten:          pfc200.VorgabeZeiten,
+			Log:             log.With("logger", "pfc200"),
 		}
 		if c, ok := ptl.(portal.Client); ok {
 			pk.Portal = c
@@ -323,7 +324,7 @@ func dienstLaufen(log *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		fk := fernlauf.Konfig{Fassungen: mk.Fassungen, PortalURL: k.PortalURL, Bauart: k.Bauart, Arbeit: k.Arbeit,
+		fk := fernlauf.Konfig{Fassungen: mk.Fassungen, PortalURL: k.PortalURL, GeraetPortalURL: k.GeraetPortalURL, Bauart: k.Bauart, Arbeit: k.Arbeit,
 			Portal: c, Ablage: fa, Log: log.With("logger", "fernlauf")}
 		if k.TechnikerSSH != nil {
 			fk.Zugang, fk.SSH = wartung.Zugang{Privat: k.TechnikerWG, Adresse: k.TechnikerAdresse}, k.TechnikerSSH
