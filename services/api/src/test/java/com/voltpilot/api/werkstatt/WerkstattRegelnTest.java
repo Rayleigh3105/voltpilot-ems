@@ -48,7 +48,7 @@ class WerkstattRegelnTest {
                 || p.contains("firmware") || p.contains("wlan"));
         assertThat(WerkstattPruefungen.fehlend(WerkstattRegel.PFC200, List.of("zugaenge", "neustart")))
                 .containsExactly("notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel",
-                        "fenster_zu", "netze", "dienste_zu", "update_bereit");
+                        "fenster_zu", "netze", "dienste_zu", "update_bereit", "grundprogramm");
         assertThat(WerkstattPruefungen.unbekannt(WerkstattRegel.PFC200, List.of("zugaenge", "root_passwort",
                 "lan_netz"))).containsExactly("lan_netz", "root_passwort");
     }

@@ -76,6 +76,20 @@ const (
 	// PFCNotfallSchluessel: Der Notfall-Schlüssel des Dienstes ist Ed25519;
 	// der SSH-Dienst des PFC200 nimmt nur RSA und ECDSA.
 	PFCNotfallSchluessel = "pfc_notfall_schluessel"
+	// PFCFirmwareAlt: Die Firmware des Geräts ist älter als 04.xx; die
+	// CODESYS-Laufzeit für das Grundprogramm gibt es erst ab dieser Linie.
+	PFCFirmwareAlt = "pfc_firmware_alt"
+	// PFCKeinGrundprogramm: Die Fassung der Freigabe trägt kein Grundprogramm
+	// (das Feld entsteht nur, wenn die Technik eines aus voltpilot-sps anhängt).
+	PFCKeinGrundprogramm = "pfc_kein_grundprogramm"
+	// PFCGrundprogrammFremd: Auf der SPS liegt schon eine Boot-Applikation,
+	// die nicht das Grundprogramm dieser Freigabe ist. Der Dienst überschreibt
+	// sie nie von selbst.
+	PFCGrundprogrammFremd = "pfc_grundprogramm_fremd"
+	// PFCGrundprogrammLaedtNicht: Die CODESYS-Laufzeit ließ sich nicht neu
+	// starten, oder das Grundprogramm läuft danach nicht nachweisbar (PS-P14
+	// des Konzepts vp-pfc200-edge-konzept ist an keinem echten Gerät belegt).
+	PFCGrundprogrammLaedtNicht = "pfc_grundprogramm_laedt_nicht"
 )
 
 const (
@@ -140,13 +154,17 @@ const (
 // und, wo der Text der Mango nicht passt, eigene Texte für die gemeinsamen.
 // Ein Code, der hier fehlt, hat für beide Geräte denselben Text.
 var tabellePFC200 = map[string]Loesung{
-	PFCPasswort:          {Titel: "Dieser PFC200 ist nur halb eingerichtet.", Schritte: []string{pfcWerk, pfcWerkFolge, pfcStop, pfcResetLang, pfcRun, pfcAdresse}, Selbst: true},
-	PFCSchalterStop:      {Titel: "Der Betriebsartenschalter steht auf STOP.", Schritte: []string{pfcRun, "Sonst nichts tun: Der Dienst macht von selbst weiter."}, Selbst: true},
-	PFCKabelX1:           {Titel: "Das orange Kabel steckt nicht in der Buchse X2.", Schritte: []string{"Das orange Kabel WERKSTATT in die Buchse X2 des PFC200 stecken. Die Buchse X1 bleibt leer.", "Sonst nichts tun: Der Dienst macht von selbst weiter."}, Selbst: true},
-	PFCDockerAn:          {Titel: "Docker ließ sich auf diesem PFC200 nicht automatisch ausschalten.", Schritte: []string{"In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten. Fremde Container bleiben dabei stehen.", pfcKurzAb + " Der Dienst fängt neu an."}, Selbst: true},
-	PFCFalschesGeraet:    {Titel: "Das ist kein PFC200 750-8212.", Schritte: []string{zurSeite}, ZurSeite: true},
-	PFCSchonEingerichtet: {Titel: "Auf diesem PFC200 ist schon Edge Industrie.", Schritte: []string{"Nicht zurücksetzen.", zurSeite}, ZurSeite: true},
-	PFCNotfallSchluessel: {Titel: "Der Notfall-Schlüssel passt nicht zum PFC200.", Schritte: []string{"Der PFC200 ist noch unverändert. " + zurSeite, "Die Technik hinterlegt einen Notfall-Schlüssel der Art RSA oder ECDSA: Ed25519 nimmt der PFC200 nicht."}, ZurSeite: true},
+	PFCPasswort:                {Titel: "Dieser PFC200 ist nur halb eingerichtet.", Schritte: []string{pfcWerk, pfcWerkFolge, pfcStop, pfcResetLang, pfcRun, pfcAdresse}, Selbst: true},
+	PFCSchalterStop:            {Titel: "Der Betriebsartenschalter steht auf STOP.", Schritte: []string{pfcRun, "Sonst nichts tun: Der Dienst macht von selbst weiter."}, Selbst: true},
+	PFCKabelX1:                 {Titel: "Das orange Kabel steckt nicht in der Buchse X2.", Schritte: []string{"Das orange Kabel WERKSTATT in die Buchse X2 des PFC200 stecken. Die Buchse X1 bleibt leer.", "Sonst nichts tun: Der Dienst macht von selbst weiter."}, Selbst: true},
+	PFCDockerAn:                {Titel: "Docker ließ sich auf diesem PFC200 nicht automatisch ausschalten.", Schritte: []string{"In der Web-Oberfläche des PFC200 (WBM) unter „Docker“ den Dienst ausschalten. Fremde Container bleiben dabei stehen.", pfcKurzAb + " Der Dienst fängt neu an."}, Selbst: true},
+	PFCFalschesGeraet:          {Titel: "Das ist kein PFC200 750-8212.", Schritte: []string{zurSeite}, ZurSeite: true},
+	PFCSchonEingerichtet:       {Titel: "Auf diesem PFC200 ist schon Edge Industrie.", Schritte: []string{"Nicht zurücksetzen.", zurSeite}, ZurSeite: true},
+	PFCNotfallSchluessel:       {Titel: "Der Notfall-Schlüssel passt nicht zum PFC200.", Schritte: []string{"Der PFC200 ist noch unverändert. " + zurSeite, "Die Technik hinterlegt einen Notfall-Schlüssel der Art RSA oder ECDSA: Ed25519 nimmt der PFC200 nicht."}, ZurSeite: true},
+	PFCFirmwareAlt:             {Titel: "Die Firmware ist zu alt für das Grundprogramm.", Schritte: []string{zurSeite, "Die Technik prüft, ob dieses Gerät eine neuere Firmware braucht."}, ZurSeite: true},
+	PFCKeinGrundprogramm:       {Titel: "Für diese Fassung gibt es noch kein Grundprogramm.", Schritte: []string{zurSeite, "Die Technik ergänzt das Grundprogramm am Release."}, ZurSeite: true},
+	PFCGrundprogrammFremd:      {Titel: "Auf der SPS liegt schon ein anderes Programm.", Schritte: []string{"Nicht überschreiben lassen. " + zurSeite, "Die Technik sieht sich das Programm auf der SPS an."}, ZurSeite: true},
+	PFCGrundprogrammLaedtNicht: {Titel: "Das Grundprogramm läuft nicht auf der SPS.", Schritte: []string{zurSeite, "Die Technik lädt es von Hand mit CODESYS."}, ZurSeite: true},
 
 	KeineBox:            {Titel: "Am Kabel antwortet noch kein PFC200.", Schritte: []string{pfcStrom, "Antwortet er dann nicht, braucht er die feste Adresse: " + pfcStop, pfcResetLang, pfcRun, pfcAdresse}, Selbst: true},
 	KeinKabel:           {Titel: "Kein Kabel am Werkstatt-Anschluss.", Schritte: []string{"Das orange Kabel WERKSTATT in die Buchse X2 des PFC200 stecken."}, Selbst: true},

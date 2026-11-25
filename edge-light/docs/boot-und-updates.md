@@ -93,6 +93,25 @@ Sie ändern sich nur durch `edge-industrie/install.sh`.
 Der Loader des PFC200 trägt deshalb nicht `LOADER_STAND`, sondern `PFC_LOADER_STAND`, und dazu `ABGLEICH_MANGO_STAND`: Die Funktionen des Update-Protokolls stehen in beiden Loadern wortgleich, `edge-industrie/scripts/loader-abgleich.sh` (Teil von `scripts/test.sh`) erzwingt das.
 Wer `LOADER_STAND` der Mango erhöht, zieht die geänderte Funktion im Loader des PFC200 nach, setzt `ABGLEICH_MANGO_STAND` auf den neuen Stand, erhöht `PFC_LOADER_STAND` und lässt `edge-industrie/test/update-probe.sh` laufen.
 
+### WLAN-Skripte
+
+Über `wlan-anschluss.sh` und `einrichtung-wlan.sh` ([Ohne Kabel zum Router](mango.md#ohne-kabel-zum-router-wlan-anschluss)) hängt eine WLAN-Box am Netz, und der Wartungstunnel läuft darüber.
+Bis edge-light-2026.11.18 kamen sie nur durch die Werkstatt oder von Hand durch den Tunnel; der Fix `wege` (24.11.2026) erreichte so am 25.11.2026 nur die Box 10.10.16.5.
+Seitdem bringt das Programm beide eingebettet mit (`edge-app/core/internal/wlanstand`, byte-gleich mit den Quellen unter `openwrt/files/`, vom Test erzwungen) und spielt sie selbst ein (`agent/wlan_pflege.go`) - nach den Regeln 1 bis 6 oben, mit diesen Ergänzungen:
+
+- **Eigener Stand.** `wlan-anschluss.sh` trägt `WLAN_STAND=<n>`: ein Stand für beide Skripte, unabhängig von `LOADER_STAND`; kein Stand (alle Fassungen bis edge-light-2026.11.18) zählt als 0. Wer eines der beiden Skripte ändert, erhöht ihn und schreibt `wlanstand/stand-verlauf` fort; der Test des Pakets erzwingt beides.
+- **Prüfung vor dem Ersetzen.** Die neue Fassung muss `sh -n` mit der Shell der Box bestehen, bevor sie umbenannt wird; sonst bleibt die alte.
+- **Rückfall daneben.** Die bisherige Fassung bleibt als `wlan-anschluss.sh.alt` und `einrichtung-wlan.sh.alt` liegen. Zurück geht es mit `mv`; wie beim Loader hält das nur, bis ein Programm mit neuerem Stand startet.
+- **Nur, was da ist.** Ohne `wlan-anschluss.sh` schreibt das Programm nichts. Fehlt `einrichtung-wlan.sh`, bleibt sie weg, denn ihr cron-Eintrag kommt nur mit `install.sh`. Reihenfolge: `einrichtung-wlan.sh` zuerst, `wlan-anschluss.sh` als Stand-Träger zuletzt. Die neue `einrichtung-wlan.sh` verträgt die alte `wlan-anschluss.sh`, falls der Strom dazwischen ausfällt.
+- **Nichts startet neu.** Kein `verbinden`, kein `ifup`, kein Netz-Neustart. Die neue Fassung wirkt beim nächsten Takt (cron, jede Minute) oder `ifup`; cron-Zeilen und Hotplug-Haken rufen die Skripte über ihren festen Pfad und bleiben, wie sie sind. Gleich nach dem Ersetzen ruft das Programm einmal `wlan-anschluss.sh wege`: Das ergänzt nur fehlende eigene Wege der Box zu ihren Geräten und tut am Kabelweg nichts.
+- **Zeitpunkt.** Die erste Prüfung kommt 45 s nach dem Start, nach der des Loaders (30 s).
+
+Eingebettet statt aus dem signierten Skriptstand des Manifests (`skripte`): Das Programm ist bereits geprüft (Manifest, Signatur, Prüfsumme), die Kopien kommen ohne zweiten Download und ohne neuen Prüfweg mit. Der Skriptstand enthält außerdem `install.sh` und die Tunnel-Skripte, die das Programm nie anwendet.
+
+Sichtbar ist der Stand im Log (`logread -e vp-edge-light`: „WLAN-Skripte erneuert …“ mit `von`, `auf` und dem Ergebnis von `wege`) und auf der Box mit `grep -x 'WLAN_STAND=.*' /usr/libexec/vp-edge-light/wlan-anschluss.sh`; im Herzschlag steht er nicht.
+Belegt mit `wlanstand_test.go`, `wlan_pflege_test.go`, Fall 12 von `boot-update-probe.sh` (echtes Programm, Box ohne WLAN) und dem Lauf `skripte-update` von `wlan-anschluss-probe.sh` (WLAN-Weg B mit dem Stand edge-light-2026.11.17, Abbruch mitten im Schreiben, danach `wege_fehlen` leer, WLAN und Konfiguration unverändert).
+Edge Industrie und die Docker-Box haben diese Skripte nicht; das Programm pflegt sie dort auch nicht.
+
 ## Nicht verhandelbar
 
 | Nr. | Schicht | Umsetzung | belegt |
@@ -104,7 +123,7 @@ Wer `LOADER_STAND` der Mango erhöht, zieht die geänderte Funktion im Loader de
 | 5 | Zwei Orte | neue Fassung nur im RAM, bestätigte im Flash | Fall 1, 7, P7, P8 |
 | 6 | Prüfsumme zuerst | Prüfsummen-Datei atomar vor der Kopie, Nachladen nach `gz_sha256` | Fall 8, P9 |
 | 7 | Speicher | gepackt laden (~5 MB), entpacken erst nach dem Freigeben der alten Fassung, Schwelle = Fassungsgröße + Prozessreserve (Pauschale 40 MB nur ohne bekannte Größe), `GOMEMLIMIT`, `oom_score_adj` 800; die Größen-Leitplanke im Release (`groessen-gate.sh`) hält jede Fassung unter dem Budget der schwächsten Mango | `boot-speicher-probe.sh`, `boot-tausch-speicher-probe.sh`, `groessen-gate-probe.sh`, P5 |
-| 8 | Erreichbarkeit | ein Update tauscht nur das Programm; der Loader ändert Dienst und Wartungstunnel (WireGuard, SSH 2222, Firewall, cron) nie. Loader und Dienst-Init erneuert allein das BESTÄTIGTE Programm aus seinen eingebetteten Kopien ([Loader-Selbstupdate](#loader-selbstupdate)); den Wartungstunnel und die Konfiguration ändert auch das nie | jeder Fall, Fall 11 |
+| 8 | Erreichbarkeit | ein Update tauscht nur das Programm; der Loader ändert Dienst und Wartungstunnel (WireGuard, SSH 2222, Firewall, cron) nie. Loader und Dienst-Init erneuert allein das BESTÄTIGTE Programm aus seinen eingebetteten Kopien ([Loader-Selbstupdate](#loader-selbstupdate)), ebenso die WLAN-Skripte: nur nach `sh -n`, mit der alten Fassung als Rückfall daneben und ohne WLAN oder Netz neu zu starten ([WLAN-Skripte](#wlan-skripte)). Den Wartungstunnel, cron, Hotplug-Haken und die Konfiguration ändert auch das nie | jeder Fall, Fall 11, Fall 12, Lauf `skripte-update` |
 | 9 | Kein Drängeln | zurückgenommen = kein neuer Versuch ohne neue Zuweisung (anderes `assigned_at`) | `otalight_test.go`, P3 |
 | 10 | Datenformat | anderes `state_schema` als bestätigt → nicht automatisch | `otalight_test.go` |
 
@@ -114,7 +133,7 @@ Die Fälle stehen in `edge-light/test/boot-update-probe.sh` (OpenWrt 25.12.5 im 
 
 - **Werkstatt:** `install.sh` legt Vertrauens-Set, bestätigte Fassung (Prüfsumme zuerst) und `current.json` aus dem signierten Manifest auf die Box. Die Abnahme verlangt die Prüfung **„Update-bereit“** ([werkstatt.md](../../docs/werkstatt.md)).
 - **Boxen mit Stufe 1** (`edge-tgjn9gd`, Pilot `edge-zay5sdd`, VoltPilotGATE): einmal durch den Wartungstunnel mit demselben `install.sh`, vorher genauso an der Labor-Mango ([Nachrüsten](nachruesten.md)).
-- Ein Update ändert Loader, Dienst und Tunnel-Skripte nie. Loader und Dienst-Init erneuert seit dem [Loader-Selbstupdate](#loader-selbstupdate) das bestätigte Programm selbst; die Tunnel-Skripte und die Konfiguration kommen weiterhin nur durch die Werkstatt oder den Tunnel.
+- Ein Update ändert Loader, Dienst und Tunnel-Skripte nie. Loader und Dienst-Init erneuert seit dem [Loader-Selbstupdate](#loader-selbstupdate) das bestätigte Programm selbst, die [WLAN-Skripte](#wlan-skripte) ebenso; die Tunnel-Skripte, cron, Hotplug-Haken und die Konfiguration kommen weiterhin nur durch die Werkstatt oder den Tunnel.
 
 ## Versand (Entscheid 5c, U-6)
 

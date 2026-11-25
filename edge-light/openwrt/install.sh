@@ -8,8 +8,10 @@
 # ueber das Portal (Edge-Updates); der Loader tauscht und nimmt zurueck.
 # Fixes an Loader und Dienst-Init bringt seither jedes Programm eingebettet
 # mit und spielt sie als bestaetigte Fassung selbst ein (Loader-Selbstupdate,
-# LOADER_STAND in boot.sh) - dieses Skript bleibt fuer die Ersteinrichtung,
-# das Nachruesten von Stufe 1, die Tunnel-Skripte und die Konfiguration.
+# LOADER_STAND in boot.sh), ebenso die WLAN-Skripte (WLAN_STAND in
+# wlan-anschluss.sh) - dieses Skript bleibt fuer die Ersteinrichtung, das
+# Nachruesten von Stufe 1, die Tunnel-Skripte, cron, Hotplug-Haken und die
+# Konfiguration.
 #
 #   edge-light/scripts/build.sh mipsle        (oder die Fassung aus einem Release)
 #   edge-light/openwrt/install.sh root@192.168.1.1
@@ -174,7 +176,10 @@ box_ssh "$TARGET" "touch /etc/sysupgrade.conf; for p in /etc/vp-edge-light/ /etc
 box_ssh "$TARGET" "[ -f /etc/config/vp-edge-light ] || { cat > /etc/config/vp-edge-light.neu && mv -f /etc/config/vp-edge-light.neu /etc/config/vp-edge-light; }" <"$HERE/files/etc/config/vp-edge-light"
 # WLAN-Anschluss (Kabel oder WLAN beim Einrichten, edge-light/docs/mango.md
 # "Ohne Kabel zum Router"): nur das Skript. Es gehoert zum Betriebssystem und
-# aendert erst etwas, wenn jemand es aufruft; das Programm erneuert es nicht.
+# aendert erst etwas, wenn jemand es aufruft. Das bestaetigte Programm erneuert
+# es samt einrichtung-wlan.sh nur AUFWAERTS (WLAN_STAND, internal/wlanstand):
+# wer hier gezielt einen aelteren Stand einspielt, muss den Dienst stoppen oder
+# ein Programm mit hoechstens diesem Stand fahren, sonst zieht es nach.
 # shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
 box_ssh "$TARGET" "mkdir -p /usr/libexec/vp-edge-light && cat > /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu && chmod 0755 /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu && mv -f /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu /usr/libexec/vp-edge-light/wlan-anschluss.sh && sync" <"$HERE/files/usr/libexec/vp-edge-light/wlan-anschluss.sh"
 # Einrichtungs-WLAN (gleiches WLAN ab Werk, nur offen ohne Verbindung;

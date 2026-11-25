@@ -169,10 +169,13 @@ test('decode degrades per block and returns null only when nothing decoded', () 
 // --- makeHuaweiReader against an in-process Modbus-TCP server ---------------
 
 // A minimal Modbus-TCP server answering FC3 from an absolute register image.
-// `refuse` lists block start addresses answered with exception 0x02.
+// `refuse` lists block start addresses answered with exception 0x02; `deafMs`
+// leaves every request unanswered that comes sooner after the connect.
+let deafSeen = 0;
 function startServer(regs, opts) {
   opts = opts || {};
   const server = net.createServer((sock) => {
+    const connectedAt = Date.now();
     let acc = Buffer.alloc(0);
     sock.on('data', (chunk) => {
       acc = Buffer.concat([acc, chunk]);
@@ -186,6 +189,10 @@ function startServer(regs, opts) {
         const fn = frame[7];
         const addr = frame.readUInt16BE(8);
         const count = frame.readUInt16BE(10);
+        if (opts.deafMs && Date.now() - connectedAt < opts.deafMs) {
+          deafSeen += 1; // the Smart Dongle: a request right after the connect stays unanswered
+          continue;
+        }
         if (fn !== 0x03 || (opts.refuse || []).includes(addr)) {
           const ex = Buffer.alloc(9);
           ex.writeUInt16BE(txid, 0);
@@ -227,6 +234,30 @@ test('makeHuaweiReader reads the whole plan over one socket and decodes it', asy
     assert.strictEqual(out.reading.power_kw, 0.3);
     assert.strictEqual(out.reading.soc_pct, 62.5);
     assert.strictEqual(out.battKw, 0.7);
+  } finally {
+    server.close();
+  }
+});
+
+test('makeHuaweiReader asks only after the connect pause (Smart Dongle, 1 s by default)', async () => {
+  const { server, port } = await startServer(healthyRegs(), { deafMs: 200 });
+  try {
+    deafSeen = 0;
+    const waits = huawei.makeHuaweiReader({ net, connectTimeoutMs: 2000, readTimeoutMs: 2000, connectPauseMs: 300 });
+    const t0 = Date.now();
+    const out = await waits({ ip: '127.0.0.1', port, unitId: 0 });
+    assert.ok(out, 'with the pause the dongle answers');
+    assert.ok(Date.now() - t0 >= 300, 'the first request waits for the pause');
+    assert.strictEqual(deafSeen, 0);
+
+    const atOnce = huawei.makeHuaweiReader({ net, connectTimeoutMs: 2000, readTimeoutMs: 300, connectPauseMs: 0 });
+    assert.strictEqual(await atOnce({ ip: '127.0.0.1', port, unitId: 0 }), null, 'asked at once the dongle stays silent');
+    assert.ok(deafSeen > 0);
+
+    const byDefault = huawei.makeHuaweiReader({ net, connectTimeoutMs: 2000, readTimeoutMs: 2000 });
+    const t1 = Date.now();
+    assert.ok(await byDefault({ ip: '127.0.0.1', port, unitId: 0 }));
+    assert.ok(Date.now() - t1 >= 1000, 'the default pause is 1 s');
   } finally {
     server.close();
   }

@@ -69,6 +69,7 @@ const REG = {
 
 const DEFAULT_PORT = 502;
 const DEFAULT_UNIT_ID = 0; // factory slave id on a direct WLAN/LAN connection; a Smart Dongle commonly uses 1
+const DEFAULT_CONNECT_PAUSE_MS = 1000; // Smart Dongle: first request ~1 s after the connect (field, 25.11.2026)
 
 // --- families ----------------------------------------------------------------
 //
@@ -214,13 +215,19 @@ function decode(blocks, opts) {
  * { reading, battKw, meta } or null (unreachable / not a single block
  * answered). A single refused block only drops its channels.
  *
- *   deps: { net, connectTimeoutMs?, readTimeoutMs? }
+ * The first request waits CONNECT_PAUSE_MS after the connect: a Smart Dongle
+ * leaves a request unanswered that arrives right after it (field, 25.11.2026:
+ * at once and after 0,3 s no answer, after 1 s an answer).
+ *
+ *   deps: { net, connectTimeoutMs?, readTimeoutMs?, connectPauseMs? }
  *   target: { ip, port?, unitId?, invertGridSign?, invertBattSign? }
  */
 function makeHuaweiReader(deps) {
   const net = deps.net;
   const CONNECT_TIMEOUT_MS = deps.connectTimeoutMs || 8000;
   const READ_TIMEOUT_MS = deps.readTimeoutMs || 8000;
+  const CONNECT_PAUSE_MS = Number.isFinite(deps.connectPauseMs) && deps.connectPauseMs >= 0
+    ? deps.connectPauseMs : DEFAULT_CONNECT_PAUSE_MS;
 
   return function readHuawei(target) {
     target = target || {};
@@ -302,6 +309,11 @@ function makeHuaweiReader(deps) {
 
       sock.connect(port, ip, async () => {
         clearTimeout(connectTimer);
+        if (CONNECT_PAUSE_MS > 0) {
+          // The pause has its own bound: a socket error ends the read meanwhile.
+          await new Promise((res) => setTimeout(res, CONNECT_PAUSE_MS));
+          if (settled) return;
+        }
         const blocks = [];
         for (const b of plan) {
           try {

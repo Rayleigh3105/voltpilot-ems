@@ -62,6 +62,10 @@ type Options struct {
 	// KostalRtuTimeout bounds one FC03 round trip against the RS485-to-
 	// Ethernet gateway of the Modbus-RTU Ausweg.
 	KostalRtuTimeout time.Duration
+	// HuaweiConnectPause is the pause between the connect to a Huawei SUN2000
+	// and its first request (1 s, DefaultHuaweiConnectPause); a negative
+	// value sends at once (tests only).
+	HuaweiConnectPause time.Duration
 	// WriteLaneWait bounds how long a one-shot register write waits for the
 	// lane of its device (15 s); WriteSettle is the pause between the write and
 	// the read-back (2 s). Both only shortened by tests.
@@ -189,6 +193,9 @@ func New(bus Bus, opts Options) *Runtime {
 	}
 	if opts.KostalRtuTimeout <= 0 {
 		opts.KostalRtuTimeout = DefaultKostalRtuTimeout
+	}
+	if opts.HuaweiConnectPause == 0 {
+		opts.HuaweiConnectPause = DefaultHuaweiConnectPause
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now

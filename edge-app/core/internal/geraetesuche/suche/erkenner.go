@@ -473,8 +473,12 @@ func erkenneSMA(ctx context.Context, g *geraet, port int, mb *modbus) (geraetesu
 }
 
 // erkenneHuawei: SUN2000 names its model from 30000 and its serial from 30015;
-// unit 1 behind the Smart Dongle, unit 0 directly.
+// unit 1 behind the Smart Dongle, unit 0 directly. The dongle leaves a request
+// unanswered that comes right after the connect, so this recogniser asks only
+// Takt.HuaweiRuhe after it (1 s, field 25.11.2026).
 func erkenneHuawei(ctx context.Context, g *geraet, port int, mb *modbus) (geraetesuche.Fund, bool) {
+	mb.ruhe = g.lauf.u.Takt.huaweiRuhe()
+	defer func() { mb.ruhe = 0 }()
 	b := g.budget()
 	for _, unit := range []int{1, 0} {
 		regs, err := mb.lies(ctx, b, byte(unit), 30000, 25)

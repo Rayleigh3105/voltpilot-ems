@@ -102,6 +102,8 @@ public final class ReleaseManifest {
     public static final String INDUSTRIE_SKRIPTE_DATEI = "edge-industrie-skripte.tar.gz";
     /** Der Name des Tunnel-Programms am Edge-Industrie-Release (Go: {@code otaverify.WartungDatei}). */
     public static final String WARTUNG_DATEI = "vp-wartung-linux-arm";
+    /** Der Name der Bootapplikation am Edge-Industrie-Release (Go: {@code otaverify.GrundprogrammDatei}). */
+    public static final String GRUNDPROGRAMM_DATEI = "edge-industrie-grundprogramm.tar.gz";
 
     /**
      * Der Skriptstand eines Edge-Light- oder Edge-Industrie-Release
@@ -120,6 +122,17 @@ public final class ReleaseManifest {
      * die Werkstatt nimmt seine Prüfsumme von hier, damit sie signiert ist.
      */
     public record Wartung(String name, String sha256, long size) {
+    }
+
+    /**
+     * Die CODESYS-Bootapplikation des Basisprojekts eines Edge-Industrie-Release
+     * ({@code grundprogramm}, additiv, UND DORT OPTIONAL anders als
+     * {@link #skripte} und {@link #wartung}): gebaut im eigenen Repo
+     * voltpilot-sps, nicht in diesem. Die Werkstatt spielt sie auf die
+     * SPS-Laufzeit; fehlt das Feld, hält der Werkstatt-Schritt mit einem
+     * Handgriff an.
+     */
+    public record Grundprogramm(String name, String sha256, long size) {
     }
 
     /** Der Name des Skriptstands für ein Release; {@code null} für eines ohne (die Docker-Box). */
@@ -147,9 +160,11 @@ public final class ReleaseManifest {
     private final List<Program> programs;
     private final Skripte skripte;
     private final Wartung wartung;
+    private final Grundprogramm grundprogramm;
 
     private ReleaseManifest(String release, long releaseSeq, List<String> backends,
-            List<Artifact> artifacts, List<Program> programs, Skripte skripte, Wartung wartung) {
+            List<Artifact> artifacts, List<Program> programs, Skripte skripte, Wartung wartung,
+            Grundprogramm grundprogramm) {
         this.release = release;
         this.releaseSeq = releaseSeq;
         this.backends = List.copyOf(backends);
@@ -157,6 +172,7 @@ public final class ReleaseManifest {
         this.programs = List.copyOf(programs);
         this.skripte = skripte;
         this.wartung = wartung;
+        this.grundprogramm = grundprogramm;
     }
 
     /**
@@ -174,6 +190,14 @@ public final class ReleaseManifest {
      */
     public Optional<Wartung> wartung() {
         return Optional.ofNullable(wartung);
+    }
+
+    /**
+     * Die Bootapplikation des Basisprojekts, wenn das Manifest eine gültige
+     * trägt (nur Edge Industrie, dort optional). Tolerant wie {@link #skripte}.
+     */
+    public Optional<Grundprogramm> grundprogramm() {
+        return Optional.ofNullable(grundprogramm);
     }
 
     public String release() {
@@ -317,7 +341,9 @@ public final class ReleaseManifest {
         List<String> backends = readBackends(m.get("compat"));
         Skripte skripte = readSkripte(m.get("skripte"), skripteDateiFuer(release));
         Wartung wartung = release.startsWith(INDUSTRIE_RELEASE_PREFIX) ? readWartung(m.get("wartung")) : null;
-        return new ReleaseManifest(release, seq, backends, artifacts, programs, skripte, wartung);
+        Grundprogramm grundprogramm = release.startsWith(INDUSTRIE_RELEASE_PREFIX)
+                ? readGrundprogramm(m.get("grundprogramm")) : null;
+        return new ReleaseManifest(release, seq, backends, artifacts, programs, skripte, wartung, grundprogramm);
     }
 
     /**
@@ -349,6 +375,20 @@ public final class ReleaseManifest {
             return null;
         }
         return new Wartung(name, sha, size);
+    }
+
+    /** {@code grundprogramm}, wenn vollständig und gültig; sonst {@code null} (siehe {@link #grundprogramm}). */
+    private static Grundprogramm readGrundprogramm(JsonNode n) {
+        if (n == null || !n.isObject()) {
+            return null;
+        }
+        String name = n.path("name").asText("");
+        String sha = n.path("sha256").asText("");
+        long size = n.path("size").canConvertToLong() ? n.path("size").asLong() : 0;
+        if (!GRUNDPROGRAMM_DATEI.equals(name) || !SHA256.matcher(sha).matches() || size <= 0) {
+            return null;
+        }
+        return new Grundprogramm(name, sha, size);
     }
 
     /**
@@ -413,6 +453,17 @@ public final class ReleaseManifest {
             }
             if (m.wartung == null) {
                 throw new InvalidManifestException("wartung: name " + WARTUNG_DATEI
+                        + ", sha256 aus 64 Zeichen 0-9a-f und size groesser als 0");
+            }
+        }
+        JsonNode grundprogramm = root.get("grundprogramm");
+        if (grundprogramm != null && !grundprogramm.isNull()) {
+            if (!industrie) {
+                throw new InvalidManifestException("grundprogramm: die Bootapplikation traegt nur ein "
+                        + "Edge-Industrie-Release (edge-industrie-JJJJ.MM.N)");
+            }
+            if (m.grundprogramm == null) {
+                throw new InvalidManifestException("grundprogramm: name " + GRUNDPROGRAMM_DATEI
                         + ", sha256 aus 64 Zeichen 0-9a-f und size groesser als 0");
             }
         }

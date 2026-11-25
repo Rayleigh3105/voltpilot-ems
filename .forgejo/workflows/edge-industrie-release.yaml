@@ -10,7 +10,10 @@ name: Edge-Industrie-Fassung
 # eines Geraets auflegt (Skriptstand und Tunnel-Programm):
 #
 #   vp-edge-industrie-linux-arm, vp-edge-industrie-linux-arm.gz,
-#   edge-industrie-skripte.tar.gz, vp-wartung-linux-arm, sha256sums
+#   edge-industrie-skripte.tar.gz, vp-wartung-linux-arm, sha256sums, und
+#   edge-industrie-grundprogramm.tar.gz NUR wenn der Captain eine
+#   Boot-Applikation des Basisprojekts nach edge-industrie/grundprogramm/
+#   eingespielt hat (edge-industrie/grundprogramm/README.md).
 #
 # SIGNIERT UND REGISTRIERT wie Edge Light: Manifest (`vp-ota manifest --binary
 # --skripte --wartung`, Backend industrie; Skriptstand und Tunnel-Programm als
@@ -151,6 +154,10 @@ jobs:
           for f in vp-edge-industrie-linux-arm vp-edge-industrie-linux-arm.gz edge-industrie-skripte.tar.gz vp-wartung-linux-arm sha256sums; do
             ota_forgejo_upload "$base" "$GITHUB_REPOSITORY" "$rel" "$RUNNER_TEMP/fassung/$f" "$auth"
           done
+          # Grundprogramm: nur, wenn release.sh es gebaut hat (edge-industrie/grundprogramm/ hatte eine Datei).
+          if [ -f "$RUNNER_TEMP/fassung/edge-industrie-grundprogramm.tar.gz" ]; then
+            ota_forgejo_upload "$base" "$GITHUB_REPOSITORY" "$rel" "$RUNNER_TEMP/fassung/edge-industrie-grundprogramm.tar.gz" "$auth"
+          fi
         env:
           VP_OTA_FORGEJO_TOKEN: ${{ secrets.VP_OTA_FORGEJO_TOKEN }}
           FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
@@ -229,6 +236,8 @@ jobs:
           set -euo pipefail
           args=()
           [ "${NOTES}" = "" ] || args+=(--notes "${NOTES}")
+          [ ! -f "${RUNNER_TEMP}/fassung/edge-industrie-grundprogramm.tar.gz" ] ||
+            args+=(--grundprogramm "${RUNNER_TEMP}/fassung/edge-industrie-grundprogramm.tar.gz")
           go run ./cmd/vp-ota manifest \
             --release "${GITHUB_REF_NAME}" \
             --seq "${SEQ}" \

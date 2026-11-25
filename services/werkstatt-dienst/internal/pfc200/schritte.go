@@ -361,9 +361,15 @@ func dockerContainerBeleg(roh string) string {
 // fassungenHolen legt Programm, Skriptstand und Tunnel-Programm der Freigabe
 // bereit und prüft das signierte Manifest, bevor irgendetwas auf das Gerät geht.
 func (l *Lauf) fassungenHolen(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
-	programm, skripte, tunnel := fassungen.DateienPFC200(l.freigabe)
+	programm, skripte, tunnel, grundprogramm := fassungen.DateienPFC200(l.freigabe)
 	b := protokoll.Beleg{}.Mit("freigabe", l.freigabe.Kennung)
-	for _, d := range []fassungen.Datei{programm, skripte, tunnel} {
+	dateien := []fassungen.Datei{programm, skripte, tunnel}
+	if grundprogramm.Sha256 != "" {
+		// Nur holen, wenn die Freigabe eine Prüfsumme nennt: Ohne sie trägt
+		// diese Fassung kein Grundprogramm, und Hole verlangt eine Prüfsumme.
+		dateien = append(dateien, grundprogramm)
+	}
+	for _, d := range dateien {
 		erg, err := l.k.Fassungen.Hole(ctx, d)
 		if err != nil {
 			return b, err
@@ -380,6 +386,8 @@ func (l *Lauf) fassungenHolen(ctx context.Context, _ *lauf.Kontext) (protokoll.B
 			l.pfadSkripte = erg.Pfad
 		case tunnel.Name:
 			l.pfadWartung = erg.Pfad
+		case fassungen.GrundprogrammDatei:
+			l.pfadGrundprogramm = erg.Pfad
 		}
 	}
 	return l.manifestHolen(ctx, b)
@@ -409,7 +417,7 @@ func (l *Lauf) manifestHolen(ctx context.Context, b protokoll.Beleg) (protokoll.
 	if _, err := l.k.Fassungen.PruefeSignatur(trustSet, trustSetSig, m, sig); err != nil {
 		return b, fmt.Errorf("Signatur des Release-Manifests nicht gültig: %w", err)
 	}
-	st, err := fassungen.PruefeManifestPFC200(m, sig, f.Fassung, f.ProgrammSha256, f.SkripteSha256, f.WartungSha256)
+	st, err := fassungen.PruefeManifestPFC200(m, sig, f.Fassung, f.ProgrammSha256, f.SkripteSha256, f.WartungSha256, f.GrundprogrammSha256)
 	if err != nil {
 		return b, err
 	}

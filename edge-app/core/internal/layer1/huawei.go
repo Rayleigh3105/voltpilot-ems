@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/huaweidecode"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/modbustcp"
@@ -21,6 +22,29 @@ import (
 // time, so poll and connection test share the lane of the address.
 //
 // Read only - the control path of this brand is hard-locked (huawei.json).
+
+// DefaultHuaweiConnectPause is the pause between the connect and the first
+// request of a session. A Huawei Smart Dongle (SUN2000-3KTL-M1 in the field,
+// 25.11.2026) leaves a request unanswered that arrives right after the connect:
+// sent at once or 0,3 s after it, no answer; after 1 s or 1,5 s, an answer,
+// measured several times. Huawei only: every other brand asks at once.
+const DefaultHuaweiConnectPause = time.Second
+
+// pauseAfterConnect waits d (d <= 0: not at all); an ended ctx ends the wait
+// with its error.
+func pauseAfterConnect(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
 
 // huaweiRead is the outcome of one session.
 type huaweiRead struct {
@@ -46,6 +70,9 @@ func (r *Runtime) readHuawei(ctx context.Context, p *huaweiPlan) (*huaweiRead, e
 		return nil, err
 	}
 	defer c.Close()
+	if err := pauseAfterConnect(ctx, r.opts.HuaweiConnectPause); err != nil {
+		return nil, err
+	}
 	out := &huaweiRead{}
 	for _, b := range p.Reads {
 		out.Attempts++

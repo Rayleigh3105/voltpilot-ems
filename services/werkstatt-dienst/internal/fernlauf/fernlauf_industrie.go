@@ -151,7 +151,7 @@ func (l *laufZustand) fassungenIndustrie(ctx context.Context) (protokoll.Beleg, 
 	f := freigabe.Freigabe{BoxArt: freigabe.PFC200, EdgeIndustrie: freigabe.Industrie{Fassung: z.Fassung, Quelle: z.Quelle,
 		ProgrammSha256: z.ProgrammSha256, SkripteSha256: z.SkripteSha256}}
 	// Das Tunnel-Programm lädt der Fernlauf nicht: Er fasst den Tunnel nicht an.
-	programm, skripte, _ := fassungen.DateienPFC200(f)
+	programm, skripte, _, _ := fassungen.DateienPFC200(f)
 	b := protokoll.Beleg{}.Mit("fassung", z.Fassung)
 	for _, d := range []fassungen.Datei{programm, skripte} {
 		erg, err := l.k.Fassungen.Hole(ctx, d)

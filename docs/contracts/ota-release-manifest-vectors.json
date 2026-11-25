@@ -779,6 +779,100 @@
         "signing_key_id": "rel-2026-a",
         "skripte": {"name": "edge-industrie-skripte.tar.gz", "sha256": "5555555555555555555555555555555555555555555555555555555555555555", "size": 20480}
       }
+    },
+    {
+      "name": "industrie-release-mit-grundprogramm-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": true,
+      "warum": "Ein Edge-Industrie-Release kann zusaetzlich die CODESYS-Bootapplikation des Basisprojekts tragen (grundprogramm, edge-industrie-grundprogramm.tar.gz), gebaut im eigenen Repo voltpilot-sps. Kein Bestandteil des Updates: Die Box wendet es nicht an und verifiziert wie ohne.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-industrie-skripte.tar.gz", "sha256": "5555555555555555555555555555555555555555555555555555555555555555", "size": 20480},
+        "wartung": {"name": "vp-wartung-linux-arm", "sha256": "6666666666666666666666666666666666666666666666666666666666666666", "size": 7340032},
+        "grundprogramm": {"name": "edge-industrie-grundprogramm.tar.gz", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "size": 262144}
+      }
+    },
+    {
+      "name": "industrie-release-ohne-grundprogramm-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": true,
+      "warum": "Anders als skripte und wartung ist grundprogramm AUCH bei Edge Industrie optional: Das Basisprojekt kommt aus einem eigenen Repo und eigenem Takt, ein Release ohne das Feld bleibt gueltig. Der Werkstatt-Schritt haelt dann mit einem Handgriff an, statt etwas Falsches aufzuspielen.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-industrie-skripte.tar.gz", "sha256": "5555555555555555555555555555555555555555555555555555555555555555", "size": 20480},
+        "wartung": {"name": "vp-wartung-linux-arm", "sha256": "6666666666666666666666666666666666666666666666666666666666666666", "size": 7340032}
+      }
+    },
+    {
+      "name": "industrie-grundprogramm-ohne-pruefsumme-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Eine Bootapplikation ohne gueltige Pruefsumme darf nicht erzeugt werden; die Box ignoriert das Feld und wendet das Release trotzdem an (tolerant annehmen).",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.0",
+        "release_seq": 172,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "5656565656565656565656565656565656565656565656565656565656565656", "size": 15974400, "gz_sha256": "7878787878787878787878787878787878787878787878787878787878787878", "gz_size": 5102311}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a",
+        "grundprogramm": {"name": "edge-industrie-grundprogramm.tar.gz", "sha256": "kaputt", "size": 262144}
+      }
+    },
+    {
+      "name": "light-release-mit-grundprogramm-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Die Bootapplikation des Basisprojekts traegt nur ein Edge-Industrie-Release (die Mango hat keine SPS); die Box ignoriert das Feld.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "size": 31744},
+        "grundprogramm": {"name": "edge-industrie-grundprogramm.tar.gz", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "size": 262144}
+      }
     }
   ]
 }
