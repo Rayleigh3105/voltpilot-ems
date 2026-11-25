@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/schemas/direktvermarkter-profile/1.0",
+  "title": "VoltPilot Partnerprofil der Direktvermarktung",
+  "description": "Ein Profil je Direktvermarktungspartner (vp-direktvermarktung-konzept d2 §5.3): Zugangsweg, Registerbild, Fristen, Vertragslink und Einrichtungsschritte. Werte, die der Partner noch nicht bestätigt hat, tragen die Frage, von der sie abhängen, als Zeichenkette 'offen (Fxx)' oder als Anhang '<wert> (Fxx)'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "partner", "name", "fassung", "zugang", "register", "regeln", "vertrag", "einrichtung", "groessenklassen"],
+  "$defs": {
+    "offen_markiert": {
+      "description": "ein Freitextwert, optional mit angehängter offener Frage '(Fxx)', oder ganz offen 'offen (Fxx)'",
+      "type": "string",
+      "pattern": "^(offen \\(F[0-9]+\\)|[a-z][a-z0-9_]*(_[a-z0-9]+)*( \\(F[0-9]+\\))?)$"
+    },
+    "register_eintrag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tabelle", "adresse", "typ", "bedeutung"],
+      "properties": {
+        "tabelle": {"enum": ["input", "holding"]},
+        "adresse": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "typ": {"enum": ["u16", "s16", "u32", "s32"]},
+        "bedeutung": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "vorzeichen": {"type": "string", "minLength": 1},
+        "band": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [{"type": "integer"}, {"type": "integer"}]
+        }
+      },
+      "if": {"properties": {"tabelle": {"const": "input"}}},
+      "then": {"properties": {"band": false}}
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "partner": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "name": {"type": "string", "minLength": 1},
+    "fassung": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "zugang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "vpn", "modbus"],
+      "properties": {
+        "art": {"enum": ["vpn_modbus_server", "konto_anmeldung"]},
+        "vpn": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["art", "paket", "ein_zertifikat_je_anlage", "port_protokoll"],
+          "properties": {
+            "art": {"enum": ["openvpn", "wireguard", "ipsec"]},
+            "paket": {"enum": ["zip_mit_passwort", "einzeldateien"]},
+            "ein_zertifikat_je_anlage": {"type": "boolean"},
+            "port_protokoll": {"$ref": "#/$defs/offen_markiert"}
+          }
+        },
+        "modbus": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["port", "unit", "wortfolge", "funktionen", "verbindungen"],
+          "properties": {
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "unit": {"type": "integer", "minimum": 1, "maximum": 247},
+            "wortfolge": {"$ref": "#/$defs/offen_markiert"},
+            "funktionen": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"enum": [3, 4, 6, 16]}
+            },
+            "verbindungen": {"type": "integer", "minimum": 1, "maximum": 8}
+          }
+        }
+      }
+    },
+    "register": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/register_eintrag"}
+    },
+    "regeln": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lebenszeichen_frist_s", "ruhewert_pct", "vorgabe_wirkt_auf", "referenz", "bei_veraltet"],
+      "properties": {
+        "lebenszeichen_frist_s": {"type": "integer", "minimum": 1},
+        "ruhewert_pct": {"type": "integer", "minimum": 0, "maximum": 100},
+        "vorgabe_wirkt_auf": {"$ref": "#/$defs/offen_markiert"},
+        "referenz": {"$ref": "#/$defs/offen_markiert"},
+        "bei_veraltet": {"$ref": "#/$defs/offen_markiert"}
+      }
+    },
+    "vertrag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["link", "kennung", "ziel"],
+      "properties": {
+        "link": {"type": "string", "pattern": "^https://[a-z0-9.-]+/.*$"},
+        "kennung": {"type": "string", "minLength": 1},
+        "ziel": {"type": "string", "minLength": 1}
+      }
+    },
+    "einrichtung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vorher", "zugang", "nachher"],
+      "properties": {
+        "vorher": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}},
+        "zugang": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}},
+        "nachher": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}}
+      }
+    },
+    "groessenklassen": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fernsteuerung"],
+        "properties": {
+          "ueber_kw": {"type": "integer", "minimum": 0},
+          "bis_kw": {"type": "integer", "minimum": 0},
+          "fernsteuerung": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

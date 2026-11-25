@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "partner": "luox",
+  "name": "luox energy",
+  "fassung": "2026-06-02",
+  "zugang": {
+    "art": "vpn_modbus_server",
+    "vpn": {
+      "art": "openvpn",
+      "paket": "zip_mit_passwort",
+      "ein_zertifikat_je_anlage": true,
+      "port_protokoll": "offen (F1)"
+    },
+    "modbus": {
+      "port": 502,
+      "unit": 1,
+      "wortfolge": "offen (F3)",
+      "funktionen": [3, 4, 6, 16],
+      "verbindungen": 2
+    }
+  },
+  "register": [
+    {"tabelle": "input", "adresse": 0, "typ": "s32", "bedeutung": "nvp_einspeisung_w", "vorzeichen": "einspeisung_positiv"},
+    {"tabelle": "input", "adresse": 2, "typ": "u32", "bedeutung": "erzeugung_w"},
+    {"tabelle": "input", "adresse": 4, "typ": "u16", "bedeutung": "netzbetreiber_vorgabe_pct"},
+    {"tabelle": "input", "adresse": 5, "typ": "u32", "bedeutung": "referenz_w"},
+    {"tabelle": "holding", "adresse": 2, "typ": "u16", "bedeutung": "vermarkter_vorgabe_pct", "band": [0, 100]},
+    {"tabelle": "holding", "adresse": 3, "typ": "u32", "bedeutung": "lebenszeichen"}
+  ],
+  "regeln": {
+    "lebenszeichen_frist_s": 900,
+    "ruhewert_pct": 100,
+    "vorgabe_wirkt_auf": "einspeisung_netzpunkt (F5)",
+    "referenz": "installierte_leistung_wp (F6)",
+    "bei_veraltet": "offen (F8)"
+  },
+  "vertrag": {
+    "link": "https://direktvermarktung.luox-energy.de/erloesrechner?spid=voltpilot&utm_source=partner&utm_medium=affiliate&utm_content=affiliate-link&utm_campaign=voltpilot",
+    "kennung": "spid=voltpilot",
+    "ziel": "erloesrechner_mit_abschluss"
+  },
+  "einrichtung": {
+    "vorher": ["vertrag_frage", "zustimmung"],
+    "zugang": ["zip_hochladen", "passwort"],
+    "nachher": ["email_inbetriebnahme", "stammdaten_sr_tr_id", "startdatum"]
+  },
+  "groessenklassen": [
+    {"ueber_kw": 25, "fernsteuerung": true},
+    {"bis_kw": 25, "fernsteuerung": false}
+  ]
+}

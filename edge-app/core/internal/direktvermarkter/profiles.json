@@ -1,0 +1,67 @@
+{
+  "generated_by": "catalog/direktvermarkter/tools/package_edge_runtime.py - nicht von Hand ändern",
+  "partner": [
+    {
+      "id": "luox",
+      "modbus": {
+        "funktionen": [
+          3,
+          4,
+          6,
+          16
+        ],
+        "unit": 1,
+        "verbindungen": 2,
+        "wortfolge": "little"
+      },
+      "regeln": {
+        "bei_veraltet": "ausnahme_0x0b",
+        "lebenszeichen_frist_s": 900,
+        "ruhewert_pct": 100
+      },
+      "register": [
+        {
+          "adresse": 2,
+          "band": [
+            0,
+            100
+          ],
+          "bedeutung": "vermarkter_vorgabe_pct",
+          "tabelle": "holding",
+          "typ": "u16"
+        },
+        {
+          "adresse": 3,
+          "bedeutung": "lebenszeichen",
+          "tabelle": "holding",
+          "typ": "u32"
+        },
+        {
+          "adresse": 0,
+          "bedeutung": "nvp_einspeisung_w",
+          "tabelle": "input",
+          "typ": "s32"
+        },
+        {
+          "adresse": 2,
+          "bedeutung": "erzeugung_w",
+          "tabelle": "input",
+          "typ": "u32"
+        },
+        {
+          "adresse": 4,
+          "bedeutung": "netzbetreiber_vorgabe_pct",
+          "tabelle": "input",
+          "typ": "u16"
+        },
+        {
+          "adresse": 5,
+          "bedeutung": "referenz_w",
+          "tabelle": "input",
+          "typ": "u32"
+        }
+      ]
+    }
+  ],
+  "schema_version": "1.0"
+}
