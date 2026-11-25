@@ -204,8 +204,9 @@ public class DirektvermarktungRepository {
     public record ZugangZeile(UUID id, UUID direktvermarktungId, String fingerabdruck, Instant gueltigBis,
             Instant zugestelltAm, Instant zurueckgezogenAm) {}
 
-    /** Das verschlüsselte Material eines Zugangs - nur der Entschlüssler liest es, nie ein DTO. */
-    public record ZugangChiffrat(byte[] chiffrat, byte[] nonce) {}
+    /** Das verschlüsselte Material eines Zugangs - nur der Entschlüssler liest es, nie ein DTO.
+     * Mandant und Anlage reisen mit, weil sie Teil der AAD-Bindung des Chiffrats sind. */
+    public record ZugangChiffrat(UUID tenantId, UUID siteId, byte[] chiffrat, byte[] nonce) {}
 
     private static final String ZUGANG_SPALTEN =
             "id, direktvermarktung_id, fingerabdruck, gueltig_bis, zugestellt_am, zurueckgezogen_am";
@@ -228,8 +229,11 @@ public class DirektvermarktungRepository {
     }
 
     public ZugangChiffrat zugangChiffrat(UUID zugangId) {
-        List<ZugangChiffrat> r = jdbc.query("SELECT chiffrat, nonce FROM direktvermarktung_zugang WHERE id = ?",
-                (rs, i) -> new ZugangChiffrat(rs.getBytes("chiffrat"), rs.getBytes("nonce")), zugangId);
+        List<ZugangChiffrat> r = jdbc.query("SELECT tenant_id, site_id, chiffrat, nonce "
+                        + "FROM direktvermarktung_zugang WHERE id = ?",
+                (rs, i) -> new ZugangChiffrat(rs.getObject("tenant_id", UUID.class),
+                        rs.getObject("site_id", UUID.class), rs.getBytes("chiffrat"), rs.getBytes("nonce")),
+                zugangId);
         return r.isEmpty() ? null : r.get(0);
     }
 

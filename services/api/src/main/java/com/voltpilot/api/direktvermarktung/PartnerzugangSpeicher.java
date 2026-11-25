@@ -11,8 +11,12 @@ import java.util.UUID;
  *
  * <p><b>Ablageform, an die sich BEIDE Seiten binden</b> (Migration V20261125140000, Konzept §5.7 "Die
  * Zugangsdatei"): AES-256-GCM, Schlüssel aus {@code VP_PARTNERZUGANG_SCHLUESSEL} (Base64, 32 Byte, nur
- * Umgebung), {@code nonce} 12 Byte, Tag im Chiffrat. Der KLARTEXT ist das JSON-Objekt, das auch über den
- * Draht geht (Vertrag {@code docs/contracts/v2/direktvermarktung-zustellung.md} §3):
+ * Umgebung), {@code nonce} 12 Byte, Tag im Chiffrat, AAD
+ * {@code vp-partnerzugang.v1|tenant|site|zugangId} - das Chiffrat ist an SEINE Zeile gebunden, in eine
+ * andere kopiert entschlüsselt es nicht. Beide Richtungen wohnen in {@link AesGcmPartnerzugangSpeicher}
+ * ({@code verschluessele}/{@code lade}); die Übernahme erzeugt nie selbst ein Chiffrat. Der KLARTEXT ist
+ * das JSON-Objekt, das auch über den Draht geht (Vertrag
+ * {@code docs/contracts/v2/direktvermarktung-zustellung.md} §3):
  *
  * <pre>{ "gegenstelle": { "host": …, "port": …, "protokoll": … },
  *   "dateien": { "zertifikat_pem": …, "schluessel_pem": …, "ca_pem": …, "tls_schluessel_pem": … } }</pre>

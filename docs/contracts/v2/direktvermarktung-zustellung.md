@@ -57,6 +57,7 @@ Antwort der Cloud (entschlüsselt aus `direktvermarktung_zugang`, einmal, über 
 ```
 
 - Die Cloud antwortet NUR der führenden Box der Anlage, NUR für den Fingerabdruck des aktiven, nicht zurückgezogenen Zugangs, und protokolliert die Zustellung append-only. Kein Byte des Materials erscheint je in einem Log, einem Protokolleintrag oder einer Fehlermeldung - loggbar ist allein der Fingerabdruck.
+- Die Ablage in `direktvermarktung_zugang` ist AES-256-GCM (`VP_PARTNERZUGANG_SCHLUESSEL`, Nonce 12 Byte) mit AAD `vp-partnerzugang.v1|tenant|site|zugangId`: das Chiffrat ist an SEINE Zeile gebunden, in eine andere Zeile, Anlage oder einen anderen Mandanten kopiert entschlüsselt es nicht. Beide Richtungen wohnen in genau einer Klasse (`AesGcmPartnerzugangSpeicher.verschluessele`/`.lade`); die Zugangsdatei-Übernahme erzeugt nie selbst ein Chiffrat.
 - Die Box nimmt die Antwort nur an, wenn ihr aktives Profil GENAU diesen Fingerabdruck nennt, legt sie ab (Mango `/etc/vp-edge-light/vermarkter/`, nur root, 0600; PFC200 `/home/voltpilot/vermarkter/`, 0600 - die root-Kopie fürs Firmware-OpenVPN macht Stufe 4 über den root-Helfer `vp-vermarkter`; Docker-Box unter ihrem Datenverzeichnis) und quittiert `zugestellt`. Meta-Datei zuletzt schreiben, zuerst löschen: ein halber Stand liest sich immer als „kein Zugang".
 - Fragt die Box und bekommt keine Antwort (Cloud war gerade nicht da), fragt sie frühestens nach 10 Minuten erneut; jeder Reconnect fragt über die retained Wiederzustellung ohnehin neu.
 
