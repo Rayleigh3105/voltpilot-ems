@@ -283,6 +283,18 @@
                     <include>bohrlehre.3mf</include>
                 </includes>
             </resource>
+            <!-- Direktvermarktung (E6 = A, "Partnerkatalog als Daten"): der Partnerkatalog
+                 catalog/direktvermarkter/*.json ist die eine von Hand gepflegte Wahrheit (Muster
+                 catalog/control-profiles) und gehört dem parallelen Auftrag vp-direktvermarktung-bau; diese
+                 Quelle existiert schon jetzt, damit DirektvermarktenKatalog die Profile liest, sobald sie landen
+                 - fehlt der Ordner (noch), kopiert Maven schlicht nichts, kein Build-Fehler. -->
+            <resource>
+                <directory>${project.basedir}/../../catalog/direktvermarkter</directory>
+                <targetPath>direktvermarkter</targetPath>
+                <includes>
+                    <include>*.json</include>
+                </includes>
+            </resource>
         </resources>
         <!-- Load the canonical dev realm (single source of truth) onto the test
              classpath so the Keycloak Testcontainer imports the same realm the
