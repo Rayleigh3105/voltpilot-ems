@@ -240,6 +240,9 @@ Object.assign(adminApi, {
   })),
   fernwartungProtokoll: async () => [],
   fernwartungTechniker: async () => [],
+  // Direktvermarktung (§7.7): diese Bühne hat keine Anlage mit Anschluss - die fünfte Kachel bleibt
+  // „Alle verbunden ✓" ohne Ausnahme, ohne eine echte Netzanfrage auf dieser Bühne.
+  direktvermarktungListe: async () => [],
   // L1 (S6): Optimierer, Preise, Messwerte - additiv neben Tunnel/Werkstatt.
   plattformDienste: async () => ({
     dienste: [

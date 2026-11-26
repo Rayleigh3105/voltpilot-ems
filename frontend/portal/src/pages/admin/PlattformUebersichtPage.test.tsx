@@ -17,6 +17,7 @@ const fernwartungBoxen = vi.fn();
 const werkstattDienst = vi.fn();
 const listPendingEnrollments = vi.fn();
 const plattformDienste = vi.fn(() => Promise.resolve({ dienste: [] }));
+const direktvermarktungListe = vi.fn(() => Promise.resolve([]));
 
 // Eine winzige, persistente In-Memory-Ablage statt eines statischen Mocks:
 // `erledigen`/`wiederherstellen` wirken sich wirklich auf die nächste
@@ -49,6 +50,7 @@ vi.mock('../../admin/adminApi', () => ({
     brauchtDichErledigt: (...a: unknown[]) => brauchtDichErledigt(...a),
     brauchtDichErledigen: (...a: Parameters<typeof brauchtDichErledigen>) => brauchtDichErledigen(...a),
     brauchtDichWiederherstellen: (...a: Parameters<typeof brauchtDichWiederherstellen>) => brauchtDichWiederherstellen(...a),
+    direktvermarktungListe: (...a: unknown[]) => direktvermarktungListe(...a),
   },
 }));
 
@@ -97,6 +99,7 @@ beforeEach(() => {
   werkstattDienst.mockResolvedValue(null);
   listPendingEnrollments.mockResolvedValue([]);
   plattformDienste.mockResolvedValue({ dienste: [] });
+  direktvermarktungListe.mockResolvedValue([]);
   standardBrauchtDichMocks();
 });
 
@@ -119,6 +122,27 @@ describe('PlattformUebersichtPage', () => {
     expect(kacheln.getByText('Plan')).toBeInTheDocument();
     await waitFor(() => expect(fleet).toHaveBeenCalledTimes(1));
     expect(edgeUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it('Direktvermarktung (§7.7): eine EIGENE Kennzahl, KEINE fünfte Kachel (feste Höhe am Telefon)', async () => {
+    fleet.mockResolvedValue({ sites: [site('s1', 'Anlage A')] });
+    direktvermarktungListe.mockResolvedValue([{
+      siteId: 's1', siteName: 'Anlage A', tenantId: 't1', tenantName: 'Demo C&I', partner: 'luox',
+      zustand: 'verbunden', startdatum: null, ende: null, aktualisiertAm: new Date().toISOString(),
+      letzteAbfrageAm: null, lebenszeichenAm: null, zugangGueltigBis: null, leadDeviceRef: 'VP-s1',
+    }]);
+    render(<PlattformUebersichtPage />);
+    const kacheln = within(await screen.findByTestId('ueb-kacheln'));
+    expect(kacheln.queryByText('Direktvermarktung')).toBeNull();
+    expect(await screen.findByTestId('ueb-direktvermarktung')).toHaveTextContent('1 Anlage · 1 verbunden');
+    expect(direktvermarktungListe).toHaveBeenCalledTimes(1);
+  });
+
+  it('Direktvermarktung (§7.7): ohne jeden Anschluss auf der Plattform bleibt die Zeile aus', async () => {
+    fleet.mockResolvedValue({ sites: [site('s1', 'Anlage A')] });
+    render(<PlattformUebersichtPage />);
+    await screen.findByTestId('ueb-kacheln');
+    expect(screen.queryByTestId('ueb-direktvermarktung')).toBeNull();
   });
 
   it('zeigt eine leere Flotte als ehrlichen Leerstand, keine erfundene Zahl', async () => {

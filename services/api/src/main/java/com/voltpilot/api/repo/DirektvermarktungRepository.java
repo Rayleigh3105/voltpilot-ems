@@ -317,8 +317,11 @@ public class DirektvermarktungRepository {
     }
 
     private static Stand mapStand(ResultSet rs, int i) throws SQLException {
+        // ⚠ abfragen_je_minute ist NUMERIC(6,2) - pgJDBC liefert dafür ein BigDecimal, ein (Double)-Cast auf
+        // rs.getObject(...) wirft ClassCastException, sobald die Spalte je nicht NULL ist (bislang ungeprüft).
+        java.math.BigDecimal abfragenJeMinute = rs.getBigDecimal("abfragen_je_minute");
         return new Stand(ts(rs, "tunnel_oben_seit"), ts(rs, "handshake_am"), rs.getString("gegenstelle"),
-                ts(rs, "letzte_abfrage_am"), (Double) rs.getObject("abfragen_je_minute"),
+                ts(rs, "letzte_abfrage_am"), abfragenJeMinute == null ? null : abfragenJeMinute.doubleValue(),
                 ts(rs, "letzte_schreibung_am"), (Integer) rs.getObject("vorgabe_pct"),
                 ts(rs, "lebenszeichen_am"), (Integer) rs.getObject("einspeisung_w"),
                 (Integer) rs.getObject("erzeugung_w"), (Integer) rs.getObject("netzbetreiber_pct"),

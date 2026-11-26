@@ -241,6 +241,25 @@ class SiteDirektvermarktungApiTest {
         assertThat(enthaelt).isTrue();
     }
 
+    /**
+     * ⚠ {@code abfragen_je_minute} ist {@code NUMERIC(6,2)} - pgJDBC liefert dafür ein
+     * {@link java.math.BigDecimal}; ein roher {@code (Double)}-Cast auf {@code rs.getObject(...)} warf
+     * {@code ClassCastException}, sobald die Spalte je nicht NULL war (kein bisheriger Test setzte sie).
+     */
+    @Test
+    void standZeigtDenHerzschlagMitNichtGanzzahligerAbfragerate() throws Exception {
+        when(katalog.finde("luox")).thenReturn(LUOX);
+        Welt w = welt();
+        als(w, post(w.basis() + "/waehlen").content("{\"partner\":\"luox\"}").contentType(MediaType.APPLICATION_JSON));
+        root.update("INSERT INTO direktvermarktung_stand (site_id, tenant_id, handshake_am, letzte_abfrage_am, "
+                + "abfragen_je_minute, vorgabe_pct, lebenszeichen_am) VALUES (?, ?, now(), now(), 4.25, 100, now())",
+                w.site(), w.mandant());
+
+        Antwort res = als(w, get(w.basis()));
+        assertThat(res.status()).isEqualTo(200);
+        assertThat(res.body().path("stand").path("abfragenJeMinute").asDouble()).isEqualTo(4.25);
+    }
+
     // --- Welt ----------------------------------------------------------------------------------------------------
 
     private Welt welt() {

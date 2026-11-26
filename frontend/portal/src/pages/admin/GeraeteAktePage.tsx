@@ -27,6 +27,7 @@ import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { LIVE_POLL_MS } from '../../pollCadence';
 import { FernwartungKarte } from '../../components/FernwartungKarte';
+import { DirektvermarkterKarte } from '../../components/DirektvermarkterKarte';
 import { ProtokollListe } from './FernwartungPage';
 import { type FernwartungProtokollEintrag } from '../../adminFernwartung';
 import { liesDienst, uebersicht, type UebersichtZeile, type WerkstattDienst, type WerkstattFreigabe } from '../../werkstattBank';
@@ -951,6 +952,7 @@ function VerbindungReiter({ boxRef, row, jetzt, akte }: {
       <Card padding="lg" radius="lg" className="vp-geraet-sek vp-geraet-breit" data-testid="akte-wartung">
         <FernwartungKarte edgeRef={boxRef} />
       </Card>
+      <DirektvermarkterKarte siteId={akte?.kopf?.siteId ?? null} />
     </div>
   );
 }

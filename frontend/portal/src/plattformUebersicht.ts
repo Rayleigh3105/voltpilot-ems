@@ -29,7 +29,11 @@ import type {
   AdminFleetRelease,
   AdminFleetSite,
 } from './admin/fleetApi';
-import type { AdminPlattformDienste, PendingEnrollment } from './admin/adminApi';
+import type {
+  AdminDirektvermarktungZeile,
+  AdminPlattformDienste,
+  PendingEnrollment,
+} from './admin/adminApi';
 import {
   controlMatrixInputs,
   controlMatrixRows,
@@ -65,7 +69,7 @@ export type UebersichtTon = Tone;
 
 // ── Kacheln ─────────────────────────────────────────────────────────────────
 
-export type KachelId = 'verbindung' | 'software' | 'steuerung' | 'plan';
+export type KachelId = 'verbindung' | 'software' | 'steuerung' | 'plan' | 'direktvermarktung-kennzahl';
 
 export interface UebersichtKachel {
   id: KachelId;
@@ -197,12 +201,41 @@ function planKachel(sites: AdminFleetSite[], now: Date): UebersichtKachel {
   };
 }
 
+/**
+ * Direktvermarktung (Konzept vp-direktvermarktung-konzept d2 §7.7): „Anlagen · davon verbunden ·
+ * getrennt". Eine EIGENE Kennzahl, KEINE fünfte Kachel der festen Vier (`uebersichtKacheln`) - die
+ * Vier sind am Telefon captain-geprüft auf eine feste Höhe unter der Falz
+ * (`e2e/admin-plattform-mobil.spec.ts`, „vorher ~330 px"); eine fünfte Kachel bräche das 2×2-Raster
+ * und schöbe „Braucht dich" aus dem ersten Bildschirm. `zahl`/`ton` folgen trotzdem demselben Muster
+ * (Ausnahme zählen, nicht Ganzheit) - hier ist `getrennt` die Ausnahme, nicht `verbunden`, weil ein
+ * frisch eingerichteter Anschluss (`entwurf`/`wartet_auf_zugang`/`verbindet`) weder „verbunden" noch
+ * ein Fehler ist.
+ */
+export function direktvermarktungKennzahl(zeilen: readonly AdminDirektvermarktungZeile[]): UebersichtKachel {
+  const gesamt = zeilen.length;
+  const verbunden = zeilen.filter((z) => z.zustand === 'verbunden').length;
+  const getrennt = zeilen.filter((z) => z.zustand === 'gestoert').length;
+  const teile = [`${gesamt} ${gesamt === 1 ? 'Anlage' : 'Anlagen'}`, `${verbunden} verbunden`].filter(Boolean);
+  return {
+    id: 'direktvermarktung-kennzahl',
+    icon: 'zap',
+    label: 'Direktvermarktung',
+    zahl: getrennt,
+    ton: getrennt > 0 ? 'warn' : 'ok',
+    wort: getrennt > 0 ? (getrennt === 1 ? 'Anlage getrennt' : 'Anlagen getrennt') : 'Alle verbunden ✓',
+    wortKurz: getrennt > 0 ? 'getrennt' : 'ok ✓',
+    kontext: teile.join(' · '),
+  };
+}
+
 // ── Braucht dich ────────────────────────────────────────────────────────────
 
 /**
  * Die Rangfolge aus dem Report (§4.3 Punkt 3): Fehler > Zurückhalten >
  * offline mit wartender Anfrage > Stufe 1 > Fenster ohne Schlüssel >
- * Werkstatt nicht bereit > nicht zugeordnete Anmeldung.
+ * Werkstatt nicht bereit > nicht zugeordnete Anmeldung. Die beiden
+ * Direktvermarktung-Arten (§7.7) sind additiv ans Ende gehängt, ohne die
+ * bestehende Reihenfolge zu verschieben.
  */
 const RANG = {
   fehler: 0,
@@ -212,6 +245,8 @@ const RANG = {
   fensterOhneSchluessel: 4,
   werkstattNichtBereit: 5,
   anmeldung: 6,
+  luoxNichtErreicht: 7,
+  zugangLaeuftAb: 8,
 } as const;
 
 export type BrauchtDichArt = keyof typeof RANG;
@@ -225,7 +260,12 @@ export const BRAUCHT_DICH_ART_LABEL: Record<BrauchtDichArt, string> = {
   fensterOhneSchluessel: 'Fenster ohne Schlüssel',
   werkstattNichtBereit: 'Werkstatt nicht bereit',
   anmeldung: 'Ohne Kunde',
+  luoxNichtErreicht: 'luox erreicht die Anlage nicht',
+  zugangLaeuftAb: 'Zugang läuft ab',
 };
+
+/** Ab wie vielen Tagen vor Ablauf die Plattform mitzieht - dieselbe Frist wie die erste Kundenwarnung (§7.6). */
+const ZUGANG_WARNFRIST_TAGE = 30;
 
 export interface BrauchtDichZeile {
   key: string;
@@ -285,6 +325,8 @@ export interface BrauchtDichEingabe {
   fernwartungBoxen: readonly FernwartungBox[];
   werkstatt: WerkstattDienst | null;
   pending: readonly PendingEnrollment[];
+  /** Additiv (§7.7) - ohne Antwort einfach `[]`, wie {@link KachelnEingabe.direktvermarktung}. */
+  direktvermarktung?: readonly AdminDirektvermarktungZeile[];
 }
 
 export function uebersichtBrauchtDich(input: BrauchtDichEingabe, now: Date): BrauchtDichZeile[] {
@@ -355,6 +397,34 @@ export function uebersichtBrauchtDich(input: BrauchtDichEingabe, now: Date): Bra
       grund: p.hint, kurz: 'ohne Kunde', schrittLabel: 'Akte', route: geraeteAkteRoute(p.externalRef),
       rang: RANG.anmeldung, art: 'anmeldung',
     });
+  }
+
+  // Direktvermarktung (§7.7): ohne eine Leitbox der Anlage gibt es keine Geräteakte-Route - eine
+  // Zeile ohne Ziel wäre ein Knopf ins Nichts, darum bleibt sie dann aus (im Betrieb seltener Fall:
+  // die Anlage hat längst eine Box, sonst gäbe es keinen Herzschlag/Zugang zu melden).
+  for (const z of input.direktvermarktung ?? []) {
+    if (!z.leadDeviceRef) continue;
+    const akte = geraeteAkteRoute(z.leadDeviceRef, 'verbindung');
+    if (z.zustand === 'gestoert') {
+      out.push({
+        key: `luox-nicht-erreicht-${z.siteId}`, icon: 'wifi', ton: 'warn', box: z.siteName,
+        kunde: z.tenantName, grund: `luox erreicht die Anlage nicht · seit ${relAge(now.getTime()
+          - new Date(z.aktualisiertAm).getTime()).replace(/^vor /, '')}`,
+        kurz: 'luox erreicht nicht', schrittLabel: 'Verbindung', route: akte, rang: RANG.luoxNichtErreicht,
+        art: 'luoxNichtErreicht',
+      });
+    }
+    if (z.zugangGueltigBis) {
+      const tageBis = Math.ceil((new Date(z.zugangGueltigBis).getTime() - now.getTime()) / 86400000);
+      if (tageBis <= ZUGANG_WARNFRIST_TAGE) {
+        out.push({
+          key: `zugang-laeuft-ab-${z.siteId}`, icon: 'lock', ton: 'warn', box: z.siteName, kunde: z.tenantName,
+          grund: tageBis <= 0 ? 'Zugang läuft ab' : `Zugang läuft in ${tageBis === 1 ? '1 Tag' : `${tageBis} Tagen`} ab`,
+          kurz: 'Zugang läuft ab', schrittLabel: 'Verbindung', route: akte, rang: RANG.zugangLaeuftAb,
+          art: 'zugangLaeuftAb',
+        });
+      }
+    }
   }
 
   return out.sort((a, b) => a.rang - b.rang || a.box.localeCompare(b.box, 'de'));

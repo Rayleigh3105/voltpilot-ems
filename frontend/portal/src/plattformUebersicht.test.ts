@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { AdminFleetBox, AdminFleetSite } from './admin/fleetApi';
 import type { EdgeUpdatesKpi, EdgeUpdatesLine, FleetRow as EdgeFleetRow, Rollout } from './adminEdgeUpdates';
 import { edgeUpdatesUrteil, kpiText, rolloutsLaufend } from './adminEdgeUpdates';
-import type { PendingEnrollment } from './admin/adminApi';
+import type { AdminDirektvermarktungZeile, PendingEnrollment } from './admin/adminApi';
 import type { FernwartungBox, FernwartungUebersicht } from './adminFernwartung';
 import type { WerkstattDienst } from './werkstattBank';
 import {
   brauchtDichMitErledigt,
+  direktvermarktungKennzahl,
   uebersichtAuffaellig,
   uebersichtBrauchtDich,
   uebersichtDienste,
@@ -41,6 +42,16 @@ function rollout(over: Partial<Rollout> = {}): Rollout {
     devices: [{ deviceId: 'd1', label: 'Box A', siteName: 'Anlage A', tenantName: 'Kunde A', state: 'angefragt', reason: null, since: ago(10 * 60_000) }],
     ...over,
   } as Rollout;
+}
+
+function dvZeile(over: Partial<AdminDirektvermarktungZeile> = {}): AdminDirektvermarktungZeile {
+  return {
+    siteId: 's1', siteName: 'Anlage A', tenantId: 't1', tenantName: 'Kunde A', partner: 'luox',
+    zustand: 'verbunden', startdatum: null, ende: null, aktualisiertAm: ago(10_000),
+    letzteAbfrageAm: ago(10_000), lebenszeichenAm: ago(10_000), zugangGueltigBis: null,
+    leadDeviceRef: 'VP-BOX-0001',
+    ...over,
+  };
 }
 
 function edgeRow(over: Partial<EdgeFleetRow> = {}): EdgeFleetRow {
@@ -276,6 +287,33 @@ describe('uebersichtKacheln', () => {
     expect(software.wort).toBe('Alle aktuell ✓');
     expect(software.kontext).toContain('2 ohne Stand');
   });
+
+  it('die vier Kacheln bleiben vier (am Telefon captain-geprüfte feste Höhe, §7.7-Hinweis in direktvermarktungKennzahl)', () => {
+    const k = uebersichtKacheln({
+      sites: [], releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
+    }, NOW);
+    expect(k).toHaveLength(4);
+  });
+});
+
+describe('direktvermarktungKennzahl (§7.7, EIGENE Kennzahl - keine fünfte Kachel)', () => {
+  it('Anlagen · verbunden · getrennt, getrennt ist die Ausnahme', () => {
+    const dv = direktvermarktungKennzahl([
+      dvZeile(), dvZeile({ siteId: 's2', zustand: 'verbunden' }), dvZeile({ siteId: 's3', zustand: 'gestoert' }),
+    ]);
+    expect(dv.zahl).toBe(1);
+    expect(dv.ton).toBe('warn');
+    expect(dv.wort).toBe('Anlage getrennt');
+    expect(dv.kontext).toBe('3 Anlagen · 2 verbunden');
+  });
+
+  it('ohne jede getrennte Anlage grün, auch bei null Anlagen', () => {
+    const dv = direktvermarktungKennzahl([]);
+    expect(dv.zahl).toBe(0);
+    expect(dv.ton).toBe('ok');
+    expect(dv.wort).toBe('Alle verbunden ✓');
+    expect(dv.kontext).toBe('0 Anlagen · 0 verbunden');
+  });
 });
 
 describe('uebersichtBrauchtDich', () => {
@@ -353,6 +391,39 @@ describe('uebersichtBrauchtDich', () => {
   it('eine frische, normale Anmeldung braucht niemanden', () => {
     const pending: PendingEnrollment = { externalRef: 'edge-x9', deviceInfo: null, csrUpdatedAt: ago(60_000), everIssued: false, issuedAt: null };
     expect(uebersichtBrauchtDich({ ...leer, pending: [pending] }, NOW)).toHaveLength(0);
+  });
+
+  it('Direktvermarktung §7.7: luox erreicht die Anlage nicht, seit wann steht im Grund', () => {
+    const zeilen = uebersichtBrauchtDich({
+      ...leer, direktvermarktung: [dvZeile({ zustand: 'gestoert', aktualisiertAm: ago(47 * 60_000) })],
+    }, NOW);
+    expect(zeilen).toHaveLength(1);
+    expect(zeilen[0]).toMatchObject({ box: 'Anlage A', kunde: 'Kunde A', art: 'luoxNichtErreicht' });
+    expect(zeilen[0].grund).toBe('luox erreicht die Anlage nicht · seit 47 Min.');
+  });
+
+  it('Direktvermarktung §7.7: ein Zugang, der bald abläuft, braucht dich - weit entfernte nicht', () => {
+    const bald = uebersichtBrauchtDich({
+      ...leer, direktvermarktung: [dvZeile({ zugangGueltigBis: new Date(NOW.getTime() + 21 * 86400000).toISOString() })],
+    }, NOW);
+    expect(bald).toHaveLength(1);
+    expect(bald[0]).toMatchObject({ art: 'zugangLaeuftAb', grund: 'Zugang läuft in 21 Tagen ab' });
+
+    const weitWeg = uebersichtBrauchtDich({
+      ...leer, direktvermarktung: [dvZeile({ zugangGueltigBis: new Date(NOW.getTime() + 60 * 86400000).toISOString() })],
+    }, NOW);
+    expect(weitWeg).toHaveLength(0);
+  });
+
+  it('Direktvermarktung ohne Leitbox der Anlage bleibt aus (keine Geräteakte-Route)', () => {
+    const zeilen = uebersichtBrauchtDich({
+      ...leer, direktvermarktung: [dvZeile({ zustand: 'gestoert', leadDeviceRef: null })],
+    }, NOW);
+    expect(zeilen).toHaveLength(0);
+  });
+
+  it('Direktvermarktung verbunden und ohne bald ablaufenden Zugang braucht niemanden', () => {
+    expect(uebersichtBrauchtDich({ ...leer, direktvermarktung: [dvZeile()] }, NOW)).toHaveLength(0);
   });
 });
 
