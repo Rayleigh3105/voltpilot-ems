@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/direktvermarkter"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/vermarktertunnel"
 )
 
 // The shared vectors pin the heartbeat block "direktvermarktung" across the
@@ -31,11 +32,11 @@ func TestDirektvermarktungSummaryMatchesSharedVectors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The Lage vocabulary is the one the Anschluss derives.
+	// The Lage vocabulary is the one the tunnel manager derives (§5.4).
 	wantLagen := []string{
-		direktvermarkter.LageOhneProfil, direktvermarkter.LageOhneZugang, direktvermarkter.LageZugangKaputt,
-		direktvermarkter.LageBautAuf, direktvermarkter.LageTunnelOben, direktvermarkter.LageVerbunden,
-		direktvermarkter.LageVorgabeAktiv, direktvermarkter.LageAbgelaufen, direktvermarkter.LageTunnelUnten,
+		vermarktertunnel.LageOhneProfil, vermarktertunnel.LageOhneZugang, vermarktertunnel.LageZugangUngueltig,
+		vermarktertunnel.LageBautAuf, vermarktertunnel.LageTunnelOben, vermarktertunnel.LageVerbunden,
+		vermarktertunnel.LageVorgabeAktiv, vermarktertunnel.LageAbgelaufen, vermarktertunnel.LageTunnelUnten,
 	}
 	if !reflect.DeepEqual(vectors.Lagen, wantLagen) {
 		t.Fatalf("lagen = %v, want %v", vectors.Lagen, wantLagen)

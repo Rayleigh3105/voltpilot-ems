@@ -249,6 +249,18 @@ public class DirektvermarktungRepository {
                 + "WHERE id = ? AND zurueckgezogen_am IS NULL", Timestamp.from(jetzt), zugangId) > 0;
     }
 
+    /**
+     * Die Referenzleistung der Anlage in Watt für das Prozent-Register des Partners: die Summe der
+     * installierten PV-Modulleistung über die PV-Assets der Anlage (F6-Annahme "installierte Leistung",
+     * dieselbe Quelle wie Prognose und MaStR-Übernahme). 0 = unbekannt - dann wird nicht zugestellt,
+     * eine erfundene Referenz drosselte die falsche Menge (vermarktertunnel.LadeAnschluss lehnt sie ab).
+     */
+    public double referenzWp(UUID siteId) {
+        Double kwp = jdbc.queryForObject("SELECT COALESCE(SUM(pv_capacity_kwp), 0) FROM asset "
+                + "WHERE site_id = ? AND type = 'pv'", Double.class, siteId);
+        return kwp == null ? 0 : kwp * 1000;
+    }
+
     /** Ersetzt den Herzschlag-Spiegel der Anlage (eine Zeile je Anlage, nur Anzeige). */
     public void standSchreiben(UUID tenantId, UUID siteId, Stand stand, Instant gemeldetAm) {
         jdbc.update("INSERT INTO direktvermarktung_stand (site_id, tenant_id, tunnel_oben_seit, handshake_am, "

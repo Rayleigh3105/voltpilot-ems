@@ -3,7 +3,12 @@
 . "$(dirname "$0")/attrappe.sh"
 u="$(param user "$@")"
 h="$(param hash "$@")"
-case "$u" in root | admin | user) ;; *) falsch "Invalid user ($u)" ;; esac
+# Das echte Werkzeug lehnt user=root grundsaetzlich ab, ohne jede Ausgabe
+# (WAGO-Quelltext config_linux_user.c/shadow_functions.c, FW22 und FW24+
+# gleich: FillUserData/FillUserDataFromHash geben INVALID_PARAMETER=2 zurueck,
+# bevor sie etwas ausgeben). root setzt sein Passwort ueber usermod.
+[ "$u" = root ] && exit 2
+case "$u" in admin | user) ;; *) falsch "Invalid user ($u)" ;; esac
 # Die Attrappe nimmt nur den Hash: Ein Passwort als Argument stuende in der
 # Prozessliste des Geraets.
 if hat new-password "$@" || hat confirm-password "$@"; then

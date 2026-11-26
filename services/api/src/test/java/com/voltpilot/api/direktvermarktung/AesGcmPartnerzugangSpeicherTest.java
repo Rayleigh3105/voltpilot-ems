@@ -139,13 +139,4 @@ class AesGcmPartnerzugangSpeicherTest {
         assertThat(speicher.lade(ZUGANG)).isEmpty();
     }
 
-    @Test
-    void laufzeitKatalogTraegtDasAufgeloesteLuoxProfil() {
-        VermarkterLaufzeitKatalog katalog = new VermarkterLaufzeitKatalog(JSON);
-        JsonNode luox = katalog.profil("luox");
-        assertThat(luox).isNotNull();
-        assertThat(luox.path("modbus").path("wortfolge").asText()).isIn("little", "big");
-        assertThat(luox.path("regeln").path("bei_veraltet").asText()).doesNotStartWith("offen");
-        assertThat(katalog.profil("unbekannt")).isNull();
-    }
 }

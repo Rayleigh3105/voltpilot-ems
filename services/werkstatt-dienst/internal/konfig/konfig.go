@@ -29,6 +29,11 @@ var (
 	OpenWrtNetz = netip.MustParsePrefix("192.168.1.0/24")
 )
 
+// GeraetPortalURLVorgabe ist das Portal, wie ein Gerät hinter der
+// Werkbank-Brücke es ohne eigene Angabe erreicht (VP_WERKSTATT_GERAET_PORTAL_URL):
+// nie der In-Cluster-Fallback von VP_WERKSTATT_PORTAL_URL/VP_WERKSTATT_API_URL.
+const GeraetPortalURLVorgabe = "https://portal.voltpilot.de"
+
 // Namen der Schlüsseldateien im Geheimnis-Verzeichnis.
 const (
 	DateiStatus        = "werkbank-status"
@@ -65,11 +70,21 @@ type Konfig struct {
 	Bauart             string        // Edge Light: mipsle
 	DownloadToken      geheim.Geheim // Lese-Token für die Release-Anhänge (optional)
 
-	// PortalURL ist das Portal, von dem der Dienst das Vertrauens-Set offen
-	// laedt und auf die Box legt (Konzept vp-edge-light-update, K5):
-	// VP_WERKSTATT_PORTAL_URL, sonst VP_WERKSTATT_API_URL, sonst leer (dann
-	// laedt install.sh es selbst vom Standard-Portal).
+	// PortalURL ist das Portal, von dem der DIENST SELBST (im Cluster) das
+	// Vertrauens-Set und das signierte Manifest offen laedt: VP_WERKSTATT_PORTAL_URL,
+	// sonst VP_WERKSTATT_API_URL, sonst leer (dann laedt install.sh das
+	// Vertrauens-Set selbst vom Standard-Portal). Gilt NUR fuer Anfragen des
+	// Dienstes aus dem Cluster; ein Fallback auf VP_WERKSTATT_API_URL kann eine
+	// nur im Cluster aufloesbare Adresse sein (Freigabe aus der Portal-API).
 	PortalURL string
+
+	// GeraetPortalURL ist das Portal, wie ein Geraet HINTER DER WERKBANK-BRUECKE
+	// es erreicht: der befristete Internet-Check der Werkstatt, die laufende
+	// Box selbst (eingespieltes portal_url/VP_PORTAL_URL) und der Fernlauf
+	// duerfen NIE PortalURL oder seinen In-Cluster-Fallback verwenden - das
+	// Geraet kann eine Cluster-interne Adresse nie aufloesen. VP_WERKSTATT_GERAET_PORTAL_URL,
+	// sonst https://portal.voltpilot.de (nie VP_WERKSTATT_API_URL).
+	GeraetPortalURL string
 
 	// Die Portal-API (V1): leer heißt, die Freigabe kommt aus der Datei.
 	APIURL       string
@@ -239,6 +254,7 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 		Bauart:             wert(env, "VP_WERKSTATT_EDGE_BAUART", "mipsle"),
 		APIURL:             strings.TrimSpace(env("VP_WERKSTATT_API_URL")),
 		PortalURL:          strings.TrimSpace(env("VP_WERKSTATT_PORTAL_URL")),
+		GeraetPortalURL:    strings.TrimRight(wert(env, "VP_WERKSTATT_GERAET_PORTAL_URL", GeraetPortalURLVorgabe), "/"),
 		TokenURL:           strings.TrimSpace(env("VP_WERKSTATT_TOKEN_URL")),
 		ClientID:           wert(env, "VP_WERKSTATT_CLIENT_ID", "voltpilot-werkstatt-dienst"),
 	}
@@ -246,7 +262,7 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 		k.PortalURL = k.APIURL
 	}
 	for name, u := range map[string]string{"VP_WERKSTATT_API_URL": k.APIURL, "VP_WERKSTATT_TOKEN_URL": k.TokenURL,
-		"VP_WERKSTATT_PORTAL_URL": k.PortalURL} {
+		"VP_WERKSTATT_PORTAL_URL": k.PortalURL, "VP_WERKSTATT_GERAET_PORTAL_URL": k.GeraetPortalURL} {
 		if u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 			add(fmt.Errorf("%s %q: eine http(s)-Adresse", name, u))
 		}

@@ -151,7 +151,7 @@ func (l *laufZustand) fassungenIndustrie(ctx context.Context) (protokoll.Beleg, 
 	f := freigabe.Freigabe{BoxArt: freigabe.PFC200, EdgeIndustrie: freigabe.Industrie{Fassung: z.Fassung, Quelle: z.Quelle,
 		ProgrammSha256: z.ProgrammSha256, SkripteSha256: z.SkripteSha256}}
 	// Das Tunnel-Programm lädt der Fernlauf nicht: Er fasst den Tunnel nicht an.
-	programm, skripte, _ := fassungen.DateienPFC200(f)
+	programm, skripte, _, _ := fassungen.DateienPFC200(f)
 	b := protokoll.Beleg{}.Mit("fassung", z.Fassung)
 	for _, d := range []fassungen.Datei{programm, skripte} {
 		erg, err := l.k.Fassungen.Hole(ctx, d)
@@ -405,10 +405,10 @@ func gesichertIndustrie(e string) bool {
 func (l *laufZustand) aufspielenIndustrie(ctx context.Context) (protokoll.Beleg, string, error) {
 	// Ab hier nimmt jeder Fehler die Sicherung zurück.
 	l.aufgespielt = true
-	env := []string{"VP_INDUSTRIE_MANIFEST=" + l.pfadManifest, "VP_TRUST_SET_DIR=" + l.dirVertrauen}
-	if l.k.PortalURL != "" {
-		env = append(env, "VP_PORTAL_URL="+l.k.PortalURL)
-	}
+	// VP_PORTAL_URL ist die vom Gerät aus erreichbare Adresse (geraetPortalURL),
+	// nie die Adresse des Dienstes im Cluster (l.k.PortalURL gilt nur für den
+	// Abruf des Vertrauens-Sets oben).
+	env := []string{"VP_INDUSTRIE_MANIFEST=" + l.pfadManifest, "VP_TRUST_SET_DIR=" + l.dirVertrauen, "VP_PORTAL_URL=" + l.k.geraetPortalURL()}
 	r, err := l.skriptIndustrie(ctx, "install.sh", nil, env...)
 	if err != nil {
 		return nil, "", err

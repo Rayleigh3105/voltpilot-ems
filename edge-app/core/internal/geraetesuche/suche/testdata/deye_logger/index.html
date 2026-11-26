@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/index.css" />
+  <style>
+    .myPwd {
+      margin-top: 12px;
+    }
+
+    .myInput {
+      border-color: #0000004d;
+    }
+
+    @media screen and (max-width: 768px), screen and (hover: none) and (pointer: coarse) {
+      .posCenter {
+        background-color: transparent;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+
+<body onload="initPage()">
+  <div class="w100 h100 bgf2f6ff">
+    <div style="position: absolute; top: 22px; right: 24px; cursor: pointer">
+      <div class="lanST" style="line-height: 30px;">
+        <div class="lang t14 bold inBlock"></div>
+        <div class="arrowDown inBlock" style="margin-left: 16px"></div>
+        <div class="bgfff shadow lanSelect disNone"></div>
+      </div>
+    </div>
+    <div class="bgfff shadow posCenter" style="width: 359px; padding: 25px 16px">
+      <!-- title -->
+      <div class="bold t16 textCenter lineH22" lanT="r1"></div>
+      <!-- 用户名 -->
+      <input class="myInput user" maxlength="30" style="margin-top: 24px" oninput="onInput(event)" />
+      <p class="prompt0 t12 lineH22 clrf0070"></p>
+      <!-- 密码 -->
+      <div class="myPwd">
+        <input class="myInput password" type="password" maxlength="30" oninput="onInput(event, '.eye1')" />
+        <img class="eye eye1" src="imgs/closeEye.svg" onclick="showPassword('.password', '.eye1')" />
+      </div>
+      <p class="prompt1 t12 lineH22 clrf0070"></p>
+      <!-- 密码 -->
+      <div class="myPwd">
+        <input class="myInput repassword" type="password" maxlength="30" oninput="onInput(event, '.eye2')" />
+        <img class="eye eye2" src="imgs/closeEye.svg" onclick="showPassword('.repassword', '.eye2')" />
+      </div>
+      <!-- 失败提示 -->
+      <p class="prompt2 t12 lineH22 clrf0070"></p>
+      <button lanT="r2" disabled class="myBtn" style="width: 100%; margin-top: 16px" onclick="confirm()"></button>
+    </div>
+  </div>
+</body>
+<script src="js/lan_cn.js"></script>
+<script src="js/lan_en.js"></script>
+<script src="js/lan_de.js"></script>
+<script src="js/lan_ja.js"></script>
+<script src="js/aes.js"></script>
+<script src="js/rsa.js"></script>
+<script src="js/utils.js"></script>
+<script language="javascript" type="text/javascript">
+  var userDom = querySelector('.user');
+  var passwordDom = querySelector('.password');
+  var repasswordDom = querySelector('.repassword');
+  var myBtnDom = querySelector('.myBtn');
+  var prompt0Dom = querySelector('.prompt0');
+  var prompt1Dom = querySelector('.prompt1');
+  var prompt2Dom = querySelector('.prompt2');
+
+  // 初始化界面
+  function initPage() {
+    userDom.placeholder = getLocal()['r3'];
+    userDom.value = getQueryString('user');
+    passwordDom.placeholder = getLocal()['r4'];
+    repasswordDom.placeholder = getLocal()['r5'];
+    innerHtml('.lang', getlangText());
+    initPageText();
+    androidInputFocusListener();
+    initLanSelect();
+    getPublicKey();
+  }
+
+  // 按钮点击
+  function confirm() {
+    var user = userDom.value;
+    var p = passwordDom.value;
+    // var str = 'Basic ' + b64EncodeUnicode('admin:' + password2)
+    if (valid({ user, p, p2: repasswordDom.value })) {
+      request({
+        url: 'change_user.cgi?newUser=' + encodeURIComponent(user.trim()) + '&newPwd=' + encodeURIComponent(p.trim()) + '&t=' + Math.random(),
+        successCb: function (responseText) {
+          if (responseText.indexOf('success') != -1) {
+            window.location.replace('/');
+          } else {
+            alert(getLocal()['c2']);
+          }
+        }
+      });
+    }
+  }
+  function onInput(e, eyeClass) {
+    if (userDom.value && passwordDom.value && repasswordDom.value) {
+      myBtnDom.disabled = false;
+    } else {
+      myBtnDom.disabled = true;
+    }
+    if (eyeClass) {
+      togglePasswordEye(e.target.value, eyeClass)
+    }
+  }
+
+  function valid({ user, p, p2 }) {
+    prompt0Dom.innerHTML = '';
+    prompt1Dom.innerHTML = '';
+    prompt2Dom.innerHTML = '';
+    // if (!user) {
+    //   prompt0Dom.innerHTML = getLocal()['r9'];
+    //   return false;
+    // }
+    // if (!p) {
+    //   prompt1Dom.innerHTML = getLocal()['r7'];
+    //   return false;
+    // }
+    // if(containsChinese(user)) {
+    //   prompt0Dom.innerHTML = getLocal()['c5'];
+    //   return false;
+    // }
+    // if(containsChinese(p)) {
+    //   prompt1Dom.innerHTML = getLocal()['c4'];
+    //   return false;
+    // }
+    // if (!pwdReg.test(p)) {
+    //   prompt1Dom.innerHTML = getLocal()['r6'];
+    //   return false;
+    // }
+    // if (!p2) {
+    //   prompt2Dom.innerHTML = getLocal()['r7'];
+    //   return false;
+    // }
+    // if (p != p2) {
+    //   prompt1Dom.innerHTML = getLocal()['r8'];
+    //   prompt2Dom.innerHTML = getLocal()['r8'];
+    //   return false;
+    // }
+    // return true;
+
+    let userResult = { valid: true }
+    userResult = commonValidate({ value: user });
+    if (!userResult.valid) {
+      prompt0Dom.innerHTML = userResult.message;
+    }
+    let passwordResult = commonValidate({ value: p, reValue: p2, isPassword: true });
+    if (!passwordResult.valid) {
+      prompt2Dom.innerHTML = passwordResult.message;
+    }
+    return userResult.valid && passwordResult.valid
+  }
+
+  function changeLan(lan) {
+    setLang(lan);
+    initPage();
+  }
+</script>
+
+</html>

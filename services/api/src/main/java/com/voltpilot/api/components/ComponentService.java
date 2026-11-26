@@ -192,6 +192,46 @@ public class ComponentService {
         this.heizstab = heizstab;
     }
 
+    /** Die Kommunikation eines Deye am Modbus TCP seines Datenloggers (eigene Vorlage je Deye-Modell). */
+    static final String DEYE_MODBUS_TCP = "deye_modbus_tcp";
+
+    private com.voltpilot.api.entities.LeadDeviceService leadDevices;
+    private com.voltpilot.api.uems.BoxFaehigkeiten faehigkeiten;
+
+    @Autowired(required = false)
+    void setBoxFaehigkeiten(com.voltpilot.api.entities.LeadDeviceService leadDevices,
+            com.voltpilot.api.uems.BoxFaehigkeiten faehigkeiten) {
+        this.leadDevices = leadDevices;
+        this.faehigkeiten = faehigkeiten;
+    }
+
+    /**
+     * Einen Deye über das Modbus TCP seines Datenloggers bekommt nur eine Box, die diesen Weg liest (Fähigkeit
+     * {@code deye_modbus_tcp}, nur der Go-Kern): eine ältere Box fiele auf den Solarman-Weg zurück und lehnte die
+     * Anlage ohne Logger-Seriennummer ab, die Docker-Box liest den Weg nicht.
+     */
+    private void requireBoxKannWeg(UUID siteId, ComponentTemplateDto template) {
+        if (!DEYE_MODBUS_TCP.equals(template.communication())) {
+            return;
+        }
+        UUID box = leadDevices == null ? null : leadDevices.fuehrendeBox(siteId).box();
+        requireBoxKannWeg(template.communication(), box,
+                b -> faehigkeiten != null && faehigkeiten.kann(b, DEYE_MODBUS_TCP));
+    }
+
+    /** Die Regel ohne Datenbank: ohne führende Box oder ohne die Fähigkeit 409. */
+    static void requireBoxKannWeg(String communication, UUID box, java.util.function.Predicate<UUID> kann) {
+        if (!DEYE_MODBUS_TCP.equals(communication)) {
+            return;
+        }
+        if (box == null || !kann.test(box)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Die Box dieser Anlage liest einen Deye über das Modbus TCP seines Datenloggers noch nicht "
+                            + "(Fähigkeit deye_modbus_tcp fehlt). Bitte erst die Box aktualisieren - oder den Deye "
+                            + "über Solarman V5 oder RS485 anbinden.");
+        }
+    }
+
     /** Ob dieses Anlegen einen Heizstab über eine Ausgangsmenge meint - und das prüfen. */
     private boolean heizstabAnlegen(UUID siteId, String role, SaveComponentRequest req,
             ComponentTemplateDto template) {
@@ -363,6 +403,7 @@ public class ComponentService {
         GeraetesucheHerkunft.Fund fund = fundAusSuche(siteId, req);
         String role = requireRole(req.role());
         ComponentTemplateDto template = requireTemplate(req.templateRef(), req.templateVersion());
+        requireBoxKannWeg(siteId, template);
         // Heizstab V1: VOR der Verbindungstest-Pflicht geprüft - die Ablehnung soll den echten
         // Grund nennen (Anschluss, belegter Ausgang, Box ohne Update), nicht das Folgeproblem.
         boolean heizstabGeraet = heizstabAnlegen(siteId, role, req, template);
@@ -414,6 +455,7 @@ public class ComponentService {
         requireCompatibleRoleChange(siteId, entityId, role, existing);
         ComponentTemplateDto template = requireTemplate(existing, req.templateRef(),
                 req.templateVersion());
+        requireBoxKannWeg(siteId, template);
         Set<String> secretKeys = new java.util.LinkedHashSet<>(ComponentSecrets.keys(template));
         if (existing.templateRef() != null && existing.templateVersion() != null) {
             templates.findStoredExactByRef(BuiltinComponentTemplates.PUBLIC_KINDS,

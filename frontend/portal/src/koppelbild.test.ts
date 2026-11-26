@@ -97,11 +97,18 @@ const qPlatz = (n: number, f: string) => Q.platz.basis - Q.basis + (n - 1) * Q.p
 const qKopf = (f: string) => qk(f).adresse - Q.basis;
 
 // ---- der unabhängige Schreiber ----
+const grundAbNebenversion: Record<string, number> =
+  Object.fromEntries(vektoren.vokabular.grund.map((v: Json) => [v.name, v.ab_nebenversion ?? 0]));
+
 function schreibe(a: Json): number[] {
   const w = new Array(W.woerter).fill(0);
   w.splice(wk('signatur').adresse, 2, ...SIG_W);
   w.splice(wk('wortfolge').adresse, 2, ...PRUEF);
-  w[wk('version').adresse] = VERSION;
+  // §14: das Versionswort nennt die höchste Nebenversion, deren Vokabular das Telegramm verwendet
+  const neben = Math.max(0, ...Object.values(a.plaetze as Record<string, Json>)
+    .filter((p: Json) => p && p.art !== 'keiner')
+    .map((p: Json) => grundAbNebenversion[p.grund] ?? 0));
+  w[wk('version').adresse] = VERSION | neben;
   w[wk('platz_anzahl').adresse] = wk('platz_anzahl').soll;
   w[wk('sitzung').adresse] = a.sitzung;
   w[wk('herzschlag').adresse] = a.herzschlag;

@@ -32,6 +32,22 @@ type Takt struct {
 	// Nachlauf is how long the box listens after the last UDP nudge before it
 	// reads the ARP table (Edge Light).
 	Nachlauf time.Duration
+	// HuaweiRuhe is how long the Huawei recogniser waits after the connect
+	// before its first request (HuaweiRuhe, 1 s).
+	HuaweiRuhe time.Duration
+}
+
+// HuaweiRuhe: a Huawei Smart Dongle leaves a request unanswered that arrives
+// right after the connect (field, 25.11.2026: at once and after 0,3 s no
+// answer, after 1 s an answer) - the same pause as layer1's
+// DefaultHuaweiConnectPause.
+const HuaweiRuhe = time.Second
+
+func (t Takt) huaweiRuhe() time.Duration {
+	if t.HuaweiRuhe <= 0 {
+		return HuaweiRuhe
+	}
+	return t.HuaweiRuhe
 }
 
 func (t Takt) jeSekunde() int {

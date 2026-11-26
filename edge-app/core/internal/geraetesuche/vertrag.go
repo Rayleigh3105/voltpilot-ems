@@ -50,7 +50,7 @@ const (
 // Erkenner is the closed vocabulary of recognisers and ways, in contract order.
 var Erkenner = []string{"solarman", "shelly", "goe", "netztechnik", "modbus_offen", "sunspec",
 	"fronius_solar_api", "kaco_aiswei", "kostal", "huawei", "sma", "victron", "opendtu_ahoy", "ebyte", "wago",
-	"mdns", "ssdp", "funkmodul"}
+	"deye_logger", "mdns", "ssdp", "funkmodul"}
 
 // Wege are recognisers that produce no find of their own (multicast and the
 // neighbours' MAC addresses): they only run on the Go core (Edge Light,
@@ -93,7 +93,7 @@ var (
 	Anbindungen      = []string{AnbindungUebernehmen, AnbindungSelbstBeschreiben, AnbindungNichtMitDieserBox, AnbindungKeinLeseweg, AnbindungNurAnzeige}
 	Erkennungen      = []string{ErkennungSicher, ErkennungWahrscheinlich, ErkennungUnbekannt}
 	Hindernisse      = []string{"geschuetzt", "lokale_api_aus"}
-	Communications   = []string{"solarman_v5", "shelly_http", "shelly_em_http", "goe_http_api", "fronius_solar_api", "fronius_sunspec", "sunspec_tcp", "kaco_http", "kostal_modbus", "huawei_modbus", "ebyte_modbus_tcp", "modbus_tcp"}
+	Communications   = []string{"solarman_v5", "shelly_http", "shelly_em_http", "goe_http_api", "fronius_solar_api", "fronius_sunspec", "sunspec_tcp", "kaco_http", "kostal_modbus", "huawei_modbus", "ebyte_modbus_tcp", "modbus_tcp", "deye_modbus_tcp"}
 	Schritte         = []string{"netze_bestimmen", "nachbarn_finden", "geraete_ansprechen", "geraete_erkennen"}
 	Rollen           = []string{"kundennetz", "box_netz"}
 	Zustaende        = []string{"fertig", "abgebrochen", "fehlgeschlagen", "abgelehnt"}
@@ -139,6 +139,7 @@ var Katalog = []KatalogZeile{
 	{"opendtu_ahoy", "dtu", 2, "", AnbindungKeinLeseweg, AnbindungKeinLeseweg},
 	{"ebyte", "io_modul", 2, "ebyte_modbus_tcp", AnbindungUebernehmen, AnbindungUebernehmen},
 	{"wago", "sps", 2, "modbus_tcp", AnbindungUebernehmen, AnbindungNichtMitDieserBox},
+	{"deye_logger", "wechselrichter", 2, "deye_modbus_tcp", AnbindungNichtMitDieserBox, AnbindungUebernehmen},
 }
 
 // KatalogPaar returns the row of (erkenner, art), or false.

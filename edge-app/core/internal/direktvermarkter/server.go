@@ -165,11 +165,14 @@ const (
 
 // SetValues replaces the cached input snapshot the server answers reads
 // from. The agent (Stage 2) feeds this from the same measurements the Box
-// already holds - never a new device read.
+// already holds - never a new device read. REPLACES, not merges: a channel
+// absent from the snapshot is absent and answers per regeln.bei_veraltet -
+// merging would re-stamp an old value as fresh ("Unbekannt ist keine Null").
 func (s *Server) SetValues(at time.Time, values map[string]float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.valuesAt = at
+	s.values = make(map[string]float64, len(values))
 	for k, v := range values {
 		s.values[k] = v
 	}
@@ -198,6 +201,15 @@ func (s *Server) Limit() (pct int, active bool) {
 // is within the profile's deadline.
 func (s *Server) watchdogFreshLocked(now time.Time) bool {
 	return !s.lastWatchdog.IsZero() && now.Sub(s.lastWatchdog) < s.watchdogDeadline()
+}
+
+// LastQuery is when the partner last completed a read or an accepted write
+// (zero = never). The Stage-2 tunnel manager tells "verbunden" from
+// "tunnel_oben" (§5.4) by its age.
+func (s *Server) LastQuery() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastQuery
 }
 
 // State is the connection state (the subset of concept §5.4 this package can

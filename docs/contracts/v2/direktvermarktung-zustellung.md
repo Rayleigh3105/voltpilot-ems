@@ -4,7 +4,7 @@ Die Zustellung des Direktvermarktungs-Anschlusses (Konzept `vp-direktvermarktung
 Vektoren: [`direktvermarktung-zustellung-vectors.json`](direktvermarktung-zustellung-vectors.json).
 Partnerprofile selbst: [`catalog/direktvermarkter`](../../../catalog/direktvermarkter/README.md); die Box-seitige Schnittstelle: `edge-app/core/internal/direktvermarkter`.
 
-**Leser und Prüfer:** Go `edge-app/core/internal/direktvermarkter/zustellung.go` (Parse + `Profile.Pruefe`, Tests `zustellung_test.go`, `anschluss_test.go`), Java `services/api` Paket `direktvermarktung` (`DirektvermarktungZustellung`, `DirektvermarktungStandListener`, `DirektvermarktungQuittungListener`, `DirektvermarktungAnfrageListener`), Tabelle `direktvermarktung_stand` (nur Anzeige, nie Soll-Stand - AGENTS.md-Regel der Fernwartung gilt hier genauso).
+**Leser und Prüfer:** Go `edge-app/core/internal/direktvermarkter/zustellung.go` (Parse, Tests `zustellung_test.go`) und `edge-app/core/internal/agent/direktvermarktung.go` (Zustellung in den Dateivertrag des Tunnel-Verwalters `internal/vermarktertunnel/zugang.go`, Tests `direktvermarktung_test.go`), Java `services/api` Paket `direktvermarktung` (`DirektvermarktungZustellung`, `DirektvermarktungStandListener`, `DirektvermarktungQuittungListener`, `DirektvermarktungAnfrageListener`), Tabelle `direktvermarktung_stand` (nur Anzeige, nie Soll-Stand - AGENTS.md-Regel der Fernwartung gilt hier genauso).
 
 ## 1. Topics
 
@@ -24,19 +24,19 @@ Alle Topics liegen im `v2/#`-Teilbaum der per-Gerät-ACL - mit zwei ausdrücklic
 {
   "schema_version": "1.0",
   "tenant_id": "…", "site_id": "…", "device_id": "…",
-  "generated_at": "2026-11-25T12:00:00Z",
+  "generated_at": "2026-11-26T08:00:00Z",
   "partner": "luox",
   "revision": 3,
-  "zugang_fingerabdruck": "SHA256:…",
-  "profil": { "id": "luox", "modbus": {…}, "register": […], "regeln": {…} }
+  "referenz_wp": 12000,
+  "zugang_fingerabdruck": "SHA256:…"
 }
 ```
 
-- `profil` ist die VOLLSTÄNDIGE gepackte Laufzeit-Sicht des Partners - dieselbe Form, die `catalog/direktvermarkter/tools/package_edge_runtime.py` in `edge-app/core/internal/direktvermarkter/profiles.json` erzeugt, AUFGELÖST (Wortfolge und `bei_veraltet` nie `offen (Fxx)`). Die Cloud liest sie aus genau diesem generierten Derivat (Maven-Ressource) und bettet den Partner-Teilbaum unverändert ein: EINE Quelle, nie zwei driftende Auflösungen. Ein neuer Partner braucht so keine neue Firmware (E6 = A, Stufe 7).
-- Die Box prüft streng (`Profile.Pruefe`): nur Funktionen 3/4/6/16, bekannte Typen, keine überlappenden Register, Band nur an Halteregistern, das Register `vermarkter_vorgabe_pct` muss da sein, `offen (…)`-Werte sind abgelehnt. Ein Dokument, das die Box nicht sicher bedienen kann, wird GANZ verworfen - nie halb übernommen.
+- Das Dokument WÄHLT das EINGEBETTETE Partnerprofil der Box (`partner` = Katalog-Kennung): Registerbelegung, Wortfolge und Regeln kommen aus `edge-app/core/internal/direktvermarkter/profiles.json`, nie aus einer zugestellten Datei - die Sicherheitsregel des Tunnel-Verwalters (`internal/vermarktertunnel`). Ein neuer Partner ist damit ein Daten-Release der Box (E6 = A), keine Code-Änderung; einen Partner, den ihre Fassung nicht kennt, lehnt die Box ehrlich ab.
+- `referenz_wp` ist die Referenzleistung der Anlage in Watt (F6-Annahme „installierte PV-Modulleistung", Summe der PV-Assets): die Basis des Prozent-Registers und des Eingangsregisters `referenz_w`. Ohne positive Referenz wird nicht zugestellt - eine erfundene Referenz drosselte die falsche Menge.
 - `revision` zählt je Anlage aufwärts (jede Neuzustellung erhöht); `zugang_fingerabdruck` nennt den Zugang, den die Box halten soll.
-- Die Box persistiert das Dokument (Muster `v2/control-certification`): eine offline startende Box behält den Anschluss, den sie rechtmäßig hatte. Wiederzustellung desselben Dokuments (jeder Reconnect) ist idempotent und setzt NIE den laufenden Watchdog-Zustand zurück.
-- **Leeres Payload = Rückzug** (Beenden, Admin „sperren", Lösen der Box, Box-Tausch): die Box stoppt die Schnittstelle, löscht Zugang UND Profil von der Platte und quittiert `geloescht`. Schlägt das Löschen fehl, quittiert sie NICHT - das retained Leer-Payload liefert der Broker beim nächsten Reconnect erneut.
+- Die Box legt das Dokument im Dateivertrag des Tunnel-Verwalters ab (`internal/vermarktertunnel/zugang.go`: `anschluss.json` mit Partner und Referenz für den Verwalter, `zustellung.json` als eigene Buchführung der Zustellung) - der Verwalter übernimmt es auf seinem nächsten Takt; eine offline startende Box behält den Anschluss, den sie rechtmäßig hatte. Wiederzustellung desselben Dokuments (jeder Reconnect) ist idempotent und setzt NIE den laufenden Watchdog-Zustand zurück.
+- **Leeres Payload = Rückzug** (Beenden, Admin „sperren", Lösen der Box, Box-Tausch): die Box löscht Zugang UND Anschluss-Dateien und quittiert `geloescht`; der Verwalter baut Tunnel, Firewall-Öffnung und Schnittstelle auf seinem nächsten Takt ab. Schlägt das Löschen fehl, quittiert sie NICHT - das retained Leer-Payload liefert der Broker beim nächsten Reconnect erneut.
 
 ## 3. Der Zugang (Anfrage → Einmal-Antwort → Quittung)
 
@@ -52,13 +52,16 @@ Antwort der Cloud (entschlüsselt aus `direktvermarktung_zugang`, einmal, über 
 ```json
 { "schema_version": "1.0", "tenant_id": "…", "site_id": "…", "device_id": "…",
   "partner": "luox", "zugang_fingerabdruck": "SHA256:…", "gueltig_bis": "…",
+  "tls_schluessel": "tls_crypt",
   "gegenstelle": { "host": "…", "port": 1194, "protokoll": "udp" },
   "dateien": { "zertifikat_pem": "…", "schluessel_pem": "…", "ca_pem": "…", "tls_schluessel_pem": "…" } }
 ```
 
+`gegenstelle.protokoll` ist Pflicht (`udp` oder `tcp`); `tls_schluessel` sagt, wie der geteilte TLS-Schlüssel wirkt (`tls_crypt`, `tls_auth` oder `keine`, fehlend = `keine`) - beides braucht die OpenVPN-Konfiguration des Verwalters, beides liest die Übernahme aus der Konfiguration des Partners.
+
 - Die Cloud antwortet NUR der führenden Box der Anlage, NUR für den Fingerabdruck des aktiven, nicht zurückgezogenen Zugangs, und protokolliert die Zustellung append-only. Kein Byte des Materials erscheint je in einem Log, einem Protokolleintrag oder einer Fehlermeldung - loggbar ist allein der Fingerabdruck.
 - Die Ablage in `direktvermarktung_zugang` ist AES-256-GCM (`VP_PARTNERZUGANG_SCHLUESSEL`, Nonce 12 Byte) mit AAD `vp-partnerzugang.v1|tenant|site|zugangId`: das Chiffrat ist an SEINE Zeile gebunden, in eine andere Zeile, Anlage oder einen anderen Mandanten kopiert entschlüsselt es nicht. Beide Richtungen wohnen in genau einer Klasse (`AesGcmPartnerzugangSpeicher.verschluessele`/`.lade`); die Zugangsdatei-Übernahme erzeugt nie selbst ein Chiffrat.
-- Die Box nimmt die Antwort nur an, wenn ihr aktives Profil GENAU diesen Fingerabdruck nennt, legt sie ab (Mango `/etc/vp-edge-light/vermarkter/`, nur root, 0600; PFC200 `/home/voltpilot/vermarkter/`, 0600 - die root-Kopie fürs Firmware-OpenVPN macht Stufe 4 über den root-Helfer `vp-vermarkter`; Docker-Box unter ihrem Datenverzeichnis) und quittiert `zugestellt`. Meta-Datei zuletzt schreiben, zuerst löschen: ein halber Stand liest sich immer als „kein Zugang".
+- Die Box nimmt die Antwort nur an, wenn ihre aktive Zustellung GENAU diesen Fingerabdruck nennt, legt sie im Dateivertrag des Verwalters ab (`<dir>/zugang/`: PEM-Dateien plus `zugang.json`, alles 0600; `<dir>` ist auf der Mango `/etc/vp-edge-light/vermarkter`, auf dem PFC200 der `VP_VERMARKTER_DIR` der Stufe 4, auf der Docker-Box das Datenverzeichnis) und quittiert `zugestellt`. `zugang.json` zuletzt schreiben, zuerst löschen: es ist der Commit-Marker des Verwalters, ein halber Stand liest sich immer als „ohne_zugang".
 - Fragt die Box und bekommt keine Antwort (Cloud war gerade nicht da), fragt sie frühestens nach 10 Minuten erneut; jeder Reconnect fragt über die retained Wiederzustellung ohnehin neu.
 
 Quittung der Box:
@@ -92,11 +95,12 @@ Ein additiver Block im Status-Herzschlag (`ems/{t}/{s}/{d}/status`), nur solange
 }
 ```
 
-- `lage` ist das Vokabular aus Konzept §5.4: `ohne_profil` (dann fehlt der Block ohnehin), `ohne_zugang`, `zugang_ungueltig`, `baut_auf`, `tunnel_oben`, `verbunden`, `vorgabe_aktiv`, `abgelaufen`, `tunnel_unten`. Bis der Tunnel-Verwalter (Stufe 2 Mango / Stufe 4 PFC200) sich anmeldet, bleibt ein Anschluss mit Profil und Zugang ehrlich in `baut_auf` und der `tunnel`-Teil fehlt.
-- `vorgabe_pct` ist die WIRKSAME Vorgabe (vom Lebenszeichen begrenzt); `grenze_kw` nur, wenn Vorgabe aktiv UND die Referenz frisch bekannt ist. `werte` nur, wenn der Eingabe-Cache frisch ist (dieselbe 30-s-Grenze, unter der die Schnittstelle liest) - veraltete Werte meldet die Box dem Partner als Ausnahme und der Cloud gar nicht.
+- `lage` ist das Vokabular aus Konzept §5.4, wie es der Tunnel-Verwalter ableitet (`internal/vermarktertunnel`): `ohne_profil` (dann fehlt der Block ohnehin), `ohne_zugang`, `zugang_ungueltig`, `baut_auf`, `tunnel_oben`, `verbunden`, `vorgabe_aktiv`, `abgelaufen`, `tunnel_unten`.
+- `tunnel.handshake_am` ist der letzte Beweis der Gegenstelle (die Keepalive-Zähler des Verwalters wuchsen, `Status.TunnelLebteZuletzt`); `tunnel.oben_seit` ist wahlfrei und wird von der Mango derzeit nicht gemeldet (NULL in der Spiegel-Spalte heißt unbekannt, nie 0).
+- `vorgabe_pct` ist die WIRKSAME Vorgabe (vom Lebenszeichen begrenzt); `grenze_kw` nur, wenn Vorgabe aktiv (aus Prozent und zugestellter Referenz). `werte` nur, wenn der Eingabe-Cache frisch ist (dieselbe 30-s-Grenze, unter der die Schnittstelle liest) - veraltete Werte meldet die Box dem Partner als Ausnahme und der Cloud gar nicht.
 - Die Cloud (ein eigener Listener je Block, Muster `koppel`) spiegelt den Block in `direktvermarktung_stand` (eine Zeile je Anlage, nur Anzeige) und setzt den groben `zustand` des Anschlusses nach: `baut_auf → verbindet`, `tunnel_oben → wartet_auf_partner`, `verbunden/vorgabe_aktiv/abgelaufen → verbunden`, `tunnel_unten/zugang_ungueltig → gestoert`; `ohne_zugang` lässt ihn stehen. Die feinere Lage leitet das Portal selbst ab.
-- Nachweis auf der Box (§5.4): die Ereignisliste im Flash neben dem Zugang (`profil_erhalten`, `profil_zurueckgezogen`, `zugang_gespeichert`, `zugang_geloescht`, `partner_liest`, `vorgabe_geschrieben pct=…`, `lebenszeichen_abgelaufen`; nur bei einem Ereignis, höchstens 250 Zeilen, nie ein Schlüssel - `internal/ereignisliste`, Zwilling der Fernwartungs-Liste).
-- Nachweis als Messreihe (§5.4): die vier Messpunkte `dv.vorgabe_pct`, `dv.grenze_kw`, `dv.verbunden`, `dv.lebenszeichen_alter_s`. Der Zustell-Abgleich legt sie in den Messplan der Zustell-Box (`MeasurementSelectionService.direktvermarktungsPunkte`: Box-Zeilen ohne Komponente und ohne Katalogeintrag - synthetische Punkte des Kerns, kein Geräte-Lesezugriff) und nimmt sie mit der `geloescht`-Quittung wieder heraus. Auf der Box bedient sie ein eigener Leser aus dem Anschluss-Stand (`agent/direktvermarktung_messpunkte.go`, Zwilling `dvMesspunktVorlagen`; `measurements.KernEigeneVorlagen` hält die Messwerte-Bibliothek von diesen Schlüsseln fern), über denselben Messwerte-Weg wie jeder andere Punkt. Ein Wert, den der Anschluss gerade nicht weiß (keine aktive Vorgabe, Referenz veraltet, nie ein Lebenszeichen), fehlt im Batch - nie eine erfundene Null.
+- Nachweis auf der Box (§5.4): die EINE Ereignisliste des Anschlusses im Flash (`<dir>/ereignisse`, der Tunnel-Verwalter führt sie: Tunnel-, Vorgabe- und Lebenszeichen-Ereignisse; die Zustellung schreibt ihre eigenen über `Manager.Ereignis` dazu - `zustellung uebernommen/zurueckgezogen`, `zugang gespeichert/geloescht`; nur bei einem Ereignis, feste Obergrenze, nie ein Schlüssel).
+- Nachweis als Messreihe (§5.4): die vier Messpunkte `dv.vorgabe_pct`, `dv.grenze_kw`, `dv.verbunden`, `dv.lebenszeichen_alter_s`. Der Zustell-Abgleich legt sie in den Messplan der Zustell-Box (`MeasurementSelectionService.direktvermarktungsPunkte`: Box-Zeilen ohne Komponente und ohne Katalogeintrag - synthetische Punkte des Kerns, kein Geräte-Lesezugriff) und nimmt sie mit der `geloescht`-Quittung wieder heraus. Auf der Box bedient sie ein eigener Leser aus der Sicht des Tunnel-Verwalters (`agent/direktvermarktung_messpunkte.go`, Zwilling `dvMesspunktVorlagen`; `measurements.KernEigeneVorlagen` hält die Messwerte-Bibliothek von diesen Schlüsseln fern), über denselben Messwerte-Weg wie jeder andere Punkt. Ein Wert, den der Anschluss gerade nicht weiß (keine aktive Vorgabe, nie ein Lebenszeichen), fehlt im Batch - nie eine erfundene Null.
 
 ## 6. Alarme (Cloud, Werte-Katalog, Leserart `direktvermarktung`)
 

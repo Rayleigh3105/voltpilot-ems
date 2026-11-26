@@ -8,6 +8,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/direktvermarkter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/vermarktertunnel"
 )
 
 // The dv.* measurement points (vp-direktvermarktung-konzept d2 §5.4
@@ -138,23 +139,21 @@ func (a *Agent) runDvMesspunktPass(last map[string]time.Time, now time.Time) {
 	if len(plan) == 0 || catalogVersion == "" || a.Bus == nil {
 		return
 	}
-	a.dvMu.Lock()
-	dv := a.dv
-	a.dvMu.Unlock()
-	if dv == nil {
+	if a.vermarkter == nil {
 		return
 	}
-	st := dv.Stand()
-	if st == nil {
+	status := a.vermarkter.Status()
+	if status.Lage == vermarktertunnel.LageOhneProfil {
 		return
 	}
+	server, _ := a.vermarkter.ServerStand()
 	at := now.UTC()
 	var samples []measurements.Sample
 	for _, s := range plan {
 		if now.Sub(last[s.pointKey]) < s.takt {
 			continue
 		}
-		value, ok := dvMesspunktWert(s.pointKey, st, now)
+		value, ok := dvMesspunktWert(s.pointKey, status, server, now)
 		if !ok {
 			continue
 		}
@@ -176,29 +175,34 @@ func (a *Agent) runDvMesspunktPass(last map[string]time.Time, now time.Time) {
 	}
 }
 
-// dvMesspunktWert derives one point's value from the snapshot; ok=false means
-// "unknown now", and unknown is never zero.
-func dvMesspunktWert(pointKey string, st *direktvermarkter.AnschlussStand, now time.Time) (float64, bool) {
+// dvMesspunktWert derives one point's value from the tunnel manager's view
+// and the interface snapshot; ok=false means "unknown now", and unknown is
+// never zero.
+func dvMesspunktWert(pointKey string, status vermarktertunnel.Status,
+	server direktvermarkter.ServerStand, now time.Time) (float64, bool) {
 	switch pointKey {
 	case "dv.vorgabe_pct":
-		if st.Server == nil {
+		if status.VorgabePct == nil {
 			return 0, false
 		}
-		return float64(st.Server.EffektivPct), true
+		return float64(*status.VorgabePct), true
 	case "dv.grenze_kw":
-		return st.GrenzeKw(now)
+		if status.GrenzeKw == nil {
+			return 0, false
+		}
+		return *status.GrenzeKw, true
 	case "dv.verbunden":
-		switch st.Lage {
-		case direktvermarkter.LageVerbunden, direktvermarkter.LageVorgabeAktiv, direktvermarkter.LageAbgelaufen:
+		switch status.Lage {
+		case vermarktertunnel.LageVerbunden, vermarktertunnel.LageVorgabeAktiv, vermarktertunnel.LageAbgelaufen:
 			return 1, true
 		default:
 			return 0, true
 		}
 	case "dv.lebenszeichen_alter_s":
-		if st.Server == nil || st.Server.Lebenszeichen.IsZero() {
+		if server.Lebenszeichen.IsZero() {
 			return 0, false
 		}
-		return now.Sub(st.Server.Lebenszeichen).Seconds(), true
+		return now.Sub(server.Lebenszeichen).Seconds(), true
 	}
 	return 0, false
 }

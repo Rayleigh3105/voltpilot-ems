@@ -716,10 +716,11 @@ echo "weg=$(ip -4 route show default 2>/dev/null | head -n 1)"`)
 
 // ---- Übergabe ------------------------------------------------------------------------------
 
-// Pruefungen der Werkstatt-Regel für den PFC200, in ihrer Reihenfolge. Ohne
-// Prüfung der SPS (Programm, Koppelprobe) und ohne Prüfung der Firmware: Ihr
-// Stand steht als Angabe an der Abnahme.
-var Pruefungen = []string{"zugaenge", "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu", "netze", "dienste_zu", "neustart", "update_bereit"}
+// Pruefungen der Werkstatt-Regel für den PFC200, in ihrer Reihenfolge. Mit
+// Prüfung des Grundprogramms (Boot-Applikation des Basisprojekts auf der
+// SPS), aber ohne Prüfung des Anlagenprogramms oder seiner Koppelprobe und
+// ohne Prüfung der Firmware: Ihr Stand steht als Angabe an der Abnahme.
+var Pruefungen = []string{"zugaenge", "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu", "netze", "dienste_zu", "neustart", "update_bereit", "grundprogramm"}
 
 func (l *Lauf) uebergabe(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
 	b := protokoll.Beleg{}.

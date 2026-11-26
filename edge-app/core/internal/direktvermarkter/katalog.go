@@ -51,17 +51,35 @@ func (r Register) End() int { return int(r.Address) + r.Words() }
 
 // Modbus is the partner's Modbus access settings.
 type Modbus struct {
+	// Port is the TCP port the partner dials (F2 for luox: 502). On the
+	// Mango the interface binds <tunnel address>:<port>; the PFC200
+	// (Stage 4) redirects it at the tunnel interface instead.
+	Port        int    `json:"port"`
 	Unit        int    `json:"unit"`
 	WordOrder   string `json:"wortfolge"` // resolved: "little" or "big", never "offen (Fxx)"
 	Functions   []int  `json:"funktionen"`
 	Connections int    `json:"verbindungen"`
 }
 
+// The two resolved readings of regeln.vorgabe_wirkt_auf (F5 still open; the
+// provisional base is decision E2 = A of the concept).
+const (
+	// WirktAufEinspeisung: the set-point limits the feed-in at the grid
+	// connection point - the limit joins the registered feed-in limit in the
+	// export watchdog, and the battery cascade charges first.
+	WirktAufEinspeisung = "einspeisung_netzpunkt"
+	// WirktAufErzeugung: the set-point caps the generation - the same limit
+	// acts as a PV cap instead (no battery-first: charging does not reduce
+	// generation).
+	WirktAufErzeugung = "erzeugung"
+)
+
 // Rules is the partner's operating rules the box reads today.
 type Rules struct {
 	WatchdogDeadlineS int    `json:"lebenszeichen_frist_s"`
 	RestPct           int    `json:"ruhewert_pct"`
-	OnStale           string `json:"bei_veraltet"` // resolved, e.g. "ausnahme_0x0b"
+	WirktAuf          string `json:"vorgabe_wirkt_auf"` // resolved: WirktAufEinspeisung or WirktAufErzeugung
+	OnStale           string `json:"bei_veraltet"`      // resolved, e.g. "ausnahme_0x0b"
 }
 
 // Profile is one packaged partner profile.

@@ -149,6 +149,9 @@ type Zwischen struct {
 type Lauf struct {
 	u        Umgebung
 	erkenner map[string]bool
+	// geprueft are the ports step 3 tries on every device (ports); a port
+	// it does not try is unknown, never closed.
+	geprueft []int
 	takt     *taktgeber
 	http     *http.Client
 	dial     func(ctx context.Context, addr string) (net.Conn, error)
@@ -196,6 +199,7 @@ func Neu(u Umgebung, erkenner []string) (*Lauf, string) {
 			l.erkenner[e] = true
 		}
 	}
+	l.geprueft = l.ports()
 	l.dial = u.Dial
 	if l.dial == nil {
 		var d net.Dialer

@@ -54,7 +54,7 @@
   ],
   "geraete": {
     "pfc200": {
-      "beschreibung": "Die Prüfungen für den WAGO PFC200 750-8212 (Edge Industrie), PFC200-Konzept Abschnitt 6.5, ohne Prüfung der SPS (Programm, Koppelprobe) und ohne Prüfung der Firmware: Ihr Stand steht als Angabe an der Abnahme (angaben.firmware). Statt des einen Root-Passworts die drei Zugänge, statt des LAN-Netzes die zwei getrennten Netze und die Dienste je Buchse; ein Einrichtungs-WLAN hat das Gerät nicht. Die Abnahme des Werkstatt-Dienstes für ein Gerät dieser Art nimmt die API nur an, wenn jede dieser Kennungen einen Beleg trägt. Zwillinge: WerkstattPruefungen.PFC200 (API), PRUEFUNGEN_PFC200 in werkstatt.ts (Portal) und pfc200.Pruefungen (Werkstatt-Dienst).",
+      "beschreibung": "Die Prüfungen für den WAGO PFC200 750-8212 (Edge Industrie), PFC200-Konzept Abschnitt 6.5, mit Prüfung des Grundprogramms (der Boot-Applikation des Basisprojekts auf der SPS), aber ohne Prüfung des Anlagenprogramms oder seiner Koppelprobe und ohne Prüfung der Firmware: Ihr Stand steht als Angabe an der Abnahme (angaben.firmware), außer dass der Schritt grundprogramm ihre Hauptlinie verlangt (04.xx oder neuer). Statt des einen Root-Passworts die drei Zugänge, statt des LAN-Netzes die zwei getrennten Netze und die Dienste je Buchse; ein Einrichtungs-WLAN hat das Gerät nicht. Die Abnahme des Werkstatt-Dienstes für ein Gerät dieser Art nimmt die API nur an, wenn jede dieser Kennungen einen Beleg trägt. Zwillinge: WerkstattPruefungen.PFC200 (API), PRUEFUNGEN_PFC200 in werkstatt.ts (Portal) und pfc200.Pruefungen (Werkstatt-Dienst).",
       "pruefungen": [
         {
           "id": "zugaenge",
@@ -105,6 +105,11 @@
           "id": "update_bereit",
           "regel": "Entscheid 5c, Konzept vp-edge-light-update K5",
           "text": "Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Industrie"
+        },
+        {
+          "id": "grundprogramm",
+          "regel": "Konzept PFC200 6.7",
+          "text": "Grundprogramm eingespielt (Prüfsumme gegen das signierte Manifest bestätigt, CODESYS-Laufzeit läuft, ihr Modbus-Server lauscht auf Port 503) oder, trägt die Fassung keines, übersprungen"
         }
       ]
     }

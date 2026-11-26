@@ -129,11 +129,18 @@
       "evidence": "edge-app/core/internal/layer1/koppel_test.go"
     },
     {
-      "name": "direktvermarktung",
-      "meaning": "Die Box nimmt die Direktvermarktungs-Zustellung an (vp-direktvermarktung-konzept d2 §5.7, direktvermarktung-zustellung.md): sie übernimmt das retained Partnerprofil auf v2/direktvermarktung, erbittet den Zugang mit dem Fingerabdruck, den sie noch nicht hat, legt ihn 0600 ab, quittiert auf v2/direktvermarktung-quittung (zugestellt/geloescht - der Box-Tausch wartet auf genau diese Quittung) und meldet den Herzschlag-Block direktvermarktung samt Ereignisliste im Flash. Erst dann stellt die Cloud Profil und Zugang an diese Box zu. OpenVPN und die Einspeisegrenze sind Stufe 2 (Mango) bzw. Stufe 4 (PFC200); bis dahin bleibt der Anschluss ehrlich in der Lage baut_auf.",
+      "name": "deye_modbus_tcp",
+      "meaning": "Die Box liest und steuert einen Deye über das Modbus TCP seines Datenlogger-Sticks (Kommunikation deye_modbus_tcp, Port 502, Geräteadresse 1): derselbe Leseplan, Decoder und Steuerweg wie über Solarman V5, nur der Transport ist reines Modbus TCP. Erst dann legt die Cloud einen Deye auf diesem Weg an; eine ältere Box fiele auf den Solarman-Weg zurück und lehnte die Anlage ohne Logger-Seriennummer ab.",
       "advertised": true,
       "box_arten": ["edge_light", "edge_industrie"],
-      "evidence": "edge-app/core/internal/direktvermarkter/anschluss_test.go"
+      "evidence": "edge-app/core/internal/layer1/deyemodbus_test.go"
+    },
+    {
+      "name": "direktvermarktung",
+      "meaning": "Die Box nimmt die Direktvermarktungs-Zustellung an (vp-direktvermarktung-konzept d2 §5.7, direktvermarktung-zustellung.md): sie übernimmt das retained Partnerprofil auf v2/direktvermarktung und legt den Anschluss im Dateivertrag des Tunnel-Verwalters ab (internal/vermarktertunnel: anschluss.json plus zugang/), erbittet den Zugang mit dem Fingerabdruck, den sie noch nicht hat, quittiert auf v2/direktvermarktung-quittung (zugestellt/geloescht - der Box-Tausch wartet auf genau diese Quittung) und meldet den Herzschlag-Block direktvermarktung samt Ereignisliste im Flash. Erst dann stellt die Cloud Profil und Zugang an diese Box zu; Tunnel, Firewall und Einspeisegrenze sind Stufe 2 (Mango) bzw. Stufe 4 (PFC200) und schon da.",
+      "advertised": true,
+      "box_arten": ["edge_light", "edge_industrie"],
+      "evidence": "edge-app/core/internal/agent/direktvermarktung_test.go"
     }
   ],
   "cases": [

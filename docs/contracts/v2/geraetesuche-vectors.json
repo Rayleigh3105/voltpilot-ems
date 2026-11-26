@@ -52,6 +52,7 @@
     "opendtu_ahoy",
     "ebyte",
     "wago",
+    "deye_logger",
     "mdns",
     "ssdp",
     "funkmodul"
@@ -239,6 +240,15 @@
       "docker": "uebernehmen",
       "go_kern": "nicht_mit_dieser_box",
       "wie": "WAGO-SPS / Anlagensteuerung: Signatur „VPRB“ bzw. „VPEZ“ an der Basisadresse."
+    },
+    {
+      "erkenner": "deye_logger",
+      "art": "wechselrichter",
+      "schnitt": 2,
+      "communication": "deye_modbus_tcp",
+      "docker": "nicht_mit_dieser_box",
+      "go_kern": "uebernehmen",
+      "wie": "Deye hinter einem Logger-Stick ohne Solarman V5 (Feld 25.11.2026: DYDA_WiBLE, WLAN-Modul MXCHIP): erst die Seite des Sticks vor jeder Anmeldung - HTTP 80 GET / lädt js/lan_*.js, aes.js, rsa.js, utils.js; GET /js/utils.js nennt PCS_LOCAL_WEB und encryptUrl -, nur wenn die Suche 8899 und 502 geprüft hat und 8899 zu ist (antwortet der Stick auf 8899, gewinnt solarman). 502 offen: FC 3 auf 0x0000-0x0007 an Geräteadresse 1 wie beim Solarman-Erkenner, Deye-Typ gelesen = sicher, sonst wahrscheinlich. 502 zu: wahrscheinlich mit hindernis lokale_api_aus (Modbus TCP im Logger aus). Verbindung immer Port 502, unit_id 1. Nie anmelden, keine CGI des Sticks. Die Docker-Box liest den Weg nicht."
     }
   ],
   "$erkennungskatalog": "Je Paar (erkenner, art): Schnitt laut Konzept §6, die Kommunikationsart der Vorlage (null = kein Leser in VoltPilot) und die anbindung, die diese Box-Art meldet (docker = Docker-Box, go_kern = der Go-Kern auf Edge Light und Edge Industrie); null = das Paar kommt auf dieser Box-Art nicht vor. Ein Fund mit einem Paar außerhalb der Tabelle wird überlesen.",
@@ -1302,6 +1312,143 @@
               "verbindung": {
                 "communication": "ebyte_modbus_tcp",
                 "ip": "192.168.2.40",
+                "port": 502,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "telefon_tablet": 2,
+            "rechner": 1,
+            "unbekannt": 1,
+            "unbekannte_geraete": [
+              {
+                "ip": "192.168.178.90"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "edge_light_deye_logger",
+        "warum": "Edge Light findet drei Deye-Logger-Sticks ohne Solarman V5 (Feld 25.11.2026, DYDA_WiBLE): Modbus TCP an und der Deye antwortet an Geräteadresse 1 (sicher, uebernehmen), Modbus TCP aus (wahrscheinlich, hindernis lokale_api_aus, MXCHIP-Funkmodul), Modbus TCP an ohne Deye-Typ (wahrscheinlich). Immer deye_modbus_tcp auf Port 502, unit_id 1.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "box_art": "edge_light",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 34410,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago",
+            "deye_logger",
+            "mdns",
+            "ssdp",
+            "funkmodul"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.21",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 11
+            },
+            {
+              "rolle": "box_netz",
+              "netz": "192.168.2.0/24",
+              "box_adresse": "192.168.2.1",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 3
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "deye_logger:AB12345678",
+              "erkenner": "deye_logger",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "lv",
+              "seriennummer": "AB12345678",
+              "erkennung": "sicher",
+              "merkmale": [
+                "deye_logger_seite",
+                "deye_logger_pcs_local_web",
+                "solarman_port_zu",
+                "deye_typ_0x0005",
+                "deye_seriennummer_0x0003",
+                "funkmodul_mxchip"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "deye_modbus_tcp",
+                "ip": "192.168.178.62",
+                "port": 502,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "deye_logger:192.168.178.63:502",
+              "erkenner": "deye_logger",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "erkennung": "wahrscheinlich",
+              "hindernis": "lokale_api_aus",
+              "merkmale": [
+                "deye_logger_seite",
+                "deye_logger_pcs_local_web",
+                "solarman_port_zu",
+                "modbus_port_zu",
+                "funkmodul_mxchip"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "deye_modbus_tcp",
+                "ip": "192.168.178.63",
+                "port": 502,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "deye_logger:192.168.2.64:502",
+              "erkenner": "deye_logger",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "deye_logger_seite",
+                "deye_logger_pcs_local_web",
+                "solarman_port_zu",
+                "modbus_port_offen"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "deye_modbus_tcp",
+                "ip": "192.168.2.64",
                 "port": 502,
                 "unit_id": 1
               },

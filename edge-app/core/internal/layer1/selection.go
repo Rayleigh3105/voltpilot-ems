@@ -18,6 +18,7 @@ import (
 // Communication methods (inverter.Comm* - the routing key of the selection).
 const (
 	CommSolarmanV5    = "solarman_v5"
+	CommDeyeModbusTCP = "deye_modbus_tcp" // the same Deye over the Modbus TCP of its logger stick (deyemodbus.go)
 	CommHuaweiModbus  = "huawei_modbus"
 	CommKacoSerial    = "kaco_serial"
 	CommKostalDxs     = "kostal_dxs"
@@ -61,6 +62,9 @@ type solarmanPlan struct {
 	Slave  byte
 	Reads  []solarmanv5.ReadSpec
 	Decode deyedecode.Config
+	// Modbus: the stick's Modbus TCP (deye_modbus_tcp) - no logger serial,
+	// Slave is the inverter's unit. Everything above the session is the same.
+	Modbus bool
 }
 
 // num mirrors the router's num(): a number or numeric string, else def.
@@ -104,24 +108,38 @@ func planSolarman(s *selection) (*solarmanPlan, string) {
 	if !deyedecode.Known(s.Family) {
 		return nil, "unbekannte Deye-Familie: " + s.Family
 	}
-	// The router's rule: absent, empty or not a positive number -> "fehlt".
-	rawSerial, present := conn["serial"]
-	if !present || rawSerial == nil || rawSerial == "" {
-		return nil, "Datenlogger-Seriennummer fehlt"
-	}
-	serial, err := solarmanv5.NormLoggerSerial(rawSerial)
-	if err != nil || serial == 0 {
-		return nil, "Datenlogger-Seriennummer fehlt"
-	}
-	port := int(num(conn["port"], solarmanv5.DefaultPort))
-	if port <= 0 || port > 65535 {
-		port = solarmanv5.DefaultPort
-	}
+	modbus := s.Communication == CommDeyeModbusTCP
+	var serial uint32
+	defPort := float64(solarmanv5.DefaultPort)
 	slave := num(conn["mb_slave_id"], 1)
+	if modbus {
+		// The stick's Modbus TCP: no logger serial; the unit is the inverter's.
+		defPort = 502
+		slave = num(conn["unit_id"], slave)
+		if slave < 1 || slave > 247 {
+			return nil, "ungültige Geräteadresse (Modbus-Unit-ID)"
+		}
+	} else {
+		// The router's rule: absent, empty or not a positive number -> "fehlt".
+		rawSerial, present := conn["serial"]
+		if !present || rawSerial == nil || rawSerial == "" {
+			return nil, "Datenlogger-Seriennummer fehlt"
+		}
+		var err error
+		serial, err = solarmanv5.NormLoggerSerial(rawSerial)
+		if err != nil || serial == 0 {
+			return nil, "Datenlogger-Seriennummer fehlt"
+		}
+	}
+	port := int(num(conn["port"], defPort))
+	if port <= 0 || port > 65535 {
+		port = int(defPort)
+	}
 	if slave < 0 || slave > 247 {
 		slave = 1
 	}
 	p := &solarmanPlan{
+		Modbus: modbus,
 		IP:     ip,
 		Port:   port,
 		Addr:   netJoin(ip, port),

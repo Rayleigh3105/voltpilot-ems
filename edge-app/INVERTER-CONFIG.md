@@ -31,6 +31,7 @@ Der Katalog bietet je nach Modell mehrere Kommunikationswege. Veraltete Regeln w
 | Adapter | Typische Parameter | Details |
 |---|---|---|
 | Deye / `solarman_v5` | Logger-IP, Port 8899, **Logger-Seriennummer**, `mb_slave_id`; Skalierung/Vorzeichen | [Deye](nodered/DEYE.md) |
+| Deye / `deye_modbus_tcp` (zweiter Weg jedes Deye-Modells, nur Edge Light) | Logger-IP, Port 502, `unit_id` 1 (keine Seriennummer; Modbus TCP im Logger einschalten); sonst wie Solarman | [Deye](nodered/DEYE.md) |
 | Generisch / `modbus_tcp` | IP, Port, `unit_id`, `profile` | [Eigener Adapter](nodered/CUSTOM-INVERTER.md) |
 | Fronius / `fronius_solar_api` | IP, HTTP-Port, gegebenenfalls `insecure_tls` | [Fronius](nodered/FRONIUS.md) |
 | Fronius / `fronius_sunspec` | IP, Port, `unit_id`, `model_type` | [Fronius](nodered/FRONIUS.md) |

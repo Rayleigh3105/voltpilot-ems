@@ -152,6 +152,10 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
 - `koppelbild` (PFC200 Stufe 4, 19.11.2026): die Box führt das [Koppelbild](koppelbild.md) einer Anlagensteuerung.
   Layer 1 liest die Quittung und schreibt das Telegramm in der Sitzung des Erzeuger-Bilds derselben Steuerung, nimmt die freigegebenen Stellplätze als Fähigkeiten (`actuate` mit `platz`), beantwortet die Probe-Art `koppel_test` und meldet den Herzschlag-Block `koppel` (Beleg `layer1/koppel_test.go`).
   Nur der Go-Kern meldet es, Edge Light und Edge Industrie (`box_arten: ["edge_light", "edge_industrie"]`); die Cloud schickt Stellplatz-Fähigkeiten und Schalt-Tests nur an eine Box mit diesem Wort.
+- `deye_modbus_tcp` (25.11.2026): die Box liest und steuert einen Deye über das Modbus TCP seines Datenlogger-Sticks
+  (Kommunikation `deye_modbus_tcp`, Port 502, Geräteadresse 1; Beleg `layer1/deyemodbus_test.go`). Nur der Go-Kern
+  meldet es (`box_arten: ["edge_light", "edge_industrie"]`). Die Cloud legt einen Deye auf diesem Weg nur an einer Box
+  mit diesem Wort an (sonst 409): eine ältere Box fiele auf den Solarman-Weg zurück und lehnte die Anlage ab.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

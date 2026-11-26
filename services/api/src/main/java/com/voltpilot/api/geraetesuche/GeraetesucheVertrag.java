@@ -37,7 +37,7 @@ public final class GeraetesucheVertrag {
     /** Erkenner und Wege, in Vertragsfolge. */
     public static final List<String> ERKENNER = List.of("solarman", "shelly", "goe", "netztechnik", "modbus_offen",
             "sunspec", "fronius_solar_api", "kaco_aiswei", "kostal", "huawei", "sma", "victron", "opendtu_ahoy",
-            "ebyte", "wago", "mdns", "ssdp", "funkmodul");
+            "ebyte", "wago", "deye_logger", "mdns", "ssdp", "funkmodul");
     /** Wege erzeugen keinen eigenen Fund und laufen nur auf dem Go-Kern (Edge Light, Edge Industrie). */
     public static final List<String> WEGE = List.of("mdns", "ssdp", "funkmodul");
     public static final List<String> ARTEN = List.of("wechselrichter", "wallbox", "schaltaktor", "zaehler",
@@ -57,7 +57,7 @@ public final class GeraetesucheVertrag {
     public static final List<String> HINDERNISSE = List.of("geschuetzt", "lokale_api_aus");
     public static final List<String> COMMUNICATIONS = List.of("solarman_v5", "shelly_http", "shelly_em_http",
             "goe_http_api", "fronius_solar_api", "fronius_sunspec", "sunspec_tcp", "kaco_http", "kostal_modbus",
-            "huawei_modbus", "ebyte_modbus_tcp", "modbus_tcp");
+            "huawei_modbus", "ebyte_modbus_tcp", "modbus_tcp", "deye_modbus_tcp");
     public static final List<String> SCHRITTE = List.of("netze_bestimmen", "nachbarn_finden", "geraete_ansprechen",
             "geraete_erkennen");
     public static final List<String> ROLLEN = List.of("kundennetz", "box_netz");
@@ -113,7 +113,9 @@ public final class GeraetesucheVertrag {
             new KatalogZeile("victron", "wechselrichter", 2, null, KEIN_LESEWEG, KEIN_LESEWEG),
             new KatalogZeile("opendtu_ahoy", "dtu", 2, null, KEIN_LESEWEG, KEIN_LESEWEG),
             new KatalogZeile("ebyte", "io_modul", 2, "ebyte_modbus_tcp", UEBERNEHMEN, UEBERNEHMEN),
-            new KatalogZeile("wago", "sps", 2, "modbus_tcp", UEBERNEHMEN, NICHT_MIT_DIESER_BOX));
+            new KatalogZeile("wago", "sps", 2, "modbus_tcp", UEBERNEHMEN, NICHT_MIT_DIESER_BOX),
+            new KatalogZeile("deye_logger", "wechselrichter", 2, "deye_modbus_tcp", NICHT_MIT_DIESER_BOX,
+                    UEBERNEHMEN));
 
     private GeraetesucheVertrag() {
     }

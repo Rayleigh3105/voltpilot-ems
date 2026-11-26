@@ -17,6 +17,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/direktvermarkter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/vermarktertunnel"
 )
 
 func dvMessplanPayload(catalogVersion string, selections ...string) []byte {
@@ -39,7 +40,7 @@ func dvMessplanPayload(catalogVersion string, selections ...string) []byte {
 }
 
 func TestDvMesspunktPlanNimmtNurEigenePunkte(t *testing.T) {
-	a := dvTestAgent(t)
+	a, _ := dvTestAgent(t)
 	a.onDvMesspunktPlan("", dvMessplanPayload("2026.10.26.1",
 		`{"point_key":"dv.vorgabe_pct","cadence_s":60}`,
 		`{"point_key":"dv.grenze_kw","cadence_s":60,"entity_id":"e1"}`,
@@ -70,46 +71,48 @@ func TestDvMesspunktPlanNimmtNurEigenePunkte(t *testing.T) {
 }
 
 func TestDvMesspunktWerteSindEhrlich(t *testing.T) {
-	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
-	// Ohne Server (Profil fehlt im Snapshot nie, aber der Zustand schon):
-	st := &direktvermarkter.AnschlussStand{Partner: "luox", Lage: direktvermarkter.LageOhneZugang}
-	if _, ok := dvMesspunktWert("dv.vorgabe_pct", st, now); ok {
-		t.Fatal("vorgabe_pct ohne Server erfunden")
+	now := time.Date(2026, 11, 26, 8, 0, 0, 0, time.UTC)
+	// Ohne Schnittstelle (Profil da, Zugang fehlt): nichts wird erfunden.
+	status := vermarktertunnel.Status{Partner: "luox", Lage: vermarktertunnel.LageOhneZugang}
+	leer := direktvermarkter.ServerStand{}
+	if _, ok := dvMesspunktWert("dv.vorgabe_pct", status, leer, now); ok {
+		t.Fatal("vorgabe_pct ohne Schnittstelle erfunden")
 	}
-	if v, ok := dvMesspunktWert("dv.verbunden", st, now); !ok || v != 0 {
+	if v, ok := dvMesspunktWert("dv.verbunden", status, leer, now); !ok || v != 0 {
 		t.Fatalf("verbunden ohne Tunnel: %v %v", v, ok)
 	}
-	// Mit Server-Snapshot:
-	st = &direktvermarkter.AnschlussStand{
-		Partner: "luox", Lage: direktvermarkter.LageVorgabeAktiv,
-		Server: &direktvermarkter.ServerStand{
-			State: direktvermarkter.StateLimitActive, EffektivPct: 30, Aktiv: true,
-			Lebenszeichen: now.Add(-12 * time.Second),
-			WerteStand:    now.Add(-5 * time.Second),
-			Werte:         map[string]float64{"referenz_w": 10000},
-		},
+	if _, ok := dvMesspunktWert("dv.lebenszeichen_alter_s", status, leer, now); ok {
+		t.Fatal("lebenszeichen_alter_s ohne Lebenszeichen erfunden")
 	}
-	if v, ok := dvMesspunktWert("dv.vorgabe_pct", st, now); !ok || v != 30 {
+	// Mit laufender Schnittstelle und aktiver Vorgabe:
+	pct := 30
+	kw := 3.0
+	status = vermarktertunnel.Status{Partner: "luox", Lage: vermarktertunnel.LageVorgabeAktiv,
+		VorgabePct: &pct, GrenzeKw: &kw}
+	server := direktvermarkter.ServerStand{
+		State: direktvermarkter.StateLimitActive, EffektivPct: 30, Aktiv: true,
+		Lebenszeichen: now.Add(-12 * time.Second),
+	}
+	if v, ok := dvMesspunktWert("dv.vorgabe_pct", status, server, now); !ok || v != 30 {
 		t.Fatalf("vorgabe_pct: %v %v", v, ok)
 	}
-	if v, ok := dvMesspunktWert("dv.grenze_kw", st, now); !ok || v != 3.0 {
+	if v, ok := dvMesspunktWert("dv.grenze_kw", status, server, now); !ok || v != 3.0 {
 		t.Fatalf("grenze_kw: %v %v", v, ok)
 	}
-	if v, ok := dvMesspunktWert("dv.verbunden", st, now); !ok || v != 1 {
+	if v, ok := dvMesspunktWert("dv.verbunden", status, server, now); !ok || v != 1 {
 		t.Fatalf("verbunden: %v %v", v, ok)
 	}
-	if v, ok := dvMesspunktWert("dv.lebenszeichen_alter_s", st, now); !ok || v != 12 {
+	if v, ok := dvMesspunktWert("dv.lebenszeichen_alter_s", status, server, now); !ok || v != 12 {
 		t.Fatalf("lebenszeichen_alter_s: %v %v", v, ok)
 	}
 	// Abgelaufen zählt als verbunden (Kunde liest "Verbunden (frei)", §5.4);
 	// die Grenze fällt - und wird nie als 0 erfunden.
-	st.Lage = direktvermarkter.LageAbgelaufen
-	st.Server.Aktiv = false
-	st.Server.EffektivPct = 100
-	if v, ok := dvMesspunktWert("dv.verbunden", st, now); !ok || v != 1 {
+	status.Lage = vermarktertunnel.LageAbgelaufen
+	status.GrenzeKw = nil
+	if v, ok := dvMesspunktWert("dv.verbunden", status, server, now); !ok || v != 1 {
 		t.Fatalf("verbunden (abgelaufen): %v %v", v, ok)
 	}
-	if _, ok := dvMesspunktWert("dv.grenze_kw", st, now); ok {
+	if _, ok := dvMesspunktWert("dv.grenze_kw", status, server, now); ok {
 		t.Fatal("grenze_kw ohne aktive Vorgabe erfunden")
 	}
 }
@@ -118,17 +121,12 @@ func TestDvMesspunktPassVeroeffentlichtBatch(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
 	a, addr := startBusOnlyAgent(t, cfg)
-	a.dvDir = t.TempDir() + "/vermarkter"
 	a.entIdentity = entities.Identity{TenantID: "t", SiteID: "s", DeviceID: "d"}
-	t.Cleanup(func() {
-		a.dvMu.Lock()
-		if a.dv != nil {
-			a.dv.Close()
-		}
-		a.dvMu.Unlock()
-	})
-	// Ein zugestelltes Profil + Plan.
-	a.onDirektvermarktung(dvTestProfilDokument(t))
+	// Ein Anschluss im Ruhewert, der Tunnel steht noch nicht (baut_auf).
+	pct := 100
+	fv := &fakeVermarkter{status: &vermarktertunnel.Status{Partner: "luox",
+		Lage: vermarktertunnel.LageBautAuf, VorgabePct: &pct}}
+	a.vermarkter = fv
 	a.onDvMesspunktPlan("", dvMessplanPayload("2026.10.26.1",
 		`{"point_key":"dv.vorgabe_pct","cadence_s":60}`,
 		`{"point_key":"dv.verbunden","cadence_s":60}`))

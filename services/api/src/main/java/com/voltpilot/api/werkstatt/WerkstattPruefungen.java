@@ -27,11 +27,13 @@ public final class WerkstattPruefungen {
 
     /**
      * Die Prüfungen für den WAGO PFC200 (Edge Industrie), in der Reihenfolge
-     * seiner Regel ({@code geraete.pfc200} im Vektor). Ohne Prüfung der SPS
-     * (Programm, Koppelprobe) und ohne Prüfung der Firmware: Ihr Stand steht
-     * als Angabe an der Abnahme. Statt des einen Root-Passworts die drei
-     * Zugänge, statt des LAN-Netzes die zwei getrennten Netze und die Dienste
-     * je Buchse; ein Einrichtungs-WLAN hat das Gerät nicht.
+     * seiner Regel ({@code geraete.pfc200} im Vektor). Mit Prüfung des
+     * Grundprogramms (der Boot-Applikation des Basisprojekts auf der SPS),
+     * aber ohne Prüfung des Anlagenprogramms oder seiner Koppelprobe und ohne
+     * Prüfung der Firmware: Ihr Stand steht als Angabe an der Abnahme. Statt
+     * des einen Root-Passworts die drei Zugänge, statt des LAN-Netzes die
+     * zwei getrennten Netze und die Dienste je Buchse; ein Einrichtungs-WLAN
+     * hat das Gerät nicht.
      */
     public static final List<String> PFC200 = List.of(
             "zugaenge",
@@ -43,7 +45,8 @@ public final class WerkstattPruefungen {
             "netze",
             "dienste_zu",
             "neustart",
-            "update_bereit");
+            "update_bereit",
+            "grundprogramm");
 
     /** Die Prüfliste eines Geräts ({@code pfc200}; jedes andere Wort: die Mango). */
     public static List<String> fuer(String geraet) {

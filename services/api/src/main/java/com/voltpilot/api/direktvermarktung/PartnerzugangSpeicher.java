@@ -18,7 +18,8 @@ import java.util.UUID;
  * das JSON-Objekt, das auch über den Draht geht (Vertrag
  * {@code docs/contracts/v2/direktvermarktung-zustellung.md} §3):
  *
- * <pre>{ "gegenstelle": { "host": …, "port": …, "protokoll": … },
+ * <pre>{ "gegenstelle": { "host": …, "port": …, "protokoll": "udp"|"tcp" },
+ *   "tls_schluessel": "tls_crypt"|"tls_auth"|"keine",
  *   "dateien": { "zertifikat_pem": …, "schluessel_pem": …, "ca_pem": …, "tls_schluessel_pem": … } }</pre>
  *
  * <p>Kein Byte davon erreicht je ein Log, ein Protokoll oder eine Fehlermeldung; loggbar ist allein der

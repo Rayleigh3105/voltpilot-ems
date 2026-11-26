@@ -35,6 +35,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/topology"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/vermarktertunnel"
 )
 
 //go:embed static
@@ -138,6 +139,14 @@ type DespikeController interface {
 type MirrorController interface {
 	GetMirror() mirror.Status
 	SetMirror(mirror.SettingsRequest) (mirror.Status, error)
+}
+
+// DirektvermarktungController exposes the direct-marketing connection's §5.4
+// status (agent/direktvermarktung.go). OPTIONAL: Handler discovers it on the
+// InverterController by type assertion - the agent implements both, and the
+// route simply does not exist on a handler built without it.
+type DirektvermarktungController interface {
+	Direktvermarktung() vermarktertunnel.Status
 }
 
 // TopologyController exposes the Anlagen-Topologie-Read-Model (AE1): the site's
@@ -680,6 +689,16 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		writeJSON(w, http.StatusOK, status)
 	})
+
+	// GET /api/direktvermarktung - the §5.4 view of the direct-marketing
+	// connection (lage, partner, tunnel address, set-point, limit; never a
+	// secret). OPTIONAL by type assertion instead of a 16th Handler
+	// parameter: the agent implements it, the web tests' fakes need not.
+	if dv, ok := inv.(DirektvermarktungController); ok {
+		mux.HandleFunc("GET /api/direktvermarktung", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]any{"direktvermarktung": dv.Direktvermarktung()})
+		})
+	}
 
 	// GET /api/mirror - the "Datenfreigabe im Hausnetz" status: whether the
 	// read-only Modbus-TCP mirror is enabled/running, the advertised port for

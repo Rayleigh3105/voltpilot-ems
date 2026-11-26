@@ -8,8 +8,10 @@
 # ueber das Portal (Edge-Updates); der Loader tauscht und nimmt zurueck.
 # Fixes an Loader und Dienst-Init bringt seither jedes Programm eingebettet
 # mit und spielt sie als bestaetigte Fassung selbst ein (Loader-Selbstupdate,
-# LOADER_STAND in boot.sh) - dieses Skript bleibt fuer die Ersteinrichtung,
-# das Nachruesten von Stufe 1, die Tunnel-Skripte und die Konfiguration.
+# LOADER_STAND in boot.sh), ebenso die WLAN-Skripte (WLAN_STAND in
+# wlan-anschluss.sh) - dieses Skript bleibt fuer die Ersteinrichtung, das
+# Nachruesten von Stufe 1, die Tunnel-Skripte, cron, Hotplug-Haken und die
+# Konfiguration.
 #
 #   edge-light/scripts/build.sh mipsle        (oder die Fassung aus einem Release)
 #   edge-light/openwrt/install.sh root@192.168.1.1
@@ -157,11 +159,27 @@ for f in usr/libexec/vp-edge-light/boot.sh etc/init.d/vp-edge-light; do
   # shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
   box_ssh "$TARGET" "mkdir -p /$(dirname "$f") && cat > /$f.neu && chmod 0755 /$f.neu && mv -f /$f.neu /$f && sync" <"$HERE/files/$f"
 done
+# Direktvermarktung (Stufe 2): der Tunnel zum Partner startet mit dem System.
+# Das Skript tut nichts, solange keine Zustellung
+# /etc/vp-edge-light/vermarkter/anschluss.json + Zugang gelegt hat und
+# vp-edge-light daraus die openvpn.conf erzeugt hat. Das Paket openvpn-mbedtls
+# (+ kmod-tun) kommt in der Werkstatt bzw. als Anhang eines signierten
+# Releases (E5, Stufe 5) - dieses Skript installiert es NICHT.
+# shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
+box_ssh "$TARGET" "mkdir -p /etc/init.d && cat > /etc/init.d/vp-vermarkter.neu && chmod 0755 /etc/init.d/vp-vermarkter.neu && mv -f /etc/init.d/vp-vermarkter.neu /etc/init.d/vp-vermarkter && /etc/init.d/vp-vermarkter enable && sync" <"$HERE/files/etc/init.d/vp-vermarkter"
+# Ein sysupgrade behaelt Konfiguration und Zugang (/etc/vp-edge-light/ steht
+# seit dem Tunnel-Schritt in sysupgrade.conf) - das Startskript selbst muss
+# dort auch stehen, sonst startet der Tunnel nach dem Update nicht mehr mit
+# dem System.
+box_ssh "$TARGET" "touch /etc/sysupgrade.conf; for p in /etc/vp-edge-light/ /etc/init.d/vp-vermarkter /etc/rc.d/S85vp-vermarkter /etc/rc.d/K15vp-vermarkter; do grep -qxF \"\$p\" /etc/sysupgrade.conf || echo \"\$p\" >> /etc/sysupgrade.conf; done"
 # Die Konfiguration nur anlegen, nie eine bestehende ueberschreiben.
 box_ssh "$TARGET" "[ -f /etc/config/vp-edge-light ] || { cat > /etc/config/vp-edge-light.neu && mv -f /etc/config/vp-edge-light.neu /etc/config/vp-edge-light; }" <"$HERE/files/etc/config/vp-edge-light"
 # WLAN-Anschluss (Kabel oder WLAN beim Einrichten, edge-light/docs/mango.md
 # "Ohne Kabel zum Router"): nur das Skript. Es gehoert zum Betriebssystem und
-# aendert erst etwas, wenn jemand es aufruft; das Programm erneuert es nicht.
+# aendert erst etwas, wenn jemand es aufruft. Das bestaetigte Programm erneuert
+# es samt einrichtung-wlan.sh nur AUFWAERTS (WLAN_STAND, internal/wlanstand):
+# wer hier gezielt einen aelteren Stand einspielt, muss den Dienst stoppen oder
+# ein Programm mit hoechstens diesem Stand fahren, sonst zieht es nach.
 # shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
 box_ssh "$TARGET" "mkdir -p /usr/libexec/vp-edge-light && cat > /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu && chmod 0755 /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu && mv -f /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu /usr/libexec/vp-edge-light/wlan-anschluss.sh && sync" <"$HERE/files/usr/libexec/vp-edge-light/wlan-anschluss.sh"
 # Einrichtungs-WLAN (gleiches WLAN ab Werk, nur offen ohne Verbindung;

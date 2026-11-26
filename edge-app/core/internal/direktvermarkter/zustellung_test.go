@@ -27,10 +27,9 @@ func gueltigesProfil() Profile {
 
 func gueltigesDokument(t *testing.T) ([]byte, *ProfilDokument) {
 	t.Helper()
-	p := gueltigesProfil()
 	doc := ProfilDokument{SchemaVersion: SchemaVersion, TenantID: "t", SiteID: "s", DeviceID: "d",
-		GeneratedAt: "2026-11-25T12:00:00Z", Partner: "luox", Revision: 1,
-		ZugangFingerabdruck: "SHA256:abc", Profil: &p}
+		GeneratedAt: "2026-11-26T08:00:00Z", Partner: "luox", Revision: 1, ReferenzWp: 12000,
+		ZugangFingerabdruck: "SHA256:abc"}
 	raw, err := json.Marshal(doc)
 	if err != nil {
 		t.Fatal(err)
@@ -53,29 +52,15 @@ func TestParseProfilDokumentEmptyIsWithdrawal(t *testing.T) {
 
 func TestParseProfilDokumentRejects(t *testing.T) {
 	base := func() ProfilDokument {
-		p := gueltigesProfil()
 		return ProfilDokument{SchemaVersion: SchemaVersion, Partner: "luox", Revision: 1,
-			ZugangFingerabdruck: "SHA256:abc", Profil: &p}
+			ReferenzWp: 12000, ZugangFingerabdruck: "SHA256:abc"}
 	}
 	cases := map[string]func(*ProfilDokument){
-		"schema_version":          func(d *ProfilDokument) { d.SchemaVersion = "2.0" },
-		"partner fehlt":           func(d *ProfilDokument) { d.Partner = " " },
-		"fingerabdruck fehlt":     func(d *ProfilDokument) { d.ZugangFingerabdruck = "" },
-		"profil fehlt":            func(d *ProfilDokument) { d.Profil = nil },
-		"profil id passt nicht":   func(d *ProfilDokument) { d.Profil.ID = "anders" },
-		"wortfolge offen":         func(d *ProfilDokument) { d.Profil.Modbus.WordOrder = "offen (F3)" },
-		"funktion verboten":       func(d *ProfilDokument) { d.Profil.Modbus.Functions = []int{3, 5} },
-		"keine funktionen":        func(d *ProfilDokument) { d.Profil.Modbus.Functions = nil },
-		"verbindungen":            func(d *ProfilDokument) { d.Profil.Modbus.Connections = 0 },
-		"bei_veraltet offen":      func(d *ProfilDokument) { d.Profil.Rules.OnStale = "offen (F8)" },
-		"frist":                   func(d *ProfilDokument) { d.Profil.Rules.WatchdogDeadlineS = 0 },
-		"ruhewert":                func(d *ProfilDokument) { d.Profil.Rules.RestPct = 101 },
-		"band verkehrt":           func(d *ProfilDokument) { b := [2]int{100, 0}; d.Profil.Register[4].Band = &b },
-		"band an input":           func(d *ProfilDokument) { b := [2]int{0, 1}; d.Profil.Register[0].Band = &b },
-		"typ unbekannt":           func(d *ProfilDokument) { d.Profil.Register[0].Type = "f64" },
-		"ohne bedeutung":          func(d *ProfilDokument) { d.Profil.Register[0].Meaning = "" },
-		"vorgabe-register fehlt":  func(d *ProfilDokument) { d.Profil.Register[4].Meaning = "anders" },
-		"ueberlappende register":  func(d *ProfilDokument) { d.Profil.Register[1].Address = 1 },
+		"schema_version":      func(d *ProfilDokument) { d.SchemaVersion = "2.0" },
+		"partner fehlt":       func(d *ProfilDokument) { d.Partner = " " },
+		"fingerabdruck fehlt": func(d *ProfilDokument) { d.ZugangFingerabdruck = "" },
+		"referenz fehlt":      func(d *ProfilDokument) { d.ReferenzWp = 0 },
+		"referenz negativ":    func(d *ProfilDokument) { d.ReferenzWp = -1 },
 	}
 	for name, mutate := range cases {
 		d := base()
@@ -95,19 +80,33 @@ func TestParseZugangAntwortStrict(t *testing.T) {
 		return ZugangAntwort{SchemaVersion: SchemaVersion, Partner: "luox",
 			ZugangFingerabdruck: "SHA256:abc",
 			Gegenstelle:         Gegenstelle{Host: "vpn.luox.example", Port: 1194, Protokoll: "udp"},
-			Dateien: Dateien{ZertifikatPEM: "Z", SchluesselPEM: "S", CAPEM: "C"}}
+			Dateien:             Dateien{ZertifikatPEM: "Z", SchluesselPEM: "S", CAPEM: "C"}}
 	}
-	if _, err := ParseZugangAntwort(mustJSON(t, base())); err != nil {
+	z, err := ParseZugangAntwort(mustJSON(t, base()))
+	if err != nil {
 		t.Fatalf("gueltige Antwort abgelehnt: %v", err)
 	}
+	if z.TLSSchluessel != "keine" {
+		t.Fatalf("tls_schluessel ohne Angabe: %q, want keine", z.TLSSchluessel)
+	}
+	mitTLS := base()
+	mitTLS.TLSSchluessel = "tls_crypt"
+	mitTLS.Dateien.TLSSchluesselPEM = "T"
+	if _, err := ParseZugangAntwort(mustJSON(t, mitTLS)); err != nil {
+		t.Fatalf("tls_crypt mit Schluessel abgelehnt: %v", err)
+	}
 	cases := map[string]func(*ZugangAntwort){
-		"schema":        func(z *ZugangAntwort) { z.SchemaVersion = "0.9" },
-		"fingerabdruck": func(z *ZugangAntwort) { z.ZugangFingerabdruck = "" },
-		"zertifikat":    func(z *ZugangAntwort) { z.Dateien.ZertifikatPEM = "" },
-		"schluessel":    func(z *ZugangAntwort) { z.Dateien.SchluesselPEM = "" },
-		"ca":            func(z *ZugangAntwort) { z.Dateien.CAPEM = "" },
-		"host":          func(z *ZugangAntwort) { z.Gegenstelle.Host = " " },
-		"port":          func(z *ZugangAntwort) { z.Gegenstelle.Port = 0 },
+		"schema":            func(z *ZugangAntwort) { z.SchemaVersion = "0.9" },
+		"fingerabdruck":     func(z *ZugangAntwort) { z.ZugangFingerabdruck = "" },
+		"zertifikat":        func(z *ZugangAntwort) { z.Dateien.ZertifikatPEM = "" },
+		"schluessel":        func(z *ZugangAntwort) { z.Dateien.SchluesselPEM = "" },
+		"ca":                func(z *ZugangAntwort) { z.Dateien.CAPEM = "" },
+		"host":              func(z *ZugangAntwort) { z.Gegenstelle.Host = " " },
+		"port":              func(z *ZugangAntwort) { z.Gegenstelle.Port = 0 },
+		"protokoll fehlt":   func(z *ZugangAntwort) { z.Gegenstelle.Protokoll = "" },
+		"protokoll fremd":   func(z *ZugangAntwort) { z.Gegenstelle.Protokoll = "icmp" },
+		"tls-wort fremd":    func(z *ZugangAntwort) { z.TLSSchluessel = "irgendwas" },
+		"tls ohne material": func(z *ZugangAntwort) { z.TLSSchluessel = "tls_auth" },
 	}
 	for name, mutate := range cases {
 		z := base()
@@ -131,25 +130,15 @@ func TestParseZugangAntwortErrorNeverCarriesContent(t *testing.T) {
 	}
 }
 
-func TestEmbeddedLuoxProfilePassesPruefe(t *testing.T) {
-	p, ok := For("luox")
-	if !ok {
-		t.Fatal("eingebettetes luox-Profil fehlt")
-	}
-	if err := p.Pruefe(); err != nil {
-		t.Fatalf("eingebettetes Profil besteht die Zustellungs-Pruefung nicht: %v", err)
-	}
-}
-
 func TestNeueAnfrageUndQuittung(t *testing.T) {
-	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 11, 26, 8, 0, 0, 0, time.UTC)
 	a := NeueAnfrage("SHA256:abc", now)
 	if a.SchemaVersion != SchemaVersion || a.ZugangFingerabdruck != "SHA256:abc" ||
-		a.AngefragtAm != "2026-11-25T12:00:00Z" {
+		a.AngefragtAm != "2026-11-26T08:00:00Z" {
 		t.Fatalf("Anfrage: %+v", a)
 	}
 	q := NeueQuittung("SHA256:abc", QuittungGeloescht, now)
-	if q.Ereignis != QuittungGeloescht || q.Am != "2026-11-25T12:00:00Z" {
+	if q.Ereignis != QuittungGeloescht || q.Am != "2026-11-26T08:00:00Z" {
 		t.Fatalf("Quittung: %+v", q)
 	}
 }

@@ -501,6 +501,11 @@ type TaktErgebnis struct {
 	Lesungen    []GeplanteAnfrage
 	Nachrichten []Nachricht
 	Belege      []Beleg
+	// Bilder are this tick's judged controller images by target key - only
+	// the controllers that were due and read this tick, so a consumer that
+	// feeds from them (the direct-marketer interface) never serves an old
+	// reading as fresh.
+	Bilder map[string]*StufenLesung
 }
 
 // Takt runs one tick: reads every controller whose 5 s are due, judges each
@@ -598,6 +603,7 @@ func (l *Laufzeit) Beende(r *Runde, antworten []Antwort) TaktErgebnis {
 		return out
 	}
 	gelesen := map[string]*StufenLesung{}
+	out.Bilder = gelesen
 	beurteilt := map[string]bool{}
 	var samples []Sample
 	var sampleZiele []Ziel

@@ -62,26 +62,42 @@ func TestPruefeManifestPFC200(t *testing.T) {
 		t.Fatalf("%+v %v", st, err)
 	}
 	// Skriptstand und Tunnel-Programm müssen im Manifest stehen und zur Freigabe passen.
-	if st, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, sk, wa); err != nil || st.ReleaseSeq != 77 {
+	if st, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, sk, wa, ""); err != nil || st.ReleaseSeq != 77 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	// Die Bootapplikation ist optional: eine gesetzte Prüfsumme bindet, eine
+	// leere lässt das Manifest unangesehen (es kann ein grundprogramm-Feld
+	// tragen oder nicht - beides gilt dann als unbenutzt).
+	gp := strings.Repeat("e", 64)
+	mitGrund := attrappe.ManifestPFC200MitGrundprogramm("edge-industrie-2026.11.1", 77, sha, "industrie", sk, wa, gp)
+	if st, err := fassungen.PruefeManifestPFC200(mitGrund, sig, "edge-industrie-2026.11.1", sha, sk, wa, gp); err != nil || st.ReleaseSeq != 77 {
 		t.Fatalf("%+v %v", st, err)
 	}
 	for name, f := range map[string]func() error{
 		"anderer Skriptstand": func() error {
-			_, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, strings.Repeat("d", 64), wa)
+			_, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, strings.Repeat("d", 64), wa, "")
 			return err
 		},
 		"anderes Tunnel-Programm": func() error {
-			_, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, sk, strings.Repeat("d", 64))
+			_, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, sk, strings.Repeat("d", 64), "")
 			return err
 		},
 		"Manifest ohne Tunnel-Programm": func() error {
 			ohne := attrappe.ManifestPFC200("edge-industrie-2026.11.1", 77, sha, "industrie", sk, "")
-			_, err := fassungen.PruefeManifestPFC200(ohne, sig, "edge-industrie-2026.11.1", sha, sk, wa)
+			_, err := fassungen.PruefeManifestPFC200(ohne, sig, "edge-industrie-2026.11.1", sha, sk, wa, "")
 			return err
 		},
 		"Manifest ohne Skriptstand": func() error {
 			ohne := attrappe.ManifestPFC200("edge-industrie-2026.11.1", 77, sha, "industrie", "", wa)
-			_, err := fassungen.PruefeManifestPFC200(ohne, sig, "edge-industrie-2026.11.1", sha, sk, wa)
+			_, err := fassungen.PruefeManifestPFC200(ohne, sig, "edge-industrie-2026.11.1", sha, sk, wa, "")
+			return err
+		},
+		"Freigabe verlangt Bootapplikation, Manifest nennt sie nicht": func() error {
+			_, err := fassungen.PruefeManifestPFC200(m, sig, "edge-industrie-2026.11.1", sha, sk, wa, gp)
+			return err
+		},
+		"Freigabe verlangt Bootapplikation, Manifest nennt andere Pruefsumme": func() error {
+			_, err := fassungen.PruefeManifestPFC200(mitGrund, sig, "edge-industrie-2026.11.1", sha, sk, wa, strings.Repeat("f", 64))
 			return err
 		},
 	} {

@@ -39,6 +39,8 @@ func cmdManifest(args []string) error {
 		"Edge Light und Edge Industrie: der Skriptstand (edge-light-openwrt.tar.gz bzw. edge-industrie-skripte.tar.gz); Pruefsumme und Groesse kommen signiert ins Manifest (fuer die Werkstatt)")
 	wartung := fs.String("wartung", "",
 		"Edge Industrie: das Tunnel-Programm vp-wartung-linux-arm; Pruefsumme und Groesse kommen signiert ins Manifest (fuer die Werkstatt, kein Bestandteil des Updates)")
+	grundprogramm := fs.String("grundprogramm", "",
+		"Edge Industrie: die CODESYS-Bootapplikation des Basisprojekts, gepackt als edge-industrie-grundprogramm.tar.gz (optional, auch bei Edge Industrie; Pruefsumme und Groesse kommen signiert ins Manifest, fuer die Werkstatt, kein Bestandteil des Updates)")
 	var backends stringList
 	fs.Var(&backends, "backend", "Apply-Backend, fuer das dieses Release gilt (Vorgabe: compose, mit --binary light, unter edge-industrie-JJJJ.MM.N industrie)")
 	fs.Usage = func() {
@@ -173,6 +175,20 @@ Skriptstand; das Backend folgt dem Namen:
 		}
 		h := sha256.Sum256(daten)
 		m.Wartung = &otaverify.Wartung{Name: otaverify.WartungDatei, SHA256: hex.EncodeToString(h[:]), Size: int64(len(daten))}
+	}
+	if *grundprogramm != "" {
+		if !strings.HasPrefix(*release, otaverify.IndustrieReleasePrefix) {
+			return errors.New("--grundprogramm gehoert zu einem Edge-Industrie-Release")
+		}
+		daten, err := os.ReadFile(*grundprogramm)
+		if err != nil {
+			return fmt.Errorf("--grundprogramm: %w", err)
+		}
+		if _, err := gzip.NewReader(bytes.NewReader(daten)); err != nil {
+			return fmt.Errorf("--grundprogramm: %s ist kein gzip: %w", *grundprogramm, err)
+		}
+		h := sha256.Sum256(daten)
+		m.Grundprogramm = &otaverify.Grundprogramm{Name: otaverify.GrundprogrammDatei, SHA256: hex.EncodeToString(h[:]), Size: int64(len(daten))}
 	}
 
 	raw, err := marshalDoc(m)

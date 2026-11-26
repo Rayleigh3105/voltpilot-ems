@@ -294,17 +294,6 @@
                     <include>*.json</include>
                 </includes>
             </resource>
-            <!-- Die GEPACKTE Laufzeit-Sicht derselben Profile (package_edge_runtime.py, mit aufgelösten
-                 "offen (Fxx)"-Werten): die Zustellung bettet den Partner-Teilbaum BYTE-GLEICH in das
-                 retained Profil-Dokument ein, damit Cloud und Box-Einbettung nie zwei driftende
-                 Auflösungen tragen (docs/contracts/v2/direktvermarktung-zustellung.md §2). -->
-            <resource>
-                <directory>${project.basedir}/../../edge-app/core/internal/direktvermarkter</directory>
-                <targetPath>direktvermarkter-laufzeit</targetPath>
-                <includes>
-                    <include>profiles.json</include>
-                </includes>
-            </resource>
         </resources>
         <!-- Load the canonical dev realm (single source of truth) onto the test
              classpath so the Keycloak Testcontainer imports the same realm the

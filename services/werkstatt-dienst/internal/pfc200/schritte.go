@@ -361,9 +361,15 @@ func dockerContainerBeleg(roh string) string {
 // fassungenHolen legt Programm, Skriptstand und Tunnel-Programm der Freigabe
 // bereit und prüft das signierte Manifest, bevor irgendetwas auf das Gerät geht.
 func (l *Lauf) fassungenHolen(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
-	programm, skripte, tunnel := fassungen.DateienPFC200(l.freigabe)
+	programm, skripte, tunnel, grundprogramm := fassungen.DateienPFC200(l.freigabe)
 	b := protokoll.Beleg{}.Mit("freigabe", l.freigabe.Kennung)
-	for _, d := range []fassungen.Datei{programm, skripte, tunnel} {
+	dateien := []fassungen.Datei{programm, skripte, tunnel}
+	if grundprogramm.Sha256 != "" {
+		// Nur holen, wenn die Freigabe eine Prüfsumme nennt: Ohne sie trägt
+		// diese Fassung kein Grundprogramm, und Hole verlangt eine Prüfsumme.
+		dateien = append(dateien, grundprogramm)
+	}
+	for _, d := range dateien {
 		erg, err := l.k.Fassungen.Hole(ctx, d)
 		if err != nil {
 			return b, err
@@ -380,6 +386,8 @@ func (l *Lauf) fassungenHolen(ctx context.Context, _ *lauf.Kontext) (protokoll.B
 			l.pfadSkripte = erg.Pfad
 		case tunnel.Name:
 			l.pfadWartung = erg.Pfad
+		case fassungen.GrundprogrammDatei:
+			l.pfadGrundprogramm = erg.Pfad
 		}
 	}
 	return l.manifestHolen(ctx, b)
@@ -409,7 +417,7 @@ func (l *Lauf) manifestHolen(ctx context.Context, b protokoll.Beleg) (protokoll.
 	if _, err := l.k.Fassungen.PruefeSignatur(trustSet, trustSetSig, m, sig); err != nil {
 		return b, fmt.Errorf("Signatur des Release-Manifests nicht gültig: %w", err)
 	}
-	st, err := fassungen.PruefeManifestPFC200(m, sig, f.Fassung, f.ProgrammSha256, f.SkripteSha256, f.WartungSha256)
+	st, err := fassungen.PruefeManifestPFC200(m, sig, f.Fassung, f.ProgrammSha256, f.SkripteSha256, f.WartungSha256, f.GrundprogrammSha256)
 	if err != nil {
 		return b, err
 	}
@@ -434,9 +442,11 @@ func dnsListe(roh string) ([]string, error) {
 
 // befehlInternet prüft den Weg des Geräts ins Internet: Name, Weg, Uhr und
 // Zertifikat in einem (curl prüft das Zertifikat des Portals; mit der Uhr ab
-// Werk gälte es als noch nicht gültig).
+// Werk gälte es als noch nicht gültig). Die Adresse ist die des Geräts
+// (geraetPortalURL), nie die des Dienstes im Cluster: Das Gerät kann eine
+// Cluster-interne Adresse nie auflösen.
 func (l *Lauf) befehlInternet() string {
-	adresse := shellWort(l.k.portalURL() + "/api/v1/edge/trust-set/trust-set.json")
+	adresse := shellWort(l.k.geraetPortalURL() + "/api/v1/edge/trust-set/trust-set.json")
 	return `echo "weg=$(ip -4 route show default 2>/dev/null | head -n 1)"
 if command -v curl >/dev/null 2>&1; then
   if curl -fsS --max-time 20 -o /dev/null ` + adresse + ` 2>/tmp/vp-werkstatt-internet.err; then echo internet=ja; else echo internet=nein; fi
@@ -531,7 +541,7 @@ func (l *Lauf) internetAn(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg
 	if err != nil {
 		return b.Mit("standardweg", w["weg"]).Mit("internet", w["internet"]), fmt.Errorf("kein Internet über die Brücke: %w", err)
 	}
-	b = b.Mit("standardweg", w["weg"]).Mit("internet", l.k.portalURL()+" erreichbar über die Brücke, Zertifikat geprüft (befristet, am Ende entfernt)")
+	b = b.Mit("standardweg", w["weg"]).Mit("internet", l.k.geraetPortalURL()+" erreichbar über die Brücke, Zertifikat geprüft (befristet, am Ende entfernt)")
 
 	// Zeitabgleich ein: Er bleibt nach dem Lauf an, sonst scheitern beim
 	// Kunden TLS und der Wartungstunnel an einer falschen Uhr.
@@ -665,7 +675,15 @@ func (l *Lauf) zugaengeSetzen(ctx context.Context, _ *lauf.Kontext) (protokoll.B
 	b = b.Mit("passwort_age", text)
 	l.passwortAge = text
 	for i, u := range benutzer {
-		if _, err := l.fuehre(ctx, Werkzeuge+"/config_linux_user user="+u.name+" hash="+shellWort(hashes[i]), ""); err != nil {
+		// config_linux_user lehnt user=root grundsaetzlich ab (WAGO-Quelltext
+		// config_linux_user.c/shadow_functions.c, FW22 und FW24+ gleich: exit 2,
+		// ohne jede Ausgabe). root hat durch den Lauf-Schluessel oben schon eine
+		// Shell, darum setzt usermod den Hash direkt.
+		befehl := Werkzeuge + "/config_linux_user user=" + u.name + " hash=" + shellWort(hashes[i])
+		if u.name == "root" {
+			befehl = "usermod -p " + shellWort(hashes[i]) + " root"
+		}
+		if _, err := l.fuehre(ctx, befehl, ""); err != nil {
 			return b, fmt.Errorf("Passwort von %s setzen: %w", u.name, err)
 		}
 	}

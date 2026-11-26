@@ -58,7 +58,7 @@ public class DirektvermarktungZustellung {
     static final String ROLLE = "zustellung";
 
     private final DirektvermarktungRepository repo;
-    private final VermarkterLaufzeitKatalog laufzeit;
+    private final PartnerKatalog katalog;
     private final LeadDeviceService leadDevices;
     private final BoxFaehigkeiten faehigkeiten;
     private final ObjectProvider<DirektvermarktungPublisher> publisher;
@@ -68,22 +68,22 @@ public class DirektvermarktungZustellung {
     private final Clock clock;
 
     @Autowired
-    public DirektvermarktungZustellung(DirektvermarktungRepository repo, VermarkterLaufzeitKatalog laufzeit,
+    public DirektvermarktungZustellung(DirektvermarktungRepository repo, PartnerKatalog katalog,
             LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten,
             ObjectProvider<DirektvermarktungPublisher> publisher,
             ObjectProvider<MeasurementSelectionService> messplan,
             ObjectProvider<MeasurementConfigPublisher> messplanPublisher, ObjectMapper json) {
-        this(repo, laufzeit, leadDevices, faehigkeiten, publisher, messplan, messplanPublisher, json,
+        this(repo, katalog, leadDevices, faehigkeiten, publisher, messplan, messplanPublisher, json,
                 Clock.systemUTC());
     }
 
-    DirektvermarktungZustellung(DirektvermarktungRepository repo, VermarkterLaufzeitKatalog laufzeit,
+    DirektvermarktungZustellung(DirektvermarktungRepository repo, PartnerKatalog katalog,
             LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten,
             ObjectProvider<DirektvermarktungPublisher> publisher,
             ObjectProvider<MeasurementSelectionService> messplan,
             ObjectProvider<MeasurementConfigPublisher> messplanPublisher, ObjectMapper json, Clock clock) {
         this.repo = repo;
-        this.laufzeit = laufzeit;
+        this.katalog = katalog;
         this.leadDevices = leadDevices;
         this.faehigkeiten = faehigkeiten;
         this.publisher = publisher;
@@ -144,15 +144,21 @@ public class DirektvermarktungZustellung {
                 && zugang.fingerabdruck().equals(stand.zugestellterFingerabdruck())) {
             return Ergebnis.NICHTS;
         }
-        JsonNode profil = laufzeit.profil(aktiv.partner());
-        if (profil == null) {
-            log.warn("direktvermarktung: kein Laufzeit-Profil fuer Partner {} - Anlage {} bleibt ohne Zustellung",
+        if (katalog.finde(aktiv.partner()) == null) {
+            log.warn("direktvermarktung: Partner {} ist nicht im Katalog - Anlage {} bleibt ohne Zustellung",
                     aktiv.partner(), siteId);
             return Ergebnis.KEIN_ZIEL;
         }
+        double referenzWp = repo.referenzWp(siteId);
+        if (!(referenzWp > 0)) {
+            // Ohne Referenz hat das Prozent-Register keine kW-Bedeutung; die Box lehnte den Anschluss
+            // ohnehin ab (vermarktertunnel.LadeAnschluss). Erst MaStR-/Aufbau-Daten, dann Zustellung.
+            log.warn("direktvermarktung: Anlage {} ohne installierte PV-Leistung - keine Zustellung", siteId);
+            return Ergebnis.KEIN_ZIEL;
+        }
         int revision = (stand == null ? 0 : stand.profilRevision()) + 1;
-        byte[] dokument = dokument(tenantId, siteId, zielBox, aktiv.partner(), revision,
-                zugang.fingerabdruck(), profil, jetzt);
+        byte[] dokument = dokument(tenantId, siteId, zielBox, aktiv.partner(), revision, referenzWp,
+                zugang.fingerabdruck(), jetzt);
         if (!pub.publishProfil(tenantId, siteId, zielBox, dokument)) {
             return Ergebnis.NICHTS; // best-effort; der nächste Takt holt nach
         }
@@ -233,6 +239,9 @@ public class DirektvermarktungZustellung {
         if (zugang.gueltigBis() != null) {
             antwort.put("gueltig_bis", zugang.gueltigBis().toString());
         }
+        // Wie der geteilte TLS-Schluessel wirkt (tls_crypt/tls_auth/keine): aus der Ablageform der
+        // Uebernahme durchgereicht; fehlt das Feld, gilt "keine" - die Box prueft es gegen das Material.
+        antwort.put("tls_schluessel", klartext.path("tls_schluessel").asText("keine"));
         antwort.set("gegenstelle", klartext.get("gegenstelle"));
         antwort.set("dateien", klartext.get("dateien"));
         boolean gesendet = pub.publishZugang(tenantId, siteId, deviceId, antwort.toString().getBytes(
@@ -244,8 +253,14 @@ public class DirektvermarktungZustellung {
         return gesendet;
     }
 
+    /**
+     * Das retained Profil-Dokument (Vertrag §2): es WÄHLT das eingebettete Partnerprofil der Box
+     * (Registerbelegung und Regeln kommen nie aus einer zugestellten Datei - die
+     * vermarktertunnel-Sicherheitsregel) und trägt, was nur die Cloud weiß: Referenzleistung und
+     * erwarteter Zugangs-Fingerabdruck.
+     */
     private byte[] dokument(UUID tenantId, UUID siteId, UUID deviceId, String partner, int revision,
-            String fingerabdruck, JsonNode profil, Instant jetzt) {
+            double referenzWp, String fingerabdruck, Instant jetzt) {
         ObjectNode doc = json.createObjectNode();
         doc.put("schema_version", SCHEMA_VERSION);
         doc.put("tenant_id", tenantId.toString());
@@ -254,8 +269,8 @@ public class DirektvermarktungZustellung {
         doc.put("generated_at", jetzt.toString());
         doc.put("partner", partner);
         doc.put("revision", revision);
+        doc.put("referenz_wp", referenzWp);
         doc.put("zugang_fingerabdruck", fingerabdruck);
-        doc.set("profil", profil);
         return doc.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
@@ -263,11 +278,5 @@ public class DirektvermarktungZustellung {
         ObjectNode n = json.createObjectNode();
         for (int i = 0; i + 1 < kv.length; i += 2) n.put(kv[i], kv[i + 1]);
         return n.toString();
-    }
-
-    /** Für Tests: baut das Dokument ohne zu senden. */
-    byte[] dokumentFuerTest(UUID tenantId, UUID siteId, UUID deviceId, String partner, int revision,
-            String fingerabdruck, JsonNode profil, Instant jetzt) {
-        return dokument(tenantId, siteId, deviceId, partner, revision, fingerabdruck, profil, jetzt);
     }
 }

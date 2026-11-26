@@ -16,7 +16,8 @@ import (
 //   - the ACCESS (key material) is never retained: the box asks with the
 //     fingerprint it does not have yet on .../v2/direktvermarktung-anfrage,
 //     the cloud answers once on .../v2/direktvermarktung-zugang over the
-//     existing mTLS link, the box stores it (Ablage) and acknowledges on
+//     existing mTLS link, the box stores it in the tunnel manager's file
+//     contract (internal/vermarktertunnel/zugang.go) and acknowledges on
 //     .../v2/direktvermarktung-quittung.
 //
 // Topic identity and payload identity must match, the rule of every v2
@@ -42,20 +43,22 @@ const (
 )
 
 // ProfilDokument is the retained profile the cloud publishes to the leading
-// box. It carries the partner's FULL packaged profile (the same shape the box
-// embeds in profiles.json), so a new partner needs no new firmware - the
-// catalog is data (E6 = A). zugang_fingerabdruck names the access the box must
-// hold; a box that holds a different one (or none) asks for it.
+// box. It PICKS which EMBEDDED partner profile runs (the register map, word
+// order and rules come from this package's packaged catalog, never from a
+// delivered file - the vermarktertunnel security rule) and carries what only
+// the cloud knows: the plant's reference power (F6, in watts) and which
+// access the box must hold. A box that holds a different access (or none)
+// asks for it.
 type ProfilDokument struct {
-	SchemaVersion       string   `json:"schema_version"`
-	TenantID            string   `json:"tenant_id"`
-	SiteID              string   `json:"site_id"`
-	DeviceID            string   `json:"device_id"`
-	GeneratedAt         string   `json:"generated_at"`
-	Partner             string   `json:"partner"`
-	Revision            int      `json:"revision"`
-	ZugangFingerabdruck string   `json:"zugang_fingerabdruck"`
-	Profil              *Profile `json:"profil"`
+	SchemaVersion       string  `json:"schema_version"`
+	TenantID            string  `json:"tenant_id"`
+	SiteID              string  `json:"site_id"`
+	DeviceID            string  `json:"device_id"`
+	GeneratedAt         string  `json:"generated_at"`
+	Partner             string  `json:"partner"`
+	Revision            int     `json:"revision"`
+	ReferenzWp          float64 `json:"referenz_wp"`
+	ZugangFingerabdruck string  `json:"zugang_fingerabdruck"`
 }
 
 // BelongsTo reports whether the document is addressed to this identity.
@@ -84,85 +87,12 @@ func ParseProfilDokument(raw []byte) (*ProfilDokument, error) {
 	if strings.TrimSpace(d.ZugangFingerabdruck) == "" {
 		return nil, fmt.Errorf("direktvermarktung: zugang_fingerabdruck fehlt")
 	}
-	if d.Profil == nil {
-		return nil, fmt.Errorf("direktvermarktung: profil fehlt")
-	}
-	if d.Profil.ID != d.Partner {
-		return nil, fmt.Errorf("direktvermarktung: profil.id %q passt nicht zu partner %q", d.Profil.ID, d.Partner)
-	}
-	if err := d.Profil.Pruefe(); err != nil {
-		return nil, err
+	if !(d.ReferenzWp > 0) {
+		// Without a reference the percent set-point has no meaning in kW
+		// (the same refusal as vermarktertunnel.LadeAnschluss).
+		return nil, fmt.Errorf("direktvermarktung: referenz_wp fehlt oder ist nicht positiv")
 	}
 	return &d, nil
-}
-
-// Pruefe validates a profile the way the embedded derivative is trusted: the
-// cloud-sent profile must be RESOLVED (word order and stale behaviour never
-// "offen (Fxx)") and must describe an interface the Server can run. A profile
-// that fails here is rejected whole.
-func (p Profile) Pruefe() error {
-	if strings.TrimSpace(p.ID) == "" {
-		return fmt.Errorf("direktvermarktung: profil ohne id")
-	}
-	if p.Modbus.WordOrder != "little" && p.Modbus.WordOrder != "big" {
-		return fmt.Errorf("direktvermarktung: wortfolge %q nicht aufgeloest", p.Modbus.WordOrder)
-	}
-	if p.Modbus.Unit < 0 || p.Modbus.Unit > 255 {
-		return fmt.Errorf("direktvermarktung: unit %d", p.Modbus.Unit)
-	}
-	if len(p.Modbus.Functions) == 0 {
-		return fmt.Errorf("direktvermarktung: keine funktionen")
-	}
-	for _, f := range p.Modbus.Functions {
-		if f != 3 && f != 4 && f != 6 && f != 16 {
-			return fmt.Errorf("direktvermarktung: funktion %d nicht erlaubt", f)
-		}
-	}
-	if p.Modbus.Connections < 1 || p.Modbus.Connections > 8 {
-		return fmt.Errorf("direktvermarktung: verbindungen %d", p.Modbus.Connections)
-	}
-	if len(p.Register) == 0 {
-		return fmt.Errorf("direktvermarktung: keine register")
-	}
-	occupied := map[string]map[int]bool{"input": {}, "holding": {}}
-	for _, r := range p.Register {
-		if r.Table != "input" && r.Table != "holding" {
-			return fmt.Errorf("direktvermarktung: tabelle %q", r.Table)
-		}
-		if r.Words() == 0 {
-			return fmt.Errorf("direktvermarktung: typ %q", r.Type)
-		}
-		if strings.TrimSpace(r.Meaning) == "" {
-			return fmt.Errorf("direktvermarktung: register %d ohne bedeutung", r.Address)
-		}
-		if r.Band != nil {
-			if r.Table != "holding" {
-				return fmt.Errorf("direktvermarktung: band an input-register %d", r.Address)
-			}
-			if r.Band[0] > r.Band[1] {
-				return fmt.Errorf("direktvermarktung: band %v verkehrt", *r.Band)
-			}
-		}
-		for a := int(r.Address); a < r.End(); a++ {
-			if occupied[r.Table][a] {
-				return fmt.Errorf("direktvermarktung: register %d in %q doppelt belegt", a, r.Table)
-			}
-			occupied[r.Table][a] = true
-		}
-	}
-	if _, ok := p.ByMeaning(setpointMeaning); !ok {
-		return fmt.Errorf("direktvermarktung: register %q fehlt", setpointMeaning)
-	}
-	if p.Rules.WatchdogDeadlineS <= 0 {
-		return fmt.Errorf("direktvermarktung: lebenszeichen_frist_s %d", p.Rules.WatchdogDeadlineS)
-	}
-	if p.Rules.RestPct < 0 || p.Rules.RestPct > 100 {
-		return fmt.Errorf("direktvermarktung: ruhewert_pct %d", p.Rules.RestPct)
-	}
-	if strings.TrimSpace(p.Rules.OnStale) == "" || strings.HasPrefix(p.Rules.OnStale, "offen (") {
-		return fmt.Errorf("direktvermarktung: bei_veraltet %q nicht aufgeloest", p.Rules.OnStale)
-	}
-	return nil
 }
 
 // Anfrage is the box's access request: the fingerprint names WHICH access it
@@ -181,7 +111,7 @@ type Anfrage struct {
 type Gegenstelle struct {
 	Host      string `json:"host"`
 	Port      int    `json:"port"`
-	Protokoll string `json:"protokoll,omitempty"` // "udp" or "tcp"; empty = unknown (F1)
+	Protokoll string `json:"protokoll"` // "udp" or "tcp" - the intake reads it from the partner's configuration (F1)
 }
 
 // Dateien is the key material from the access file, PEM-encoded. Never log
@@ -198,15 +128,19 @@ type Dateien struct {
 // only certificate, key, CA, optional TLS key and the endpoint - never the
 // upload password, never the raw ZIP).
 type ZugangAntwort struct {
-	SchemaVersion       string      `json:"schema_version"`
-	TenantID            string      `json:"tenant_id"`
-	SiteID              string      `json:"site_id"`
-	DeviceID            string      `json:"device_id"`
-	Partner             string      `json:"partner"`
-	ZugangFingerabdruck string      `json:"zugang_fingerabdruck"`
-	GueltigBis          string      `json:"gueltig_bis,omitempty"`
-	Gegenstelle         Gegenstelle `json:"gegenstelle"`
-	Dateien             Dateien     `json:"dateien"`
+	SchemaVersion       string `json:"schema_version"`
+	TenantID            string `json:"tenant_id"`
+	SiteID              string `json:"site_id"`
+	DeviceID            string `json:"device_id"`
+	Partner             string `json:"partner"`
+	ZugangFingerabdruck string `json:"zugang_fingerabdruck"`
+	GueltigBis          string `json:"gueltig_bis,omitempty"`
+	// TLSSchluessel says how the shared TLS key is used: "tls_crypt",
+	// "tls_auth" or "keine" (absent = "keine") - the vermarktertunnel
+	// configuration needs the mode, not just the key.
+	TLSSchluessel string      `json:"tls_schluessel,omitempty"`
+	Gegenstelle   Gegenstelle `json:"gegenstelle"`
+	Dateien       Dateien     `json:"dateien"`
 }
 
 // BelongsTo reports whether the answer is addressed to this identity.
@@ -234,6 +168,19 @@ func ParseZugangAntwort(raw []byte) (*ZugangAntwort, error) {
 	}
 	if strings.TrimSpace(z.Gegenstelle.Host) == "" || z.Gegenstelle.Port < 1 || z.Gegenstelle.Port > 65535 {
 		return nil, fmt.Errorf("direktvermarktung: gegenstelle unvollstaendig")
+	}
+	if z.Gegenstelle.Protokoll != "udp" && z.Gegenstelle.Protokoll != "tcp" {
+		return nil, fmt.Errorf("direktvermarktung: gegenstelle.protokoll %q (udp oder tcp)", z.Gegenstelle.Protokoll)
+	}
+	switch z.TLSSchluessel {
+	case "":
+		z.TLSSchluessel = "keine"
+	case "tls_crypt", "tls_auth", "keine":
+	default:
+		return nil, fmt.Errorf("direktvermarktung: tls_schluessel %q (tls_crypt, tls_auth oder keine)", z.TLSSchluessel)
+	}
+	if z.TLSSchluessel != "keine" && strings.TrimSpace(z.Dateien.TLSSchluesselPEM) == "" {
+		return nil, fmt.Errorf("direktvermarktung: tls_schluessel %q ohne tls_schluessel_pem", z.TLSSchluessel)
 	}
 	return &z, nil
 }

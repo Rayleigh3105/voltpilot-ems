@@ -164,6 +164,10 @@ type Steuerung struct {
 	geschrieben []uint16
 	test        *Test
 	geaendert   bool
+	// vertragPlatz/vertragGrenze pin the direct marketer's limit_w
+	// (SetzeVertragsgrenze); 0/nil = none.
+	vertragPlatz  int
+	vertragGrenze *int32
 }
 
 // Neu starts a controller's Koppelbild with a fresh session (1..65534). soll
@@ -212,9 +216,52 @@ func (s *Steuerung) Lies(q []uint16, jetzt time.Time) Urteil {
 // Urteil is the judgement of the last reading.
 func (s *Steuerung) Urteil() Urteil { return s.urteil }
 
+// Angebote returns the offers of the last readable acknowledgement by
+// Stellplatz (contract §4): what the plant declares it can stell. Empty while
+// nothing readable arrived yet. Not safe for concurrent use, like the rest of
+// Steuerung - the caller holds its own lock.
+func (s *Steuerung) Angebote() map[int]Angebot {
+	if s.letzte == nil || !s.letzte.Lesbar() {
+		return nil
+	}
+	out := map[int]Angebot{}
+	for _, p := range s.letzte.Plaetze {
+		if p.Angebot != nil {
+			out[p.N] = *p.Angebot
+		}
+	}
+	return out
+}
+
 // SetzeTest starts (or replaces) a Schalt-Test; nil ends it.
 func (s *Steuerung) SetzeTest(t *Test) {
 	s.test = t
+	s.geaendert = true
+}
+
+// SetzeVertragsgrenze pins the direct marketer's limit on one Stellplatz for
+// the next telegrams (concept d2 §5.5/§5.6, contract 1.1 grund "vertrag"):
+// the edge writes the MINIMUM of the arbiter's wish and this limit and names
+// the binding reason. Unlike the arbiter's wishes it does not ride on the
+// box's control gates (frei): the partner has the customer's own mandate and
+// the plant keeps its own Freigabe (§5 step 7) - luox must still bind when
+// the VoltPilot cloud is away. grenze nil (or platz 0) clears it.
+func (s *Steuerung) SetzeVertragsgrenze(platz int, grenze *int32) {
+	if platz <= 0 || platz > Plaetze {
+		platz, grenze = 0, nil
+	}
+	gleich := platz == s.vertragPlatz && (grenze == nil) == (s.vertragGrenze == nil) &&
+		(grenze == nil || *grenze == *s.vertragGrenze)
+	if gleich {
+		return
+	}
+	s.vertragPlatz = platz
+	if grenze == nil {
+		s.vertragGrenze = nil
+	} else {
+		v := *grenze
+		s.vertragGrenze = &v
+	}
 	s.geaendert = true
 }
 
@@ -283,9 +330,18 @@ func (s *Steuerung) Telegramm(wuensche map[int]Wunsch, frei bool, ebits []string
 		switch {
 		case s.test != nil && s.test.Platz == n:
 			w = Wunsch{Art: s.test.Art, Wert: s.test.Wert, Grund: "test"}
-		case frei && s.urteil.Wuenscht:
-			if x, da := wuensche[n]; da && s.angeboten(n, x.Art) {
-				w = x
+		case s.urteil.Wuenscht:
+			if frei {
+				if x, da := wuensche[n]; da && s.angeboten(n, x.Art) {
+					w = x
+				}
+			}
+			// The contract limit joins regardless of frei; the minimum
+			// binds and names its reason (SetzeVertragsgrenze).
+			if g := s.vertragGrenze; g != nil && s.vertragPlatz == n && s.angeboten(n, "limit_w") {
+				if w.Art != "limit_w" || *g < w.Wert {
+					w = Wunsch{Art: "limit_w", Wert: *g, Grund: "vertrag"}
+				}
 			}
 		}
 		if w.Art == "" {

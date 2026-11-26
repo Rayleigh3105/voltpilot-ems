@@ -34,7 +34,8 @@ func (l *Lauf) netztechnik(ctx context.Context, g *geraet) (geraetesuche.Fund, b
 			return f, true
 		}
 	}
-	if g.hinweis.funkmodul == "avm" || (gateway && g.hinweis.funkmodul != "" && g.hinweis.funkmodul != "espressif") {
+	if g.hinweis.funkmodul == "avm" || (gateway && g.hinweis.funkmodul != "" && g.hinweis.funkmodul != "espressif" &&
+		g.hinweis.funkmodul != "mxchip") {
 		art := "zugangspunkt"
 		if gateway {
 			art = "router"
@@ -227,6 +228,13 @@ var funkmodulListe = map[[3]byte]string{
 	{0x00, 0xA6, 0x2B}: "high-flying", {0x28, 0x9C, 0x6E}: "high-flying", {0x34, 0xEA, 0xE7}: "high-flying", {0x40, 0x2A, 0x8F}: "high-flying",
 	{0x74, 0xE9, 0xD8}: "high-flying", {0x98, 0xD8, 0x63}: "high-flying", {0xAC, 0xCF, 0x23}: "high-flying", {0xC4, 0xBB, 0x89}: "high-flying",
 	{0xD4, 0x27, 0x87}: "high-flying", {0xE8, 0xFD, 0xF8}: "high-flying", {0xF0, 0xFE, 0x6B}: "high-flying",
+	// MXCHIP (Shanghai MXCHIP: the Wi-Fi module of the newer Deye logger
+	// sticks; 88:a6:8d is the DYDA_WiBLE stick of the field find 25.11.2026).
+	// A module maker for many devices, like Espressif: a merkmal of the
+	// deye_logger find, never network gear. All 8 MA-L blocks of the IEEE
+	// register (oui.csv, read 25.11.2026).
+	{0x04, 0x78, 0x63}: "mxchip", {0x68, 0x79, 0xC4}: "mxchip", {0x80, 0xA0, 0x36}: "mxchip", {0x84, 0x9D, 0xC2}: "mxchip",
+	{0x88, 0xA6, 0x8D}: "mxchip", {0xB0, 0xF8, 0x93}: "mxchip", {0xC8, 0x93, 0x46}: "mxchip", {0xD0, 0xBA, 0xE4}: "mxchip",
 	// AVM (FRITZ!Box, FRITZ!Repeater)
 	{0x00, 0x04, 0x0E}: "avm", {0x3C, 0xA6, 0x2F}: "avm", {0xC8, 0x0E, 0x14}: "avm", {0x2C, 0x91, 0xAB}: "avm",
 	{0x38, 0x10, 0xD5}: "avm", {0x44, 0x4E, 0x6D}: "avm", {0x5C, 0x49, 0x79}: "avm", {0x7C, 0xFF, 0x4D}: "avm",

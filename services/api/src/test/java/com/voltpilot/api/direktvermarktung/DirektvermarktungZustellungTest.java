@@ -36,7 +36,7 @@ import org.springframework.beans.factory.ObjectProvider;
  * Der Zustell-Abgleich (Vertrag {@code docs/contracts/v2/direktvermarktung-zustellung.md} §2/§4): Soll aus
  * aktivem Anschluss + Zugang + führender Box mit Fähigkeitswort; Rückzug VOR jeder neuen Zustellung
  * (PS-D22); idempotent, sobald der gewünschte Fingerabdruck zugestellt ist; das Dokument trägt den
- * Laufzeit-Teilbaum des Partners byte-gleich.
+ * Dokument waehlt das eingebettete Partnerprofil der Box und traegt die Referenzleistung.
  */
 class DirektvermarktungZustellungTest {
 
@@ -61,8 +61,10 @@ class DirektvermarktungZustellungTest {
         lead = mock(LeadDeviceService.class);
         faehigkeiten = mock(BoxFaehigkeiten.class);
         publisher = mock(DirektvermarktungPublisher.class);
-        VermarkterLaufzeitKatalog laufzeit = new VermarkterLaufzeitKatalog(JSON);
-        zustellung = new DirektvermarktungZustellung(repo, laufzeit, lead, faehigkeiten,
+        PartnerKatalog katalog = mock(PartnerKatalog.class);
+        when(katalog.finde("luox")).thenReturn(new PartnerProfil("luox", "luox energy", null, null));
+        when(repo.referenzWp(SITE)).thenReturn(12000.0);
+        zustellung = new DirektvermarktungZustellung(repo, katalog, lead, faehigkeiten,
                 provider(publisher), leererProvider(), leererProvider(), JSON,
                 Clock.fixed(JETZT, ZoneOffset.UTC));
         TenantContext.set(TENANT);
@@ -119,7 +121,7 @@ class DirektvermarktungZustellungTest {
     }
 
     @Test
-    void zustellungTraegtDenLaufzeitTeilbaumByteGleich() throws Exception {
+    void zustellungWaehltDasEingebetteteProfilUndTraegtDieReferenz() throws Exception {
         when(repo.aktiverOhneEnde(SITE)).thenReturn(eintrag(DirektvermarktungRepository.WARTET_AUF_ZUGANG));
         when(repo.aktuellerZugang(EINTRAG)).thenReturn(zugang("SHA256:abc"));
         when(repo.zustellungenMitBox(SITE)).thenReturn(List.of());
@@ -140,11 +142,10 @@ class DirektvermarktungZustellungTest {
         assertThat(doc.path("partner").asText()).isEqualTo("luox");
         assertThat(doc.path("revision").asInt()).isEqualTo(1);
         assertThat(doc.path("zugang_fingerabdruck").asText()).isEqualTo("SHA256:abc");
-        // Byte-gleich mit der gepackten Laufzeit-Sicht (dieselbe Datei, die die Box einbettet): die
-        // aufgeloeste Wortfolge steht drin, nie ein "offen (F3)".
-        JsonNode laufzeit = new VermarkterLaufzeitKatalog(JSON).profil("luox");
-        assertThat(doc.get("profil")).isEqualTo(laufzeit);
-        assertThat(doc.path("profil").path("modbus").path("wortfolge").asText()).isIn("little", "big");
+        // Keine Registerbelegung im Dokument: die Zustellung WAEHLT das eingebettete Profil der Box
+        // (vermarktertunnel-Sicherheitsregel) und traegt nur, was die Cloud weiss.
+        assertThat(doc.has("profil")).isFalse();
+        assertThat(doc.path("referenz_wp").asDouble()).isEqualTo(12000.0);
 
         verify(repo).profilZugestellt(EINTRAG, BOX, 1, "SHA256:abc", JETZT);
         verify(repo).protokolliere(eq(TENANT), eq(SITE), eq(EINTRAG), eq("profil_zugestellt"), eq(null),

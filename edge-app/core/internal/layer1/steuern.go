@@ -24,7 +24,8 @@ import (
 // edge/control/readback. At start the crash recovery hands back what a
 // control session left latched in EEPROM.
 //
-// Only the Deye (solarman_v5) is steered; every other transport stays read
+// Only the Deye (solarman_v5, or deye_modbus_tcp: the same Deye over the
+// Modbus TCP of its logger stick) is steered; every other transport stays read
 // only. In front of every gate of the core and the planner sits the Edge
 // Light release (freigabe.go): without it a device is planned and probed,
 // never written.
@@ -110,7 +111,10 @@ func (r *Runtime) runSteuern(ctx context.Context) {
 	if snap := r.st.ablage.Snapshot; snap != nil {
 		if plan, warn := steuerplan.Absturz(snap); plan != nil {
 			r.log.Warn(warn)
-			r.steuerAusfuehren(ctx, plan, steuerplan.Obj{"source": "crash_recovery"}, nil, "")
+			// A Solarman snapshot always carries the logger serial; one without
+			// it was written over the stick's Modbus TCP (deye_modbus_tcp).
+			_, mitSerial := plan.Connection["serial"]
+			r.steuerAusfuehren(ctx, plan, steuerplan.Obj{"source": "crash_recovery"}, nil, "", !mitSerial)
 		}
 	}
 	for {
@@ -131,6 +135,13 @@ func (r *Runtime) runSteuern(ctx context.Context) {
 
 // steuerTakt is one tick of the plan node and the executor.
 func (r *Runtime) steuerTakt(ctx context.Context, sel, sp steuerplan.Obj) {
+	// A Deye over its stick's Modbus TCP is planned as the Deye it is: the
+	// planner names the Deye by its Solarman word (the same registers, tiers,
+	// releases and certifications); the transport is the executor's.
+	modbusDeye := sel["communication"] == CommDeyeModbusTCP
+	if modbusDeye {
+		sel = deyeAlsSolarman(sel)
+	}
 	a := r.st.ablage
 	now := r.opts.Now()
 	ziel := steuerplan.Ziel(sel)
@@ -175,7 +186,30 @@ func (r *Runtime) steuerTakt(ctx context.Context, sel, sp steuerplan.Obj) {
 		r.steuerAusfuehrenModbus(ctx, out.Control, sp, out.NativeCapabilities, gesperrt)
 		return
 	}
-	r.steuerAusfuehren(ctx, out.Control, sp, out.NativeCapabilities, out.NativeRefusal)
+	r.steuerAusfuehren(ctx, out.Control, sp, out.NativeCapabilities, out.NativeRefusal, modbusDeye)
+}
+
+// deyeAlsSolarman is the selection of a Deye over its stick's Modbus TCP as
+// the planner reads a Deye: communication solarman_v5, the unit as
+// mb_slave_id (BusPayload carries both), port 502 - never a logger serial.
+func deyeAlsSolarman(sel steuerplan.Obj) steuerplan.Obj {
+	out := make(steuerplan.Obj, len(sel))
+	for k, v := range sel {
+		out[k] = v
+	}
+	out["communication"] = CommSolarmanV5
+	if conn, ok := sel["connection"].(map[string]any); ok {
+		c := make(map[string]any, len(conn))
+		for k, v := range conn {
+			c[k] = v
+		}
+		if u, ok := c["unit_id"]; ok {
+			c["mb_slave_id"] = u
+		}
+		delete(c, "serial")
+		out["connection"] = c
+	}
+	return out
 }
 
 // PfadModbus is the release path of the generic SunSpec / Modbus write.
@@ -199,9 +233,9 @@ func portString(port float64) string {
 // steuerAusfuehren runs the executor over the logger's lane and publishes the
 // readback as vp-control-readback shapes it.
 func (r *Runtime) steuerAusfuehren(ctx context.Context, plan *steuerplan.Plan, sp steuerplan.Obj,
-	caps *steuerplan.NativeLevers, refusal string) {
+	caps *steuerplan.NativeLevers, refusal string, modbusDeye bool) {
 	now := r.opts.Now()
-	var sess *solarmanv5.Session
+	var sess deyeSitzung
 	release := func() {}
 	defer func() {
 		if sess != nil {
@@ -226,13 +260,23 @@ func (r *Runtime) steuerAusfuehren(ctx context.Context, plan *steuerplan.Plan, s
 			return nil, errors.New("Logger belegt - Schreiben auf den naechsten Takt verschoben")
 		}
 		release = rel
-		serial, err := solarmanv5.NormLoggerSerial(plan.Connection["serial"])
-		if err != nil {
-			return nil, err
-		}
 		slave := byte(1)
 		if v, ok := plan.Connection["mb_slave_id"].(float64); ok && v > 0 && v < 256 {
 			slave = byte(v)
+		}
+		if modbusDeye {
+			// The stick's Modbus TCP: the same frames, no logger serial.
+			c, err := modbustcp.Dial(sctx, r.dialTCP, addr, slave, r.opts.ConnectTimeout, r.opts.ReadTimeout)
+			if err != nil {
+				return nil, err
+			}
+			d := &deyeModbus{c: c}
+			sess = d
+			return deyeSpur{d}, nil
+		}
+		serial, err := solarmanv5.NormLoggerSerial(plan.Connection["serial"])
+		if err != nil {
+			return nil, err
 		}
 		s, err := solarmanv5.Dial(sctx, r.opts.Dialer, addr, serial, slave, r.opts.ConnectTimeout, r.opts.ReadTimeout)
 		if err != nil {
