@@ -340,6 +340,11 @@ export interface HeroMoney {
   /** Der volle Wortlaut als Tooltip der Kurzform; null ohne Aussage. */
   attributionTitel?: string | null;
   /**
+   * §7.3 Stelle 4: hängt an die BESTEHENDE Zeitraum-Zeile ("Juli" → "Juli · über luox") - keine
+   * eigene Zeile, nur gesetzt, wenn `attribution` leer ist (Steuerung/Speicher haben Vorrang).
+   */
+  zeitraumZusatz?: string | null;
+  /**
    * Die zweite Zeile der Zurechnung in der Tagesansicht mit Bestand
    * (Bedienkonzept P3, P3-4 A): „letzte 7 Tage + 9,45 € · heute bis 08:15
    * + 0,01 €“ unter „Steuerung diesen Monat + 25,86 €“. null sonst.
@@ -460,6 +465,13 @@ export function cockpitHero(input: {
    * `undefined`/`null` = unbekannt, die Aussage bleibt wie bisher.
    */
   mitSpeicher?: boolean | null;
+  /**
+   * §7.3 Stelle 4: der Partner, wenn die Anlage GERADE WIRKLICH direkt vermarktet (dvStatus - ein
+   * aktiver, nicht beendeter Anschluss), NICHT dieselbe Aussage wie `plantKind` ("Veräußerungsform"
+   * lässt sich in den Einstellungen auch ohne echten Anschluss setzen, EEG-Angabe). Kurzform des
+   * Katalogs ("luox"), dieselbe wie Kopf- und Netz-Chip - keine zweite Namensquelle.
+   */
+  direktvermarktungPartner?: string | null;
 }): CockpitHeroView {
   const label = periodLabel(input.range, input.at ?? input.now, input.now);
   const rings: HeroRing[] = [];
@@ -503,6 +515,14 @@ export function cockpitHero(input: {
   const zeitraum = input.range === 'day' && input.mitSpeicher !== false ? (input.money?.steuerungZeitraum ?? null) : null;
   const kurz = zeitraum ? steuerungKurz(zeitraum, running) : null;
   const attribution = kurz ? kurz.zeile : speicher?.hatAussage ? speicher.kurz : null;
+  // §7.3 Stelle 4 (Firstmate-Bildbefund msg 024: der Zeitraum stand doppelt - "Juli" UND
+  // "Juli · über luox" als zweite Zeile). "über luox" hängt darum an die BESTEHENDE Zeitraum-Zeile
+  // (`GeldKachel`), keine eigene Zeile, und nur wenn Steuerung/Speicher nichts zuzurechnen haben
+  // (die haben weiter Vorrang). `direktvermarktungPartner` ist der ECHTE Anschluss (dvStatus), nicht
+  // die bloße Veräußerungsform-Einstellung - sonst behauptete die Karte eine Quelle ohne Beleg.
+  const zeitraumZusatz = !attribution && input.direktvermarktungPartner
+    ? `über ${input.direktvermarktungPartner}`
+    : null;
   const money: HeroMoney | null =
     total == null
       ? null
@@ -517,6 +537,7 @@ export function cockpitHero(input: {
           attribution,
           attributionTitel: kurz ? kurz.titel : (speicher?.kurzTitel ?? null),
           attributionZweit: kurz?.zweit ?? null,
+          zeitraumZusatz,
           zeitraumKarte: zeitraum ? steuerungKarte(zeitraum, running) : null,
           attributionInterim: running && attribution != null,
           laeuft: running,

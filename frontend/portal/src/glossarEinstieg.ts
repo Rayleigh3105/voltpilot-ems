@@ -33,3 +33,5 @@ export const LADEN_BEI_BEZUG_WOLKE =
 export const LADEN_BEI_BEZUG_FAHRPLAN = 'Der Fahrplan lädt jetzt für die teuren Stunden.';
 /** Der Knopf der Gerätesuche - der Hinweis des leeren Aufbaus (`setupPath.ts`) nennt ihn schon im ersten Bild. */
 export const UEMS_GERAETE_SUCHEN = 'Geräte suchen';
+/** `health.ts` (Zustand der Anlage, erstes Bild des Cockpits) braucht das Wort schon hier - vgl. `glossar.ts`. */
+export const DIREKTVERMARKTUNG = 'Direktvermarktung';

@@ -113,6 +113,7 @@ import {
 import { EigenerBaustein } from '../components/EigeneAuswertung';
 import { useAnlageSurface } from '../useAnlageSurface';
 import { anzeige as direktvermarktungAnzeige, verbindungsbild as direktvermarktungBild, type DirektvermarktungStatus } from '../direktvermarktung';
+import { DIREKTVERMARKTUNG } from '../glossarEinstieg';
 import { useTaktZustand } from '../gleicheAntwort';
 import { useTaktUhr } from '../useTaktUhr';
 import { CockpitMessstellenWeg } from '../components/CockpitMessstellenWeg';
@@ -1651,6 +1652,24 @@ export function AnlageSeite({
   const direktvermarktungGestoert = direktvermarktungBildAktuell?.boxPartner === 'bruch'
     ? direktvermarktungAnzeige(dvStatus!.aktuell, dvStatus!.partner?.name ?? null, dvStatus!.stand ?? null, now).statuszeile
     : null;
+  // §7.3 Stelle 1 (Firstmate-Antwort msg 023): ein Chip im Kopf, NUR solange die Anlage eine
+  // laufende Direktvermarktung hat (kein Etikett für alle anderen - kein Pixel ändert sich ohne
+  // sie). Die FARBE ist EIN Vokabular mit der eigenen Seite (`anzeige`, §7.3/§7.6) - der Chip
+  // selbst nennt nur Partner, nicht die ganze Statuszeile (die stünde doppelt).
+  const direktvermarktungKopfAnzeige = dvStatus?.aktuell && dvStatus.aktuell.zustand !== 'beendet'
+    ? direktvermarktungAnzeige(dvStatus.aktuell, dvStatus.partner?.name ?? null, dvStatus.stand ?? null, now)
+    : null;
+  // Firstmate-Bildbefund (msg 024, pr2000-bilder-Runde): EIN Name an jeder der drei Stellen, die
+  // Kurzform des Katalogs ("luox", nicht "luox energy" wie auf der eigenen Seite - dort steht die
+  // volle Statuszeile aus `anzeige()`, hier nur das Etikett). `aktuell.partner` IST diese Kurzform
+  // (derselbe Schlüssel wie der Katalog, `partner.json`), nie eine zweite Quelle.
+  const direktvermarktungKopfPartner = dvStatus?.aktuell?.partner ?? null;
+  // §7.3 Stelle 3 (Firstmate-Antwort msg 023): der Chip am Netz-Knoten, NUR solange die
+  // Partner-Grenze wirklich unter 100 % liegt - ruhig (Vertrag, kein Fehler, §7.2 Regel 5), darum
+  // ohne weitere Bedingung an den Verbindungszustand.
+  const direktvermarktungNetzChip = dvStatus?.stand?.vorgabePct != null && dvStatus.stand.vorgabePct < 100
+    ? `begrenzt · ${direktvermarktungKopfPartner ?? 'Direktvermarkter'} ${dvStatus.stand.vorgabePct} %`
+    : null;
 
   // The Gesundheits-Checklist — rendered on BOTH cockpit paths (the projected
   // one lists it as its "Zustand" card, so a migrated plant has the surface the
@@ -1732,6 +1751,11 @@ export function AnlageSeite({
     slots: planSlots,
     slotMinutes: plan?.slotMinutes ?? 15,
     plantKind: site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+    // §7.3 Stelle 4: NICHT dasselbe wie `plantKind` - die Veräußerungsform lässt sich in den
+    // Einstellungen auch OHNE einen echten Anschluss auf "Direktvermarktung" setzen (EEG-Angabe,
+    // `AnlageTechnik.tsx`). "über luox" behauptet nur, was `dvStatus` wirklich zeigt (ein aktiver,
+    // nicht beendeter Eintrag) - sonst stünde eine erfundene Quelle am Geld.
+    direktvermarktungPartner: direktvermarktungKopfPartner,
   });
   // `cockpitWidgets` is safe to call unconditionally: `blocks`/`modes` are
   // already the correctly-empty read-model of a non-stack Anlage, so it
@@ -2443,6 +2467,7 @@ export function AnlageSeite({
             now,
             onBlatt: (art) => { if (art === 'load') setVerbrauchBlattOffen(true); },
             erzeuger: erzBuehne,
+            direktvermarktungChip: direktvermarktungNetzChip,
           }}
           /* Rechts neben dem Fluss: die Leitkachel (am Rechner). */
           showRail={!isPhone}
@@ -2565,6 +2590,19 @@ export function AnlageSeite({
       {st.text}
     </Badge>
   ));
+  // §7.3 Stelle 1: eigener Chip, eigenes Vokabular ("Direktvermarktung · luox") - nie das Wort
+  // „Direktvermarkter" der EZ-8-Anlagensteuerung (`erzStatus` oben), das ein ANDERES, hardware-
+  // gestütztes Signal meint (Abgleich der beiden Felder ist ein eigener Auftrag).
+  const direktvermarktungKopfChip = direktvermarktungKopfAnzeige ? (
+    <Badge
+      variant={direktvermarktungKopfAnzeige.farbe === 'gruen' ? 'ok'
+        : direktvermarktungKopfAnzeige.farbe === 'bernstein' ? 'warn' : 'off'}
+      dot
+      data-testid="anlage-direktvermarktung-chip"
+    >
+      {DIREKTVERMARKTUNG} · {direktvermarktungKopfPartner}
+    </Badge>
+  ) : null;
 
   return (
     <>
@@ -2661,6 +2699,7 @@ export function AnlageSeite({
                 </Badge>
               )}
               {vorgabeBadges}
+              {direktvermarktungKopfChip}
             </span>
           ) : (
             <>
@@ -2676,11 +2715,14 @@ export function AnlageSeite({
                 </Badge>
               ) : null}
               {!showSetup && vorgabeBadges}
+              {!showSetup && direktvermarktungKopfChip}
             </>
           )}
-          {/* Stammdaten-Abzeichen: sie ändern sich nie und beantworten keine
-              Tagesfrage — am Telefon wohnen sie in den Einstellungen. */}
-          {!isPhone && <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>}
+          {/* Stammdaten-Abzeichen: sie ändern sich nie und beantworten keine Tagesfrage — am
+              Telefon wohnen sie in den Einstellungen. Hat die Anlage eine laufende
+              Direktvermarktung, übernimmt deren reicherer Chip (Partner + Statuspunkt, §7.3
+              Stelle 1) diese Aussage - zwei Abzeichen für dieselbe Vermarktungsart wären doppelt. */}
+          {!isPhone && !direktvermarktungKopfChip && <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>}
           {/* Netzladen betrifft einen Speicher - eine Erzeugeranlage, die VoltPilot nur liest, hat keinen, und
               eine Anlage ohne Speicher-Rolle auch nicht (Konzept `vp-cockpit-privat-konzept`, N3). */}
           {!isPhone && !erzZeile && mitSpeicher !== false && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}

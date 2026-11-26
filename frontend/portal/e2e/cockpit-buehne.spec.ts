@@ -180,3 +180,29 @@ test('Tagesleiste am Rechner: die Maus zieht durch den Tag', async ({ page }) =>
   expect(Number(await leiste.getAttribute('aria-valuenow'))).toBeGreaterThan(anfang + 40);
   await expect(page.locator('.vp-eb-marke')).toHaveText(/^Plan/);
 });
+
+/**
+ * Direktvermarktung (Konzept vp-direktvermarktung-konzept d2 §7.3, Firstmate-Antwort msg 023,
+ * Bildbefunde msg 024): die drei neu entstandenen Stellen 1 (Kopf-Chip), 3 (Netz-Knoten-Chip) und
+ * 4 ("Unterm Strich" · über luox) nebeneinander auf derselben Bühne (`?dv=1`) - kein Überlauf,
+ * kein Überstand, EIN Partnername überall (Kurzform), der Zeitraum nur EINMAL an Stelle 4.
+ */
+for (const width of [375, 1440]) {
+  test(`Direktvermarktung §7.3: Kopf-Chip, Netz-Chip und "über luox" bei ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1300 });
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') fehler.push(m.text()); });
+    await page.goto('/e2e/cockpit-buehne.html?dv=1');
+    await expect(page.getByTestId('anlage-direktvermarktung-chip')).toHaveText('Direktvermarktung · luox');
+    await expect(page.locator('.vp-lp-chip')).toHaveText('begrenzt · luox 0 %');
+    const zeitraumZeile = page.getByText('Juli · über luox');
+    await expect(zeitraumZeile).toBeVisible();
+    await expect(zeitraumZeile).toHaveCount(1);
+    // Bildbefund msg 024 (1): der Zeitraum stand doppelt ("Juli" UND "Juli · über luox" als
+    // eigene Zeile) - "Juli" allein darf an der Geldkarte nicht mehr vorkommen.
+    await expect(page.getByText('Juli', { exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+    expect(fehler).toEqual([]);
+  });
+}

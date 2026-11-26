@@ -75,6 +75,7 @@ export function EnergieBuehne({
   erzeuger = null,
   bilanz = null,
   seite = null,
+  direktvermarktungChip = null,
 }: {
   jetzt: JetztFluss;
   stale?: boolean;
@@ -114,6 +115,8 @@ export function EnergieBuehne({
    * so hoch wie Fluss, Tagesleiste und Geräteliste zusammen und blieb zu drei Vierteln leer.
    */
   seite?: ReactNode;
+  /** §7.3 Stelle 3: der ruhige Chip am Netz-Knoten, nur solange die Partner-Grenze unter 100 % liegt. */
+  direktvermarktungChip?: string | null;
 }) {
   const [ansicht, setAnsicht] = useState<Ansicht>('jetzt');
   const [gewaehlt, setGewaehlt] = useState<number | null>(null);
@@ -180,6 +183,7 @@ export function EnergieBuehne({
     energie,
     socPct,
     zielKw: betrieb === 'spitze' ? zielKw : null,
+    direktvermarktungChip,
   });
   if (erzeuger) {
     // Die Knoten tragen die Wörter der Erzeugeranlage; die Werte bleiben die des gewählten Moments.

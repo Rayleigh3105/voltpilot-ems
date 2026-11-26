@@ -1315,6 +1315,141 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
 });
 
 /**
+ * Direktvermarktung (§7.3 Stelle 1, Firstmate-Antwort msg 023): ein Chip im Kopf, NUR solange
+ * die Anlage eine laufende Direktvermarktung hat - ohne sie darf sich der Kopf um keinen Pixel
+ * ändern (deshalb gegen dieselbe Anlage mit/ohne Anschluss geprüft, nicht gegen zwei Fixtures).
+ */
+describe('Direktvermarktung §7.3 Stelle 1: der Chip im Kopf', () => {
+  function stubPhoneLokal(isPhone: boolean) {
+    (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+      matches: isPhone && query.includes('720px'),
+      addEventListener: () => {}, removeEventListener: () => {},
+    });
+  }
+  afterEach(() => stubPhoneLokal(false));
+
+  function renderMitPlantKind(plantKind: 'eigenverbrauch' | 'direktvermarktung') {
+    return render(
+      <AnlageSeite
+        sites={[{ ...site, plantKind }]}
+        devices={[]}
+        route={{ page: 'anlagen', siteId: 's-1', sub: null }}
+        onNavigate={() => {}}
+        onReload={() => {}}
+        site={{ ...site, plantKind }}
+        onOpenSub={(() => {}) as never}
+        onBackToList={null}
+      />,
+    );
+  }
+
+  it('Eigenverbrauch (ohne Anschluss): die alte Stammdaten-Kachel am Rechner, kein Chip am Telefon', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubPhoneLokal(false);
+    const { container } = renderMitPlantKind('eigenverbrauch');
+    await waitFor(() => expect(container.querySelector('.vp-anlage-head')).toBeTruthy());
+    expect(container.querySelector('.vp-anlage-head')?.textContent).toContain('Eigenverbrauch');
+    expect(container.querySelector('[data-testid="anlage-direktvermarktung-chip"]')).toBeNull();
+  });
+
+  it('Direktvermarktung verbunden: der Chip ersetzt die Stammdaten-Kachel am Rechner (keine doppelte Aussage)', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubPhoneLokal(false);
+    vi.spyOn(api, 'direktvermarktung').mockResolvedValue({
+      aktuell: { id: 'e1', partner: 'luox', zustand: 'verbunden', zustimmungAm: null, zustimmungVon: null, startdatum: null, ende: null, revision: 1 },
+      geplant: null, partner: { partner: 'luox', name: 'luox energy', vertragLink: null }, geplanterPartner: null,
+      stand: null, verlaufKurz: [], katalog: [], darf: true,
+    } as never);
+    const { container } = renderMitPlantKind('direktvermarktung');
+    const chip = await waitFor(() => {
+      const el = container.querySelector('[data-testid="anlage-direktvermarktung-chip"]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    expect(chip.textContent).toContain('Direktvermarktung · luox');
+    const head = container.querySelector('.vp-anlage-head') as HTMLElement;
+    expect(head.textContent?.match(/Direktvermarktung/g)?.length).toBe(1);
+  });
+
+  it('Direktvermarktung gestört: der Chip wird warn, nicht ok', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubPhoneLokal(false);
+    const vorMinuten = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+    vi.spyOn(api, 'direktvermarktung').mockResolvedValue({
+      aktuell: { id: 'e1', partner: 'luox', zustand: 'verbunden', zustimmungAm: null, zustimmungVon: null, startdatum: null, ende: null, revision: 1 },
+      geplant: null, partner: { partner: 'luox', name: 'luox energy', vertragLink: null }, geplanterPartner: null,
+      stand: {
+        tunnelObenSeit: vorMinuten(300), handshakeAm: vorMinuten(10), gegenstelle: '10.44.0.1',
+        letzteAbfrageAm: vorMinuten(10), abfragenJeMinute: null, letzteSchreibungAm: null, vorgabePct: 100,
+        lebenszeichenAm: vorMinuten(10), einspeisungW: null, erzeugungW: null, netzbetreiberPct: null, referenzW: null,
+      },
+      verlaufKurz: [], katalog: [], darf: true,
+    } as never);
+    const { container } = renderMitPlantKind('direktvermarktung');
+    const chip = await waitFor(() => {
+      const el = container.querySelector('[data-testid="anlage-direktvermarktung-chip"]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    // Badge setzt die Variante als Inline-Style (keine Klasse) - `warn` ist die einzige mit
+    // `--vp-warn-ink` als Textfarbe (Badge.jsx).
+    expect(chip.getAttribute('style')).toContain('--vp-warn-ink');
+  });
+
+  it('§7.3 Stelle 3: luox begrenzt auf 0 % zeigt den Chip am Netz-Knoten, 100 % zeigt nichts', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubPhoneLokal(false);
+    const vorMinuten = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+    vi.spyOn(api, 'direktvermarktung').mockResolvedValue({
+      aktuell: { id: 'e1', partner: 'luox', zustand: 'verbunden', zustimmungAm: null, zustimmungVon: null, startdatum: null, ende: null, revision: 1 },
+      geplant: null, partner: { partner: 'luox', name: 'luox energy', vertragLink: null }, geplanterPartner: null,
+      stand: {
+        tunnelObenSeit: vorMinuten(300), handshakeAm: vorMinuten(1), gegenstelle: '10.44.0.1',
+        letzteAbfrageAm: vorMinuten(1), abfragenJeMinute: 4, letzteSchreibungAm: vorMinuten(2), vorgabePct: 0,
+        lebenszeichenAm: vorMinuten(1), einspeisungW: 0, erzeugungW: 14000, netzbetreiberPct: 100, referenzW: 85000,
+      },
+      verlaufKurz: [], katalog: [], darf: true,
+    } as never);
+    const { container } = renderMitPlantKind('direktvermarktung');
+    await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy());
+    const chip = await waitFor(() => {
+      const el = container.querySelector('.vp-lp-chip');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    expect(chip.textContent).toBe('begrenzt · luox 0 %');
+  });
+
+  it('§7.3 Stelle 3: ohne Direktvermarktung kein Chip am Netz-Knoten', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubPhoneLokal(false);
+    const { container } = renderMitPlantKind('eigenverbrauch');
+    await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy());
+    expect(container.querySelector('.vp-lp-chip')).toBeNull();
+  });
+
+  it('am Telefon: der Chip steht neben der Statuszeile, bricht aber nicht die bestehende Zeile', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubPhoneLokal(true);
+    vi.spyOn(api, 'direktvermarktung').mockResolvedValue({
+      aktuell: { id: 'e1', partner: 'luox', zustand: 'verbunden', zustimmungAm: null, zustimmungVon: null, startdatum: null, ende: null, revision: 1 },
+      geplant: null, partner: { partner: 'luox', name: 'luox energy', vertragLink: null }, geplanterPartner: null,
+      stand: null, verlaufKurz: [], katalog: [], darf: true,
+    } as never);
+    const { container } = renderMitPlantKind('direktvermarktung');
+    await waitFor(() => expect(container.querySelector('[data-testid="anlage-direktvermarktung-chip"]')).toBeTruthy());
+    const head = container.querySelector('.vp-anlage-head') as HTMLElement;
+    expect(head.className).toContain('is-phone');
+  });
+});
+
+/**
  * B1 · Welle 3 startet MIT Welle 2 (Perf-Review `vp-cockpit-perf-p7` §3).
  *
  * Gemessen wurde ein reiner WELLENABSTAND: `/history` und `/telemetry` hingen

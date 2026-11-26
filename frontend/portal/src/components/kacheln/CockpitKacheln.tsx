@@ -97,7 +97,11 @@ export function GeldKachel({
           ) : (
             <p className="vp-k-sub">Für diesen Zeitraum liegt noch kein Ergebnis vor.</p>
           )}
-          {zeitraum && <p className="vp-k-sub">{zeitraum}</p>}
+          {zeitraum && (
+            <p className="vp-k-sub">
+              {zeitraum}{money?.zeitraumZusatz ? ` · ${money.zeitraumZusatz}` : ''}
+            </p>
+          )}
         </div>
         {periodSeg && <div className="vp-k-zeitraum">{periodSeg}</div>}
       </div>

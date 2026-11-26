@@ -17,6 +17,7 @@ import type {
   Rollout as EdgeRollout,
 } from '../../adminEdgeUpdates';
 import { fleetBoxGroups } from '../../adminFleet';
+import { DIREKTVERMARKTUNG } from '../../glossar';
 import type { FernwartungBox, FernwartungUebersicht } from '../../adminFernwartung';
 import type { WerkstattDienst } from '../../werkstattBank';
 import { relAge } from '../../adminFleet';
@@ -278,7 +279,7 @@ export function PlattformUebersichtPage({
             <Card padding="md" radius="lg" data-testid="ueb-direktvermarktung">
               <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Icon name="zap" size={16} />
-                <strong>Direktvermarktung</strong>
+                <strong>{DIREKTVERMARKTUNG}</strong>
                 <span className="vp-cell-sub">{direktvermarktungAnzeige.kontext} · {direktvermarktungAnzeige.wort}</span>
               </p>
             </Card>

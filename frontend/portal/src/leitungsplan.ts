@@ -323,6 +323,12 @@ export interface KnotenText {
   aria: string;
   /** Sonne ohne Erzeugung wird grau. */
   ruhig: boolean;
+  /**
+   * Direktvermarktung (Konzept vp-direktvermarktung-konzept d2 §7.3 Stelle 3): nur am Netz-Knoten,
+   * nur solange die Partner-Grenze wirklich unter 100 % liegt ("begrenzt · luox 0 %") - ein Vertrag,
+   * kein Fehler (§7.2 Regel 5), darum ein ruhiger Chip, nie eine Warnung ohne Beleg.
+   */
+  chip?: string | null;
 }
 
 export interface KnotenEingabe {
@@ -337,6 +343,8 @@ export interface KnotenEingabe {
   zielKw?: number | null;
   // Kein Börsenpreis und kein „Sollwert bestätigt“ am Knoten: den Preis trägt
   // die Börsenpreis-Zeile, die Bestätigung die Steuerungs-Zeile (R2).
+  /** §7.3 Stelle 3: der Chip am Netz-Knoten, nur solange die Partner-Grenze unter 100 % liegt. */
+  direktvermarktungChip?: string | null;
 }
 
 function ct(x: number): string {
@@ -388,6 +396,10 @@ export function knotenTexte(e: KnotenEingabe): Record<Rolle, KnotenText> {
     const zeilen = [wort + plan];
     if (e.zielKw != null) zeilen.push(`Ziel ${kw(e.zielKw)}`);
     grid = t('grid', 'Netz', g == null ? '—' : kw(Math.abs(g)), zeilen);
+    if (e.direktvermarktungChip) {
+      grid.chip = e.direktvermarktungChip;
+      grid.aria = `${grid.aria}, ${e.direktvermarktungChip}`;
+    }
   }
   return { pv, load, batt, grid };
 }

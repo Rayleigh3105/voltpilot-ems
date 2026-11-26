@@ -151,6 +151,31 @@ describe('Beschriftung in Worten', () => {
     expect(zielAnteil(300, 300)).toBe(1);
     expect(zielAnteil(null, 300)).toBeNull();
   });
+
+  describe('Direktvermarktung §7.3 Stelle 3: der Chip am Netz-Knoten', () => {
+    it('ohne direktvermarktungChip bleibt der Netz-Knoten unverändert', () => {
+      const t = knotenTexte({ ansicht: 'jetzt', zeit: 'live', werte: { pv: 1, load: 1, batt: 0, grid: 0 }, socPct: 80 });
+      expect(t.grid.chip).toBeFalsy();
+    });
+
+    it('mit direktvermarktungChip trägt der Netz-Knoten ihn UND seinen Vorlesetext', () => {
+      const t = knotenTexte({
+        ansicht: 'jetzt', zeit: 'live', werte: { pv: 1, load: 1, batt: 0, grid: 0 }, socPct: 80,
+        direktvermarktungChip: 'begrenzt · luox energy 0 %',
+      });
+      expect(t.grid.chip).toBe('begrenzt · luox energy 0 %');
+      expect(t.grid.aria).toContain('begrenzt · luox energy 0 %');
+    });
+
+    it('"Heute" (kWh) bekommt nie den Chip - er ist eine Aussage über JETZT', () => {
+      const t = knotenTexte({
+        ansicht: 'heute', zeit: 'gemessen', werte: { pv: 1, load: 1, batt: null, grid: null }, socPct: 80,
+        energie: { pv: 1, load: 1, laden: 0, abgeben: 0, bezug: 1, einspeisung: 0 },
+        direktvermarktungChip: 'begrenzt · luox energy 0 %',
+      });
+      expect(t.grid.chip).toBeFalsy();
+    });
+  });
 });
 
 describe('Der Satz', () => {

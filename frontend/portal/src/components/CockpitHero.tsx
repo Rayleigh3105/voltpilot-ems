@@ -159,6 +159,8 @@ export function CockpitHero({
      * nicht aus der Hausbilanz der Box (die Werte gehen in V1 nicht in die Energiebilanz, Konzept §4.2).
      */
     erzeuger?: ErzeugerBuehne | null;
+    /** §7.3 Stelle 3: der ruhige Chip am Netz-Knoten, nur solange die Partner-Grenze unter 100 % liegt. */
+    direktvermarktungChip?: string | null;
   } | null;
   /**
    * Der kanonische PV-ROLLEN-Wert der Anlage (`GET …/rollen/pv`, vp-agg §2.4/B). Er ersetzt die Zahl
@@ -231,6 +233,7 @@ export function CockpitHero({
             onOpenSub={onOpenSub}
             erzeuger={erzeuger}
             seite={seitenInhalt}
+            direktvermarktungChip={buehne?.direktvermarktungChip ?? null}
           />
           </Suspense>
         ) : (

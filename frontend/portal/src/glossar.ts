@@ -53,6 +53,15 @@ export const VERAEUSSERUNGSFORM_TIP =
   'Einspeisevergütung, oder vermarkten Sie ihn direkt am Markt? Danach richtet sich, wie ' +
   'VoltPilot Ihre Einspeisung bewertet.';
 
+/**
+ * Der WIRKLICHE, laufende Anschluss an einen Partner (Fachmodell-Glossar `netzanschluss`,
+ * Abschnitt „Direktvermarktung als Anschluss an einen Partner") - NICHT dieselbe Aussage wie die
+ * bloße Einstellung der Veräußerungsform (die geht auch ohne Anschluss). Dasselbe Wort an allen
+ * drei ruhigen Cockpit-Stellen (Kopf-Chip, Netz-Chip, Erlöszeile) und der eigenen Seite. In
+ * `glossarEinstieg.ts`, weil `health.ts` (Zustand der Anlage, erstes Bild) es schon dort braucht.
+ */
+export { DIREKTVERMARKTUNG } from './glossarEinstieg';
+
 // ---------------------------------------------------------------------------
 // 2 · UEMS — die Kundenwörter des Unternehmens-Energiemanagements (AP-00 IP-4)
 // ---------------------------------------------------------------------------

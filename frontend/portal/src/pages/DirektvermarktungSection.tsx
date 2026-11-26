@@ -17,6 +17,7 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import { VpDatePicker } from '../components/VpDatePicker';
 import { ApiError, type Site } from '../api';
 import { ablehnungGrund } from '../api';
+import { DIREKTVERMARKTUNG } from '../glossar';
 import { api } from '../apiVoll';
 import {
   anzeige,
@@ -44,7 +45,7 @@ function Brotkrume({ site }: { site: Site }) {
       <Icon name="chevron-right" size={13} />
       <a href={einstellungenHash(site.id, 'geld')}>Einstellungen</a>
       <Icon name="chevron-right" size={13} />
-      <span aria-current="page">Direktvermarktung</span>
+      <span aria-current="page">{DIREKTVERMARKTUNG}</span>
     </nav>
   );
 }
@@ -382,7 +383,7 @@ export function DirektvermarktungSection({ site }: { site: Site }) {
   return (
     <div className="vp-dv-seite">
       <Brotkrume site={site} />
-      <h1>Direktvermarktung</h1>
+      <h1>{DIREKTVERMARKTUNG}</h1>
 
       {/* Nicht verbunden (Bildschirm 2): Startseite mit dem einen Einstiegsknopf. */}
       {zustand == null && (
