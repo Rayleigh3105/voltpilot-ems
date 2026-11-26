@@ -159,6 +159,24 @@ describe('reconcileProducerPv (F3/F4, pin-based since vp-pin-werte-f8)', () => {
     expect(reconcileProducerPv(topo, SOURCES, PINS)).toBe(topo);
   });
 
+  it('replaces a stale frozen producer value from its pinned live source', () => {
+    const topo = pilsting([
+      member('batt', 'Batteriespeicher', 0.3),
+      member('fro1', 'KACO Powador', 0),
+      member('fro2', 'Other'),
+    ]);
+    topo.entities[1].health = 'stale';
+    const sources: SiteSource[] = [
+      source('deye', 'primary', { pvKw: 0.1, label: 'Huawei' }),
+      source('fro-a', 'source', { pvKw: 0.2, label: 'KACO Powador' }),
+    ];
+    const out = reconcileProducerPv(topo, sources, PINS).topology.nodes[0].members;
+
+    expect(out[1].value_kw).toBe(0.2);
+    expect(out[0].value_kw).toBe(0.1);
+    expect(out.reduce((sum, m) => sum + (m.value_kw ?? 0), 0)).toBeCloseTo(0.3, 3);
+  });
+
   it('is a no-op without sources or a PV node', () => {
     const topo = pilsting([member('batt', 'Batteriespeicher', 70.3), member('fro1', 'F1'), member('fro2', 'F2')]);
     expect(reconcileProducerPv(topo, null, PINS)).toBe(topo);
