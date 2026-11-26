@@ -50,7 +50,7 @@ class ComponentAdoptionTest {
 
     /** Eine Vorlagen-Auflösung, die jede Marke kennt. */
     private static ComponentAdoption.TemplateLookup knowsEverything() {
-        return (brand, model) -> Optional.of(template(brand, model));
+        return (brand, model, communication) -> Optional.of(template(brand, model));
     }
 
     private static ComponentTemplateDto template(String brand, String model) {
@@ -116,7 +116,7 @@ class ComponentAdoptionTest {
     @DisplayName("ein unbekanntes Gerät wird nicht übernommen, sondern beim Namen genannt")
     void anUnknownDeviceIsRefusedByName() {
         ComponentAdoption.Plan plan = ComponentAdoption.decide(ComponentAuthority.BOX,
-                List.of(inverter()), (brand, model) -> Optional.empty());
+                List.of(inverter()), (brand, model, communication) -> Optional.empty());
 
         assertThat(plan.verdict()).isEqualTo(ComponentAdoption.Verdict.UNKNOWN_DEVICE);
         assertThat(plan.reason()).contains("Deye SUN-30K");

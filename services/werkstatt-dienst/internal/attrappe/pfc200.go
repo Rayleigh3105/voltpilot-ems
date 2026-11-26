@@ -176,8 +176,9 @@ case "${1:-}" in
 esac
 `,
 	// usermod -p <hash> <benutzer>: config_linux_user lehnt user=root ab
-	// (siehe dort); root setzt sein eigenes Passwort so, wie die Werkstatt es
-	// am Geraet tut, ueber das Standardwerkzeug von shadow-utils.
+	// (siehe dort) und verlangt bei admin/user im hash= die restlichen
+	// Shadow-Felder statt des bloßen Hashs (siehe dort); die Werkstatt setzt
+	// darum alle drei Passwörter über das Standardwerkzeug von shadow-utils.
 	"usermod": `#!/bin/sh
 . "$VP_PFC_WURZEL/etc/config-tools/attrappe.sh"
 [ "$1" = -p ] || exit 3

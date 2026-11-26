@@ -147,11 +147,20 @@ export const UNASSIGNED_NOTE = 'noch keiner Komponente zugeordnet';
 /**
  * Does every PV member carry its own measured value? Then the topology is
  * already truthful per device and no reconstruction is needed.
+ *
+ * A stale member's frozen value is only distrusted when a hybrid shares the
+ * node (PR #2025, `vp-hist-diag-m4`): there the hybrid's composite number can
+ * make a separate producer's last-known value a migration leftover. Without a
+ * hybrid, each producer publishes its own series and a stale one is simply a
+ * producer that stopped reporting - `flussBilanz`'s `zaehltNicht` already
+ * drops it from the total; flipping `origin` to `sources` here would instead
+ * discard the OTHER, healthy producers' native per-device values too.
  */
 function hasNativeValues(members: FlowMember[], entityById: Map<string, TopologyEntity>): boolean {
-  return (
-    members.length > 0 &&
-    members.every((m) => m.value_kw != null && entityById.get(m.entity_id)?.health === 'ok')
+  if (members.length === 0) return false;
+  const hasHybrid = members.some((m) => isHybrid(entityById.get(m.entity_id)));
+  return members.every(
+    (m) => m.value_kw != null && (!hasHybrid || entityById.get(m.entity_id)?.health === 'ok'),
   );
 }
 
