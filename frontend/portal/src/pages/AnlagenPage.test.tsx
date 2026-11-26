@@ -215,6 +215,11 @@ function stubApi(overviewSite: Record<string, unknown> = {}) {
   } as never);
   vi.spyOn(api, 'forecastQuality').mockResolvedValue({ planAccuracy: [] } as never);
   vi.spyOn(api, 'telemetry').mockResolvedValue([] as never);
+  // Direktvermarktung (§7.3): kein Anschluss ist der Normalfall der meisten Testfälle.
+  vi.spyOn(api, 'direktvermarktung').mockResolvedValue({
+    aktuell: null, geplant: null, partner: null, geplanterPartner: null, stand: null,
+    verlaufKurz: [], katalog: [], darf: true,
+  } as never);
   vi.spyOn(api, 'history').mockResolvedValue({
     totals: { autarkiePct: 82, eigenverbrauchPct: 64, gridImportKwh: 1.8 },
     buckets: [],
@@ -1010,6 +1015,54 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     expect(card?.textContent).toContain('Zustand der Anlage');
     expect(card?.textContent).toContain('Gerät: meldet sich nicht');
     expect(card?.textContent).toContain('Aufbau');
+  });
+
+  it('Direktvermarktung §7.3: eine echte Verbindungsstörung ist eine Warnung, "luox begrenzt" bleibt stumm', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const vorMinuten = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+    vi.spyOn(api, 'direktvermarktung').mockResolvedValue({
+      aktuell: {
+        id: 'e1', partner: 'luox', zustand: 'verbunden', zustimmungAm: vorMinuten(500), zustimmungVon: 'kunde',
+        startdatum: vorMinuten(400), ende: null, revision: 1,
+      },
+      geplant: null, partner: { partner: 'luox', name: 'luox energy', vertragLink: null }, geplanterPartner: null,
+      stand: {
+        tunnelObenSeit: vorMinuten(300), handshakeAm: vorMinuten(10), gegenstelle: '10.44.0.1',
+        letzteAbfrageAm: vorMinuten(10), abfragenJeMinute: null, letzteSchreibungAm: null, vorgabePct: 100,
+        lebenszeichenAm: vorMinuten(10), einspeisungW: null, erzeugungW: null, netzbetreiberPct: null,
+        referenzW: null,
+      },
+      verlaufKurz: [], katalog: [], darf: true,
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-health')).not.toBeNull());
+    const card = container.querySelector('.vp-cockpit-health');
+    expect(card?.textContent).toContain('Direktvermarktung: Getrennt seit');
+  });
+
+  it('Direktvermarktung §7.3: das ruhige Begrenzen (Vertrag, kein Fehler) bekommt NIE eine Zustand-Zeile', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const vorMinuten = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+    vi.spyOn(api, 'direktvermarktung').mockResolvedValue({
+      aktuell: {
+        id: 'e1', partner: 'luox', zustand: 'verbunden', zustimmungAm: vorMinuten(500), zustimmungVon: 'kunde',
+        startdatum: vorMinuten(400), ende: null, revision: 1,
+      },
+      geplant: null, partner: { partner: 'luox', name: 'luox energy', vertragLink: null }, geplanterPartner: null,
+      stand: {
+        tunnelObenSeit: vorMinuten(300), handshakeAm: vorMinuten(1), gegenstelle: '10.44.0.1',
+        letzteAbfrageAm: vorMinuten(1), abfragenJeMinute: 4, letzteSchreibungAm: vorMinuten(2), vorgabePct: 0,
+        lebenszeichenAm: vorMinuten(1), einspeisungW: 0, erzeugungW: 14000, netzbetreiberPct: 100,
+        referenzW: 85000,
+      },
+      verlaufKurz: [], katalog: [], darf: true,
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container).not.toBeNull());
+    expect(container.textContent).not.toContain('Direktvermarktung: Getrennt');
+    expect(container.textContent).not.toContain('Direktvermarktung:');
   });
 
   it('alles grün: EINE ruhige Zeile mit dem Modus-Fuß in der Fläche (D5/D6)', async () => {

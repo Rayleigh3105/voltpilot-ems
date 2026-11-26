@@ -631,9 +631,8 @@ const weitere = {
   /** Der Partnerkatalog der Direktvermarktung (E6 = A), mandantenlos. */
   direktvermarkterKatalog: () => request<{ partner: string; name: string; vertragLink: string | null }[]>(
       '/api/v1/direktvermarkter'),
-  /** Die Karte „Direktvermarktung" (Einstellungen › Strom & Geld, Seite `#/anlage/{id}/direktvermarktung`). */
-  direktvermarktung: (siteId: string) =>
-    request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung`),
+  /** Die Karte „Direktvermarktung" (Einstellungen › Strom & Geld, Seite `#/anlage/{id}/direktvermarktung`);
+   * das GET selbst lebt in `api.ts` (die Cockpit-Schale braucht es auch, ohne apiVoll zu laden). */
   direktvermarktungVerlauf: (siteId: string, grenze = 200) =>
     request<DirektvermarktungStatus['verlaufKurz']>(
         `/api/v1/sites/${siteId}/direktvermarktung/verlauf?grenze=${grenze}`),

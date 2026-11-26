@@ -12,7 +12,7 @@ import { AUFBAU_REITER } from './ebenenNav';
 export type HealthState = 'ok' | 'warn' | 'off';
 
 export interface HealthItem {
-  key: 'device' | 'plan' | 'control' | 'battery' | 'grenze';
+  key: 'device' | 'plan' | 'control' | 'battery' | 'grenze' | 'direktvermarktung';
   label: string;
   state: HealthState;
   detail: string;
@@ -49,6 +49,13 @@ export interface HealthInput {
    * es auch keine Zeile (nie „Einspeisegrenze: in Ordnung", das ist nicht gemessen).
    */
   geraeteGrenze?: string | null;
+  /**
+   * Direktvermarktung (Konzept vp-direktvermarktung-konzept d2 §7.3): der belegte Satz, WARUM der
+   * Anschluss gestört ist ("luox erreicht die Anlage nicht · seit 12 Min."). Absent/null = kein
+   * Anschluss oder er läuft - dann gibt es auch keine Zeile (Regel 6, §7.2: "Begrenzen ist Vertrag
+   * und kein Fehler", nie eine Zeile fürs ruhige "luox begrenzt").
+   */
+  direktvermarktungGestoert?: string | null;
 }
 
 /**
@@ -110,6 +117,15 @@ export function healthChecklist(input: HealthInput): HealthItem[] {
     items.push({ key: 'grenze', label: 'Einspeisegrenze', state: 'off', detail: input.geraeteGrenze });
   }
 
+  // 6 · Direktvermarktung gestört (nur mit Beleg, §7.3 Stelle 5 "eine Zeile bei Störung" -
+  // begrenzen/verbunden sind kein Befund und bekommen nie eine Zeile hier).
+  if (input.direktvermarktungGestoert) {
+    items.push({
+      key: 'direktvermarktung', label: 'Direktvermarktung', state: 'warn',
+      detail: input.direktvermarktungGestoert,
+    });
+  }
+
   // Warnings first so a problem is visible at the top of the list.
   const rank: Record<HealthState, number> = { warn: 0, off: 1, ok: 2 };
   return items.sort((a, b) => rank[a.state] - rank[b.state]);
@@ -126,6 +142,7 @@ const KEY_WORD: Record<HealthItem['key'], string> = {
   control: 'Steuerung',
   battery: 'Speicher',
   grenze: 'Einspeisegrenze',
+  direktvermarktung: 'Direktvermarktung',
 };
 
 /** „a, b und c" — die deutsche Aufzählung. */
@@ -137,7 +154,7 @@ function joinDe(words: string[]): string {
 /** Der Hebel je Befund: wohin ein Tipp führt (Unterseite der Anlage). */
 export const ZUSTAND_LEVER: Record<
   HealthItem['key'],
-  { sub: 'modell' | 'fahrplan' | 'steuerung' | 'technik'; label: string }
+  { sub: 'modell' | 'fahrplan' | 'steuerung' | 'technik' | 'direktvermarktung'; label: string }
 > = {
   device: { sub: 'modell', label: AUFBAU_REITER },
   plan: { sub: 'fahrplan', label: 'Fahrplan' },
@@ -145,6 +162,7 @@ export const ZUSTAND_LEVER: Record<
   battery: { sub: 'technik', label: 'Einstellungen' },
   // Die hinterlegte Einspeisegrenze steht in den Einstellungen der Anlage (`AnlageTechnik`).
   grenze: { sub: 'technik', label: 'Einstellungen' },
+  direktvermarktung: { sub: 'direktvermarktung', label: 'Direktvermarktung' },
 };
 
 /** Kopftitel der lauten Karte — wortgleich mit dem Popover des Abzeichens. */
@@ -156,7 +174,7 @@ export interface ZustandFinding {
   state: Exclude<HealthState, 'ok'>;
   /** „Gerät: meldet sich nicht" — wortgleich mit den Badge-Befunden. */
   text: string;
-  lever: { sub: 'modell' | 'fahrplan' | 'steuerung' | 'technik'; label: string };
+  lever: { sub: 'modell' | 'fahrplan' | 'steuerung' | 'technik' | 'direktvermarktung'; label: string };
 }
 
 export interface ZustandView {
@@ -272,6 +290,8 @@ export interface HealthBadgeInput {
   entityDrift?: boolean | null;
   /** Die belegte Abweichung der Einspeisegrenze im Gerät (`deviceLimitLine`); absent = keine. */
   geraeteGrenze?: string | null;
+  /** Direktvermarktung gestört (§7.3 Stelle 2/5); absent/null = kein Anschluss oder er läuft. */
+  direktvermarktungGestoert?: string | null;
 }
 
 /**
@@ -282,7 +302,7 @@ export interface HealthBadgeInput {
  */
 export type AnlageHealthFacts = Pick<
   HealthBadgeInput,
-  'plan' | 'controlState' | 'battery' | 'entityDrift' | 'geraeteGrenze'
+  'plan' | 'controlState' | 'battery' | 'entityDrift' | 'geraeteGrenze' | 'direktvermarktungGestoert'
 >;
 
 /**
@@ -301,7 +321,8 @@ export function sameHealthFacts(a: AnlageHealthFacts, b: AnlageHealthFacts): boo
     battery(a) === battery(b) &&
     (a.controlState ?? null) === (b.controlState ?? null) &&
     (a.entityDrift ?? null) === (b.entityDrift ?? null) &&
-    (a.geraeteGrenze ?? null) === (b.geraeteGrenze ?? null)
+    (a.geraeteGrenze ?? null) === (b.geraeteGrenze ?? null) &&
+    (a.direktvermarktungGestoert ?? null) === (b.direktvermarktungGestoert ?? null)
   );
 }
 
@@ -335,6 +356,7 @@ export function healthBadge(input?: HealthBadgeInput | null): HealthBadge {
     batteryWithoutDevice: facts.battery?.withoutDevice ?? false,
     batteryLinked: facts.battery?.linked ?? false,
     geraeteGrenze: facts.geraeteGrenze ?? null,
+    direktvermarktungGestoert: facts.direktvermarktungGestoert ?? null,
   }).filter((i) => {
     if (i.key === 'device') return facts.devices != null;
     if (i.key === 'plan') return facts.plan != null;

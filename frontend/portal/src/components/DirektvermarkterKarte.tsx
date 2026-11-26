@@ -30,6 +30,10 @@ const EREIGNIS_LABEL: Record<string, string> = {
   startdatum_gesetzt: 'Startdatum gesetzt',
   wechsel_geplant: 'Wechsel geplant',
   beendet: 'Beendet',
+  // Zustellung (PR 2012, vp-dv-zustellung): das retained Profil zwischen Cloud und Box.
+  profil_zugestellt: 'Profil auf der Box zugestellt',
+  profil_zurueckgezogen: 'Profil von der Box zurückgezogen',
+  zugang_angefragt: 'Box hat um den Zugang gebeten',
 };
 
 function kv(k: string, v: string | null | undefined) {

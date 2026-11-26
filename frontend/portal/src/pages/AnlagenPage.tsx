@@ -112,6 +112,7 @@ import {
 } from '../eigeneAuswertung';
 import { EigenerBaustein } from '../components/EigeneAuswertung';
 import { useAnlageSurface } from '../useAnlageSurface';
+import { anzeige as direktvermarktungAnzeige, verbindungsbild as direktvermarktungBild, type DirektvermarktungStatus } from '../direktvermarktung';
 import { useTaktZustand } from '../gleicheAntwort';
 import { useTaktUhr } from '../useTaktUhr';
 import { CockpitMessstellenWeg } from '../components/CockpitMessstellenWeg';
@@ -948,6 +949,9 @@ export function AnlageSeite({
   // wirklich um? Eigener Abruf (der Herzschlag-Block kommt unabhängig vom
   // Rücklese-Block), fail-soft - null = kein Beleg = Plan-Wortlaut.
   const [curtailStatus, setCurtailStatus] = useTaktZustand<CurtailmentStatus | null>(null);
+  // Direktvermarktung (Konzept vp-direktvermarktung-konzept d2 §7.3): fail-soft, null = kein
+  // Anschluss oder älteres Backend - dann bleibt der Zustand/das Abzeichen wie bisher.
+  const [dvStatus, setDvStatus] = useState<DirektvermarktungStatus | null>(null);
   // Erzeugeranlage an einer Anlagensteuerung (EZ-8): das Bild der Steuerung - fail-soft, null = keine
   // Anlagensteuerung oder älteres Backend; dann bleibt das Cockpit wie bisher.
   const [erzeugerJetzt, setErzeugerJetzt] = useTaktZustand<ErzeugerJetzt | null>(null);
@@ -1159,6 +1163,14 @@ export function AnlageSeite({
       },
       () => {
         if (active) setCharging(null);
+      },
+    );
+    api.direktvermarktung(site.id).then(
+      (d) => {
+        if (active) setDvStatus(d);
+      },
+      () => {
+        if (active) setDvStatus(null);
       },
     );
     return () => {
@@ -1630,6 +1642,16 @@ export function AnlageSeite({
   // Konstellation, die in Herzogau zwei Untersuchungsrunden gekostet hat.
   const guardView = exportGuardView(curtailStatus, now);
 
+  // Direktvermarktung (§7.3 Stellen 2/5): nur die GENUINE Verbindungsstörung (`boxPartner ===
+  // 'bruch'`, Muster der Geräteakte-"Jetzt neu verbinden"-Schaltfläche) wird eine Zeile - das
+  // ruhige Begrenzen ist Vertrag, kein Fehler (§7.2 Regel 5), und bekommt hier nie eine.
+  const direktvermarktungBildAktuell = dvStatus?.aktuell
+    ? direktvermarktungBild(dvStatus.aktuell, dvStatus.stand ?? null, now)
+    : null;
+  const direktvermarktungGestoert = direktvermarktungBildAktuell?.boxPartner === 'bruch'
+    ? direktvermarktungAnzeige(dvStatus!.aktuell, dvStatus!.partner?.name ?? null, dvStatus!.stand ?? null, now).statuszeile
+    : null;
+
   // The Gesundheits-Checklist — rendered on BOTH cockpit paths (the projected
   // one lists it as its "Zustand" card, so a migrated plant has the surface the
   // header badge drills to; before this it existed only on the v1 branch).
@@ -1643,6 +1665,7 @@ export function AnlageSeite({
     batteryWithoutDevice: ovSite?.batteryWithoutDevice ?? false,
     batteryLinked,
     geraeteGrenze: guardView?.deviceLimitLine ?? null,
+    direktvermarktungGestoert,
   });
 
   // Report the facts only this page measures up to the shell badge, so header
@@ -1662,6 +1685,7 @@ export function AnlageSeite({
       controlState,
       battery: batteryKnown ? { withoutDevice: batteryWithoutDevice, linked: batteryLinked } : null,
       geraeteGrenze,
+      direktvermarktungGestoert,
     });
   }, [
     onHealthFacts,
@@ -1674,6 +1698,7 @@ export function AnlageSeite({
     batteryWithoutDevice,
     batteryLinked,
     geraeteGrenze,
+    direktvermarktungGestoert,
   ]);
 
   // The selected period instance (`at` = a tapped past month; null = current).
