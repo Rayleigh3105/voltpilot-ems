@@ -61,7 +61,9 @@ export type IconName =
   | 'code'
   | 'upload'
   | 'archive'
-  | 'bell';
+  | 'bell'
+  | 'share'
+  | 'more-vertical';
 
 export interface IconProps extends React.SVGAttributes<SVGSVGElement> {
   name: IconName;

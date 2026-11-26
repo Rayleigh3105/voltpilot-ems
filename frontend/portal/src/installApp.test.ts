@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   initInstallApp,
+  installIosContext,
   installSnapshot,
   installState,
   installView,
   isAndroidChromium,
   isIos,
+  isIPad,
+  isNonSafariIosBrowser,
   isStandalone,
   lastInstallOutcome,
   promptInstall,
@@ -156,6 +159,77 @@ describe('isIos', () => {
   });
 });
 
+describe('isIPad', () => {
+  it('erkennt ein iPad an seiner Kennung', () => {
+    expect(isIPad(fakeEnv({ ua: 'Mozilla/5.0 (iPad; CPU OS 16_0)' }))).toBe(true);
+  });
+
+  it('erkennt ein iPadOS-Gerät, das sich als Macintosh meldet - dasselbe wie bei isIos', () => {
+    expect(
+      isIPad(
+        fakeEnv({
+          ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Version/17.5 Safari',
+          platform: 'MacIntel',
+          maxTouchPoints: 5,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('ein iPhone ist KEIN iPad - es braucht die andere Lage des Teilen-Symbols', () => {
+    expect(isIPad(fakeEnv({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5)' }))).toBe(false);
+  });
+});
+
+describe('isNonSafariIosBrowser', () => {
+  it('erkennt Chrome auf iOS an "CriOS/" - Teilen sitzt dort oben, nicht unten', () => {
+    expect(
+      isNonSafariIosBrowser(
+        fakeEnv({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) CriOS/120.0 Mobile Safari' }),
+      ),
+    ).toBe(true);
+  });
+
+  it('erkennt Firefox und Edge auf iOS ebenso', () => {
+    expect(
+      isNonSafariIosBrowser(fakeEnv({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) FxiOS/120.0' })),
+    ).toBe(true);
+    expect(
+      isNonSafariIosBrowser(fakeEnv({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) EdgiOS/120.0' })),
+    ).toBe(true);
+  });
+
+  it('echtes Safari ist KEIN fremder Browser', () => {
+    expect(
+      isNonSafariIosBrowser(fakeEnv({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari/604.1' })),
+    ).toBe(false);
+  });
+
+  it('Chrome auf Android ist kein "fremder Browser auf iOS" - andere Frage, anderer Zustand', () => {
+    expect(
+      isNonSafariIosBrowser(fakeEnv({ ua: 'Mozilla/5.0 (Linux; Android 14) Chrome/151' })),
+    ).toBe(false);
+  });
+});
+
+describe('installIosContext', () => {
+  it('ist `null` außerhalb von iOS und ohne eingehängte Umgebung', () => {
+    expect(installIosContext()).toBeNull();
+    initInstallApp(fakeEnv({ ua: 'Mozilla/5.0 (Linux; Android 14) Chrome/151' }));
+    expect(installIosContext()).toBeNull();
+  });
+
+  it('meldet iPad und fremden Browser getrennt', () => {
+    initInstallApp(fakeEnv({ ua: 'Mozilla/5.0 (iPad; CPU OS 16_0) CriOS/120.0' }));
+    expect(installIosContext()).toEqual({ ipad: true, fremderBrowser: true });
+  });
+
+  it('Safari auf dem iPhone: beides falsch', () => {
+    initInstallApp(fakeEnv({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari/604.1' }));
+    expect(installIosContext()).toEqual({ ipad: false, fremderBrowser: false });
+  });
+});
+
 describe('isAndroidChromium', () => {
   it('erkennt Chrome, Edge, Samsung Internet und Opera auf Android', () => {
     expect(
@@ -217,10 +291,22 @@ describe('installView: Kundencopy, kein Fachwort', () => {
 
   it('sagt „App" und nie PWA/Manifest/Service Worker', () => {
     const text = all
-      .flatMap((v) => [v.text, v.hint ?? '', v.action ?? '', ...v.steps])
+      .flatMap((v) => [v.text, v.hint ?? '', v.action ?? '', ...v.steps.map((s) => s.text)])
       .join(' ');
     expect(text).not.toMatch(/PWA|Manifest|Service.?Worker|Web.?App/i);
     expect(text).toMatch(/App/);
+  });
+
+  it('zeigt nie ein Unicode-Symbol anstelle eines echten Icons (Haus-Regel aus Icon.jsx)', () => {
+    const text = all.flatMap((v) => v.steps.map((s) => s.text)).join(' ');
+    expect(text).not.toMatch(/⋮|⋯|•••/);
+  });
+
+  it('schließt eine Anführung immer mit dem typografischen Zeichen „…“, nie mit dem geraden "', () => {
+    const text = all
+      .flatMap((v) => [v.text, v.hint ?? '', ...v.steps.map((s) => s.text)])
+      .join('\n');
+    expect(text).not.toContain('"');
   });
 
   it('bietet einen Knopf NUR, wo er wirklich etwas bewirkt', () => {
@@ -238,11 +324,31 @@ describe('installView: Kundencopy, kein Fachwort', () => {
     expect(v.text).toMatch(/bereits als App/);
   });
 
-  it('führt auf dem iPhone in zwei Schritten durch das Teilen-Menü', () => {
+  it('führt ohne bekanntes Gerät/Browser durch das Teilen-Menü - ehrlich uneindeutig statt falsch spezifisch', () => {
     const v = installView('ios-anleitung');
     expect(v.steps).toHaveLength(2);
-    expect(v.steps[0]).toMatch(/Teilen/);
-    expect(v.steps[1]).toMatch(/Home-Bildschirm/);
+    expect(v.steps[0].text).toMatch(/Teilen/);
+    expect(v.steps[0].icons).toContain('share');
+    // Ohne zu wissen, welche Safari-Leiste der Kunde hat, nennt die Anleitung NIE nur eine
+    // Lage - sie zeigt beide Symbole (Menü UND Teilen) statt einer falschen Festlegung.
+    expect(v.steps[0].icons).toContain('more-horizontal');
+    expect(v.steps[1].text).toMatch(/Home-Bildschirm/);
+  });
+
+  it('auf dem iPad sitzt das Teilen-Symbol oben - eine einzige, eindeutige Lage', () => {
+    const v = installView('ios-anleitung', undefined, { ipad: true, fremderBrowser: false });
+    expect(v.steps[0].text).toMatch(/oben/);
+    expect(v.steps[0].icons).toEqual(['share']);
+    expect(v.hint).toMatch(/wie eine App statt nur als Lesezeichen/);
+  });
+
+  it('in Chrome/Edge/Firefox auf iOS sitzt Teilen oben an der Adressleiste, nicht unten', () => {
+    const v = installView('ios-anleitung', undefined, { ipad: false, fremderBrowser: true });
+    expect(v.steps[0].text).toMatch(/Adressleiste/);
+    expect(v.steps[0].icons).toEqual(['share']);
+    // Der iOS-26-Schalter ist eine Safari-eigene Fläche - in einem fremden Browser würde die
+    // Erwähnung etwas behaupten, das dort gar nicht existiert.
+    expect(v.hint).not.toMatch(/Lesezeichen/);
   });
 
   it('nennt ohne Angebot und ohne Android-Chromium den GRUND und den Weg, nie nur Leere', () => {
@@ -255,7 +361,8 @@ describe('installView: Kundencopy, kein Fachwort', () => {
     const v = installView('android-anleitung');
     expect(v.text).not.toMatch(/bietet das Einrichten hier nicht an/);
     expect(v.steps).toHaveLength(2);
-    expect(v.steps[1]).toMatch(/App installieren|Startbildschirm/);
+    expect(v.steps[0].icons).toEqual(['more-vertical']);
+    expect(v.steps[1].text).toMatch(/App installieren|Startbildschirm/);
   });
 
   it('nach einem Abbruch steht dort der ANDERE Grund - kein eigener Zustand', () => {

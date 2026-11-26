@@ -92,7 +92,14 @@ func (a *Agent) ocppStatusWatch(ctx context.Context, srv *csms.Server) {
 // statusHeartbeatLoop publishes on the regular cadence and, between ticks, on
 // request - never two heartbeats closer than minGap. An early heartbeat
 // restarts the cadence, so it adds to the traffic only when something changed.
-func statusHeartbeatLoop(ctx context.Context, every, minGap time.Duration, kick <-chan struct{}, publish func() bool) {
+//
+// priorityKick is the ONE exception to minGap (vp-schalten-sofort, Captain-
+// Befund auf #2035): a manual override's own confirmation must reach the
+// cloud right away, not wait behind the rate limit meant for repeated/
+// automatic changes (consumer_override_now.go marks which readback earns
+// this). It still restarts the cadence and collapses any pending, still-
+// gapped kick into the same send - one heartbeat, not two.
+func statusHeartbeatLoop(ctx context.Context, every, minGap time.Duration, kick, priorityKick <-chan struct{}, publish func() bool) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	var last time.Time
@@ -114,6 +121,13 @@ func statusHeartbeatLoop(ctx context.Context, every, minGap time.Duration, kick 
 			return
 		case <-t.C:
 			send()
+		case <-priorityKick:
+			if pending != nil {
+				pending.Stop()
+				pending, due = nil, nil
+			}
+			send()
+			t.Reset(every)
 		case <-kick:
 			if due != nil {
 				continue // already collected, goes out when the gap ends

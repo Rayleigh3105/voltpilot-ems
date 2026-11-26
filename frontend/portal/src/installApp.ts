@@ -13,7 +13,8 @@
  *  - `installierbar` - der Browser hat uns seinen Einrichten-Dialog angeboten
  *                      (Chrome/Edge, Android wie Rechner). Ein echter Knopf.
  *  - `ios-anleitung` - iPhone/iPad. Apple bietet KEINEN Dialog an, also ist die
- *                      Zwei-Schritt-Anleitung der einzige ehrliche Weg.
+ *                      Anleitung der einzige ehrliche Weg - WELCHE Schritte, hängt vom Gerät
+ *                      (iPhone/iPad) und Browser (Safari/fremd) ab, siehe `IosContext`.
  *  - `android-anleitung` - ein Chrome/Chromium-Browser auf Android, der das
  *                      Einrichten GRUNDSÄTZLICH kann, es diesem Gerät aber noch
  *                      nicht angeboten hat (Chrome entscheidet das selbst, u.a.
@@ -128,6 +129,42 @@ export function isIos(env: InstallEnv): boolean {
 }
 
 /**
+ * iPad statt iPhone/iPod - auch dann, wenn es sich als „Macintosh" meldet (s.o.). Wichtig für
+ * die Anleitung: das iPad hatte seine Werkzeugleiste mit dem Teilen-Symbol schon immer OBEN,
+ * nie eine wählbare „kompakte" Leiste, die es wie beim iPhone verstecken könnte - iPadOS 26
+ * hatte die Kompakt-Wahl zum Start gar nicht erst im Angebot (Quelle: MacRumors/9to5Mac zu
+ * iPadOS 26, siehe PR-Beschreibung).
+ */
+export function isIPad(env: InstallEnv): boolean {
+  const nav = env.navigator ?? {};
+  const ua = nav.userAgent ?? '';
+  if (/iPad/.test(ua)) return true;
+  const touch = nav.maxTouchPoints ?? 0;
+  const macish = nav.platform === 'MacIntel' || /Macintosh/.test(ua);
+  return macish && touch > 1;
+}
+
+/**
+ * Chrome oder ein verwandter fremder Browser auf iOS (Kennungen "CriOS/", "FxiOS/", "EdgiOS/",
+ * "OPiOS/" - Apple zwingt sie auf WebKit, aber sie zeichnen ihre eigene Oberfläche). Dort sitzt
+ * das Teilen-Symbol oben an der Adressleiste, nicht unten in einer Browser-Leiste wie bei
+ * Safari - belegt für Chrome (browserstack.com-Anleitung, siehe PR-Beschreibung). Safaris
+ * eigene, vom Kunden wählbare Leisten-Varianten (unten/oben/„Kompakt" seit iOS 26) gelten hier
+ * NICHT - dort ist die Lage, anders als bei Chrome, nicht aus der UA ablesbar.
+ */
+export function isNonSafariIosBrowser(env: InstallEnv): boolean {
+  return /CriOS\/|FxiOS\/|EdgiOS\/|OPiOS\//.test(env.navigator?.userAgent ?? '');
+}
+
+/** Was die iPhone/iPad-Anleitung zusätzlich zum bloßen `ios-anleitung`-Zustand wissen muss. */
+export interface IosContext {
+  /** iPad statt iPhone - andere Lage des Teilen-Symbols (siehe `isIPad`). */
+  ipad: boolean;
+  /** Chrome o.ä. statt Safari - andere Lage UND kein Safari-spezifischer Web-App-Schalter. */
+  fremderBrowser: boolean;
+}
+
+/**
  * Marker eingebetteter Ansichten (In-App-Browser anderer Apps). Deren UA
  * trägt oft trotzdem "Chrome/", aber sie haben weder ein Browser-Menü noch
  * eine Adressleiste - der Weg "Menü > App installieren" wäre dort eine
@@ -160,6 +197,15 @@ export const APP_GROUP_LABEL = 'Als App auf dem Handy';
 export const APP_GROUP_EXPLAIN =
   'VoltPilot lässt sich wie eine App auf den Startbildschirm legen - mit eigenem Symbol und im Vollbild, ohne Browser-Leiste.';
 
+/** Eines der echten Symbole, die der Kunde auf seinem Schirm wiederfinden soll - nie ein Unicode-Zeichen. */
+export type InstallStepIcon = 'share' | 'more-vertical' | 'more-horizontal';
+
+/** Ein einzelner Anleitungsschritt. `icons` ist leer, wo der Schritt keins braucht (ein Menüeintrag ohne festes Icon). */
+export interface InstallStep {
+  icons: InstallStepIcon[];
+  text: string;
+}
+
 export interface InstallView {
   state: InstallState;
   /** Der Satz, der immer steht. */
@@ -167,7 +213,7 @@ export interface InstallView {
   /** Beschriftung des Knopfes - nur, wo er wirklich etwas bewirkt. */
   action: string | null;
   /** Die Anleitung; leer, wo es keine gibt. */
-  steps: string[];
+  steps: InstallStep[];
   /** Ein ruhiger Zusatz (Weg, Folge, Einschränkung). */
   hint: string | null;
 }
@@ -180,8 +226,17 @@ export interface InstallView {
  * (er lässt sich kein zweites Mal öffnen), der Zustand ist danach also
  * wahrheitsgemäß `nicht-verfuegbar` - nur der GRUND ist ein anderer, und genau
  * den nennt der Zusatz.
+ *
+ * `ios` gilt NUR für `ios-anleitung`: Apple bietet dort nie einen Dialog, aber WO das
+ * Teilen-Symbol sitzt, hängt vom Gerät (iPhone/iPad) und Browser (Safari/fremd) ab - ohne
+ * diese Unterscheidung behauptete die Anleitung pauschal „unten in der Browser-Leiste", was
+ * auf dem iPad und in Chrome schlicht falsch ist (derselbe Fehler wie beim Android-Fall).
  */
-export function installView(state: InstallState, outcome?: InstallOutcome): InstallView {
+export function installView(
+  state: InstallState,
+  outcome?: InstallOutcome,
+  ios?: IosContext,
+): InstallView {
   if (state === 'installiert') {
     return {
       state,
@@ -201,15 +256,23 @@ export function installView(state: InstallState, outcome?: InstallOutcome): Inst
     };
   }
   if (state === 'ios-anleitung') {
+    const fremderBrowser = ios?.fremderBrowser === true;
+    const teilenSchritt: InstallStep = ios?.ipad
+      ? { icons: ['share'], text: 'Tippen Sie oben im Bildschirm auf das Teilen-Symbol.' }
+      : fremderBrowser
+        ? { icons: ['share'], text: 'Tippen Sie oben neben der Adressleiste auf das Teilen-Symbol.' }
+        : {
+            icons: ['more-horizontal', 'share'],
+            text: 'Tippen Sie auf das Teilen-Symbol - sehen Sie es nicht direkt, zuerst auf das Menü daneben.',
+          };
     return {
       state,
       text: 'Auf dem iPhone und iPad legen Sie VoltPilot über das Teilen-Menü ab:',
       action: null,
-      steps: [
-        'Tippen Sie unten in der Browser-Leiste auf das Teilen-Symbol.',
-        'Wählen Sie „Zum Home-Bildschirm".',
-      ],
-      hint: 'Danach startet VoltPilot im Vollbild, ganz ohne Browser-Leiste.',
+      steps: [teilenSchritt, { icons: [], text: 'Wählen Sie „Zum Home-Bildschirm“.' }],
+      hint: fremderBrowser
+        ? 'Danach startet VoltPilot im Vollbild, ganz ohne Browser-Leiste.'
+        : 'Danach startet VoltPilot im Vollbild, ganz ohne Browser-Leiste. Fragt Safari dabei noch, ob die Seite wie eine App statt nur als Lesezeichen geöffnet wird, lassen Sie das eingeschaltet.',
     };
   }
   if (state === 'android-anleitung') {
@@ -218,8 +281,11 @@ export function installView(state: InstallState, outcome?: InstallOutcome): Inst
       text: 'Dieser Browser hat das Einrichten hier noch nicht von sich aus angeboten.',
       action: null,
       steps: [
-        'Tippen Sie oben rechts auf das Menü (⋮).',
-        'Wählen Sie „App installieren" oder „Zum Startbildschirm hinzufügen".',
+        { icons: ['more-vertical'], text: 'Tippen Sie oben rechts auf das Menü.' },
+        {
+          icons: [],
+          text: 'Wählen Sie „App installieren“ oder „Zum Startbildschirm hinzufügen“.',
+        },
       ],
       hint: 'Taucht der Eintrag nicht auf, hilft meist ein Neuladen der Seite.',
     };
@@ -234,7 +300,7 @@ export function installView(state: InstallState, outcome?: InstallOutcome): Inst
     steps: [],
     hint:
       outcome === 'abgelehnt'
-        ? 'Über das Menü Ihres Browsers geht es weiterhin - dort heißt der Eintrag meist „App installieren" oder „Zum Startbildschirm hinzufügen".'
+        ? 'Über das Menü Ihres Browsers geht es weiterhin - dort heißt der Eintrag meist „App installieren“ oder „Zum Startbildschirm hinzufügen“.'
         : 'Öffnen Sie VoltPilot am Handy in Chrome (Android) oder Safari (iPhone) - dort lässt es sich einrichten.',
   };
 }
@@ -321,6 +387,15 @@ export function installSnapshot(): InstallState {
     ios: isIos(env),
     androidChromium: isAndroidChromium(env),
   });
+}
+
+/**
+ * Nur für `ios-anleitung` gebraucht (siehe `installView`) - `null` außerhalb von iOS, damit ein
+ * Aufrufer nicht aus Versehen eine `IosContext` zeigt, wo sie nichts bedeutet.
+ */
+export function installIosContext(): IosContext | null {
+  if (!env || !isIos(env)) return null;
+  return { ipad: isIPad(env), fremderBrowser: isNonSafariIosBrowser(env) };
 }
 
 /** Das Ergebnis des letzten Klicks (für den ehrlichen Zusatz). */

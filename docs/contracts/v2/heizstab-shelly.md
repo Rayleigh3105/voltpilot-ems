@@ -120,6 +120,10 @@ Ein sichtbarer Wechsel in diesem Block (Zustand, `confirmed`, Stufe oder eine be
 Das gilt für jeden über `consumerControlLoop` geschalteten Verbraucher, nicht nur den Heizstab (`agent/consumer_status_kick.go`, derselbe Wächter wie bei den Ladepunkten, [Stufe 3](../../agents/edge/stufe-3-der-herzschlag-traegt-die-ladepu.md)).
 Gemessene Werte lösen dabei nichts aus; nur das Wortbild ändert sich.
 
+Ein Handeingriff (Start oder „Automatik fortsetzen“) weckt `consumerControlLoop` zusätzlich sofort, statt bis zu `consumerControlTick` zu warten, und seine eigene erste Rücklesung darf den Herzschlag ohne die sonst geltende Mindestlücke (`statusKickMinGap`) anfordern - ein Einmal-Flag je Entität, das nur diese eine Bestätigung trifft (`agent/consumer_override_now.go`).
+Eine greifende Schutzregel (Mindestlauf/-pause, Schutzgrenze) hält genauso wie vorher; nur ihre Ablehnung steht jetzt ebenso schnell im Herzschlag.
+Eine Wiederholung oder eine automatische Entscheidung bleibt auf dem normalen, ratenbegrenzten Weg.
+
 ## Verbindungstest und „nach Stromausfall“ (Probe, [mqtt-probe.schema.json](../mqtt-probe.schema.json))
 
 - **`test_connection`** mit `connection.channels` braucht zwei Anfragen wie bei einem Ausgang (`/shelly`, `Shelly.GetStatus`). Die Antwort enthält:

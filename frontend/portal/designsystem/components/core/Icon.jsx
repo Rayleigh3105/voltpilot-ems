@@ -426,6 +426,24 @@ const PATHS = {
       <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
     </>
   ),
+  // Installieren (iPhone/iPad-Anleitung): das Teilen-Symbol, wie es Safari/Chrome auf iOS
+  // zeigen (Lucide "share" - NICHT "share-2", das ist das Netzwerk-Symbol mit drei Kreisen).
+  share: (
+    <>
+      <path d="M12 2v13" />
+      <path d="m16 6-4-4-4 4" />
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+    </>
+  ),
+  // Installieren (Android-Anleitung): das Dreipunkt-Menü, senkrecht - dieselben drei Punkte wie
+  // "more-horizontal", nur um 90° gedreht (Lucide "more-vertical"/"ellipsis-vertical").
+  'more-vertical': (
+    <>
+      <circle cx="12" cy="5" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="12" cy="19" r="1" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 20, strokeWidth = 2, style = {}, ...props }) {
