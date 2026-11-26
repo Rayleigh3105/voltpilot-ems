@@ -242,6 +242,7 @@ function Beschriftung({
           {z}
         </span>
       ))}
+      {text.chip && <span className="vp-lp-chip">{text.chip}</span>}
     </div>
   );
 }

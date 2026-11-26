@@ -502,7 +502,13 @@ export function cockpitHero(input: {
   // darunter 7 Tage und Tag - dieselben Zahlen wie die Erlöse-Seite.
   const zeitraum = input.range === 'day' && input.mitSpeicher !== false ? (input.money?.steuerungZeitraum ?? null) : null;
   const kurz = zeitraum ? steuerungKurz(zeitraum, running) : null;
-  const attribution = kurz ? kurz.zeile : speicher?.hatAussage ? speicher.kurz : null;
+  // §7.3 Stelle 4 (Firstmate-Antwort msg 023): ohne Steuerungs-/Speicher-Zurechnung (die beiden
+  // haben Vorrang - ihre Aussage ist genauer) nennt die Unterzeile die Direktvermarktung als
+  // Erlösquelle des Zeitraums. `plantKind` kippt server-seitig genau dann auf
+  // 'direktvermarktung', wenn ein Anschluss wirklich läuft (DirektvermarktungService) - dieselbe
+  // Wahrheit wie der Fahrplan-Wortlaut, keine zweite Abfrage.
+  const direktvermarktungZeile = input.plantKind === 'direktvermarktung' ? `${label} · über luox` : null;
+  const attribution = kurz ? kurz.zeile : speicher?.hatAussage ? speicher.kurz : direktvermarktungZeile;
   const money: HeroMoney | null =
     total == null
       ? null
@@ -515,7 +521,8 @@ export function cockpitHero(input: {
           kosten: total < 0,
           speicher: speicher?.hatAussage ? speicher : null,
           attribution,
-          attributionTitel: kurz ? kurz.titel : (speicher?.kurzTitel ?? null),
+          attributionTitel: kurz ? kurz.titel
+            : speicher?.kurzTitel ?? (direktvermarktungZeile ? 'Ihr Strom wird direkt vermarktet, nicht nach der festen Einspeisevergütung abgerechnet.' : null),
           attributionZweit: kurz?.zweit ?? null,
           zeitraumKarte: zeitraum ? steuerungKarte(zeitraum, running) : null,
           attributionInterim: running && attribution != null,

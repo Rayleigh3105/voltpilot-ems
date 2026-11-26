@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { EnergieBuehne } from '../src/components/EnergieBuehne';
+import { GeldKachel } from '../src/components/kacheln/CockpitKacheln';
+import { Badge } from '../designsystem/components/core/Badge';
 import type { History, HistoryBucket, SchedulePlan, ScheduleSlot } from '../src/api';
 import { tagAus } from '../src/tagesleiste';
 import type { Betrieb } from '../src/leitungsplan';
@@ -18,6 +20,10 @@ import '../src/index.css';
 const q = new URLSearchParams(location.search);
 const betrieb = (q.get('betrieb') ?? 'eigenverbrauch') as Betrieb;
 const phone = matchMedia('(max-width: 720px)').matches;
+// Direktvermarktung (Konzept vp-direktvermarktung-konzept d2 §7.3, Firstmate-Antwort msg 023):
+// `?dv=1` zeigt die drei neu entstandenen Stellen 1/3/4 nebeneinander auf dieser Bühne - derselbe
+// Weg wie jede andere Bühnen-Variable hier (`?betrieb=`), keine zweite Bühne.
+const dv = q.get('dv') != null;
 const now = new Date();
 now.setHours(13, 52, 0, 0);
 const mitternacht = new Date(now); mitternacht.setHours(0, 0, 0, 0);
@@ -80,6 +86,16 @@ const pv = {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <main style={{ maxWidth: 760, margin: '0 auto', padding: 16 }}>
     <h1>Sonnenhof</h1>
+    {dv && (
+      // §7.3 Stelle 1: derselbe Badge-Aufbau wie der Kopf der echten Anlagen-Seite
+      // (`AnlagenPage.tsx`, `vp-anlage-badges`) - hier isoliert, weil diese Bühne keine volle
+      // Seite mountet.
+      <div className="vp-anlage-badges" style={{ marginBottom: 10 }}>
+        <Badge variant="ok" dot data-testid="anlage-direktvermarktung-chip">
+          Direktvermarktung · luox energy
+        </Badge>
+      </div>
+    )}
     <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 22, padding: 14 }}>
       <EnergieBuehne
         jetzt={{ werte: { pv: m.pv, load: m.load, batt: m.batt, grid: m.grid }, socPct: m.soc, hat: { pv: true, batt: q.get('ohneSpeicher') == null } }}
@@ -90,7 +106,23 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         pv={pv}
         isPhone={phone}
         now={now}
+        direktvermarktungChip={dv ? 'begrenzt · luox energy 0 %' : null}
       />
     </section>
+    {dv && (
+      // §7.3 Stelle 4: dieselbe Kachel wie im echten Cockpit (`CockpitKacheln.GeldKachel`).
+      <section style={{ marginTop: 14, maxWidth: 320 }}>
+        <GeldKachel
+          money={{
+            label: 'Unterm Strich · Juli', value: '+ 63,23 €', kosten: false, speicher: null,
+            attribution: 'Juli · über luox', attributionTitel: 'Ihr Strom wird direkt vermarktet.',
+            attributionZweit: null, attributionInterim: false, laeuft: false, bestand: null, winterSatz: null,
+            formel: null, zeitraumKarte: null,
+          }}
+          periodSeg={null}
+          onOpen={() => {}}
+        />
+      </section>
+    )}
   </main>,
 );

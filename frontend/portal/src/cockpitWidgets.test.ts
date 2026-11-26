@@ -353,6 +353,29 @@ describe('Der Hero', () => {
     expect(hero.money?.attribution).toBeNull();
   });
 
+  it('Direktvermarktung §7.3 Stelle 4: ohne Steuerungs-/Speicher-Zurechnung nennt die Unterzeile luox', () => {
+    const hero = cockpitHero({
+      totals: TOTALS,
+      money: money({ savedSpeicherEur: null, savedSteuerungEur: null }),
+      range: 'month',
+      now: NOW,
+      plantKind: 'direktvermarktung',
+    });
+    expect(hero.money?.attribution).toBe('Juli · über luox');
+  });
+
+  it('Direktvermarktung §7.3 Stelle 4: die Steuerungs-Zurechnung hat Vorrang (keine doppelte Unterzeile)', () => {
+    const hero = cockpitHero({
+      totals: TOTALS,
+      money: money(),
+      range: 'month',
+      now: NOW,
+      plantKind: 'direktvermarktung',
+    });
+    expect(hero.money?.attribution).toContain('Steuerung');
+    expect(hero.money?.attribution).not.toContain('luox');
+  });
+
   it('zeigt am laufenden Tag den negativen Geldfluss als Zwischenstand plus geplanten Bestand', () => {
     const hero = cockpitHero({
       totals: TOTALS,

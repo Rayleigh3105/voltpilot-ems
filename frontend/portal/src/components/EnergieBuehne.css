@@ -297,6 +297,21 @@
 .vp-lp-zeile {
   display: block;
 }
+/* Direktvermarktung §7.3 Stelle 3: ruhiger Chip am Netz-Knoten (nie eine Warnung ohne Beleg,
+   §7.2 Regel 5) - dieselben Farben wie Badge.jsx `warn` (amber), nur hier als kleines Etikett
+   unter der Netz-Beschriftung statt eines eigenen Bedienelements. */
+.vp-lp-chip {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: var(--vp-radius-pill, 999px);
+  background: #FFF3E0;
+  color: var(--vp-warn-ink, #b45309);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
 .vp-lp-lab.r {
   transform: translateY(-50%);
   white-space: normal;
