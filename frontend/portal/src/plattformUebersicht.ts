@@ -220,7 +220,13 @@ export function direktvermarktungKennzahl(zeilen: readonly AdminDirektvermarktun
   // Anlagensteuerung tragen - kein Datenbezug, keine Sperre, nur Sichtbarkeit fuer den Support. Klartext
   // statt des internen Konzept-Codes "EZ-8", den der Support nicht kennt.
   const mitEz8 = zeilen.filter((z) => z.ez8Direktvermarkter != null).length;
-  const teile = [`${gesamt} ${gesamt === 1 ? 'Anlage' : 'Anlagen'}`, `${verbunden} verbunden`,
+  // Die Seite zeigt `kontext` und `wort` NEBENEINANDER - dieselbe Aussage nur einmal: sagt das Wort
+  // schon "Alle verbunden ✓", wiederholt der Kontext nicht noch "N verbunden". Und "Alle verbunden"
+  // nur, wenn es stimmt: ein frisch eingerichteter Anschluss (entwurf/wartet_auf_zugang/verbindet)
+  // ist weder verbunden noch ein Fehler - dann "Keine getrennt ✓" neben der ehrlichen Zählung.
+  const alleVerbunden = gesamt > 0 && verbunden === gesamt;
+  const teile = [`${gesamt} ${gesamt === 1 ? 'Anlage' : 'Anlagen'}`,
+    alleVerbunden ? null : `${verbunden} verbunden`,
     mitEz8 > 0 ? `${mitEz8} auch über die Anlagensteuerung` : null].filter(Boolean);
   return {
     id: 'direktvermarktung-kennzahl',
@@ -228,7 +234,8 @@ export function direktvermarktungKennzahl(zeilen: readonly AdminDirektvermarktun
     label: DIREKTVERMARKTUNG,
     zahl: getrennt,
     ton: getrennt > 0 ? 'warn' : 'ok',
-    wort: getrennt > 0 ? (getrennt === 1 ? 'Anlage getrennt' : 'Anlagen getrennt') : 'Alle verbunden ✓',
+    wort: getrennt > 0 ? (getrennt === 1 ? 'Anlage getrennt' : 'Anlagen getrennt')
+      : alleVerbunden ? 'Alle verbunden ✓' : 'Keine getrennt ✓',
     wortKurz: getrennt > 0 ? 'getrennt' : 'ok ✓',
     kontext: teile.join(' · '),
   };
