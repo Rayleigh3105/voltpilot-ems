@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 )
@@ -293,7 +294,9 @@ func TestGoeConnectionTestClassifiesLikeTestReadJS(t *testing.T) {
 // ReadsAsSource is what the core reports to the portal before it applies a
 // plan, parseSourcesConfig what the reader then wires: they must never
 // disagree. For every transport and role with a usable connection, a plan
-// exists exactly when ReadsAsSource says "".
+// exists exactly when ReadsAsSource says "" - except for a transport the core
+// reads itself (inverter.IsCoreOwned): no Layer-1 plan, one note that names
+// it, never a NICHT VERDRAHTET.
 func TestReadsAsSourceAgreesWithTheReader(t *testing.T) {
 	type fx struct{ comm, family string }
 	for _, f := range []fx{
@@ -312,6 +315,8 @@ func TestReadsAsSourceAgreesWithTheReader(t *testing.T) {
 		{"modbus_tcp", "sunspec"},
 		{"kostal_modbus", "kostal_plenticore"},
 		{"kostal_piko_rtu", "kostal_piko"},
+		{"shelly_http", "shelly_http"},
+		{"ebyte_modbus_tcp", "ebyte_m31"},
 		{"zauberei", "f"},
 	} {
 		for _, role := range []string{sources.RoleErzeuger, sources.RoleNetz, sources.RoleConsumer} {
@@ -324,6 +329,13 @@ func TestReadsAsSourceAgreesWithTheReader(t *testing.T) {
 				t.Fatalf("%s: Konfiguration unbrauchbar", id)
 			}
 			why := ReadsAsSource(f.comm, role)
+			if inverter.IsCoreOwned(f.comm) && why == "" {
+				if len(plans) != 0 || len(notes) != 1 || notes[0].warn ||
+					!strings.HasSuffix(notes[0].text, "liest der Kern selbst - keine Selbstverdrahtung") {
+					t.Errorf("%s: der Kern liest es selbst, Layer 1 nennt es nur: Plaene=%d, Hinweise=%+v", id, len(plans), notes)
+				}
+				continue
+			}
 			if (why == "") != (len(plans) == 1) {
 				t.Errorf("%s: ReadsAsSource=%q, Leseplaene=%d, Hinweise=%+v", id, why, len(plans), notes)
 			}

@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
@@ -698,5 +699,57 @@ func TestEdgeLightReportsASourceItsReaderDoesNotWire(t *testing.T) {
 	))
 	if rec := b.componentRecord(); len(rec.Rejected) != 0 {
 		t.Fatalf("Docker-Box: %+v", rec)
+	}
+}
+
+// Edge Light (Anlage „Zuhause“, 26.11.2026): the heating rod over the three
+// outputs of a Shelly Pro 3, exactly as the portal pushed it, next to the
+// composed house load and grid meter. shelly_http is a transport the core reads
+// itself (inverter.IsCoreOwned), so the reader's answer must not reject it: the
+// rod is applied, and the heartbeat's local_setup reports its source with the
+// output set - the identity the cloud's first binding matches
+// (docs/contracts/v2/heizstab-shelly.md, „Erstbindung“). Before the fix the box
+// answered „unbekannte Kommunikation "shelly_http"“ and reported no source.
+func TestEdgeLightAppliesTheShellyHeatingRodAndReportsItsOutputSet(t *testing.T) {
+	a := newGateTestAgent(t)
+	a.SetSourceReads(edgelight.ReadsAsSource)
+	const rodID = "c6966ca4-9af5-406d-8bd2-b15c9e3f6eb8"
+	a.applyEntityRegistry(portalPush("2026-11-26T07:33:22Z",
+		applyEntity("74d3150e-0000-0000-0000-000000000000", entities.TypeHouseLoad, ""),
+		applyEntity("e633499c-0000-0000-0000-000000000000", entities.TypeGridMeter, ""),
+		applyEntity(rodID, entities.TypeHeatingRod, `{"brand":"shelly","model":"shelly_http","family":"shelly_http",
+  "communication":"shelly_http","connection":{"ip":"192.168.178.66","port":80,"channels":[0,1,2],
+  "output_kw":[1.5,1.5,1.5],"stages":[1,2,3],"rotation":"daily","anschluss":"stern_mit_n"}}`),
+	))
+	rec := a.componentRecord()
+	if rec.Revision != "2026-11-26T07:33:22Z" || rec.Refused != "" || rec.Held != "" || len(rec.Rejected) != 0 {
+		t.Fatalf("Anwende-Stand: %+v", rec)
+	}
+	if raw, _ := json.Marshal(a.componentApplySummary()); strings.Contains(string(raw), "rejected_components") {
+		t.Fatalf("der Stab darf nicht abgelehnt sein: %s", raw)
+	}
+	sum := a.entitiesSummary()
+	if sum == nil {
+		t.Fatal("kein Entitaeten-Block im Herzschlag")
+	}
+	var rod *cloud.LocalSetupEntry
+	for i, e := range sum.LocalSetup {
+		if e.Kind == "source" && e.Communication == inverter.CommShellyHTTP {
+			if rod != nil {
+				t.Fatalf("zwei Shelly-Quellen: %+v", sum.LocalSetup)
+			}
+			rod = &sum.LocalSetup[i]
+		}
+	}
+	if rod == nil || rod.Role != sources.RoleConsumer || !strings.Contains(string(rod.Connection), `"channels":[0,1,2]`) ||
+		!strings.Contains(string(rod.Connection), `"ip":"192.168.178.66"`) {
+		t.Fatalf("local_setup meldet die Ausgangsmenge nicht: %+v", sum.LocalSetup)
+	}
+	a.srcMu.Lock()
+	srcs := append([]sources.Source(nil), a.srcs...)
+	a.srcMu.Unlock()
+	if len(srcs) != 1 || srcs[0].ID != rod.ID ||
+		!strings.HasSuffix(sources.TransportIdentity(srcs[0]), "\nset:0,1,2") {
+		t.Fatalf("Quelle des Stabs: %+v", srcs)
 	}
 }
