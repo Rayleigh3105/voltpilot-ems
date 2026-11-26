@@ -1,5 +1,7 @@
 package com.voltpilot.api.web;
 
+import org.springframework.transaction.annotation.Transactional;
+import com.voltpilot.api.repo.PreisfassungRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.repo.SiteSupplyPriceRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -65,10 +67,13 @@ public class SiteSupplyPriceController {
     private static final BigDecimal COMPONENT_MAX = new BigDecimal("999.999");
 
     private final SiteSupplyPriceRepository supplyPrices;
+    private final PreisfassungRepository preisfassungen;
     private final Geltungsbereich geltungsbereich;
 
-    public SiteSupplyPriceController(SiteSupplyPriceRepository supplyPrices, Geltungsbereich geltungsbereich) {
+    public SiteSupplyPriceController(SiteSupplyPriceRepository supplyPrices,
+            PreisfassungRepository preisfassungen, Geltungsbereich geltungsbereich) {
         this.supplyPrices = supplyPrices;
+        this.preisfassungen = preisfassungen;
         this.geltungsbereich = geltungsbereich;
     }
 
@@ -78,8 +83,15 @@ public class SiteSupplyPriceController {
         return supplyPrices.find(siteId);
     }
 
+    /**
+     * Writes the present fields; a changed sheet applies from {@code gueltigAb}
+     * ({@link PreisGueltigAb}: an ISO day up to today, {@code "beginn"}, absent =
+     * today) - the database records the Preisfassung in the same transaction
+     * (vp-tarif-ab-tag), the energy before that day keeps its old sheet.
+     */
     @PutMapping
     @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
+    @Transactional
     public SupplyPriceDto put(@PathVariable UUID siteId,
             @RequestBody(required = false) Map<String, Object> body) {
         requireSite(siteId);
@@ -87,6 +99,7 @@ public class SiteSupplyPriceController {
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Kein Mandant im Token.");
         }
+        preisfassungen.abSetzen(PreisGueltigAb.pruefen(body == null ? null : body.get("gueltigAb")));
         Map<String, Object> present = new LinkedHashMap<>();
         if (body != null) {
             for (Map.Entry<String, String> field : NUMERIC_FIELDS.entrySet()) {

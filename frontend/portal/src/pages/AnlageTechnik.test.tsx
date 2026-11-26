@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { heuteBerlin } from '../preisGiltAb';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
 import {
@@ -648,6 +649,34 @@ describe('Einstellungen · Stromtarif im Blatt', () => {
     restore();
   });
 
+  it('„Ab wann?“: vorbelegt mit heute, „Schon immer“ berichtigt von Anfang an (vp-tarif-ab-tag)', async () => {
+    const updateSite = vi
+      .spyOn(api, 'updateSite')
+      .mockResolvedValue({ ...eegSite, tarifArt: 'fest', tarifParamCtKwh: 32.5 });
+    const { onSiteSaved, restore } = await renderEinstellungen({ maxFeedInKw: 75 });
+
+    const b = await blatt('Stromtarif');
+    const feld = within(b).getByTestId('preis-gilt-ab');
+    expect(within(feld).getByText('Ab heute. Die Erlöse der Tage davor bleiben, wie sie waren.')).toBeInTheDocument();
+    fireEvent.click(within(b).getByRole('combobox', { name: 'Stromtarif' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Fest (ct/kWh)' }));
+    fireEvent.change(within(b).getByLabelText('Arbeitspreis (all-in, brutto) (ct/kWh)'), { target: { value: '32,5' } });
+    fireEvent.click(within(feld).getByRole('checkbox', { name: /Schon immer/ }));
+    expect(
+      within(feld).getByText('Alle bisherigen Erlöse werden mit dem neuen Wert neu berechnet.'),
+    ).toBeInTheDocument();
+    fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
+    expect(updateSite).toHaveBeenCalledWith('s-1', expect.objectContaining({
+      tarifArt: 'fest',
+      tarifParamCtKwh: 32.5,
+      tarifGueltigAb: 'beginn',
+    }));
+    updateSite.mockRestore();
+    restore();
+  });
+
   it('speichert den Stromtarif als VOLL-Repräsentation (blankt kein Nachbarfeld)', async () => {
     const updateSite = vi
       .spyOn(api, 'updateSite')
@@ -672,6 +701,8 @@ describe('Einstellungen · Stromtarif im Blatt', () => {
       tarifParamCtKwh: 32.5,
       netzladenErlaubt: false,
       maxFeedInKw: 75,
+      // „Ab wann?“ ist mit heute vorbelegt (vp-tarif-ab-tag).
+      tarifGueltigAb: heuteBerlin(),
     });
     // Gespeichert schließt das Blatt.
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -746,6 +777,7 @@ describe('Einstellungen · Stromtarif im Blatt', () => {
       konzessionsabgabeCt: null,
       umlagenCt: null,
       vertriebsaufschlagCt: null,
+      gueltigAb: heuteBerlin(),
     });
     updateSite.mockRestore();
     updateSupply.mockRestore();
@@ -822,16 +854,16 @@ describe('Einstellungen · Einspeisevergütung unter Strom & Geld', () => {
     fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
 
     // Mit Inbetriebnahmedatum entscheidet das Datum - keine Antwort reist mit.
-    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', 12.5, null));
+    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', 12.5, null, heuteBerlin()));
     await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('12,50 ct/kWh'));
     expect(zeile('Einspeisevergütung')).toHaveTextContent('von Ihnen angegeben');
     expect(
       await screen.findByText('Ab dem nächsten Fahrplan gilt Ihr Satz - Ihre Erlöse sind schon damit bewertet.'),
     ).toBeInTheDocument();
 
-    // „Rückgängig" stellt den vorigen Stand wieder her - hier: die Herleitung.
+    // „Rückgängig" stellt den vorigen Stand wieder her - hier: die Herleitung, ab demselben Tag.
     fireEvent.click(screen.getByRole('button', { name: 'Rückgängig' }));
-    await waitFor(() => expect(setzen).toHaveBeenLastCalledWith('s-1', null, null));
+    await waitFor(() => expect(setzen).toHaveBeenLastCalledWith('s-1', null, null, heuteBerlin()));
     await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('7,94 ct/kWh'));
     expect(await screen.findByText('Ab dem nächsten Fahrplan gilt wieder der Satz aus dem EEG.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Rückgängig' })).toBeNull();
@@ -859,7 +891,7 @@ describe('Einstellungen · Einspeisevergütung unter Strom & Geld', () => {
     );
     fireEvent.click(within(b).getByRole('radio', { name: /Aus dem EEG herleiten/ }));
     fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
-    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', null, null));
+    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', null, null, heuteBerlin()));
     await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('hergeleitet aus EEG'));
     setzen.mockRestore();
     restore();
@@ -943,7 +975,7 @@ describe('Einstellungen · Einspeisevergütung unter Strom & Geld', () => {
     fireEvent.click(within(frage).getByRole('radio', { name: /am 25\.02\.2025 oder später/ }));
     expect(within(frage).queryByRole('alert')).toBeNull();
     fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
-    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', 6, true));
+    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', 6, true, heuteBerlin()));
     await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('von Ihnen angegeben'));
     setzen.mockRestore();
     restore();

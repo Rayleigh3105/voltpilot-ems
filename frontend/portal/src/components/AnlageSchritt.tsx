@@ -338,7 +338,8 @@ export function AnlageStep({
       if (supplyPatch) {
         // F12: ein gescheitertes Preisblatt verschwindet nicht still - die Anlage gibt es trotzdem.
         try {
-          await api.updateSupplyPrice(site.id, supplyPatch);
+          // Die erste Angabe beim Einrichten gilt von Anfang an (vp-tarif-ab-tag).
+          await api.updateSupplyPrice(site.id, { ...supplyPatch, gueltigAb: 'beginn' });
         } catch {
           setErr('Die Anlage ist angelegt, das Preisblatt aber nicht gespeichert. Sie tragen es unter „Einstellungen“ nach.');
         }

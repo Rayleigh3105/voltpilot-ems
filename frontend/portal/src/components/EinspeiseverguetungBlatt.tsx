@@ -22,6 +22,8 @@ import {
 } from '../einspeiseverguetung';
 import { fmtNum } from '../format';
 import { Recht } from './Recht';
+import { PreisGiltAbFeld } from './PreisGiltAbFeld';
+import { FEHLER_KEIN_TAG, gueltigAbWert, preisGiltAbStart, type PreisGiltAb } from '../preisGiltAb';
 import './EinspeiseverguetungBlatt.css';
 import './SettingEditors.css';
 import './TariffFields.css';
@@ -55,8 +57,8 @@ export function EinspeiseverguetungBlatt({
   siteId: string;
   stand: Einspeiseverguetung;
   onCancel: () => void;
-  /** Der neue Stand nach dem Speichern - und der vorige, für „Rückgängig". */
-  onSaved: (neu: Einspeiseverguetung, vorher: Einspeiseverguetung) => void;
+  /** Der neue Stand nach dem Speichern - und der vorige, für „Rückgängig" (ab demselben Tag). */
+  onSaved: (neu: Einspeiseverguetung, vorher: Einspeiseverguetung, gueltigAb: string) => void;
   /** Öffnet die Verknüpfung mit dem Marktstammdatenregister. */
   onMastr: () => void;
 }) {
@@ -66,6 +68,9 @@ export function EinspeiseverguetungBlatt({
   const [stichtag, setStichtag] = useState<boolean | null>(stand.inbetriebnahmeAbSolarspitzengesetz);
   const [fehler, setFehler] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // „Ab wann?“ (vp-tarif-ab-tag): vorbelegt mit heute - die Einspeisung davor behält ihren Satz.
+  const [giltAb, setGiltAb] = useState<PreisGiltAb>(() => preisGiltAbStart());
+  const [giltAbFehler, setGiltAbFehler] = useState<string | null>(null);
   const feld = useRef<HTMLInputElement>(null);
   const ersteWahl = useRef<HTMLInputElement>(null);
   // Wer „eigener Satz" WÄHLT, will tippen: das Feld bekommt den Fokus, sobald
@@ -125,11 +130,16 @@ export function EinspeiseverguetungBlatt({
       onCancel();
       return;
     }
+    const gueltigAb = gueltigAbWert(giltAb);
+    if (gueltigAb == null) {
+      setGiltAbFehler(FEHLER_KEIN_TAG);
+      return;
+    }
     setBusy(true);
     setFehler(null);
     try {
-      const neu = await api.setEinspeiseverguetung(siteId, satz, antwort);
-      onSaved(neu, stand);
+      const neu = await api.setEinspeiseverguetung(siteId, satz, antwort, gueltigAb);
+      onSaved(neu, stand, gueltigAb);
     } catch {
       setFehler(SPEICHER_FEHLER);
     } finally {
@@ -250,6 +260,15 @@ export function EinspeiseverguetungBlatt({
           {h}
         </p>
       ))}
+      <PreisGiltAbFeld
+        idPrefix="verguetung"
+        wert={giltAb}
+        onChange={(w) => {
+          setGiltAb(w);
+          setGiltAbFehler(null);
+        }}
+        fehler={giltAbFehler}
+      />
       {fehler && fehler !== VERGUETUNG_EINGABE_FEHLER && fehler !== STICHTAG_FEHLER && (
         <div className="vp-alert vp-alert-err">{fehler}</div>
       )}

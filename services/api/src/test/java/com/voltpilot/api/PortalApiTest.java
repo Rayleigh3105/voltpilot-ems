@@ -6192,6 +6192,31 @@ class PortalApiTest {
         return r.getBody();
     }
 
+    /**
+     * Der Body mit „Ab wann? Schon immer“ (vp-tarif-ab-tag): diese Tests prüfen, dass eine Angabe in
+     * die Erlöse vergangener Slots eingeht - ohne Tag gälte sie erst ab heute.
+     */
+    private static Map<String, Object> seitBeginn(Map<String, Object> body) {
+        Map<String, Object> m = new java.util.HashMap<>(body);
+        m.put("gueltigAb", "beginn");
+        return m;
+    }
+
+    /** {@link #exec} mit einer Preisänderung, die von Anfang an gilt (eine Transaktion, vp-tarif-ab-tag). */
+    private static void execVonAnfangAn(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            c.setAutoCommit(false);
+            try (Statement st = c.createStatement()) {
+                st.execute("SELECT set_config('app.preis_gueltig_ab', 'beginn', true)");
+                st.execute(sql);
+            }
+            c.commit();
+        } catch (Exception e) {
+            throw new IllegalStateException("seed failed: " + sql, e);
+        }
+    }
+
     private static Map<String, Object> mapOf(String key, Object value) {
         Map<String, Object> m = new java.util.HashMap<>();
         m.put(key, value);
@@ -6345,9 +6370,9 @@ class PortalApiTest {
             double load, double gridImport) {
         String sql = "SELECT "
                 + com.voltpilot.api.repo.EarningsRepository.eigenverbrauchsWertEurSql(flag)
-                + " AS eur FROM (VALUES (?::text, ?::numeric)) AS s(tarif_art, tarif_param_ct_kwh)"
-                + " CROSS JOIN (VALUES (?::numeric, ?::numeric, ?::numeric, ?::numeric, ?::numeric,"
-                + " ?::numeric)) AS ssp(netzentgelt_arbeitspreis_ct, stromsteuer_ct,"
+                + " AS eur FROM (VALUES (?::text, ?::numeric,"
+                + " ?::numeric, ?::numeric, ?::numeric, ?::numeric, ?::numeric,"
+                + " ?::numeric)) AS pf(tarif_art, tarif_param_ct_kwh, netzentgelt_arbeitspreis_ct, stromsteuer_ct,"
                 + " konzessionsabgabe_ct, umlagen_ct, vertriebsaufschlag_ct, ust_pct)"
                 + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)"
                 + " CROSS JOIN (VALUES (?::numeric, ?::numeric)) AS r(load_kwh, grid_import_kwh)";
@@ -6380,9 +6405,9 @@ class PortalApiTest {
             com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice sheet, Double spot) {
         String sql = "SELECT "
                 + com.voltpilot.api.optimizer.SlotEconomics.importPriceCtSql("p.price_eur_mwh", flag)
-                + " AS ct FROM (VALUES (?::text, ?::numeric)) AS s(tarif_art, tarif_param_ct_kwh)"
-                + " CROSS JOIN (VALUES (?::numeric, ?::numeric, ?::numeric, ?::numeric, ?::numeric,"
-                + " ?::numeric)) AS ssp(netzentgelt_arbeitspreis_ct, stromsteuer_ct,"
+                + " AS ct FROM (VALUES (?::text, ?::numeric,"
+                + " ?::numeric, ?::numeric, ?::numeric, ?::numeric, ?::numeric,"
+                + " ?::numeric)) AS pf(tarif_art, tarif_param_ct_kwh, netzentgelt_arbeitspreis_ct, stromsteuer_ct,"
                 + " konzessionsabgabe_ct, umlagen_ct, vertriebsaufschlag_ct, ust_pct)"
                 + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)";
         try (Connection c = DriverManager.getConnection(
@@ -6691,7 +6716,8 @@ class PortalApiTest {
                 + " VALUES ('" + tenantA + "', '" + e + "', 'pv', '2023-06-15', 8.0)");
         exec("INSERT INTO register_einheit (tenant_id, site_id, art, inbetriebnahme, leistung_kwp,"
                 + " bestaetigt_am) VALUES ('" + tenantA + "', '" + e + "', 'pv', '2023-06-15', 8.0, now())");
-        exec("UPDATE site SET einspeiseverguetung_ct_kwh = 12.5 WHERE id = '" + e + "'");
+        // Die Angabe gilt von Anfang an (vp-tarif-ab-tag): der Vergleichs-Slot liegt in der Vergangenheit.
+        execVonAnfangAn("UPDATE site SET einspeiseverguetung_ct_kwh = 12.5 WHERE id = '" + e + "'");
         for (double spot : spots) {
             Double legacy = evalExportValueSql("eigenverbrauch", false, null, null,
                     LocalDate.of(2023, 6, 15), 8.0, 12.5, null, spot, slot).ct();
@@ -6747,8 +6773,9 @@ class PortalApiTest {
                 + " LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND pv.is_primary"
                 + " LEFT JOIN monthly_market_value mv ON false"
                 + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)"
-                + " CROSS JOIN (VALUES (?::timestamptz)) AS r(bucket)"
-                + " WHERE s.id = ?::uuid";
+                + " CROSS JOIN (VALUES (?::timestamptz)) AS r(bucket) "
+                + com.voltpilot.api.optimizer.SlotEconomics.preisFassungJoinSql("s.id", "r.bucket")
+                + "WHERE s.id = ?::uuid";
         try (Connection c = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
                 java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
@@ -6783,6 +6810,8 @@ class PortalApiTest {
                 + " FROM (VALUES (?::uuid, ?::text, ?::boolean, ?::numeric, ?::numeric, ?::boolean))"
                 + " AS s(id, plant_kind, netzladen_erlaubt, anzulegender_wert_ct_kwh,"
                 + " einspeiseverguetung_ct_kwh, inbetriebnahme_ab_solarspitzengesetz)"
+                + " CROSS JOIN LATERAL (SELECT s.einspeiseverguetung_ct_kwh,"
+                + " s.inbetriebnahme_ab_solarspitzengesetz) pf"
                 + " CROSS JOIN (VALUES (?::numeric)) AS mv(value_ct_kwh)"
                 + " CROSS JOIN (VALUES (?::date, ?::numeric)) AS pv(commissioned_on, pv_capacity_kwp)"
                 + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)"
@@ -6844,7 +6873,8 @@ class PortalApiTest {
                 "dynamisch", "18");
         String sheet = createSite(demo, "Bezug Preisblatt", "AT", "eigenverbrauch"); // ohne
         String bare = createSite(demo, "Bezug Spot", "AT", "eigenverbrauch"); // ohne
-        exec("INSERT INTO site_supply_price (site_id, tenant_id, netzentgelt_arbeitspreis_ct,"
+        // Das Preisblatt gilt von Anfang an (vp-tarif-ab-tag): die bewerteten Slots liegen im Februar.
+        execVonAnfangAn("INSERT INTO site_supply_price (site_id, tenant_id, netzentgelt_arbeitspreis_ct,"
                 + " stromsteuer_ct, konzessionsabgabe_ct, umlagen_ct, vertriebsaufschlag_ct, ust_pct)"
                 + " VALUES ('" + sheet + "', '" + tenantA + "', 8.0, 2.0, 1.5, 3.0, 1.5, 19.0)");
 
@@ -8226,7 +8256,7 @@ class PortalApiTest {
         // N1 (§ 51 Abs. 2 Nr. 1 EEG): ohne PV-Eintrag ist die kWp unbekannt, und § 51a greift
         // erst ab 100 kWp - die Selbstauskunft "ab Stichtag" hebt die negative Viertelstunde
         // deshalb NICHT auf 0 (EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP).
-        assertThat(putSheet(demo, base, abStichtag)).containsEntry("zustand", "angegeben")
+        assertThat(putSheet(demo, base, seitBeginn(abStichtag))).containsEntry("zustand", "angegeben")
                 .containsEntry("inbetriebnahmeAbSolarspitzengesetz", true)
                 .containsEntry("ohneVerguetungBeiNegativpreis", false);
         Map<String, Object> mitNull = siteEarningsDay(demo, site, "2026-03-10");
@@ -8235,12 +8265,12 @@ class PortalApiTest {
         assertThat(num(mitNull, "einspeiseErloesEur")).isCloseTo(0.09, eps0);
         Map<String, Object> vorStichtag = new java.util.HashMap<>(Map.of("satzCtKwh", 6.0,
                 "inbetriebnahmeAbSolarspitzengesetz", false));
-        assertThat(putSheet(demo, base, vorStichtag)).containsEntry("ohneVerguetungBeiNegativpreis", false);
+        assertThat(putSheet(demo, base, seitBeginn(vorStichtag))).containsEntry("ohneVerguetungBeiNegativpreis", false);
         // 1,0 kWh x 6 ct + 0,5 kWh x 6 ct: vor dem Stichtag gilt der Satz auch bei negativem Preis
         assertThat(num(siteEarningsDay(demo, site, "2026-03-10"), "einspeiseErloesEur"))
                 .isCloseTo(0.09, eps0);
         // Zurücksetzen löscht Satz UND Antwort: wieder Börsenpreis, keine erfundene Zahl.
-        assertThat(putSheet(demo, base, nullValue("satzCtKwh"))).containsEntry("zustand", "ohne_angabe")
+        assertThat(putSheet(demo, base, seitBeginn(nullValue("satzCtKwh")))).containsEntry("zustand", "ohne_angabe")
                 .containsEntry("inbetriebnahmeAbSolarspitzengesetz", null);
         // 1,0 kWh x 10 ct + 0,5 kWh x (-5 ct)
         assertThat(num(siteEarningsDay(demo, site, "2026-03-10"), "einspeiseErloesEur"))
@@ -8277,7 +8307,7 @@ class PortalApiTest {
         assertThat(fahrplanEinspeisewert(demo, site)).isCloseTo(7.94, eps);
 
         // 2. Eigener Satz (deutsches Komma): wirkt in Erlösen und Fahrplan.
-        Map<String, Object> angegeben = putSheet(demo, base, mapOf("satzCtKwh", "12,5"));
+        Map<String, Object> angegeben = putSheet(demo, base, seitBeginn(mapOf("satzCtKwh", "12,5")));
         assertThat(angegeben).containsEntry("zustand", "angegeben");
         assertThat(num(angegeben, "wirksamCtKwh")).isCloseTo(12.5, eps);
         assertThat(num(angegeben, "angegebenCtKwh")).isCloseTo(12.5, eps);
@@ -8300,7 +8330,7 @@ class PortalApiTest {
         // Mit Datum entscheidet das Datum: eine mitgesendete Antwort wird nicht gespeichert.
         Map<String, Object> mitAntwort = new java.util.HashMap<>(Map.of("satzCtKwh", 12.5,
                 "inbetriebnahmeAbSolarspitzengesetz", false));
-        assertThat(putSheet(demo, base, mitAntwort)).containsEntry("inbetriebnahmeAbSolarspitzengesetz", null)
+        assertThat(putSheet(demo, base, seitBeginn(mitAntwort))).containsEntry("inbetriebnahmeAbSolarspitzengesetz", null)
                 .containsEntry("ohneVerguetungBeiNegativpreis", false);
         Map<String, Object> fleet = rest.exchange(
                 url("/api/v1/earnings?range=day&at=2026-03-10"), HttpMethod.GET,
@@ -8330,7 +8360,7 @@ class PortalApiTest {
         assertThat(num(getSheet(demo, base), "angegebenCtKwh")).isCloseTo(12.5, eps);
 
         // 5. Zurücksetzen: die Herleitung gilt wieder, Zahl für Zahl.
-        Map<String, Object> zurueck = putSheet(demo, base, nullValue("satzCtKwh"));
+        Map<String, Object> zurueck = putSheet(demo, base, seitBeginn(nullValue("satzCtKwh")));
         assertThat(zurueck).isEqualTo(eeg);
         Map<String, Object> danach = siteEarningsDay(demo, site, "2026-03-10");
         assertThat(danach).containsEntry("exportVerguetungQuelle", "eeg");

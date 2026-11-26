@@ -32,6 +32,10 @@ import java.math.BigDecimal;
  * strictly positive) follows the same null-keeps-stored pattern as
  * {@code netzladenErlaubt}: null leaves the stored value untouched, so a form
  * that omits the field never clears the cap.
+ *
+ * <p>{@code tarifGueltigAb} (vp-tarif-ab-tag): from which day a CHANGED tariff
+ * applies - an ISO day (today or earlier), {@code "beginn"} (it was wrong all
+ * along) or absent (today). See {@code web.PreisGueltigAb}.
  */
 public record UpdateSiteRequest(
         @NotBlank String name,
@@ -62,7 +66,8 @@ public record UpdateSiteRequest(
                 message = "maxFeedInKw must be positive")
         @Digits(integer = 6, fraction = 2,
                 message = "maxFeedInKw must have at most 2 decimal places")
-                BigDecimal maxFeedInKw) {
+                BigDecimal maxFeedInKw,
+        String tarifGueltigAb) {
 
     public String biddingZoneOrDefault() {
         return biddingZone == null || biddingZone.isBlank() ? "DE-LU" : biddingZone;

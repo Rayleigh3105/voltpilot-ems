@@ -622,12 +622,20 @@ const weitere = {
    * Ohne Inbetriebnahmedatum braucht ein Satz die Antwort zu § 51a
    * (`inbetriebnahmeAbSolarspitzengesetz`: in Betrieb ab dem 25.02.2025?).
    */
-  setEinspeiseverguetung: (siteId: string, satzCtKwh: number | null, inbetriebnahmeAbSolarspitzengesetz?: boolean | null) =>
+  setEinspeiseverguetung: (
+    siteId: string,
+    satzCtKwh: number | null,
+    inbetriebnahmeAbSolarspitzengesetz?: boolean | null,
+    /** Ab wann die Angabe gilt (vp-tarif-ab-tag): `JJJJ-MM-TT` bis heute oder `beginn`; fehlt = heute. */
+    gueltigAb?: string,
+  ) =>
     request<Einspeiseverguetung>(`/api/v1/sites/${siteId}/einspeiseverguetung`, {
       method: 'PUT',
-      body: JSON.stringify(
-        inbetriebnahmeAbSolarspitzengesetz == null ? { satzCtKwh } : { satzCtKwh, inbetriebnahmeAbSolarspitzengesetz },
-      ),
+      body: JSON.stringify({
+        satzCtKwh,
+        ...(inbetriebnahmeAbSolarspitzengesetz == null ? {} : { inbetriebnahmeAbSolarspitzengesetz }),
+        ...(gueltigAb == null ? {} : { gueltigAb }),
+      }),
     }),
   /** Der Partnerkatalog der Direktvermarktung (E6 = A), mandantenlos. */
   direktvermarkterKatalog: () => request<{ partner: string; name: string; vertragLink: string | null }[]>(
