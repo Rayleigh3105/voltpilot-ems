@@ -32,11 +32,13 @@
   line-height: 1.5;
 }
 
-/* Die echten Symbole (Teilen, Menü) VOR dem Satz, der sie benennt - nicht danach, damit das
-   Auge erst das Symbol sucht und dann den Satz als Bestätigung liest, wie auf dem Gerät selbst. */
+/* Die echten Symbole (Teilen, Menü) GENAU dort im Satz, wo sie genannt werden - „tippen Sie auf
+   [Symbol] Teilen" -, nicht als eigene Zeile vor dem ganzen Schritt (Rückmeldung zur ersten
+   Fassung: zu klein und am falschen Ort). In Textgröße (18px bei 1.5 line-height), damit es als
+   Teil des Satzes gelesen wird, nicht als Deko davor. Der Text selbst bringt das Leerzeichen vor
+   und nach dem Symbol mit (`'Tippen Sie auf ', {icon}, ' Teilen.'` in `installApp.ts`). */
 .vp-installapp-step-icon {
-  vertical-align: -3px;
-  margin-right: 4px;
+  vertical-align: -4px;
   color: var(--vp-text-muted, #6c757d);
 }
 

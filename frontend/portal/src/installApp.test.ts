@@ -16,6 +16,8 @@ import {
   resetInstallApp,
   subscribeInstallApp,
   type InstallEnv,
+  type InstallStep,
+  type InstallStepIcon,
 } from './installApp';
 
 /** Ein `window`-Stellvertreter mit genau dem, was `installApp` liest. */
@@ -284,6 +286,16 @@ describe('isAndroidChromium', () => {
   });
 });
 
+/** Alle Text-Stücke eines Schritts aneinandergereiht - zum Prüfen des GANZEN Satzes. */
+function stepText(step: InstallStep): string {
+  return step.parts.map((p) => ('text' in p ? p.text : '')).join('');
+}
+
+/** Alle Symbole eines Schritts in Lesereihenfolge - zum Prüfen, WELCHE Icons er zeigt. */
+function stepIcons(step: InstallStep): InstallStepIcon[] {
+  return step.parts.flatMap((p) => ('icon' in p ? [p.icon] : []));
+}
+
 describe('installView: Kundencopy, kein Fachwort', () => {
   const all = (
     ['installiert', 'installierbar', 'ios-anleitung', 'android-anleitung', 'nicht-verfuegbar'] as const
@@ -291,20 +303,20 @@ describe('installView: Kundencopy, kein Fachwort', () => {
 
   it('sagt „App" und nie PWA/Manifest/Service Worker', () => {
     const text = all
-      .flatMap((v) => [v.text, v.hint ?? '', v.action ?? '', ...v.steps.map((s) => s.text)])
+      .flatMap((v) => [v.text, v.hint ?? '', v.action ?? '', ...v.steps.map(stepText)])
       .join(' ');
     expect(text).not.toMatch(/PWA|Manifest|Service.?Worker|Web.?App/i);
     expect(text).toMatch(/App/);
   });
 
   it('zeigt nie ein Unicode-Symbol anstelle eines echten Icons (Haus-Regel aus Icon.jsx)', () => {
-    const text = all.flatMap((v) => v.steps.map((s) => s.text)).join(' ');
+    const text = all.flatMap((v) => v.steps.map(stepText)).join(' ');
     expect(text).not.toMatch(/⋮|⋯|•••/);
   });
 
   it('schließt eine Anführung immer mit dem typografischen Zeichen „…“, nie mit dem geraden "', () => {
     const text = all
-      .flatMap((v) => [v.text, v.hint ?? '', ...v.steps.map((s) => s.text)])
+      .flatMap((v) => [v.text, v.hint ?? '', ...v.steps.map(stepText)])
       .join('\n');
     expect(text).not.toContain('"');
   });
@@ -327,25 +339,25 @@ describe('installView: Kundencopy, kein Fachwort', () => {
   it('führt ohne bekanntes Gerät/Browser durch das Teilen-Menü - ehrlich uneindeutig statt falsch spezifisch', () => {
     const v = installView('ios-anleitung');
     expect(v.steps).toHaveLength(2);
-    expect(v.steps[0].text).toMatch(/Teilen/);
-    expect(v.steps[0].icons).toContain('share');
+    expect(stepText(v.steps[0])).toMatch(/Teilen/);
+    expect(stepIcons(v.steps[0])).toContain('share');
     // Ohne zu wissen, welche Safari-Leiste der Kunde hat, nennt die Anleitung NIE nur eine
     // Lage - sie zeigt beide Symbole (Menü UND Teilen) statt einer falschen Festlegung.
-    expect(v.steps[0].icons).toContain('more-horizontal');
-    expect(v.steps[1].text).toMatch(/Home-Bildschirm/);
+    expect(stepIcons(v.steps[0])).toContain('more-horizontal');
+    expect(stepText(v.steps[1])).toMatch(/Home-Bildschirm/);
   });
 
   it('auf dem iPad sitzt das Teilen-Symbol oben - eine einzige, eindeutige Lage', () => {
     const v = installView('ios-anleitung', undefined, { ipad: true, fremderBrowser: false });
-    expect(v.steps[0].text).toMatch(/oben/);
-    expect(v.steps[0].icons).toEqual(['share']);
+    expect(stepText(v.steps[0])).toMatch(/oben/);
+    expect(stepIcons(v.steps[0])).toEqual(['share']);
     expect(v.hint).toMatch(/wie eine App statt nur als Lesezeichen/);
   });
 
   it('in Chrome/Edge/Firefox auf iOS sitzt Teilen oben an der Adressleiste, nicht unten', () => {
     const v = installView('ios-anleitung', undefined, { ipad: false, fremderBrowser: true });
-    expect(v.steps[0].text).toMatch(/Adressleiste/);
-    expect(v.steps[0].icons).toEqual(['share']);
+    expect(stepText(v.steps[0])).toMatch(/Adressleiste/);
+    expect(stepIcons(v.steps[0])).toEqual(['share']);
     // Der iOS-26-Schalter ist eine Safari-eigene Fläche - in einem fremden Browser würde die
     // Erwähnung etwas behaupten, das dort gar nicht existiert.
     expect(v.hint).not.toMatch(/Lesezeichen/);
@@ -361,8 +373,8 @@ describe('installView: Kundencopy, kein Fachwort', () => {
     const v = installView('android-anleitung');
     expect(v.text).not.toMatch(/bietet das Einrichten hier nicht an/);
     expect(v.steps).toHaveLength(2);
-    expect(v.steps[0].icons).toEqual(['more-vertical']);
-    expect(v.steps[1].text).toMatch(/App installieren|Startbildschirm/);
+    expect(stepIcons(v.steps[0])).toEqual(['more-vertical']);
+    expect(stepText(v.steps[1])).toMatch(/App installieren|Startbildschirm/);
   });
 
   it('nach einem Abbruch steht dort der ANDERE Grund - kein eigener Zustand', () => {
