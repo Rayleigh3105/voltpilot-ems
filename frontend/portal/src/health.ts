@@ -8,6 +8,7 @@
 import type { PlatformCertVerdict } from './api';
 import type { ControlState } from './control';
 import { AUFBAU_REITER } from './ebenenNav';
+import { DIREKTVERMARKTUNG } from './glossarEinstieg';
 
 export type HealthState = 'ok' | 'warn' | 'off';
 
@@ -121,7 +122,7 @@ export function healthChecklist(input: HealthInput): HealthItem[] {
   // begrenzen/verbunden sind kein Befund und bekommen nie eine Zeile hier).
   if (input.direktvermarktungGestoert) {
     items.push({
-      key: 'direktvermarktung', label: 'Direktvermarktung', state: 'warn',
+      key: 'direktvermarktung', label: DIREKTVERMARKTUNG, state: 'warn',
       detail: input.direktvermarktungGestoert,
     });
   }
@@ -142,7 +143,7 @@ const KEY_WORD: Record<HealthItem['key'], string> = {
   control: 'Steuerung',
   battery: 'Speicher',
   grenze: 'Einspeisegrenze',
-  direktvermarktung: 'Direktvermarktung',
+  direktvermarktung: DIREKTVERMARKTUNG,
 };
 
 /** „a, b und c" — die deutsche Aufzählung. */
@@ -162,7 +163,7 @@ export const ZUSTAND_LEVER: Record<
   battery: { sub: 'technik', label: 'Einstellungen' },
   // Die hinterlegte Einspeisegrenze steht in den Einstellungen der Anlage (`AnlageTechnik`).
   grenze: { sub: 'technik', label: 'Einstellungen' },
-  direktvermarktung: { sub: 'direktvermarktung', label: 'Direktvermarktung' },
+  direktvermarktung: { sub: 'direktvermarktung', label: DIREKTVERMARKTUNG },
 };
 
 /** Kopftitel der lauten Karte — wortgleich mit dem Popover des Abzeichens. */

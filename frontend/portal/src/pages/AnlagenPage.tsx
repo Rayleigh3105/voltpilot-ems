@@ -113,6 +113,7 @@ import {
 import { EigenerBaustein } from '../components/EigeneAuswertung';
 import { useAnlageSurface } from '../useAnlageSurface';
 import { anzeige as direktvermarktungAnzeige, verbindungsbild as direktvermarktungBild, type DirektvermarktungStatus } from '../direktvermarktung';
+import { DIREKTVERMARKTUNG } from '../glossarEinstieg';
 import { useTaktZustand } from '../gleicheAntwort';
 import { useTaktUhr } from '../useTaktUhr';
 import { CockpitMessstellenWeg } from '../components/CockpitMessstellenWeg';
@@ -1658,7 +1659,11 @@ export function AnlageSeite({
   const direktvermarktungKopfAnzeige = dvStatus?.aktuell && dvStatus.aktuell.zustand !== 'beendet'
     ? direktvermarktungAnzeige(dvStatus.aktuell, dvStatus.partner?.name ?? null, dvStatus.stand ?? null, now)
     : null;
-  const direktvermarktungKopfPartner = dvStatus?.partner?.name ?? dvStatus?.aktuell?.partner ?? null;
+  // Firstmate-Bildbefund (msg 024, pr2000-bilder-Runde): EIN Name an jeder der drei Stellen, die
+  // Kurzform des Katalogs ("luox", nicht "luox energy" wie auf der eigenen Seite - dort steht die
+  // volle Statuszeile aus `anzeige()`, hier nur das Etikett). `aktuell.partner` IST diese Kurzform
+  // (derselbe Schlüssel wie der Katalog, `partner.json`), nie eine zweite Quelle.
+  const direktvermarktungKopfPartner = dvStatus?.aktuell?.partner ?? null;
   // §7.3 Stelle 3 (Firstmate-Antwort msg 023): der Chip am Netz-Knoten, NUR solange die
   // Partner-Grenze wirklich unter 100 % liegt - ruhig (Vertrag, kein Fehler, §7.2 Regel 5), darum
   // ohne weitere Bedingung an den Verbindungszustand.
@@ -1746,6 +1751,11 @@ export function AnlageSeite({
     slots: planSlots,
     slotMinutes: plan?.slotMinutes ?? 15,
     plantKind: site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+    // §7.3 Stelle 4: NICHT dasselbe wie `plantKind` - die Veräußerungsform lässt sich in den
+    // Einstellungen auch OHNE einen echten Anschluss auf "Direktvermarktung" setzen (EEG-Angabe,
+    // `AnlageTechnik.tsx`). "über luox" behauptet nur, was `dvStatus` wirklich zeigt (ein aktiver,
+    // nicht beendeter Eintrag) - sonst stünde eine erfundene Quelle am Geld.
+    direktvermarktungPartner: direktvermarktungKopfPartner,
   });
   // `cockpitWidgets` is safe to call unconditionally: `blocks`/`modes` are
   // already the correctly-empty read-model of a non-stack Anlage, so it
@@ -2590,7 +2600,7 @@ export function AnlageSeite({
       dot
       data-testid="anlage-direktvermarktung-chip"
     >
-      Direktvermarktung · {direktvermarktungKopfPartner}
+      {DIREKTVERMARKTUNG} · {direktvermarktungKopfPartner}
     </Badge>
   ) : null;
 

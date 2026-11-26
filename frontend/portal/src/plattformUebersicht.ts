@@ -25,6 +25,7 @@
  * Reines Modul: kein React, kein Netzwerk.
  */
 import type { IconName } from '../designsystem/components/core/Icon';
+import { DIREKTVERMARKTUNG } from './glossar';
 import type {
   AdminFleetRelease,
   AdminFleetSite,
@@ -219,7 +220,7 @@ export function direktvermarktungKennzahl(zeilen: readonly AdminDirektvermarktun
   return {
     id: 'direktvermarktung-kennzahl',
     icon: 'zap',
-    label: 'Direktvermarktung',
+    label: DIREKTVERMARKTUNG,
     zahl: getrennt,
     ton: getrennt > 0 ? 'warn' : 'ok',
     wort: getrennt > 0 ? (getrennt === 1 ? 'Anlage getrennt' : 'Anlagen getrennt') : 'Alle verbunden ✓',

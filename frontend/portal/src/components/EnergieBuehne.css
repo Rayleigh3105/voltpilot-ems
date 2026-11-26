@@ -302,7 +302,8 @@
    unter der Netz-Beschriftung statt eines eigenen Bedienelements. */
 .vp-lp-chip {
   display: inline-block;
-  margin-top: 2px;
+  max-width: 100%;
+  margin-top: 3px;
   padding: 1px 7px;
   border-radius: var(--vp-radius-pill, 999px);
   background: #FFF3E0;
@@ -310,7 +311,12 @@
   font-size: 0.68rem;
   font-weight: 600;
   line-height: 1.4;
-  white-space: nowrap;
+  /* ⚠ `.vp-lp-lab` setzt white-space:nowrap, vererbt an jedes Kind - ohne diese Zeile sprengt ein
+     zu langer Chip (Partnername + Prozent) am engen Telefon-Layout sein eigenes max-width und läuft
+     nach LINKS über den Rand hinaus (rechtsbündig: das rechte Ende bleibt stehen, das linke wandert
+     unter die PV-Leitung). Normal erlaubt dem Chip, selbst umzubrechen statt zu überlaufen. */
+  white-space: normal;
+  box-sizing: border-box;
 }
 .vp-lp-lab.r {
   transform: translateY(-50%);

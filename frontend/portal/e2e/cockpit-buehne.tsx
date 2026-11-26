@@ -92,7 +92,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       // Seite mountet.
       <div className="vp-anlage-badges" style={{ marginBottom: 10 }}>
         <Badge variant="ok" dot data-testid="anlage-direktvermarktung-chip">
-          Direktvermarktung · luox energy
+          Direktvermarktung · luox
         </Badge>
       </div>
     )}
@@ -106,16 +106,18 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         pv={pv}
         isPhone={phone}
         now={now}
-        direktvermarktungChip={dv ? 'begrenzt · luox energy 0 %' : null}
+        direktvermarktungChip={dv ? 'begrenzt · luox 0 %' : null}
       />
     </section>
     {dv && (
-      // §7.3 Stelle 4: dieselbe Kachel wie im echten Cockpit (`CockpitKacheln.GeldKachel`).
+      // §7.3 Stelle 4: dieselbe Kachel wie im echten Cockpit (`CockpitKacheln.GeldKachel`);
+      // Firstmate-Bildbefund msg 024 - "über luox" hängt an der BESTEHENDEN Zeitraum-Zeile
+      // (`zeitraumZusatz`), keine zweite Zeile.
       <section style={{ marginTop: 14, maxWidth: 320 }}>
         <GeldKachel
           money={{
             label: 'Unterm Strich · Juli', value: '+ 63,23 €', kosten: false, speicher: null,
-            attribution: 'Juli · über luox', attributionTitel: 'Ihr Strom wird direkt vermarktet.',
+            attribution: null, attributionTitel: null, zeitraumZusatz: 'über luox',
             attributionZweit: null, attributionInterim: false, laeuft: false, bestand: null, winterSatz: null,
             formel: null, zeitraumKarte: null,
           }}

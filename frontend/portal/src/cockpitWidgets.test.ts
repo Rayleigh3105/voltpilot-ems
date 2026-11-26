@@ -353,7 +353,33 @@ describe('Der Hero', () => {
     expect(hero.money?.attribution).toBeNull();
   });
 
-  it('Direktvermarktung §7.3 Stelle 4: ohne Steuerungs-/Speicher-Zurechnung nennt die Unterzeile luox', () => {
+  it('Direktvermarktung §7.3 Stelle 4: ohne Steuerungs-/Speicher-Zurechnung hängt "über luox" an die BESTEHENDE Zeitraum-Zeile (Firstmate-Bildbefund: keine zweite Zeile)', () => {
+    const hero = cockpitHero({
+      totals: TOTALS,
+      money: money({ savedSpeicherEur: null, savedSteuerungEur: null }),
+      range: 'month',
+      now: NOW,
+      direktvermarktungPartner: 'luox',
+    });
+    expect(hero.money?.attribution).toBeNull();
+    expect(hero.money?.zeitraumZusatz).toBe('über luox');
+  });
+
+  it('Direktvermarktung §7.3 Stelle 4: die Steuerungs-Zurechnung hat Vorrang (kein zeitraumZusatz daneben)', () => {
+    const hero = cockpitHero({
+      totals: TOTALS,
+      money: money(),
+      range: 'month',
+      now: NOW,
+      direktvermarktungPartner: 'luox',
+    });
+    expect(hero.money?.attribution).toContain('Steuerung');
+    expect(hero.money?.zeitraumZusatz).toBeNull();
+  });
+
+  it('Direktvermarktung §7.3 Stelle 4: die bloße Veräußerungsform-Einstellung OHNE echten Anschluss behauptet nichts (Honestitäts-Befund)', () => {
+    // plantKind kann in den Einstellungen auch ohne luox-Anschluss auf 'direktvermarktung' stehen
+    // (EEG-Angabe, AnlageTechnik.tsx) - ohne direktvermarktungPartner (dvStatus) bleibt es still.
     const hero = cockpitHero({
       totals: TOTALS,
       money: money({ savedSpeicherEur: null, savedSteuerungEur: null }),
@@ -361,19 +387,7 @@ describe('Der Hero', () => {
       now: NOW,
       plantKind: 'direktvermarktung',
     });
-    expect(hero.money?.attribution).toBe('Juli · über luox');
-  });
-
-  it('Direktvermarktung §7.3 Stelle 4: die Steuerungs-Zurechnung hat Vorrang (keine doppelte Unterzeile)', () => {
-    const hero = cockpitHero({
-      totals: TOTALS,
-      money: money(),
-      range: 'month',
-      now: NOW,
-      plantKind: 'direktvermarktung',
-    });
-    expect(hero.money?.attribution).toContain('Steuerung');
-    expect(hero.money?.attribution).not.toContain('luox');
+    expect(hero.money?.zeitraumZusatz).toBeNull();
   });
 
   it('zeigt am laufenden Tag den negativen Geldfluss als Zwischenstand plus geplanten Bestand', () => {

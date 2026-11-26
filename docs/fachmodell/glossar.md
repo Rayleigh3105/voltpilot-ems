@@ -255,6 +255,12 @@ Der Netzanschluss ist ein eigenes Objekt am Standort (E6). Er trägt, was heute 
 
 > **Verfeinert durch AP-01 E10:** Die vereinbarte Leistung des Anschlusses ist der Prüfstein: Grenzen werden gegen ihn plausibilisiert.
 
+**Direktvermarktung als Anschluss an einen Partner (Konzept vp-direktvermarktung-konzept, Firstmate-Entscheide 26.11.2026).**
+Die Veräußerungsform „Direktvermarktung“ kann seit diesem Paket einen WIRKLICHEN, laufenden Anschluss an einen Partner tragen (Katalog `catalog/direktvermarkter`, bisher „luox“) — über einen eigenen VPN/Modbus-Tunnel, den die Cloud einrichtet und der Fernlauf-Dienst der Box zustellt. Das ist eine ANDERE Aussage als die bloße Einstellung „Veräußerungsform = Direktvermarktung“ (EEG-Angabe nach § 21b, auch ohne Anschluss möglich): das Cockpit zeigt „über {Partner}“ an der Erlöszeile nur, wenn ein solcher Anschluss WIRKLICH läuft, nie aus der bloßen Einstellung.
+Drei ruhige Stellen im Cockpit zeigen das ohne Fehlerton, solange der Anschluss nur eine Grenze setzt (Vertrag, kein Fehler): ein Chip im Anlagenkopf „Direktvermarktung · {Partner}“ (grün verbunden, gelb bei echter Störung), ein Chip am Netz-Knoten „begrenzt · {Partner} {Prozent} %“ nur unter 100 %, und die Unterzeile der Erlöskarte „{Zeitraum} · über {Partner}“.
+⚠ Nicht zu verwechseln mit dem älteren Feld der Anlagensteuerung (Erzeugerkette EZ-8): dessen Signal „Direktvermarkter stoppt“/„Direktvermarkter ruft ab“ ist ein HARDWARE-Signal (WAGO-Modbus) einer angeschlossenen Anlagensteuerung, unabhängig von diesem Partner-Anschluss. Beide Wörter stehen in derselben Kopf-Badge-Zeile; der Wortlaut bleibt bewusst verschieden („Direktvermarktung · {Partner}“ vs. „Direktvermarkter stoppt/ruft ab“), eine Zusammenführung ist nicht entschieden.
+Kundenwörter: `DIREKTVERMARKTUNG` (PORTAL/glossar.ts); Ableitung `PORTAL/direktvermarktung.ts`, Chips `PORTAL/pages/AnlagenPage.tsx`, Erlöszeile `PORTAL/cockpitWidgets.ts`.
+
 ## Box (Edge)
 
 *Sicht: Erfassung*

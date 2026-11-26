@@ -1368,7 +1368,7 @@ describe('Direktvermarktung §7.3 Stelle 1: der Chip im Kopf', () => {
       expect(el).toBeTruthy();
       return el as HTMLElement;
     });
-    expect(chip.textContent).toContain('Direktvermarktung · luox energy');
+    expect(chip.textContent).toContain('Direktvermarktung · luox');
     const head = container.querySelector('.vp-anlage-head') as HTMLElement;
     expect(head.textContent?.match(/Direktvermarktung/g)?.length).toBe(1);
   });
@@ -1421,7 +1421,7 @@ describe('Direktvermarktung §7.3 Stelle 1: der Chip im Kopf', () => {
       expect(el).toBeTruthy();
       return el as HTMLElement;
     });
-    expect(chip.textContent).toBe('begrenzt · luox energy 0 %');
+    expect(chip.textContent).toBe('begrenzt · luox 0 %');
   });
 
   it('§7.3 Stelle 3: ohne Direktvermarktung kein Chip am Netz-Knoten', async () => {
