@@ -175,7 +175,7 @@ export function AnlageOrtBlatt({
             <Button variant="ghost" onClick={onClose} disabled={busy}>
               {KNOPF_ABBRECHEN}
             </Button>
-            <Recht aktion="anlage.verwalten">
+            <Recht aktion="anlage.ort_berichtigen">
               <Button
                 variant="primary"
                 disabled={busy || !hatSichGeaendert}
@@ -194,7 +194,7 @@ export function AnlageOrtBlatt({
             <p>
               <strong>Gespeichert.</strong> Vorher: {adresseText(start.adresse)}
             </p>
-            <Recht aktion="anlage.verwalten">
+            <Recht aktion="anlage.ort_berichtigen">
               <button type="button" className="vp-linklike" onClick={() => void rueckgaengig()} disabled={busy}>
                 {KNOPF_RUECKGAENGIG}
               </button>

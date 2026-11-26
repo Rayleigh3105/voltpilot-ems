@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { TechnikSection } from './AnlageTechnik';
 import { ApiError, type Site, type StandorteAmStichtag } from '../api';
 import { api } from '../apiVoll';
 import { DIALOG_TITEL } from '../standorte';
 import { ahrenbergHeute, ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS } from '../test/standorteFixtures';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 
 /**
  * UEMS AP-02 IP-8 — Bestandsschutz der Gruppe „Anlage“: ein Kunde, dessen Anlage
@@ -165,5 +167,33 @@ describe('Meine Anlage mit vollständigem Standort — EINE Zeile (vp-standort-k
     expect(within(el).getByText(/Noch nicht eingerichtet — es fehlt: Adresse/)).toBeInTheDocument();
     fireEvent.click(within(el).getByRole('button', { name: 'Adresse nachtragen: Werk Ahrenberg – Halle 1' }));
     expect(await screen.findByText(DIALOG_TITEL.vervollstaendigen)).toBeInTheDocument();
+  });
+
+  it('E2 = A: „Standort bearbeiten" braucht anlage.ort_berichtigen, nicht mehr anlage.verwalten', async () => {
+    const halle2: Site = { ...hof, id: FIXTURE_IDS.an2, name: 'Werk Ahrenberg – Halle 2' };
+    const me = rechteSeed('JW').me;
+    const ohne = (kennung: string) => (rechte: readonly string[]) => rechte.filter((r) => r !== kennung);
+    // Kundenadministrator OHNE das neue Recht: der Knopf wird zum Hinweis.
+    setSelbstauskunft({
+      ...me,
+      unternehmen_rechte: ohne('anlage.ort_berichtigen')(me.unternehmen_rechte),
+      standorte: me.standorte.map((s) => ({ ...s, rechte: ohne('anlage.ort_berichtigen')(s.rechte) })),
+    });
+    await karte(halle2, async () => ahrenbergHeute());
+    let el = document.getElementById('technik-anlage')!;
+    expect(within(el).queryByRole('button', { name: /^Standort bearbeiten/ })).toBeNull();
+    expect(within(el).getByRole('note')).toBeInTheDocument();
+    cleanup();
+
+    // Energiemanager OHNE anlage.verwalten, aber MIT dem neuen Recht (E2 = A): der Knopf bleibt.
+    setSelbstauskunft({
+      ...me,
+      unternehmen_rechte: ohne('anlage.verwalten')(rechteSeed('IK').me.unternehmen_rechte),
+      standorte: rechteSeed('IK').me.standorte.map((s) => ({ ...s, rechte: ohne('anlage.verwalten')(s.rechte) })),
+    });
+    await karte(halle2, async () => ahrenbergHeute());
+    el = document.getElementById('technik-anlage')!;
+    expect(within(el).getByRole('button', { name: /^Standort bearbeiten/ })).toBeInTheDocument();
+    setSelbstauskunft(rechteSeed('JW').me);
   });
 });
