@@ -127,6 +127,27 @@ describe('Dialog „Gehört zu" (Schritt 2c, vormals T6b „Anlage zuordnen")', 
     expect(screen.getByText('Seit wann gehört Werk Ahrenberg – Halle 2 zu Werk Ahrenberg Nord?')).toBeInTheDocument();
   });
 
+  it('das Datum im Feld „Gültig ab" und das Datum in den Folgen bleiben immer gleich - auch nach einer Änderung (Inbox 011)', async () => {
+    // Die Vorschau URTEILT mit dem gesendeten Tag, wie der echte Server - kein fest verdrahtetes
+    // Ergebnis, sonst beweist der Test nichts: die Antwort hängt von der Fläche ab, nicht vom Mock.
+    const vorschau = vi.spyOn(api, 'anlageStandortVorschau').mockImplementation(async (_anlageId, _standortId, gueltigAb) =>
+      umzug({ gueltigAb }),
+    );
+    oeffne();
+    waehleNordUndWeiter();
+    await screen.findByTestId('umzug-folgen-kurz');
+    expect(screen.getByRole('combobox', { name: 'Gültig ab' })).toHaveTextContent('20.02.2027');
+    expect(vorschau).toHaveBeenLastCalledWith(FIXTURE_IDS.an2, NORD, '2027-02-20', false);
+    expect(screen.getByText('Ab 20.02.2027 gehört die Anlage zu Werk Ahrenberg Nord (ST-3).')).toBeInTheDocument();
+
+    // Einen anderen Tag wählen: beide Stellen müssen demselben neuen Tag folgen.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Gültig ab' }));
+    fireEvent.click(screen.getAllByRole('gridcell', { name: '1' })[0]);
+    expect(screen.getByRole('combobox', { name: 'Gültig ab' })).toHaveTextContent('01.02.2027');
+    await waitFor(() => expect(vorschau).toHaveBeenLastCalledWith(FIXTURE_IDS.an2, NORD, '2027-02-01', false));
+    expect(await screen.findByText('Ab 01.02.2027 gehört die Anlage zu Werk Ahrenberg Nord (ST-3).')).toBeInTheDocument();
+  });
+
   it('zurück aus „Seit wann?" führt wieder zur Liste, die Wahl bleibt erhalten', () => {
     oeffne();
     waehleNordUndWeiter();
