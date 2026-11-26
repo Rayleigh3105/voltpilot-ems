@@ -86,7 +86,10 @@ test.describe('1440 px', () => {
   }
 
   test('Haushalt ohne Speicher: keine Steuerungs-Zeile am Geld, kein Netzladen-Abzeichen, kein leerer Rasterabstand', async ({ page }) => {
-    const fehler = await oeffnen(page, 'abend', 1440);
+    // `&grundlast=nie`: ohne ihn zeigt Mühlbach seit der Grundlast-Kachel (#1874) immer eine Kachel
+    // zwischen Bühne und Geld-Zeile (belegt in e2e/grundlast.spec.ts, „Kachel Grundlast (muehlbach)“) -
+    // der Fall dieses Tests ist ausdrücklich der OHNE jede weitere Kachel (Konzept vp-cockpit-privat-konzept).
+    const fehler = await oeffnen(page, 'abend', 1440, '&grundlast=nie');
     expect(await text(page, '.vp-main')).not.toContain('Steuerung —');
     expect(await text(page, '.vp-anlage-badges')).not.toMatch(/Solarladen|Netzladen/);
     // Ohne weitere Kacheln steht zwischen Karte und Geld-Zeile derselbe Abstand wie zwischen den Zeilen darunter.
