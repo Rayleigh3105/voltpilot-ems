@@ -43,6 +43,9 @@ test('Android/Chrome ohne Angebot: Menü-Weg statt der falschen Behauptung (der 
   await expect(page.getByText(/noch nicht von sich aus angeboten/)).toBeVisible();
   const schritte = page.locator('.vp-installapp-steps li');
   await expect(schritte).toHaveCount(2);
+  await expect(schritte.nth(0)).toContainText(/Menü/);
+  // Das Symbol sitzt MITTEN im Satz ("auf [Symbol] Menü"), nicht als eigene Zeile davor.
+  await expect(schritte.nth(0).locator('.vp-installapp-step-icon')).toHaveCount(1);
   await expect(schritte.nth(1)).toContainText(/App installieren|Startbildschirm/);
   await expect(page.getByRole('button', { name: 'App installieren' })).toHaveCount(0);
 
@@ -77,7 +80,12 @@ test('iPhone/Safari: die Teilen-Anleitung, nie ein versprochener Dialog', async 
   await expect(page.getByText(WRONG_CLAIM)).toHaveCount(0);
   const schritte = page.locator('.vp-installapp-steps li');
   await expect(schritte).toHaveCount(2);
-  await expect(schritte.nth(0)).toContainText(/Teilen/);
+  await expect(schritte.nth(0)).toContainText(/Tippen Sie unten auf/);
+  await expect(schritte.nth(0)).toContainText(/Teilen\. Sehen Sie nur/);
+  await expect(schritte.nth(0)).toContainText(/tippen Sie zuerst darauf/);
+  // Zwei Symbole MITTEN im Satz (Teilen UND das Menü, das es ggf. versteckt) - nicht als
+  // eigene Zeile davor.
+  await expect(schritte.nth(0).locator('.vp-installapp-step-icon')).toHaveCount(2);
   await expect(schritte.nth(1)).toContainText(/Home-Bildschirm/);
   await expect(page.getByRole('button', { name: 'App installieren' })).toHaveCount(0);
 
@@ -108,7 +116,9 @@ test('iPad/Safari: Teilen sitzt oben am Bildschirm - eine einzige, eindeutige La
 
   await expect(page.getByText(WRONG_CLAIM)).toHaveCount(0);
   const schritte = page.locator('.vp-installapp-steps li');
-  await expect(schritte.nth(0)).toContainText(/oben im Bildschirm/);
+  await expect(schritte.nth(0)).toContainText(/Tippen Sie oben auf/);
+  await expect(schritte.nth(0)).toContainText(/Teilen\./);
+  await expect(schritte.nth(0).locator('.vp-installapp-step-icon')).toHaveCount(1);
   await expect(page.getByText(/wie eine App statt nur als Lesezeichen/)).toBeVisible();
 
   await page.screenshot({ path: 'e2e/shots/install-app-ipad-anleitung.png' });
@@ -127,7 +137,9 @@ test('Chrome auf iPhone: Teilen sitzt oben an der Adressleiste, nicht unten in e
 
   await expect(page.getByText(WRONG_CLAIM)).toHaveCount(0);
   const schritte = page.locator('.vp-installapp-steps li');
-  await expect(schritte.nth(0)).toContainText(/Adressleiste/);
+  await expect(schritte.nth(0)).toContainText(/Adressleiste auf/);
+  await expect(schritte.nth(0)).toContainText(/Teilen\./);
+  await expect(schritte.nth(0).locator('.vp-installapp-step-icon')).toHaveCount(1);
   // Der iOS-26-Schalter ist eine Safari-eigene Fläche - in Chrome gibt es ihn nicht.
   await expect(page.getByText(/wie eine App statt nur als Lesezeichen/)).toHaveCount(0);
 
