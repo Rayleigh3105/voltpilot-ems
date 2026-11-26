@@ -1782,6 +1782,13 @@ paths:
           required: false
           description: Der erste Tag der neuen Zuordnung; fehlend = heute in der Zeitzone des Ziels.
           schema: { type: string, format: date }
+        - name: korrektur
+          in: query
+          required: false
+          description: >
+            B2 „Zuordnung korrigieren": ersetzt die Zuordnung ab ihrem eigenen Beginn (gueltigAb
+            MUSS deren Beginn sein) statt ein neues „gültig ab" danebenzulegen. Fehlend = false.
+          schema: { type: boolean }
       responses:
         "200":
           description: Die Folgen.
@@ -1809,17 +1816,21 @@ paths:
         Anlage beim neuen Standort; ein Tag in der Zukunft ist geplant und wirkt
         erst dann, einer in der Vergangenheit ist erlaubt und rückwirkend
         sichtbar (E2). Die Regel ist docs/contracts/v2/ortsbaum-vectors.json
-        (Familie `ueberlappung`/`eintrag`, Vorgang verschieben). Abgelehnt mit
-        dem Satz des Vertrags: 400 `ziel_ist_bisheriger_eltern` (`feld`
+        (Familie `ueberlappung`/`eintrag`, Vorgang verschieben - oder, mit
+        `korrektur: true` (B2 „Zuordnung korrigieren"), Vorgang korrektur: das
+        Intervall, das AM `gueltigAb` BEGINNT, wird ersetzt statt ein neues
+        daneben anzulegen; das ersetzte bleibt aufgehoben lesbar). Abgelehnt
+        mit dem Satz des Vertrags: 400 `ziel_ist_bisheriger_eltern` (`feld`
         standortId), 422 `vor_dem_ersten_intervall`, 409 `gleicher_tag` (am Tag
-        beginnt schon eine Zuordnung), 409 `objekt_archiviert`, 422
-        `ziel_gab_es_noch_nicht`, 409 `ziel_archiviert`; 400
-        `anfrage_ungueltig` (unbekannter Standort, fehlende oder falsche
-        Felder, Begründung über 500 Zeichen); eine fremde Anlage ist 404. Je
-        ein Protokolleintrag "verschoben" an der Anlage, am neuen und - wenn es
-        einen gab - am bisherigen Standort, mit Urheber und Begründung. Rechte:
-        `anlage.zuordnen`, mit `gueltigAb` vor heute zusätzlich
-        `aenderung.rueckwirkend`.
+        beginnt schon eine Zuordnung - ohne `korrektur`), 422
+        `kein_beginn_an_dem_tag` (mit `korrektur`: am Tag beginnt keine
+        Zuordnung), 409 `objekt_archiviert`, 422 `ziel_gab_es_noch_nicht`, 409
+        `ziel_archiviert`; 400 `anfrage_ungueltig` (unbekannter Standort,
+        fehlende oder falsche Felder, Begründung über 500 Zeichen); eine
+        fremde Anlage ist 404. Je ein Protokolleintrag "verschoben" an der
+        Anlage, am neuen und - wenn es einen gab - am bisherigen Standort, mit
+        Urheber und Begründung. Rechte: `anlage.zuordnen`, mit `gueltigAb` vor
+        heute zusätzlich `aenderung.rueckwirkend`.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -32265,7 +32276,10 @@ components:
         Löschen ohne Historie (IP-15): `loeschen_gesperrt` (409) → `historie`.
         Anlage zuordnen/umziehen (IP-11): `vor_dem_ersten_intervall` (422),
         `objekt_archiviert` (409), `gleicher_tag` (409) → `feld` (gueltigAb);
-        `ziel_ist_bisheriger_eltern` (400) → `feld` (standortId).
+        `ziel_ist_bisheriger_eltern` (400) → `feld` (standortId). Mit
+        `korrektur: true` (B2 „Zuordnung korrigieren"): `kein_beginn_an_dem_tag`
+        (422) → `feld` (gueltigAb) - am „gültig ab" beginnt keine Zuordnung,
+        die ersetzt werden könnte.
       required: [code, message]
       properties:
         code:
@@ -32274,7 +32288,8 @@ components:
                  archivieren_gesperrt, wiederherstellen_gesperrt, ziel_art_unzulaessig,
                  ziel_gab_es_noch_nicht, ziel_archiviert, flaeche_ungueltig, gab_es_noch_nicht,
                  gleiche_flaeche, standort_waehlen, loeschen_gesperrt, vor_dem_ersten_intervall,
-                 objekt_archiviert, gleicher_tag, ziel_ist_bisheriger_eltern, vorschlag_geaendert]
+                 kein_beginn_an_dem_tag, objekt_archiviert, gleicher_tag, ziel_ist_bisheriger_eltern,
+                 vorschlag_geaendert]
         message: { type: string }
         feld: { type: string }
         verweis:
@@ -32879,6 +32894,12 @@ components:
         standortId: { type: string, format: uuid }
         gueltigAb: { type: string, format: date, description: Fehlend = heute in der Zeitzone des Ziels. }
         begruendung: { type: string, maxLength: 500, nullable: true }
+        korrektur:
+          type: boolean
+          nullable: true
+          description: >
+            B2 „Zuordnung korrigieren": ersetzt die Zuordnung ab ihrem eigenen Beginn (gueltigAb
+            MUSS deren Beginn sein) statt ein neues „gültig ab" danebenzulegen. Fehlend = false.
     AnlageUmzugStandort:
       type: object
       properties:

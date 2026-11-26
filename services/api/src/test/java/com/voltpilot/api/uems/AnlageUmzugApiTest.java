@@ -141,6 +141,7 @@ class AnlageUmzugApiTest {
     @MockitoBean VerbundAnteilePublisher verbundAnteilePublisher;
     @MockitoBean SprungprobePublisher sprungprobePublisher;
     @MockitoBean com.voltpilot.api.geraetesuche.GeraetesuchePublisher geraetesuchePublisher;
+    @MockitoBean com.voltpilot.api.direktvermarktung.DirektvermarktungPublisher direktvermarktungPublisher;
 
     @LocalServerPort
     int port;
@@ -208,7 +209,7 @@ class AnlageUmzugApiTest {
         // Gezählt, nicht vermutet: kein Sender hat irgendetwas bekommen.
         Map<String, Integer> aufrufe = new LinkedHashMap<>();
         sender().forEach((name, mock) -> aufrufe.put(name, Mockito.mockingDetails(mock).getInvocations().size()));
-        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach der Zuordnung").hasSize(15)
+        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach der Zuordnung").hasSize(16)
                 .allSatisfy((name, n) -> assertThat(n).as(name).isZero());
         assertThat(r.getBody().get("befehle").asInt()).isZero();
         // Und in der Datenbank ändern sich nur Zuordnung und Protokoll.
@@ -443,6 +444,76 @@ class AnlageUmzugApiTest {
                 404, "nicht_gefunden");
     }
 
+    // ---- B2: Zuordnung korrigieren --------------------------------------------------------------
+
+    /**
+     * B2: „Zuordnung korrigieren" belegt „Gültig ab" mit dem ersten Tag der laufenden Zuordnung
+     * ({@code AnlageStandortZeile.tsx}) — ohne {@code korrektur: true} lehnt der Server das als
+     * „gleicher Tag" ab (die Regel VERSCHIEBEN kennt keinen zweiten Eintrag am selben Tag). Mit
+     * {@code korrektur: true} ersetzt er stattdessen das laufende Intervall AB SEINEM BEGINN: das
+     * alte bleibt lesbar, aber aufgehoben (keine zweite Zeile, kein Vortag vor dem ersten Tag).
+     */
+    @Test
+    void zuordnungKorrigierenErsetztDasIntervallAbSeinemBeginnStattEsZuVerschieben() {
+        Welt w = ahrenberg();
+        String pfad = "/sites/" + w.anlage() + "/standort";
+
+        // Ohne den Fix: genau die Ablehnung aus Abschnitt 5 des Berichts.
+        beideAbgelehnt(w, Map.of("standortId", w.nord(), "gueltigAb", w.angelegt().toString()), 409, "gleicher_tag",
+                "gueltigAb", "Für den " + OrtsbaumAbleitung.datumText(w.angelegt())
+                        + " gibt es schon eine Zuordnung (Werk Ahrenberg). Ändern Sie diese, statt eine zweite "
+                        + "anzulegen.");
+
+        long eintraege = maxEintrag(w.tenant());
+        ResponseEntity<JsonNode> vorschau = rufe(HttpMethod.GET, pfad + "/vorschau?standortId=" + w.nord()
+                + "&gueltigAb=" + w.angelegt() + "&korrektur=true", w.wer(), null);
+        assertThat(vorschau.getStatusCode().value()).as(String.valueOf(vorschau.getBody())).isEqualTo(200);
+        assertThat(vorschau.getBody().at("/bisher/id").asText()).isEqualTo(w.werk());
+        assertThat(vorschau.getBody().at("/neu/id").asText()).isEqualTo(w.nord());
+        assertThat(vorschau.getBody().get("gueltigAb").asText()).isEqualTo(w.angelegt().toString());
+        assertThat(vorschau.getBody().get("protokoll")).isEmpty();
+
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.PUT, pfad, w.wer(),
+                Map.of("standortId", w.nord(), "gueltigAb", w.angelegt().toString(), "korrektur", true));
+        assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
+
+        // Genau eine wirksame Zuordnung — am selben Tag wie vorher, aber beim neuen Standort.
+        assertThat(zuordnungen(w.anlage())).containsExactly(List.of(w.nord(), w.angelegt().toString(), "offen"));
+        // Die ersetzte bleibt lesbar (aufgehoben), keine zweite nicht-aufgehobene Zeile am selben Tag.
+        List<Map<String, Object>> alle = root.queryForList(
+                "SELECT standort_id::text, aufgehoben_am IS NOT NULL AS aufgehoben FROM anlage_standort "
+                        + "WHERE site_id = ?::uuid ORDER BY created_at", w.anlage());
+        assertThat(alle).hasSize(2);
+        assertThat(alle.get(0)).containsEntry("standort_id", w.werk()).containsEntry("aufgehoben", true);
+        assertThat(alle.get(1)).containsEntry("standort_id", w.nord()).containsEntry("aufgehoben", false);
+        assertThat(maxEintrag(w.tenant())).as("die Korrektur schreibt ihr Protokoll").isGreaterThan(eintraege);
+
+        // Eine zweite Korrektur am selben Tag: dieselbe Mechanik, kein Sondercode.
+        String lindach = neuerStandort(w.wer(), "Werk Lindach");
+        ResponseEntity<JsonNode> zweite = rufe(HttpMethod.PUT, pfad, w.wer(),
+                Map.of("standortId", lindach, "gueltigAb", w.angelegt().toString(), "korrektur", true));
+        assertThat(zweite.getStatusCode().value()).as(String.valueOf(zweite.getBody())).isEqualTo(200);
+        assertThat(zuordnungen(w.anlage())).containsExactly(List.of(lindach, w.angelegt().toString(), "offen"));
+    }
+
+    /** B2: eine Korrektur an einem Tag, an dem keine Zuordnung beginnt, bekommt ihren eigenen Grund. */
+    @Test
+    void korrekturAnEinemTagOhneBeginnWirdAbgelehnt() {
+        Welt w = ahrenberg();
+        String pfad = "/sites/" + w.anlage() + "/standort";
+        String satz = "Am " + OrtsbaumAbleitung.datumText(w.angelegt().plusDays(1)) + " beginnt keine Zuordnung von "
+                + "Werk Ahrenberg – Halle 2. Eine Korrektur ersetzt eine Zuordnung ab ihrem Beginn.";
+        for (ResponseEntity<JsonNode> r : List.of(
+                rufe(HttpMethod.GET, pfad + "/vorschau?standortId=" + w.nord() + "&gueltigAb="
+                        + w.angelegt().plusDays(1) + "&korrektur=true", w.wer(), null),
+                rufe(HttpMethod.PUT, pfad, w.wer(),
+                        Map.of("standortId", w.nord(), "gueltigAb", w.angelegt().plusDays(1).toString(),
+                                "korrektur", true)))) {
+            abgelehnt(r, 422, "kein_beginn_an_dem_tag", "feld", "gueltigAb");
+            assertThat(r.getBody().get("message").asText()).isEqualTo(satz);
+        }
+    }
+
     // ---- Ablehnungen ---------------------------------------------------------------------------
 
     @Test
@@ -553,6 +624,7 @@ class AnlageUmzugApiTest {
         m.put("VerbundAnteilePublisher", verbundAnteilePublisher);
         m.put("SprungprobePublisher", sprungprobePublisher);
         m.put("GeraetesuchePublisher", geraetesuchePublisher);
+        m.put("DirektvermarktungPublisher", direktvermarktungPublisher);
         return m;
     }
 

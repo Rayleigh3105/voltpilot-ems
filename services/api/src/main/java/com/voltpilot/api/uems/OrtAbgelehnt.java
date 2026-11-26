@@ -54,6 +54,8 @@ public final class OrtAbgelehnt extends RuntimeException {
         // (OrtsbaumAbleitung#eintrag, Vorgang VERSCHIEBEN) mit seinem Satz, Status nach §5.10.
         /** „gültig ab“ liegt vor der ersten Zuordnung der Anlage. */
         VOR_DEM_ERSTEN_INTERVALL("vor_dem_ersten_intervall", 422),
+        /** Korrektur: am „gültig ab“ beginnt keine Zuordnung der Anlage — eine Korrektur ersetzt nur ab deren Beginn. */
+        KEIN_BEGINN_AN_DEM_TAG("kein_beginn_an_dem_tag", 422),
         /** Am „gültig ab“ gilt keine Zuordnung der Anlage mehr (sie ist dort beendet). */
         OBJEKT_ARCHIVIERT("objekt_archiviert", 409),
         /** Am „gültig ab“ beginnt schon eine Zuordnung — ändern statt eine zweite anlegen. */

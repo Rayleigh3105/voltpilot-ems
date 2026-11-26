@@ -5736,11 +5736,16 @@ export interface NetzanschlussGrenzNachweis {
 
 // ---- UEMS AP-02 IP-11: Anlage einem Standort zuordnen oder umziehen
 
-/** Rumpf von `PUT /api/v1/sites/{id}/standort`; `gueltigAb` fehlend = heute am Ziel. */
+/**
+ * Rumpf von `PUT /api/v1/sites/{id}/standort`; `gueltigAb` fehlend = heute am Ziel.
+ * `korrektur`: ersetzt die Zuordnung ab ihrem eigenen Beginn (B2 „Zuordnung korrigieren") statt
+ * ein neues „gültig ab" danebenzulegen.
+ */
 export interface AnlageUmzugAnfrage {
   standortId: string;
   gueltigAb?: string;
   begruendung?: string;
+  korrektur?: boolean;
 }
 
 export interface AnlageUmzugStandort {
