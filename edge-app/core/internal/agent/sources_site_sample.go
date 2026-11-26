@@ -75,6 +75,14 @@ func (a *Agent) sourcesOnlyPlant(now time.Time) bool {
 	return true
 }
 
+// producerEntityTelemetryEnabled is the complete gate for the exceptional
+// producer-only publisher. Keep it shared with Topology: when this becomes
+// false, its old entity readings are no longer an own live measurement and the
+// pinned source must take over the local split.
+func (a *Agent) producerEntityTelemetryEnabled(now time.Time) bool {
+	return a.sourcesOnlyPlant(now) && !a.registryHasStorage()
+}
+
 // sourcesSampleEvery is the cadence of the site sample on a box without an
 // inverter: the default read interval of a source (sources.Request, 5 s), so
 // three sources do not triple the telemetry rate. Every fold takes each
@@ -161,7 +169,7 @@ func (a *Agent) registryHasStorage() bool {
 // publisher (shelly_control, ebyte_control); onEntityTelemetry then keeps the
 // reading for the heartbeat's observed health and queues it for the v2 uplink.
 func (a *Agent) producerEntityTelemetry(sourceID string, pv *float64, tsRaw string, now time.Time) {
-	if a.Bus == nil || pv == nil || !a.sourcesOnlyPlant(now) {
+	if a.Bus == nil || pv == nil || !a.producerEntityTelemetryEnabled(now) {
 		return
 	}
 	a.srcMu.Lock()
@@ -173,7 +181,7 @@ func (a *Agent) producerEntityTelemetry(sourceID string, pv *float64, tsRaw stri
 		}
 	}
 	a.srcMu.Unlock()
-	if !erzeuger || a.registryHasStorage() {
+	if !erzeuger {
 		return
 	}
 	entityID := a.sourceEntityIDs()[sourceID]

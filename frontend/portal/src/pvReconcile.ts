@@ -126,8 +126,8 @@ export function unassignedProducerSources(
  * to the same composite total.
  *
  * A no-op (returns the input unchanged) whenever there is nothing to fix: no
- * sources, no PV node, no pinned producer with a MISSING value (the edge already
- * splits per entity), no orphaned member carrying a value.
+ * sources, no PV node, no pinned producer without a FRESH value (the edge
+ * already splits per entity), no orphaned member carrying a value.
  *
  * The `pins` come from `GET /sites/{id}/entities` (`SiteEntity.edgeSourceId` /
  * `orphanedPin`). Without them NOTHING is assigned — that is deliberate: a
@@ -161,11 +161,22 @@ export function reconcileProducerPv(
       }
       return;
     }
-    if (m.value_kw != null) return; // the edge already split this one per entity
     const e = entityById.get(m.entity_id);
+    // A topology value only proves an edge-side split while the entity is
+    // healthy. A stale producer can be the last value from the former
+    // producer-only publisher, while its pinned `/sources` measurement is
+    // already live again. Do not keep that frozen value in either row.
+    if (m.value_kw != null && (e?.health === 'ok' || !isProducer(e))) return;
     if (!e || !isProducer(e)) return;
     const src = sourceById.get(pinByEntity.get(m.entity_id) ?? '');
-    if (!src) return; // no pin, or its source is not delivering → stays "–"
+    if (!src) {
+      if (m.value_kw != null) {
+        const { value_kw: _drop, ...rest } = m;
+        members[idx] = rest;
+        changed = true;
+      }
+      return; // no pin, or its source is not delivering → stays "–"
+    }
     members[idx] = { ...m, value_kw: round3(src.pvKw as number), label: sourceLabel(src) };
     assignedSum += src.pvKw as number;
     changed = true;

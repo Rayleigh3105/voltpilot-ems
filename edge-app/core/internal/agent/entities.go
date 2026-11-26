@@ -524,6 +524,12 @@ func (a *Agent) Topology() topology.Topology {
 	srcReadings := a.SourceLastReadings()
 	srcStatuses := a.SourceStatuses()
 	primary := a.State.Get().LastReading
+	// The producer-only path is the one exceptional case that publishes a
+	// producer's source reading as entity telemetry. Once a primary inverter or
+	// storage joins the plant, that publisher deliberately stops; its last
+	// reading must not keep masking the live pinned source forever. Work this
+	// out before entMu because the gate also examines the registry.
+	dropStoppedProducerTelemetry := a.PortalManagedComponents() && !a.producerEntityTelemetryEnabled(now)
 	// WHERE each charge point hangs (Cockpit Phase 1 / C2). Read BEFORE entMu
 	// like the source state above - the CSMS snapshot takes its own lock.
 	cpConn := a.chargePointConnections()
@@ -534,6 +540,9 @@ func (a *Agent) Topology() topology.Topology {
 	pvFilledFromSource := false
 	hybridIdx := -1
 	for _, e := range reg.Entities {
+		if dropStoppedProducerTelemetry && e.Category() == entities.CategoryProducer {
+			delete(a.entReadings, e.ID)
+		}
 		er, ok := a.entityReading(e.ID)
 		re := topology.RawEntity{
 			ID: e.ID, Type: e.Type, Label: e.Label,
@@ -558,7 +567,11 @@ func (a *Agent) Topology() topology.Topology {
 		assigned := roleAssignments(e)
 		for _, m := range e.Capabilities.Measure {
 			ch := topology.RawChannel{Channel: m.Channel, Assigned: assigned[m.Channel]}
-			if ok {
+			// A last-known entity value is useful for its health, but it is not a
+			// current topology measurement. In particular, a stale producer must
+			// yield to its pinned source so the hybrid correction below can unfold
+			// the site total again.
+			if ok && now.Sub(er.recv) <= entityHealthWindow {
 				if v, has := er.channels[m.Channel]; has {
 					val := v
 					ch.Value = &val

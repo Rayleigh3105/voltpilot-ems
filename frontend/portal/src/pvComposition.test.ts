@@ -144,6 +144,31 @@ describe('pvComposition · the rows add up to the node total', () => {
     expect(withStaleSources.origin).toBe('entity');
     expect(withStaleSources.parts.map((p) => p.kw)).toEqual([23, 21.3, 25.5]);
   });
+
+  it('does not treat a stale frozen producer value as an edge-side split', () => {
+    const frozen = topo(
+      [
+        { entity_id: 'deye', label: 'Huawei', primary: true, value_kw: 0.3 },
+        { entity_id: 'kaco', label: 'KACO Powador', primary: false, value_kw: 0 },
+      ],
+      [
+        entity({ id: 'deye', entityType: 'battery-hybrid', category: 'storage' }),
+        entity({ id: 'kaco', health: 'stale' }),
+      ],
+    );
+    const sources = [
+      src({ sourceId: 'inverter', kind: 'primary', role: null, label: 'Huawei', pvKw: 0.1 }),
+      src({ sourceId: 'kaco-source', label: 'KACO Powador', pvKw: 0.2 }),
+    ];
+    const c = pvComposition(frozen, sources, [
+      { id: 'deye', edgeSourceId: null },
+      { id: 'kaco', edgeSourceId: 'kaco-source' },
+    ])!;
+
+    expect(c.origin).toBe('sources');
+    expect(c.parts.map((p) => p.kw)).toEqual([0.1, 0.2]);
+    expect(c.totalKw).toBeCloseTo(0.3, 3);
+  });
 });
 
 /**

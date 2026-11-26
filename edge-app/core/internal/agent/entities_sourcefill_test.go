@@ -17,6 +17,7 @@ package agent
 
 import (
 	"testing"
+	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/topology"
@@ -115,5 +116,62 @@ func TestTopologyKeepsTheCompositeOnTheHybridWithoutPinnedFills(t *testing.T) {
 	}
 	if m := memberByEntity(pv, "wr2"); m == nil || m.ValueKw != nil {
 		t.Fatalf("unpinned producer must not fill, got %+v", m)
+	}
+}
+
+// A producer-only portal-managed plant publishes the producer's own entity
+// telemetry. Once an inverter/storage is added, that publisher intentionally
+// stops and the primary site's PV is folded onto the hybrid instead. Its last
+// producer reading must not keep winning over the producer's still-live source
+// reading, nor leave the source share folded into the hybrid.
+func TestTopologyDropsFrozenProducerReadingAfterAnInverterIsAdded(t *testing.T) {
+	a := schrammBox(t, false)
+	producerID := schrammKaco1
+	sourceID := quelleAn(t, a, "192.168.1.147")
+	now := time.Now().UTC()
+
+	// Generator-only: producerEntityTelemetry has just published the dusk zero.
+	a.onEntityTelemetry(entities.TelemetryTopic(producerID), []byte(`{"schema_version":"1.0","entity_id":"`+
+		producerID+`","ts":"`+now.Format(time.RFC3339)+`","channels":{"pv_power_kw":0}}`))
+	lies(a, sourceID, `"pv_power_kw": 0.2`, now)
+
+	// Adding the Huawei makes the primary sample authoritative. The source keeps
+	// delivering, but producerEntityTelemetry is no longer allowed to publish.
+	reg := schrammPush("r-with-huawei", false)
+	for i := range reg.Entities {
+		if reg.Entities[i].ID == producerID {
+			reg.Entities[i].EdgeSourceID = sourceID
+		}
+	}
+	hybridID := "6a1e3d0f-0000-0000-0000-00000000bbbb"
+	hybridEntity := applyEntity(hybridID, entities.TypeBatteryHybrid, applyDeyeDriver)
+	hybridEntity.Capabilities.Measure = []entities.MeasureCap{{Channel: "pv_power_kw", Unit: "kW"}}
+	reg.Entities = append(reg.Entities, hybridEntity)
+	a.applyEntityRegistry(reg)
+	if _, ok := a.GetInverter(); !ok {
+		t.Fatal("inverter from the portal registry was not applied")
+	}
+	lies(a, sourceID, `"pv_power_kw": 0.2`, now.Add(time.Second))
+	feedPrimary(a, 0.1, 0.3, 0, 50) // site PV is folded to 0.3 = 0.1 + 0.2
+
+	topo := a.Topology()
+	pv := nodeByRole(topo, topology.RolePV)
+	producer := memberByEntity(pv, producerID)
+	if producer == nil || producer.ValueKw == nil || *producer.ValueKw != 0.2 {
+		t.Fatalf("producer must be refilled from its live source, got %+v", producer)
+	}
+	hybrid := memberByEntity(pv, hybridID)
+	if hybrid == nil || hybrid.ValueKw == nil || *hybrid.ValueKw != 0.1 {
+		t.Fatalf("hybrid must show pre-fold primary PV, got %+v", hybrid)
+	}
+	if pv.ValueKw == nil || *pv.ValueKw != 0.3 {
+		t.Fatalf("PV total changed: got %v, want 0.3", pv.ValueKw)
+	}
+
+	a.entMu.Lock()
+	_, frozen := a.entReadings[producerID]
+	a.entMu.Unlock()
+	if frozen {
+		t.Fatal("producer telemetry must be discarded after its publisher stops")
 	}
 }

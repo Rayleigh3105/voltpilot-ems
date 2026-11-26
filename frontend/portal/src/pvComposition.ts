@@ -148,8 +148,11 @@ export const UNASSIGNED_NOTE = 'noch keiner Komponente zugeordnet';
  * Does every PV member carry its own measured value? Then the topology is
  * already truthful per device and no reconstruction is needed.
  */
-function hasNativeValues(members: FlowMember[]): boolean {
-  return members.length > 0 && members.every((m) => m.value_kw != null);
+function hasNativeValues(members: FlowMember[], entityById: Map<string, TopologyEntity>): boolean {
+  return (
+    members.length > 0 &&
+    members.every((m) => m.value_kw != null && entityById.get(m.entity_id)?.health === 'ok')
+  );
 }
 
 /**
@@ -168,7 +171,8 @@ export function pvComposition(
   const rawNode = topology.topology.nodes.find((n) => n.role === PV_ROLE);
   if (!rawNode || rawNode.members.length === 0) return null;
 
-  const native = hasNativeValues(rawNode.members);
+  const rawEntities = new Map(topology.entities.map((e) => [e.id, e] as const));
+  const native = hasNativeValues(rawNode.members, rawEntities);
   // Branch 2 (interim): reuse the merged, unit-tested reconciliation rather
   // than duplicating or fighting it - it fills each producer from the source
   // its PIN names and reduces the hybrid by that sum, so the parts keep summing
