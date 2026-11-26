@@ -56,6 +56,7 @@ block() { # id
   printf '{allow, {username, "%s"}, subscribe, ["%s/schedule", "%s/command", "%s/config"]}.\n' "$d" "$b" "$b" "$b"
   printf '{deny, {username, "%s"}, publish,   ["%s/v2/measurement-config"]}.\n' "$d" "$b"
   printf '{deny, {username, "%s"}, subscribe, ["%s/v2/measurement-config-status", "%s/v2/measurement-samples"]}.\n' "$d" "$b" "$b"
+  printf '{deny, {username, "%s"}, publish,   ["%s/v2/direktvermarktung", "%s/v2/direktvermarktung-zugang"]}.\n' "$d" "$b" "$b"
   printf '{allow, {username, "%s"}, publish,   ["%s/v2/#"]}.\n' "$d" "$b"
   printf '{allow, {username, "%s"}, subscribe, ["%s/v2/#"]}.\n' "$d" "$b"
   printf '%%%%<<end device %s>>\n' "$d"
@@ -143,6 +144,7 @@ cat > "${WORK}/expected-block" <<EOF
 {allow, {username, "${VD}"}, subscribe, ["${VB}/schedule", "${VB}/command", "${VB}/config"]}.
 {deny, {username, "${VD}"}, publish,   ["${VB}/v2/measurement-config"]}.
 {deny, {username, "${VD}"}, subscribe, ["${VB}/v2/measurement-config-status", "${VB}/v2/measurement-samples"]}.
+{deny, {username, "${VD}"}, publish,   ["${VB}/v2/direktvermarktung", "${VB}/v2/direktvermarktung-zugang"]}.
 {allow, {username, "${VD}"}, publish,   ["${VB}/v2/#"]}.
 {allow, {username, "${VD}"}, subscribe, ["${VB}/v2/#"]}.
 %%<<end device ${VD}>>

@@ -122,6 +122,17 @@ func (s *fakeSchnittstelle) SetValues(at time.Time, values map[string]float64) {
 	s.werte = values
 }
 
+func (s *fakeSchnittstelle) Stand() direktvermarkter.ServerStand {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pct, aktiv := s.pct, s.aktiv
+	if pct == 0 && !aktiv {
+		pct = 100
+	}
+	return direktvermarkter.ServerStand{State: s.state, EffektivPct: pct, Aktiv: aktiv,
+		LetzteAbfrage: s.lastQuery}
+}
+
 // --- harness ------------------------------------------------------------------
 
 type pruefstand struct {

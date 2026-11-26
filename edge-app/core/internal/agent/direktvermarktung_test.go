@@ -10,23 +10,33 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"math"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/direktvermarkter"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/vermarktertunnel"
 )
 
 type fakeVermarkter struct {
-	mu        sync.Mutex
-	anschluss *vermarktertunnel.Anschluss
-	kw        float64
-	wirktAuf  string
-	aktiv     bool
-	werte     map[string]float64
-	werteUm   time.Time
+	mu         sync.Mutex
+	anschluss  *vermarktertunnel.Anschluss
+	kw         float64
+	wirktAuf   string
+	aktiv      bool
+	werte      map[string]float64
+	werteUm    time.Time
+	status     *vermarktertunnel.Status
+	stand      direktvermarkter.ServerStand
+	standDa    bool
+	ereignisse []string
 }
 
 func (f *fakeVermarkter) Run(ctx context.Context) { <-ctx.Done() }
@@ -53,7 +63,24 @@ func (f *fakeVermarkter) Grenze() (float64, string, bool) {
 }
 
 func (f *fakeVermarkter) Status() vermarktertunnel.Status {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.status != nil {
+		return *f.status
+	}
 	return vermarktertunnel.Status{Lage: vermarktertunnel.LageVerbunden}
+}
+
+func (f *fakeVermarkter) ServerStand() (direktvermarkter.ServerStand, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.stand, f.standDa
+}
+
+func (f *fakeVermarkter) Ereignis(text string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ereignisse = append(f.ereignisse, text)
 }
 
 func TestVermarkterGrenzenKomponiertDasMinimum(t *testing.T) {
@@ -166,5 +193,280 @@ func TestNetzbetreiberPctKlemmtInsBand(t *testing.T) {
 	}
 	if math.IsNaN(a.netzbetreiberPct(0)) {
 		t.Error("Referenz 0 darf kein NaN ergeben")
+	}
+}
+
+// --- the DELIVERY (task vp-dv-zustellung) ---------------------------------------
+//
+// The handlers write and remove EXACTLY the tunnel manager's files
+// (internal/vermarktertunnel/zugang.go); the §5.4 state itself is the
+// manager's and is proven in its own package. Here: file contract, identity
+// rules, acknowledgements, back-off, heartbeat block.
+
+func dvTestAgent(t *testing.T) (*Agent, *fakeVermarkter) {
+	t.Helper()
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.VermarkterDir = filepath.Join(t.TempDir(), "vermarkter")
+	a := &Agent{Cfg: cfg}
+	a.entIdentity = entities.Identity{TenantID: "t", SiteID: "s", DeviceID: "d"}
+	fv := &fakeVermarkter{}
+	a.vermarkter = fv
+	return a, fv
+}
+
+func dvTestProfilDokument(t *testing.T, mutate ...func(*direktvermarkter.ProfilDokument)) []byte {
+	t.Helper()
+	doc := direktvermarkter.ProfilDokument{
+		SchemaVersion: direktvermarkter.SchemaVersion,
+		TenantID:      "t", SiteID: "s", DeviceID: "d",
+		GeneratedAt: "2026-11-26T08:00:00Z",
+		Partner:     "luox", Revision: 1, ReferenzWp: 12000,
+		ZugangFingerabdruck: "SHA256:abc",
+	}
+	for _, m := range mutate {
+		m(&doc)
+	}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func dvTestZugang(mutate ...func(*direktvermarkter.ZugangAntwort)) []byte {
+	z := direktvermarkter.ZugangAntwort{
+		SchemaVersion: direktvermarkter.SchemaVersion,
+		TenantID:      "t", SiteID: "s", DeviceID: "d",
+		Partner: "luox", ZugangFingerabdruck: "SHA256:abc",
+		GueltigBis:    "2027-11-26T00:00:00Z",
+		TLSSchluessel: "keine",
+		Gegenstelle:   direktvermarkter.Gegenstelle{Host: "vpn.luox.example", Port: 1194, Protokoll: "udp"},
+		Dateien: direktvermarkter.Dateien{
+			ZertifikatPEM: "-----BEGIN CERTIFICATE-----\nZ\n-----END CERTIFICATE-----\n",
+			SchluesselPEM: "-----BEGIN PRIVATE KEY-----\nS\n-----END PRIVATE KEY-----\n",
+			CAPEM:         "-----BEGIN CERTIFICATE-----\nC\n-----END CERTIFICATE-----\n"},
+	}
+	for _, m := range mutate {
+		m(&z)
+	}
+	raw, _ := json.Marshal(z)
+	return raw
+}
+
+// Profile in: the manager's files appear. Access in: loadable through the
+// SAME LadeZugang the manager uses, 0600. Retained clear: everything gone.
+func TestDirektvermarktungZustellungSchreibtDenDateivertrag(t *testing.T) {
+	a, fv := dvTestAgent(t)
+	dir := a.dvDir()
+
+	a.onDirektvermarktung(dvTestProfilDokument(t))
+	anschluss, ok, err := vermarktertunnel.LadeAnschluss(dir)
+	if err != nil || !ok || anschluss.Partner != "luox" || anschluss.ReferenzWp != 12000 {
+		t.Fatalf("anschluss.json: %+v ok=%v err=%v", anschluss, ok, err)
+	}
+	if doc := a.dvDokument(); doc == nil || doc.Revision != 1 || doc.ZugangFingerabdruck != "SHA256:abc" {
+		t.Fatalf("zustellung.json: %+v", doc)
+	}
+	if _, ok, _ := vermarktertunnel.LadeZugang(dir); ok {
+		t.Fatal("Zugang vor der Zustellung vorhanden")
+	}
+
+	a.onDirektvermarktungZugang(dvTestZugang())
+	z, ok, err := vermarktertunnel.LadeZugang(dir)
+	if err != nil || !ok || z.Fingerabdruck != "SHA256:abc" || z.Gegenstelle.Host != "vpn.luox.example" ||
+		z.Gegenstelle.Protokoll != "udp" || z.TLSSchluessel != "keine" {
+		t.Fatalf("zugang: %+v ok=%v err=%v", z, ok, err)
+	}
+	for _, name := range []string{vermarktertunnel.ZertifikatDatei, vermarktertunnel.SchluesselDatei,
+		vermarktertunnel.CADatei, vermarktertunnel.ZugangDatei} {
+		info, err := os.Stat(filepath.Join(dir, vermarktertunnel.ZugangOrdner, name))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("%s: Rechte %v", name, info.Mode().Perm())
+		}
+	}
+
+	// Retained clear: access, choice and bookkeeping gone; the event trail
+	// went through the manager's one flash list.
+	a.onDirektvermarktung(nil)
+	if _, ok, _ := vermarktertunnel.LadeAnschluss(dir); ok {
+		t.Fatal("anschluss.json nach der Ruecknahme noch da")
+	}
+	if _, ok, _ := vermarktertunnel.LadeZugang(dir); ok {
+		t.Fatal("zugang nach der Ruecknahme noch da")
+	}
+	if _, err := os.Stat(filepath.Join(dir, vermarktertunnel.ZugangOrdner, vermarktertunnel.SchluesselDatei)); !os.IsNotExist(err) {
+		t.Fatal("schluessel.pem nach der Ruecknahme noch da")
+	}
+	if a.dvDokument() != nil {
+		t.Fatal("zustellung.json nach der Ruecknahme noch da")
+	}
+	fv.mu.Lock()
+	defer fv.mu.Unlock()
+	if len(fv.ereignisse) < 3 {
+		t.Fatalf("Ereignisse: %v", fv.ereignisse)
+	}
+	for _, e := range fv.ereignisse {
+		if strings.Contains(e, "BEGIN") || strings.Contains(e, "PRIVATE") {
+			t.Fatalf("Ereignis traegt Material: %q", e)
+		}
+	}
+}
+
+// A profile naming a DIFFERENT access deletes the stored one first (one
+// certificate, one plant - §8).
+func TestDirektvermarktungFingerabdruckWechselLoeschtDenAlten(t *testing.T) {
+	a, _ := dvTestAgent(t)
+	a.onDirektvermarktung(dvTestProfilDokument(t))
+	a.onDirektvermarktungZugang(dvTestZugang())
+
+	a.onDirektvermarktung(dvTestProfilDokument(t, func(d *direktvermarkter.ProfilDokument) {
+		d.Revision = 2
+		d.ZugangFingerabdruck = "SHA256:neu"
+	}))
+	if _, ok, _ := vermarktertunnel.LadeZugang(a.dvDir()); ok {
+		t.Fatal("alter Zugang nach dem Wechsel noch da")
+	}
+	// A late answer for the OLD fingerprint is refused; the new one lands.
+	a.onDirektvermarktungZugang(dvTestZugang())
+	if _, ok, _ := vermarktertunnel.LadeZugang(a.dvDir()); ok {
+		t.Fatal("alter Zugang angenommen")
+	}
+	a.onDirektvermarktungZugang(dvTestZugang(func(z *direktvermarkter.ZugangAntwort) {
+		z.ZugangFingerabdruck = "SHA256:neu"
+	}))
+	z, ok, _ := vermarktertunnel.LadeZugang(a.dvDir())
+	if !ok || z.Fingerabdruck != "SHA256:neu" {
+		t.Fatalf("neuer Zugang: %+v ok=%v", z, ok)
+	}
+}
+
+// Topic identity == payload identity: a misaddressed document changes nothing.
+func TestDirektvermarktungFremdeIdentitaetWirdVerworfen(t *testing.T) {
+	a, _ := dvTestAgent(t)
+	a.onDirektvermarktung(dvTestProfilDokument(t, func(d *direktvermarkter.ProfilDokument) {
+		d.DeviceID = "fremd"
+	}))
+	if _, ok, _ := vermarktertunnel.LadeAnschluss(a.dvDir()); ok {
+		t.Fatal("fremdes Profil uebernommen")
+	}
+	a.onDirektvermarktung(dvTestProfilDokument(t))
+	a.onDirektvermarktungZugang(dvTestZugang(func(z *direktvermarkter.ZugangAntwort) {
+		z.DeviceID = "fremd"
+	}))
+	if _, ok, _ := vermarktertunnel.LadeZugang(a.dvDir()); ok {
+		t.Fatal("fremder Zugang uebernommen")
+	}
+}
+
+// dvNachfassen re-asks at most every dvAnfrageAbstand while the access is
+// missing, and stays quiet once it is there.
+func TestDirektvermarktungNachfassen(t *testing.T) {
+	a, _ := dvTestAgent(t)
+	a.onDirektvermarktung(dvTestProfilDokument(t))
+	a.dvMu.Lock()
+	erste := a.dvLetzteAnfrage
+	a.dvMu.Unlock()
+	if erste.IsZero() {
+		t.Fatal("die Uebernahme hat keine Anfrage versucht")
+	}
+	a.dvNachfassen()
+	a.dvMu.Lock()
+	zweite := a.dvLetzteAnfrage
+	a.dvMu.Unlock()
+	if !zweite.Equal(erste) {
+		t.Fatal("Nachfassen ohne Abstand")
+	}
+	a.dvMu.Lock()
+	a.dvLetzteAnfrage = time.Now().Add(-dvAnfrageAbstand - time.Minute)
+	alt := a.dvLetzteAnfrage
+	a.dvMu.Unlock()
+	a.dvNachfassen()
+	a.dvMu.Lock()
+	dritte := a.dvLetzteAnfrage
+	a.dvMu.Unlock()
+	if dritte.Equal(alt) {
+		t.Fatal("Nachfassen blieb aus")
+	}
+	a.onDirektvermarktungZugang(dvTestZugang())
+	a.dvMu.Lock()
+	a.dvLetzteAnfrage = time.Time{}
+	a.dvMu.Unlock()
+	a.dvNachfassen()
+	a.dvMu.Lock()
+	still := a.dvLetzteAnfrage
+	a.dvMu.Unlock()
+	if !still.IsZero() {
+		t.Fatal("Nachfassen trotz vorhandenem Zugang")
+	}
+}
+
+// The heartbeat block reports the manager's §5.4 view plus the interface
+// snapshot - absent facts stay absent, never a fabricated zero.
+func TestDvSummaryBerichtetAusManagerUndSchnittstelle(t *testing.T) {
+	a, fv := dvTestAgent(t)
+	a.onDirektvermarktung(dvTestProfilDokument(t))
+	a.onDirektvermarktungZugang(dvTestZugang())
+
+	jetzt := time.Now()
+	handschlag := jetzt.Add(-20 * time.Second)
+	abfrage := jetzt.Add(-12 * time.Second)
+	pct := 30
+	kw := 3.6
+	fv.mu.Lock()
+	fv.status = &vermarktertunnel.Status{
+		Lage: vermarktertunnel.LageVorgabeAktiv, Partner: "luox",
+		Gegenstelle: "vpn.luox.example:1194", TunnelLebteZuletzt: &handschlag,
+		LetzteAbfrage: &abfrage, VorgabePct: &pct, GrenzeKw: &kw,
+	}
+	fv.stand = direktvermarkter.ServerStand{
+		State: direktvermarkter.StateLimitActive, EffektivPct: 30, Aktiv: true,
+		LetzteAbfrage: abfrage, LetzteSchreibung: abfrage, Lebenszeichen: abfrage,
+		WerteStand: jetzt.Add(-5 * time.Second), Abfragen: 7,
+		Werte: map[string]float64{"nvp_einspeisung_w": 1200, "erzeugung_w": 3000,
+			"netzbetreiber_vorgabe_pct": 100, "referenz_w": 12000},
+	}
+	fv.standDa = true
+	fv.mu.Unlock()
+
+	sum := a.dvSummary()
+	if sum == nil || sum.Lage != "vorgabe_aktiv" || sum.Partner != "luox" || sum.Revision != 1 {
+		t.Fatalf("Block: %+v", sum)
+	}
+	if sum.ZugangFingerabdruck != "SHA256:abc" {
+		t.Fatalf("Fingerabdruck: %q", sum.ZugangFingerabdruck)
+	}
+	if sum.VorgabePct == nil || *sum.VorgabePct != 30 || sum.GrenzeKw == nil || *sum.GrenzeKw != 3.6 {
+		t.Fatalf("Vorgabe/Grenze: %+v", sum)
+	}
+	if sum.Tunnel == nil || sum.Tunnel.HandshakeAm == nil || sum.Tunnel.Gegenstelle != "vpn.luox.example:1194" {
+		t.Fatalf("Tunnel: %+v", sum.Tunnel)
+	}
+	if sum.LebenszeichenAm == nil || sum.LetzteSchreibungAm == nil || sum.LetzteAbfrageAm == nil {
+		t.Fatalf("Zeiten: %+v", sum)
+	}
+	if sum.Werte == nil || sum.Werte.EinspeisungW == nil || *sum.Werte.EinspeisungW != 1200 ||
+		sum.Werte.ReferenzW == nil || *sum.Werte.ReferenzW != 12000 {
+		t.Fatalf("Werte: %+v", sum.Werte)
+	}
+
+	// Stale input cache: the values leave the block (the partner would get
+	// the stale exception for them too).
+	fv.mu.Lock()
+	fv.stand.WerteStand = jetzt.Add(-5 * time.Minute)
+	fv.mu.Unlock()
+	if sum := a.dvSummary(); sum.Werte != nil {
+		t.Fatalf("veraltete Werte berichtet: %+v", sum.Werte)
+	}
+
+	// No profile delivered at all: no block.
+	fv.mu.Lock()
+	fv.status = &vermarktertunnel.Status{Lage: vermarktertunnel.LageOhneProfil}
+	fv.mu.Unlock()
+	if sum := a.dvSummary(); sum != nil {
+		t.Fatalf("Block ohne Anschluss: %+v", sum)
 	}
 }

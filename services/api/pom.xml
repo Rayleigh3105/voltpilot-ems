@@ -556,6 +556,10 @@
                         <!-- PFC200 Stufe 4: the Koppelbild heartbeat listener (block `koppel`) is ON in
                              production; its tests drive handle() directly. -->
                         <voltpilot.koppelbild.mqtt-listener-enabled>false</voltpilot.koppelbild.mqtt-listener-enabled>
+                        <!-- Direktvermarktung-Zustellung: die drei MQTT-Eingänge und der Abgleich-Takt sind
+                             in PRODUKTION an; Tests rufen handle() bzw. abgleichen()/run() selbst. -->
+                        <voltpilot.direktvermarktung.mqtt-listener-enabled>false</voltpilot.direktvermarktung.mqtt-listener-enabled>
+                        <voltpilot.direktvermarktung.zustellung-enabled>false</voltpilot.direktvermarktung.zustellung-enabled>
                         <!-- Lasttest Rang 5: die Flotten-Antworten der Admin-Seiten werden in PRODUKTION 15 s
                              festgehalten (AdminFlottenSpeicher). Tests schreiben zwischen zwei Abrufen direkt in
                              die Datenbank und erwarten den neuen Stand - im Testlauf hält der Speicher nichts fest.

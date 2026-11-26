@@ -26,6 +26,7 @@ v2 ergänzt mehrere Entitäten je Box, typisierte Flows, Verbraucheranforderunge
 | Zusätzliche Messpunkte | [Konfiguration](mqtt-measurement-config.schema.json), [Status](mqtt-measurement-config-status.schema.json), [Messungen](mqtt-measurement-samples.schema.json), [Ereignis](measurements-raw.event.schema.json) |
 | Registerbild Erzeuger (Steuerung → Box, EZ-1) | [Vertrag](erzeuger-registerbild.md), [Schema](erzeuger-registerbild.schema.json), [Vektoren](erzeuger-registerbild-vectors.json) — PV und BHKW an einem Modbus-Server (FC4 ab 0, Signatur „VP“ „EZ“); die Vektoren sind die Leserspezifikation für Box-Leser, Simulator und SPS-Baustein |
 | Gerätesuche (Box ↔ Cloud, nicht retained) | [Vertrag](mqtt-geraetesuche.md), Schemas [Auftrag](mqtt-geraetesuche.schema.json) · [Zwischenstand](mqtt-geraetesuche-stand.schema.json) · [Ergebnis](mqtt-geraetesuche-ergebnis.schema.json), [Vektoren](geraetesuche-vectors.json) — Erkennungskatalog je Box-Art, Fallklassen gueltig/ungueltig/fund_ueberlesen/toleriert, Antwort-Wörter der Routen |
+| Direktvermarktung-Zustellung (Profil Cloud → führende Box retained; Zugang Anfrage/Einmal-Antwort/Quittung nicht retained; Herzschlag-Block `direktvermarktung`) | [Vertrag](direktvermarktung-zustellung.md), [Vektoren](direktvermarktung-zustellung-vectors.json) — Lagen-Vokabular §5.4, Spiegelung in `direktvermarktung_stand`, ACL-Deny der Box auf ihr eigenes Profil-Topic |
 | Prüfung | [Fixtures](examples/README.md), [Simulator](edge-simulator-v2.md) |
 
 ## Dauerhafte Entscheidungen

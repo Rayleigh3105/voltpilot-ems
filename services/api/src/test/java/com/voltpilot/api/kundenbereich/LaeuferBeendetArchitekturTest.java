@@ -83,6 +83,12 @@ class LaeuferBeendetArchitekturTest {
                     + " Rueckmeldeweg"),
             entry("SteuerlogikRueckmeldungListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
                     + " Rueckmeldeweg"),
+            entry("DirektvermarktungStandListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("DirektvermarktungQuittungListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("DirektvermarktungAnfrageListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
             entry("VerbundAnteileResultListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
                     + " Rueckmeldeweg"),
             entry("PlanZustellungAufbewahrungLaeufer", "Aufbewahrung: löscht Zustellungen nach ihrer eigenen Frist,"

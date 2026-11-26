@@ -41,11 +41,16 @@ import (
 	"time"
 )
 
-// The delivery contract with the cloud (task vp-dv-zustellung; until it
-// lands, the workshop or a technician places the same files by hand):
+// The delivery contract with the cloud (task vp-dv-zustellung,
+// docs/contracts/v2/direktvermarktung-zustellung.md; the delivery writes
+// through Schreibe*/Loesche* below, and the workshop or a technician may
+// place the same files by hand):
 //
 //	<dir>/anschluss.json     which partner is connected and the site's
 //	                         reference power - see Anschluss
+//	<dir>/zustellung.json    the raw retained profile document, the
+//	                         DELIVERY's own bookkeeping (revision, expected
+//	                         access fingerprint); the manager never reads it
 //	<dir>/zugang/zugang.json the non-secret access facts - see Zugang
 //	<dir>/zugang/ca.pem           the partner CA certificate
 //	<dir>/zugang/zertifikat.pem   the plant's client certificate
@@ -60,6 +65,7 @@ import (
 // interface on its next tick.
 const (
 	AnschlussDatei     = "anschluss.json"
+	ZustellungDatei    = "zustellung.json"
 	ZugangOrdner       = "zugang"
 	ZugangDatei        = "zugang.json"
 	CADatei            = "ca.pem"
@@ -204,4 +210,113 @@ func pemPlausibel(path string) error {
 // the "zugang_ungueltig" state of §5.4.
 func (z Zugang) Abgelaufen(now time.Time) bool {
 	return !z.GueltigBis.IsZero() && now.After(z.GueltigBis)
+}
+
+// --- the delivery's write side (task vp-dv-zustellung) -------------------------
+//
+// The cloud delivery writes EXACTLY the files the readers above validate, so
+// format, bounds and validation live in this one file. Every write is atomic
+// (temp name + rename), 0600 in 0700 directories, and verified through the
+// same Lade* the manager uses - a write that would not load is rolled back,
+// never left half.
+
+// Material is the delivered key material for SpeichereZugang, by file name
+// (CADatei, ZertifikatDatei, SchluesselDatei, optionally TLSSchluesselDatei).
+// Never logged, never carried through any other struct.
+type Material map[string][]byte
+
+func schreibeDatei(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// SpeichereAnschluss writes <dir>/anschluss.json; the manager adopts it on
+// its next tick.
+func SpeichereAnschluss(dir string, a Anschluss) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(a)
+	if err != nil {
+		return err
+	}
+	if err := schreibeDatei(filepath.Join(dir, AnschlussDatei), raw); err != nil {
+		return err
+	}
+	if _, ok, err := LadeAnschluss(dir); err != nil || !ok {
+		_ = os.Remove(filepath.Join(dir, AnschlussDatei))
+		if err == nil {
+			err = fmt.Errorf("anschluss.json: nach dem Schreiben nicht ladbar")
+		}
+		return err
+	}
+	return nil
+}
+
+// LoescheAnschluss withdraws the connection choice (the manager tears the
+// tunnel down on its next tick). The access stays LoescheZugang's business.
+func LoescheAnschluss(dir string) error {
+	if err := os.Remove(filepath.Join(dir, AnschlussDatei)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// SpeichereZugang writes the access material and, LAST, zugang.json - its
+// presence is the commit marker (LadeZugang reads nothing without it, so a
+// torn write reads as "ohne_zugang" and the box simply asks again). On a
+// validation failure everything just written is removed.
+func SpeichereZugang(dir string, z Zugang, material Material) error {
+	zdir := filepath.Join(dir, ZugangOrdner)
+	if err := os.MkdirAll(zdir, 0o700); err != nil {
+		return err
+	}
+	// A replaced access must never mix with leftovers of the old one.
+	if err := LoescheZugang(dir); err != nil {
+		return err
+	}
+	for _, name := range []string{CADatei, ZertifikatDatei, SchluesselDatei, TLSSchluesselDatei} {
+		data, ok := material[name]
+		if !ok {
+			if name == TLSSchluesselDatei && z.TLSSchluessel == "keine" {
+				continue
+			}
+			return fmt.Errorf("zugang/%s: fehlt in der Zustellung", name)
+		}
+		if err := schreibeDatei(filepath.Join(zdir, name), data); err != nil {
+			return fmt.Errorf("zugang/%s: %w", name, err)
+		}
+	}
+	raw, err := json.Marshal(z)
+	if err != nil {
+		return err
+	}
+	if err := schreibeDatei(filepath.Join(zdir, ZugangDatei), raw); err != nil {
+		return err
+	}
+	if _, ok, err := LadeZugang(dir); err != nil || !ok {
+		_ = LoescheZugang(dir)
+		if err == nil {
+			err = fmt.Errorf("zugang: nach dem Schreiben nicht ladbar")
+		}
+		return err
+	}
+	return nil
+}
+
+// LoescheZugang removes the delivered access: zugang.json (the commit
+// marker) FIRST, so any failure midway still reads as "ohne_zugang", then
+// the material. Used on withdrawal and on a box swap - the old box deletes
+// and acknowledges before the new one receives (§5.7, PS-D22).
+func LoescheZugang(dir string) error {
+	zdir := filepath.Join(dir, ZugangOrdner)
+	for _, name := range []string{ZugangDatei, SchluesselDatei, TLSSchluesselDatei, ZertifikatDatei, CADatei} {
+		if err := os.Remove(filepath.Join(zdir, name)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }

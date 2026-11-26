@@ -205,6 +205,7 @@ write_acl_grant() {
 {allow, {username, "${device}"}, subscribe, ["${base}/schedule", "${base}/command", "${base}/config"]}.
 {deny, {username, "${device}"}, publish,   ["${base}/v2/measurement-config"]}.
 {deny, {username, "${device}"}, subscribe, ["${base}/v2/measurement-config-status", "${base}/v2/measurement-samples"]}.
+{deny, {username, "${device}"}, publish,   ["${base}/v2/direktvermarktung", "${base}/v2/direktvermarktung-zugang"]}.
 {allow, {username, "${device}"}, publish,   ["${base}/v2/#"]}.
 {allow, {username, "${device}"}, subscribe, ["${base}/v2/#"]}.
 %%<<end device ${device}>>

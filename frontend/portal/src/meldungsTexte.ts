@@ -538,4 +538,97 @@ export const WERTART_TEXTE: Record<string, WertartTexte> = {
       entwarnung: 'Seit {ende} ist das Auto abgesteckt oder lädt wieder.',
     },
   },
+  "direktvermarktung.verbindung_weg": {
+    zustandsworte: {
+      verbunden: 'verbunden',
+      getrennt: 'getrennt',
+    },
+    meldung: {
+      gilt_bei: {
+        zustaende: ['getrennt'],
+      },
+      titel: 'Verbindung zum Direktvermarkter weg',
+      lage: 'Der Tunnel zu Ihrem Direktvermarkter ist seit {beginn} unterbrochen; Ihre Box ist online.',
+      ursache: 'Meist eine Störung auf dem Weg zum Direktvermarkter. Eine Vorgabe läuft nach 15 Minuten ab, Ihre Anlage speist dann frei ein.',
+      was_tun: 'Die Box verbindet von selbst neu. Bleibt die Verbindung Stunden weg, öffnen Sie die Direktvermarktung und tippen Sie auf „Jetzt neu verbinden“.',
+      push: 'Seit {beginn} keine Verbindung zum Direktvermarkter.',
+      entwarnung_titel: 'Verbindung zum Direktvermarkter wieder da',
+      entwarnung: 'Seit {ende} steht der Tunnel wieder.',
+      entwarnung_dauer: 'Die Unterbrechung dauerte {dauer}.',
+    },
+  },
+  "direktvermarktung.partner_liest_nicht": {
+    zustandsworte: {
+      liest: 'fragt ab',
+      liest_nicht: 'fragt nicht ab',
+    },
+    meldung: {
+      gilt_bei: {
+        zustaende: ['liest_nicht'],
+      },
+      titel: 'Direktvermarkter fragt nicht ab',
+      lage: 'Der Tunnel steht, aber Ihr Direktvermarkter hat seit {beginn} keine Werte abgefragt.',
+      ursache: 'Meist eine Störung beim Direktvermarkter selbst - Ihre Anlage läuft normal weiter.',
+      was_tun: 'Geben Sie Ihrem Direktvermarkter Bescheid, wenn das länger anhält; nennen Sie dabei den Namen Ihrer Zugangsdatei.',
+      push: 'Der Direktvermarkter fragt seit {beginn} nicht ab.',
+      entwarnung_titel: 'Direktvermarkter fragt wieder ab',
+      entwarnung: 'Seit {ende} kommen wieder Abfragen.',
+      entwarnung_dauer: 'Die Pause dauerte {dauer}.',
+    },
+  },
+  "direktvermarktung.anlage_folgt_nicht": {
+    zustandsworte: {
+      folgt: 'folgt',
+      folgt_nicht: 'folgt nicht',
+    },
+    meldung: {
+      gilt_bei: {
+        zustaende: ['folgt_nicht'],
+      },
+      titel: 'Ihre Anlage folgt dem Direktvermarkter nicht',
+      lage: 'Ihr Direktvermarkter begrenzt die Einspeisung, aber Ihre Anlage speist seit {beginn} mehr ein.',
+      ursache: 'Meist nimmt ein Wechselrichter die Grenze nicht an, oder die Begrenzung ist auf dieser Anlage noch nicht eingerichtet.',
+      was_tun: 'Sehen Sie bei Ihren Wechselrichtern nach, ob einer eine Störung zeigt. Hilft das nicht, rufen Sie Ihren Fachbetrieb an.',
+      push: 'Die Anlage folgt der Vorgabe seit {beginn} nicht.',
+      entwarnung_titel: 'Anlage folgt wieder',
+      entwarnung: 'Seit {ende} hält Ihre Anlage die Vorgabe wieder ein.',
+      entwarnung_dauer: 'Die Überschreitung dauerte {dauer}.',
+    },
+  },
+  "direktvermarktung.zugang_laeuft_ab": {
+    zustandsworte: {
+      gueltig: 'gültig',
+      laeuft_ab: 'läuft in unter 30 Tagen ab',
+    },
+    meldung: {
+      gilt_bei: {
+        zustaende: ['laeuft_ab'],
+      },
+      titel: 'Zugang zum Direktvermarkter läuft bald ab',
+      lage: 'Seit {beginn} ist das Zertifikat Ihres Direktvermarkter-Zugangs keine 30 Tage mehr gültig.',
+      ursache: 'Zugangsdateien gelten begrenzt; der Direktvermarkter stellt rechtzeitig eine neue aus.',
+      was_tun: 'Laden Sie die neue Zugangsdatei in der Direktvermarktung hoch, sobald Ihr Direktvermarkter sie schickt.',
+      push: 'Der Direktvermarkter-Zugang läuft in unter 30 Tagen ab.',
+      entwarnung_titel: 'Zugang erneuert',
+      entwarnung: 'Seit {ende} gilt wieder ein Zugang mit ausreichender Laufzeit.',
+    },
+  },
+  "direktvermarktung.zugang_laeuft_gleich_ab": {
+    zustandsworte: {
+      gueltig: 'gültig',
+      laeuft_ab: 'läuft in unter 7 Tagen ab',
+    },
+    meldung: {
+      gilt_bei: {
+        zustaende: ['laeuft_ab'],
+      },
+      titel: 'Zugang zum Direktvermarkter läuft in Tagen ab',
+      lage: 'Seit {beginn} ist das Zertifikat Ihres Direktvermarkter-Zugangs keine 7 Tage mehr gültig.',
+      ursache: 'Ohne gültigen Zugang trennt der Direktvermarkter die Verbindung; die Anlage speist dann frei ein, die Fernsteuerbarkeit fehlt.',
+      was_tun: 'Laden Sie jetzt die neue Zugangsdatei in der Direktvermarktung hoch. Fehlt sie Ihnen, fragen Sie Ihren Direktvermarkter heute danach.',
+      push: 'Der Direktvermarkter-Zugang läuft in unter 7 Tagen ab.',
+      entwarnung_titel: 'Zugang erneuert',
+      entwarnung: 'Seit {ende} gilt wieder ein Zugang mit ausreichender Laufzeit.',
+    },
+  },
 };
