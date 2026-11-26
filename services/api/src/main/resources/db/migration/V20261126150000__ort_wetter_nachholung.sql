@@ -8,19 +8,29 @@
 -- Wetter der letzten 28 Tage am NEUEN Punkt nach (Open-Meteo `past_days`) und markiert die
 -- Zeile erledigt. Reines Handover: die api liest `erledigt_am` nie zurück (keine Anzeige im
 -- Portal), ein schlichter Transaktions-Outbox-Eintrag.
+--
+-- Anders als `weather_forecast` (Hypertable, ohne Fremdschlüssel, eigene Zeilen in
+-- TenantRepository.offboard und SeriesRepository.deleteForSite) ist dies eine gewöhnliche kleine
+-- Tabelle: echte Fremdschlüssel auf tenant und site mit ON DELETE CASCADE (Loeschzug-Wächter
+-- LoeschzugIndexdeckungTest) räumen beim Löschen einer Anlage oder eines Kundenbereichs ohne
+-- eigenen Code auf; der generische Katalog-Löschzug (TenantRepository.katalogRestLoeschen)
+-- griffe sonst ohnehin, aber die Fremdschlüssel machen die Aufräumung sofort und unabhängig
+-- vom Löschzug. Jeder Fremdschlüssel braucht einen EIGENEN, nicht-partiellen Index, der mit
+-- seiner Spalte beginnt (derselbe Wächter: die RI-Prüfung scannt sonst vollständig).
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS ort_wetter_nachholung (
     id             BIGSERIAL   PRIMARY KEY,
-    tenant_id      UUID        NOT NULL,
-    site_id        UUID        NOT NULL,
+    tenant_id      UUID        NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    site_id        UUID        NOT NULL REFERENCES site(id) ON DELETE CASCADE,
     angefordert_am TIMESTAMPTZ NOT NULL DEFAULT now(),
     erledigt_am    TIMESTAMPTZ
 );
 
--- Der Collector fragt nur die offenen Zeilen.
-CREATE INDEX IF NOT EXISTS idx_ort_wetter_nachholung_offen
-    ON ort_wetter_nachholung (angefordert_am) WHERE erledigt_am IS NULL;
+-- Je ein führender, voller Index für den Löschzug (tenant_id) und die Fremdschlüssel-RI-Prüfung
+-- beim Löschen einer Anlage (site_id) - keiner davon partiell (LoeschzugIndexdeckungTest).
+CREATE INDEX IF NOT EXISTS idx_ort_wetter_nachholung_tenant ON ort_wetter_nachholung (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_ort_wetter_nachholung_site ON ort_wetter_nachholung (site_id);
 
 ALTER TABLE ort_wetter_nachholung ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ort_wetter_nachholung FORCE ROW LEVEL SECURITY;
@@ -31,7 +41,8 @@ CREATE POLICY ort_wetter_nachholung_tenant_isolation ON ort_wetter_nachholung
 
 -- Die api trägt nur ein - der Collector (Mandanten-Backend-Rolle, bypasst RLS wie bei
 -- weather_forecast) liest, markiert erledigt und löscht nie. Kein Zweck für ein UPDATE/DELETE
--- der App-Rolle.
+-- der App-Rolle; ein CASCADE-Löschen über site/tenant braucht diese Rechte ohnehin nicht (die
+-- Fremdschlüssel-Kaskade läuft unabhängig von den Rechten der löschenden Rolle auf dem Kind).
 GRANT SELECT, INSERT ON ort_wetter_nachholung TO ${appDbUser};
 REVOKE UPDATE, DELETE ON ort_wetter_nachholung FROM ${appDbUser};
 -- ⚠ Das BIGSERIAL braucht sein EIGENES Sequenz-Grant (die rollout_event-Falle):
