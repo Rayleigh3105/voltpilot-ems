@@ -14,20 +14,28 @@ public final class WerkstattTestFassung {
     public static final String PROGRAMM_SHA = "1a2b3c4d".repeat(8);
     /** Der Skriptstand edge-light-openwrt.tar.gz, wie er im Manifest steht. */
     public static final String SKRIPTE_SHA = "5e6f7a8b".repeat(8);
+    /** Der Paket-Anhang edge-light-pakete.tar.gz (Direktvermarktung Stufe 5), wie er im Manifest steht. */
+    public static final String PAKETE_SHA = "3d4e5f6a".repeat(8);
     private static final String GZ_SHA = "9c0d1e2f".repeat(8);
 
     private WerkstattTestFassung() {
     }
 
-    /** Die Fassung mit Skriptstand im Manifest und fertigen Programmen: die Werkstatt nimmt sie. */
+    /** Die Fassung mit Skriptstand und Paket-Anhang im Manifest und fertigen Programmen: die Werkstatt nimmt sie. */
     public static void anlegen(JdbcTemplate admin, String fassung, long seq) {
         anlegen(admin, fassung, seq, true, true);
     }
 
     public static void anlegen(JdbcTemplate admin, String fassung, long seq, boolean mitSkripte, boolean programmeFertig) {
+        anlegen(admin, fassung, seq, mitSkripte, programmeFertig, mitSkripte);
+    }
+
+    /** {@code mitPakete} getrennt: eine Fassung vor Stufe 5 trägt den Skriptstand, aber keinen Paket-Anhang. */
+    public static void anlegen(JdbcTemplate admin, String fassung, long seq, boolean mitSkripte,
+            boolean programmeFertig, boolean mitPakete) {
         admin.update("INSERT INTO edge_release (release_seq, version, target_commit, created_by, manifest, signature, "
                 + "signing_key_id) VALUES (?, ?, '5b28311b4c0d', 'test', ?, 'test-signatur', 'rel-2026-a')",
-                seq, fassung, manifest(fassung, seq, mitSkripte));
+                seq, fassung, manifest(fassung, seq, mitSkripte, mitPakete));
         admin.update("INSERT INTO edge_light_programm (release_seq, arch, gz_sha256, gz_size, daten, fertig_am, "
                 + "created_by) VALUES (?, 'linux/mipsle', ?, 4, ?, " + (programmeFertig ? "now()" : "NULL")
                 + ", 'test')", seq, GZ_SHA, programmeFertig ? new byte[] {1, 2, 3, 4} : new byte[0]);
@@ -68,6 +76,10 @@ public final class WerkstattTestFassung {
     }
 
     public static String manifest(String fassung, long seq, boolean mitSkripte) {
+        return manifest(fassung, seq, mitSkripte, mitSkripte);
+    }
+
+    public static String manifest(String fassung, long seq, boolean mitSkripte, boolean mitPakete) {
         return "{\"schema_version\":\"1.0\",\"release\":\"" + fassung + "\",\"release_seq\":" + seq
                 + ",\"target_commit\":\"5b28311b4c0d\",\"artifacts\":[{\"type\":\"binary\",\"name\":\"vp-edge-light\","
                 + "\"arch\":\"linux/mipsle\",\"sha256\":\"" + PROGRAMM_SHA + "\",\"size\":100,\"gz_sha256\":\""
@@ -75,6 +87,8 @@ public final class WerkstattTestFassung {
                 + "\"compat\":{\"backends\":[\"light\"]},\"signing_key_id\":\"rel-2026-a\""
                 + (mitSkripte ? ",\"skripte\":{\"name\":\"edge-light-openwrt.tar.gz\",\"sha256\":\"" + SKRIPTE_SHA
                         + "\",\"size\":31744}" : "")
+                + (mitPakete ? ",\"pakete\":{\"name\":\"edge-light-pakete.tar.gz\",\"sha256\":\"" + PAKETE_SHA
+                        + "\",\"size\":361296}" : "")
                 + "}";
     }
 }

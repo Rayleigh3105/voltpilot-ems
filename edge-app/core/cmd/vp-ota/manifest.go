@@ -37,6 +37,8 @@ func cmdManifest(args []string) error {
 		"name:GOOS/GOARCH=programm[,programm.gz] (Edge Light, je Architektur einmal; ohne ,… gilt programm.gz)")
 	skripte := fs.String("skripte", "",
 		"Edge Light und Edge Industrie: der Skriptstand (edge-light-openwrt.tar.gz bzw. edge-industrie-skripte.tar.gz); Pruefsumme und Groesse kommen signiert ins Manifest (fuer die Werkstatt)")
+	pakete := fs.String("pakete", "",
+		"Edge Light: der Paket-Anhang edge-light-pakete.tar.gz (OpenWrt-Pakete fuer den Direktvermarkter-Anschluss); Pruefsumme und Groesse kommen signiert ins Manifest - Werkstatt UND Box installieren nur aus der geprueften Datei")
 	wartung := fs.String("wartung", "",
 		"Edge Industrie: das Tunnel-Programm vp-wartung-linux-arm; Pruefsumme und Groesse kommen signiert ins Manifest (fuer die Werkstatt, kein Bestandteil des Updates)")
 	grundprogramm := fs.String("grundprogramm", "",
@@ -70,11 +72,17 @@ Pruefsummen und Groessen beider ins Manifest:
     --binary vp-edge-light:linux/arm64=dist/vp-edge-light-linux-arm64 \
     --binary vp-edge-light:linux/arm=dist/vp-edge-light-linux-arm \
     --skripte dist/edge-light-openwrt.tar.gz \
+    --pakete dist/edge-light-pakete.tar.gz \
     --state-schema 3 --key-id rel-2026-a --out release.json
 
 Mit --skripte traegt das Manifest auch den Skriptstand (edge-light/openwrt):
 Die Box wendet ihn beim Update nicht an; der Werkstatt-Dienst legt ihn beim
 Einrichten auf die Box und prueft ihn gegen diese signierte Pruefsumme.
+
+Mit --pakete traegt es den Paket-Anhang (edge-light/scripts/pakete-paket.py,
+Pins edge-light/openwrt/pakete.json): die OpenWrt-Pakete des Direktvermarkter-
+Anschlusses. Werkstatt (install.sh) und Box (Feld-Update) installieren sie
+nur aus der Datei, deren Pruefsumme hier signiert steht.
 
 Ein Edge-Industrie-Release (WAGO PFC200, Box-Art industrie) heisst
 edge-industrie-JJJJ.MM.N und traegt nur das Programm fuer linux/arm, ohne
@@ -162,6 +170,20 @@ Skriptstand; das Backend folgt dem Namen:
 		}
 		h := sha256.Sum256(daten)
 		m.Skripte = &otaverify.Skripte{Name: otaverify.SkripteDateiFuer(*release), SHA256: hex.EncodeToString(h[:]), Size: int64(len(daten))}
+	}
+	if *pakete != "" {
+		if !strings.HasPrefix(*release, otaverify.LightReleasePrefix) {
+			return errors.New("--pakete gehoert zu einem Edge-Light-Release")
+		}
+		daten, err := os.ReadFile(*pakete)
+		if err != nil {
+			return fmt.Errorf("--pakete: %w", err)
+		}
+		if _, err := gzip.NewReader(bytes.NewReader(daten)); err != nil {
+			return fmt.Errorf("--pakete: %s ist kein gzip: %w", *pakete, err)
+		}
+		h := sha256.Sum256(daten)
+		m.Pakete = &otaverify.Pakete{Name: otaverify.PaketeDatei, SHA256: hex.EncodeToString(h[:]), Size: int64(len(daten))}
 	}
 	if *wartung != "" {
 		daten, err := os.ReadFile(*wartung)

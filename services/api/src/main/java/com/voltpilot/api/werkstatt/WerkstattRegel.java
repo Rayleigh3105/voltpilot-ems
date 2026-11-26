@@ -509,6 +509,17 @@ public class WerkstattRegel {
             return new Ergebnis(name, null, "Die Fassung " + name + " trägt ihren Skriptstand nicht im signierten "
                     + "Manifest. Die Werkstatt nimmt erst eine Fassung, die damit gebaut ist.");
         }
+        // Stufe 5 der Direktvermarktung (E5=A, PS-D10): ohne den Paket-Anhang
+        // könnte die Werkstatt OpenVPN nur aus dem Internet auf die Box holen -
+        // genau das ist ausgeschlossen. Wie beim Skriptstand (PR #1934) wartet
+        // die Werkstatt, bis eine Fassung mit dem Anhang gebaut ist. Die
+        // Prüfsumme pinnt die Freigabe nicht: Der Dienst nimmt sie aus dem
+        // signierten Manifest, das er kryptographisch prüft.
+        if (m.pakete().isEmpty()) {
+            return new Ergebnis(name, null, "Die Fassung " + name + " trägt ihren Paket-Anhang "
+                    + "(edge-light-pakete.tar.gz) nicht im signierten Manifest. Die Werkstatt nimmt erst eine "
+                    + "Fassung, die damit gebaut ist.");
+        }
         Programm edge = new Programm(name, quelle + name + "/", programm.get().sha256(), skripte.get().sha256());
         return new Ergebnis(name, new Soll(WerkstattOpenWrt.MANGO, edge, r.releaseSeq()), null);
     }

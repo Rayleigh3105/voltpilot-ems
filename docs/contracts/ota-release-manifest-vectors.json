@@ -873,6 +873,97 @@
         "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "size": 31744},
         "grundprogramm": {"name": "edge-industrie-grundprogramm.tar.gz", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "size": 262144}
       }
+    },
+    {
+      "name": "light-release-mit-paket-anhang-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": true,
+      "warum": "Ein Edge-Light-Release traegt seinen Paket-Anhang (edge-light-pakete.tar.gz, OpenWrt-Pakete des Direktvermarkter-Anschlusses) signiert mit: Werkstatt UND Box installieren nur aus der Datei mit genau dieser Pruefsumme; das Update selbst verifiziert wie ohne (kein Eintrag in artifacts, ein aelterer Stand ignoriert das Feld und laesst nur die Pakete weg).",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.11.1",
+        "release_seq": 150,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "size": 31744},
+        "pakete": {"name": "edge-light-pakete.tar.gz", "sha256": "7777777777777777777777777777777777777777777777777777777777777777", "size": 361296}
+      }
+    },
+    {
+      "name": "light-paket-anhang-ohne-pruefsumme-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Ein Paket-Anhang ohne Pruefsumme pinnt nichts: erzeugen darf man das nicht. Die Box liest tolerant (das Update verifiziert wie ohne) und installiert KEIN Paket - installiert wird nur aus einer Datei mit signierter Pruefsumme.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.11.1",
+        "release_seq": 150,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a",
+        "pakete": {"name": "edge-light-pakete.tar.gz", "sha256": "", "size": 361296}
+      }
+    },
+    {
+      "name": "industrie-release-mit-paket-anhang-auf-industrie-box",
+      "backend": "industrie",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Den Paket-Anhang traegt nur ein Edge-Light-Release: Die Firmware des WAGO PFC200 bringt ihr OpenVPN selbst mit. Die Box liest das Feld tolerant und wendet es nicht an; erzeugbar ist so ein Manifest nicht.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-industrie-2026.11.1",
+        "release_seq": 151,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-industrie", "arch": "linux/arm", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "size": 15321088, "gz_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "gz_size": 4894720}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["industrie"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-industrie-skripte.tar.gz", "sha256": "5555555555555555555555555555555555555555555555555555555555555555", "size": 20480},
+        "wartung": {"name": "vp-wartung-linux-arm", "sha256": "6666666666666666666666666666666666666666666666666666666666666666", "size": 6815744},
+        "pakete": {"name": "edge-light-pakete.tar.gz", "sha256": "7777777777777777777777777777777777777777777777777777777777777777", "size": 361296}
+      }
+    },
+    {
+      "name": "docker-release-mit-paket-anhang-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Die Docker-Box hat keinen Paketstand (ihre Dienste kommen als Images): erzeugbar ist ein edge-Release mit Paket-Anhang nicht, gelesen wird das Feld tolerant und ignoriert.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.11.1",
+        "release_seq": 152,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a",
+        "pakete": {"name": "edge-light-pakete.tar.gz", "sha256": "7777777777777777777777777777777777777777777777777777777777777777", "size": 361296}
+      }
     }
   ]
 }

@@ -465,7 +465,7 @@ class WerkstattEinloesenApiTest {
 
         // Übergangsfrist (Entscheid des Kapitäns vom 15.11.2026 zu PR #1885): fehlt nur
         // einrichtung_wlan_bereit, geht die Abnahme trotzdem durch und ist im Register
-        // als Dienst-Fassung vor Einrichtungs-WLAN gekennzeichnet; alle anderen neun bleiben Pflicht.
+        // als Dienst-Fassung vor Einrichtungs-WLAN gekennzeichnet; die übrigen Pflicht-Prüfungen bleiben Pflicht.
         Map<String, String> ohneEinrichtungWlan = new HashMap<>(belege());
         ohneEinrichtungWlan.remove("einrichtung_wlan_bereit");
         ResponseEntity<String> uebergang = send(HttpMethod.POST, abnahme, dienst,
@@ -494,7 +494,7 @@ class WerkstattEinloesenApiTest {
         JsonNode erste = reg.get("abnahmen").get(0);
         assertThat(erste.get("quelle").asText()).isEqualTo("dienst");
         assertThat(erste.get("belege").get("anmeldeprobe").asText()).isEqualTo(belege().get("anmeldeprobe"));
-        assertThat(erste.get("belege").size()).isEqualTo(10);
+        assertThat(erste.get("belege").size()).isEqualTo(11);
         assertThat(erste.get("dienstFassungVorEinrichtungWlan").asBoolean()).isFalse();
         assertThat(erste.get("passwortAge").asText()).isEqualTo(ageText());
         assertThat(erste.get("probe").get("fensterId").asText()).isEqualTo(fensterId);
@@ -510,7 +510,8 @@ class WerkstattEinloesenApiTest {
     private static Map<String, String> belege() {
         Map<String, String> b = new java.util.LinkedHashMap<>();
         for (String p : List.of("root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe",
-                "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit", "einrichtung_wlan_bereit")) {
+                "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit", "einrichtung_wlan_bereit",
+                "direktvermarktung_bereit")) {
             b.put(p, "Schritt " + p + ": belegt im Test");
         }
         return b;

@@ -50,6 +50,11 @@
       "id": "einrichtung_wlan_bereit",
       "regel": "Entscheid E6=B vom 13.11.2026, Konzept vp-edge-light-wlan Abschnitt 6.1",
       "text": "Einrichtungs-WLAN bereit: Funkmodul auf Land DE, Paket relayd auf der Box"
+    },
+    {
+      "id": "direktvermarktung_bereit",
+      "regel": "Konzept vp-direktvermarktung-konzept d2, E5=A, Stufe 5, PS-D10",
+      "text": "Direktvermarktung-bereit: OpenVPN-Pakete aus dem geprüften Release-Anhang installiert (mit Version), Startskript vp-vermarkter eingerichtet, der Verwalter im Programm meldet den Anschluss (ohne Profil), Tunnel aus, keine Zone und keine Konfiguration von früher; oder, trägt die Fassung keinen Paket-Anhang (vor Stufe 5), übersprungen"
     }
   ],
   "geraete": {
@@ -110,6 +115,11 @@
           "id": "grundprogramm",
           "regel": "Konzept PFC200 6.7",
           "text": "Grundprogramm eingespielt (Prüfsumme gegen das signierte Manifest bestätigt, CODESYS-Laufzeit läuft, ihr Modbus-Server lauscht auf Port 503) oder, trägt die Fassung keines, übersprungen"
+        },
+        {
+          "id": "direktvermarktung_bereit",
+          "regel": "Konzept vp-direktvermarktung-konzept d2, E5=A, Stufe 5, PS-D10",
+          "text": "Direktvermarktung-bereit: Firmware-OpenVPN vorhanden (mit Version), Helfer vp-vermarkter eingerichtet und startet mit dem Gerät, sein Stand ohne Zustellung: kein Zugang, Tunnel aus, keine Umleitung; oder, fehlt der Helfer im Skriptstand der Fassung (vor Stufe 5), übersprungen"
         }
       ]
     }

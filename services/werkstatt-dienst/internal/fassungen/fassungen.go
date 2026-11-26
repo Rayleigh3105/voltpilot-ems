@@ -47,6 +47,11 @@ import (
 const (
 	SkripteDatei    = "edge-light-openwrt.tar.gz"
 	ProgrammPraefix = "vp-edge-light-linux-"
+	// PaketeDatei ist der Paket-Anhang (Direktvermarktung Stufe 5, PS-D10):
+	// die OpenWrt-Pakete des Direktvermarkter-Anschlusses, Pins
+	// edge-light/openwrt/pakete.json. Seine Prüfsumme pinnt nicht die
+	// Freigabe, sondern allein das signierte Manifest ([Stand.PaketeSha256]).
+	PaketeDatei = "edge-light-pakete.tar.gz"
 )
 
 // Namen der Release-Anhänge für den PFC200 (Edge Industrie).
@@ -67,6 +72,7 @@ const (
 	MaxAbbild   = 32 << 20
 	MaxProgramm = 64 << 20
 	MaxSkripte  = 4 << 20
+	MaxPakete   = 8 << 20
 )
 
 // Datei ist eine Datei der Freigabe.
@@ -100,6 +106,13 @@ func DateienPFC200(f freigabe.Freigabe) (programm, skripte, wartung, grundprogra
 		grundprogramm = Datei{Name: GrundprogrammDatei, URL: verbinde(i.Quelle, GrundprogrammDatei), Sha256: i.GrundprogrammSha256, Max: MaxSkripte}
 	}
 	return
+}
+
+// Pakete gibt die Datei des Paket-Anhangs einer Edge-Light-Fassung zurück.
+// Die Prüfsumme kommt aus dem SIGNIERTEN Manifest ([Stand.PaketeSha256]),
+// nicht aus der Freigabe - darum erst nach [PruefeManifest] aufrufbar.
+func Pakete(quelle, sha256 string) Datei {
+	return Datei{Name: PaketeDatei, URL: verbinde(quelle, PaketeDatei), Sha256: sha256, Max: MaxPakete}
 }
 
 func verbinde(basis, name string) string {

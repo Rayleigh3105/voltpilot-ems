@@ -363,6 +363,7 @@ type laufZustand struct {
 	csrZuletzt   time.Time
 	pfadProgramm string
 	pfadSkripte  string
+	pfadPakete   string // der Paket-Anhang (Stufe 5); leer: Fassung ohne
 	pfadManifest string
 	dirVertrauen string
 	stand        fassungen.Stand
@@ -736,6 +737,18 @@ func (l *laufZustand) fassungen(ctx context.Context) (protokoll.Beleg, string, e
 		return b, "", err
 	}
 	l.stand = st
+	// Der Paket-Anhang der Direktvermarktung (Stufe 5): Pruefsumme allein aus
+	// dem eben geprueften Manifest. install.sh installiert die Pakete aus der
+	// geprueften Datei; sie sind additiv und bleiben bei einer Ruecknahme des
+	// Programms stehen (ohne Zustellung tut keines etwas).
+	if st.PaketeSha256 != "" {
+		erg, err := l.k.Fassungen.Hole(ctx, fassungen.Pakete(z.Quelle, st.PaketeSha256))
+		if err != nil {
+			return b, "", err
+		}
+		l.pfadPakete = erg.Pfad
+		b = b.Mit(fassungen.PaketeDatei, fmt.Sprintf("sha256 %s, %d Bytes", st.PaketeSha256, erg.Groesse))
+	}
 	dir, err := l.arbeitsDir()
 	if err != nil {
 		return b, "", err
@@ -939,7 +952,7 @@ func (l *laufZustand) tunnelStatus(ctx context.Context) (string, error) {
 func (l *laufZustand) aufspielen(ctx context.Context) (protokoll.Beleg, string, error) {
 	// Ab hier nimmt jeder Fehler die Sicherung zurück.
 	l.aufgespielt = true
-	r, err := l.skript(ctx, "install.sh", nil, mango.InstallUmgebung(l.k.Bauart, l.pfadManifest, l.dirVertrauen, l.k.geraetPortalURL())...)
+	r, err := l.skript(ctx, "install.sh", nil, mango.InstallUmgebung(l.k.Bauart, l.pfadManifest, l.dirVertrauen, l.k.geraetPortalURL(), l.pfadPakete)...)
 	if err != nil {
 		return nil, "", err
 	}

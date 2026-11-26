@@ -23,7 +23,8 @@ public final class WerkstattPruefungen {
             "lan_netz",
             "neustart",
             "update_bereit",
-            "einrichtung_wlan_bereit");
+            "einrichtung_wlan_bereit",
+            "direktvermarktung_bereit");
 
     /**
      * Die Prüfungen für den WAGO PFC200 (Edge Industrie), in der Reihenfolge
@@ -46,7 +47,8 @@ public final class WerkstattPruefungen {
             "dienste_zu",
             "neustart",
             "update_bereit",
-            "grundprogramm");
+            "grundprogramm",
+            "direktvermarktung_bereit");
 
     /** Die Prüfliste eines Geräts ({@code pfc200}; jedes andere Wort: die Mango). */
     public static List<String> fuer(String geraet) {
@@ -99,5 +101,33 @@ public final class WerkstattPruefungen {
      */
     public static boolean uebergangGilt(List<String> fehlend, Instant jetzt) {
         return fehlend.equals(List.of(EINRICHTUNG_WLAN_BEREIT)) && jetzt.isBefore(EINRICHTUNG_WLAN_UEBERGANG_BIS);
+    }
+
+    /** Die Prüfung der Direktvermarktung (Stufe 5, PS-D10), beide Geräte. */
+    public static final String DIREKTVERMARKTUNG_BEREIT = "direktvermarktung_bereit";
+
+    /**
+     * Übergangsfrist für {@link #DIREKTVERMARKTUNG_BEREIT}, vier Wochen wie
+     * bei {@link #EINRICHTUNG_WLAN_BEREIT} und aus demselben Grund: Der
+     * Werkstatt-Dienst wird von Hand aktualisiert; ein Dienst vor Stufe 5
+     * liefert alle Belege außer diesem einen. Danach gilt die volle Pflicht.
+     */
+    public static final Instant DIREKTVERMARKTUNG_UEBERGANG_BIS = Instant.parse("2026-12-24T00:00:00Z");
+
+    /** Die Prüfungen, die während ihrer Übergangsfrist fehlen dürfen, mit ihrer Frist. */
+    private static final java.util.Map<String, Instant> UEBERGAENGE = java.util.Map.of(
+            EINRICHTUNG_WLAN_BEREIT, EINRICHTUNG_WLAN_UEBERGANG_BIS,
+            DIREKTVERMARKTUNG_BEREIT, DIREKTVERMARKTUNG_UEBERGANG_BIS);
+
+    /**
+     * Ob eine Abnahme mit genau diesen fehlenden Prüfungen zu {@code jetzt}
+     * noch durchgeht: jede fehlende muss eine Übergangs-Prüfung innerhalb
+     * ihrer Frist sein ({@link #UEBERGAENGE}). Gilt für beide Geräte; welche
+     * Prüfungen ein Gerät überhaupt kennt, entscheidet vorher
+     * {@link #fuer(String)}.
+     */
+    public static boolean uebergangGiltFuer(List<String> fehlend, Instant jetzt) {
+        return !fehlend.isEmpty() && fehlend.stream()
+                .allMatch(p -> UEBERGAENGE.containsKey(p) && jetzt.isBefore(UEBERGAENGE.get(p)));
     }
 }

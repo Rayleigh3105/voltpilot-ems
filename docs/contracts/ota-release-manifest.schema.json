@@ -98,6 +98,9 @@
     "skripte": {
       "$ref": "#/$defs/skripte"
     },
+    "pakete": {
+      "$ref": "#/$defs/pakete"
+    },
     "wartung": {
       "$ref": "#/$defs/wartung"
     },
@@ -112,7 +115,7 @@
   },
   "allOf": [
     {
-      "$comment": "EIN MANIFEST JE BOX-ART: edge-light-JJJJ.MM.N gilt nur fuer light, edge-industrie-JJJJ.MM.N nur fuer industrie, beide tragen nur binary. Jede der beiden Linien traegt IHREN Skriptstand (edge-light-openwrt.tar.gz bzw. edge-industrie-skripte.tar.gz); das Tunnel-Programm (wartung) und die Bootapplikation des Basisprojekts (grundprogramm) tragen nur edge-industrie-JJJJ.MM.N, und auch dort sind beide optional. Jedes andere Release traegt weder light noch industrie noch ein binary, keinen Skriptstand, kein Tunnel-Programm und keine Bootapplikation.",
+      "$comment": "EIN MANIFEST JE BOX-ART: edge-light-JJJJ.MM.N gilt nur fuer light, edge-industrie-JJJJ.MM.N nur fuer industrie, beide tragen nur binary. Jede der beiden Linien traegt IHREN Skriptstand (edge-light-openwrt.tar.gz bzw. edge-industrie-skripte.tar.gz); der Paket-Anhang (pakete) traegt nur edge-light-JJJJ.MM.N; das Tunnel-Programm (wartung) und die Bootapplikation des Basisprojekts (grundprogramm) tragen nur edge-industrie-JJJJ.MM.N, und auch dort sind beide optional. Jedes andere Release traegt weder light noch industrie noch ein binary, keinen Skriptstand, keinen Paket-Anhang, kein Tunnel-Programm und keine Bootapplikation.",
       "if": { "required": ["release"], "properties": { "release": { "pattern": "^edge-light-" } } },
       "then": {
         "not": { "anyOf": [ { "required": ["wartung"] }, { "required": ["grundprogramm"] } ] },
@@ -125,6 +128,7 @@
       "else": {
         "if": { "required": ["release"], "properties": { "release": { "pattern": "^edge-industrie-" } } },
         "then": {
+          "not": { "required": ["pakete"] },
           "properties": {
             "compat": { "properties": { "backends": { "items": { "const": "industrie" } } } },
             "artifacts": { "items": { "properties": { "type": { "const": "binary" } } } },
@@ -132,7 +136,7 @@
           }
         },
         "else": {
-          "not": { "anyOf": [ { "required": ["skripte"] }, { "required": ["wartung"] }, { "required": ["grundprogramm"] } ] },
+          "not": { "anyOf": [ { "required": ["skripte"] }, { "required": ["pakete"] }, { "required": ["wartung"] }, { "required": ["grundprogramm"] } ] },
           "properties": {
             "compat": { "properties": { "backends": { "items": { "not": { "enum": ["light", "industrie"] } } } } },
             "artifacts": { "items": { "properties": { "type": { "not": { "const": "binary" } } } } }
@@ -149,6 +153,17 @@
       "description": "ADDITIV (schema_version bleibt 1.0), nur Edge Light und Edge Industrie. Der Skriptstand des Release: Install- und Tunnel-Skripte, die der Werkstatt-Dienst beim Einrichten einer Box auflegt (Edge Light: edge-light/openwrt als edge-light-openwrt.tar.gz; Edge Industrie: install.sh, wartung.sh und files/ aus edge-industrie als edge-industrie-skripte.tar.gz). Die Box wendet ihn beim Update NICHT an; er steht hier, damit die Pruefsumme, gegen die die Werkstatt prueft, signiert ist und nie aus einer unsignierten Liste kommt (docs/werkstatt.md, Werkstatt nimmt die neueste Fassung). Ein aelterer Geraetestand ignoriert das Feld.",
       "properties": {
         "name": { "type": "string", "enum": ["edge-light-openwrt.tar.gz", "edge-industrie-skripte.tar.gz"] },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "pakete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256", "size"],
+      "description": "ADDITIV (schema_version bleibt 1.0), nur Edge Light, und dort optional. Der Paket-Anhang des Release (edge-light-pakete.tar.gz, gebaut aus den Pins edge-light/openwrt/pakete.json): die OpenWrt-Pakete des Direktvermarkter-Anschlusses (OpenVPN samt Abhaengigkeiten) fuer genau das OpenWrt-Abbild der Werkstatt. Anders als skripte wendet die BOX dieses Feld an: Werkstatt (install.sh, VP_PAKETE) und Feld-Update installieren die Pakete nur aus der Datei, deren Pruefsumme hier signiert steht - nie aus dem Internet auf der Box (Konzept vp-direktvermarktung-konzept d2, E5/Stufe 5, PS-D10). Trotzdem KEIN Eintrag in artifacts: ein unbekannter Bestandteil liesse aeltere Boxen das ganze Release zurueckstellen; als additives Feld ignoriert ein aelterer Stand es und laesst nur die Pakete weg - die sichere Richtung. Die Firmware des PFC200 bringt ihr OpenVPN selbst mit, die Docker-Box hat keinen Paketstand.",
+      "properties": {
+        "name": { "type": "string", "const": "edge-light-pakete.tar.gz" },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "size": { "type": "integer", "minimum": 1 }
       }

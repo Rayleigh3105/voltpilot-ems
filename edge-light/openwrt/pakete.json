@@ -1,0 +1,51 @@
+{
+  "beschreibung": "Die gepinnten OpenWrt-Pakete des Paket-Anhangs edge-light-pakete.tar.gz (Direktvermarktung Stufe 5, E5=A, PS-D10): OpenVPN samt Abhaengigkeiten fuer den Anschluss an einen Direktvermarkter (edge-light/openwrt/files/etc/init.d/vp-vermarkter, edge-app/core/internal/vermarktertunnel). Gebaut von edge-light/scripts/pakete-paket.py; die Pruefsumme des fertigen Anhangs kommt signiert ins Release-Manifest (vp-ota manifest --pakete). Jede Datei hier ist mit Fassung, Pruefsumme und Quelle gepinnt: pakete-paket.py laedt sie von der Quelle (oder nimmt sie aus VP_PAKETE_QUELLE_DIR) und verwendet sie NUR, wenn Pruefsumme und Groesse stimmen - nichts aus einer ungepruefter Quelle, und auf der Box wird nie aus dem Internet installiert. Die Pakete gehoeren zu GENAU dem OpenWrt-Abbild der Werkstatt (WerkstattOpenWrt.MANGO, Kernel-Module sind an den Kernel der Fassung gebunden): Wer das Abbild hebt, hebt diese Pins im selben PR (Fassungen und Pruefsummen von downloads.openwrt.org abschreiben und gegenpruefen, wie beim Abbild selbst). libmbedtls21 liegt schon im Abbild (libustream-mbedtls/wpad/apk) und fehlt hier bewusst.",
+  "openwrt": "25.12.5",
+  "ziel": "ramips/mt76x8",
+  "arch": "mipsel_24kc",
+  "gepinnt_am": "2026-11-26",
+  "pakete": [
+    {
+      "datei": "kmod-tun-6.12.94-r1.apk",
+      "sha256": "fd7c7dfd59839d0eaef976b5d4f59c122d136eebffbde70ffa39efd082d25c8f",
+      "groesse": 21917,
+      "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/kmods/6.12.94-1-2fe195f1cc4f533c70c3c6ea555ac460/kmod-tun-6.12.94-r1.apk"
+    },
+    {
+      "datei": "kmod-ovpn-backports-6.12.94.7.0.0.2026032400-r2.apk",
+      "sha256": "065914130524a1627c855123aeaa6cbdc7444ee7d057b6f0fe15a977ce8590c5",
+      "groesse": 28584,
+      "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/kmods/6.12.94-1-2fe195f1cc4f533c70c3c6ea555ac460/kmod-ovpn-backports-6.12.94.7.0.0.2026032400-r2.apk"
+    },
+    {
+      "datei": "libcap-ng-0.8.4-r2.apk",
+      "sha256": "a0aa04022d3a060e632133a492afb53e52dd61ef6e68c1489e7a669d748514ac",
+      "groesse": 7483,
+      "quelle": "https://downloads.openwrt.org/releases/25.12.5/packages/mipsel_24kc/packages/libcap-ng-0.8.4-r2.apk"
+    },
+    {
+      "datei": "liblz4-1-1.10.0-r1.apk",
+      "sha256": "cc97a245af7a06efb593d6bd4025e59b1846323a7693db3a9907881640d15d43",
+      "groesse": 49232,
+      "quelle": "https://downloads.openwrt.org/releases/25.12.5/packages/mipsel_24kc/packages/liblz4-1-1.10.0-r1.apk"
+    },
+    {
+      "datei": "libnl-core200-3.12.0-r1.apk",
+      "sha256": "9808a62a09e91108673506033bd3f68e00224627f16917a76e3a872b0b23f703",
+      "groesse": 35188,
+      "quelle": "https://downloads.openwrt.org/releases/25.12.5/packages/mipsel_24kc/base/libnl-core200-3.12.0-r1.apk"
+    },
+    {
+      "datei": "libnl-genl200-3.12.0-r1.apk",
+      "sha256": "1c3f4118a42083db71ba0ea788a569a07b8b3ffda7ea489c74bf5d3344b65fcc",
+      "groesse": 7245,
+      "quelle": "https://downloads.openwrt.org/releases/25.12.5/packages/mipsel_24kc/base/libnl-genl200-3.12.0-r1.apk"
+    },
+    {
+      "datei": "openvpn-mbedtls-2.7.8-r1.apk",
+      "sha256": "87ad649ed2f7304a6bd65d12803e7662ecf6b55114bc9044ed2541ef918b71a7",
+      "groesse": 211647,
+      "quelle": "https://downloads.openwrt.org/releases/25.12.5/packages/mipsel_24kc/packages/openvpn-mbedtls-2.7.8-r1.apk"
+    }
+  ]
+}

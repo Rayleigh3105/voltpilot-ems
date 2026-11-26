@@ -29,6 +29,7 @@ PFLICHT = (
     "edge-industrie/wartung.sh",
     "edge-industrie/fernlauf.sh",
     "edge-industrie/files/etc/init.d/vp-edge-industrie",
+    "edge-industrie/files/etc/init.d/vp-vermarkter",
     "edge-industrie/files/etc/init.d/vp-wartung",
     "edge-industrie/files/home/voltpilot/libexec/boot.sh",
 )

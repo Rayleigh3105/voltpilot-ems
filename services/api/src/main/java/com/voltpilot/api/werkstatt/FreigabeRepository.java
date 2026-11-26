@@ -48,7 +48,10 @@ public class FreigabeRepository {
      * und nicht in der Antwort). {@code grundprogrammSha256}: die Boot-
      * Applikation des Basisprojekts, nur beim PFC200 und dort OPTIONAL (anders
      * als {@code wartungSha256}) - das Basisprojekt ändert sich nicht mit jeder
-     * Fassung.
+     * Fassung. Der Paket-Anhang der Direktvermarktung (Stufe 5) steht bewusst
+     * NICHT hier: Seine Prüfsumme nimmt der Dienst allein aus dem signierten
+     * Manifest der Fassung, das er ohnehin kryptographisch prüft - die
+     * Freigabe pinnt nur, was sie selbst zum Laden braucht.
      */
     public record Programm(String fassung, String quelle, String programmSha256, String skripteSha256,
             @JsonInclude(JsonInclude.Include.NON_NULL) String wartungSha256,
