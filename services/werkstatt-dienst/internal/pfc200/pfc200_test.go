@@ -8,11 +8,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -345,14 +347,18 @@ func TestLaufAbWerk(t *testing.T) {
 	if a.p.NimmtAn("root", "wago") || a.p.NimmtAn("admin", "wago") || a.p.NimmtAn("user", "user") {
 		t.Error("ein Werkspasswort gilt noch")
 	}
-	// config_linux_user lehnt user=root ab (WAGO-Quelltext, FW22 und FW24+
-	// gleich): root bekommt sein Passwort über usermod, nie darüber.
+	// config_linux_user lehnt user=root ab und verlangt bei admin/user im
+	// hash= die restlichen Shadow-Felder statt des bloßen Hashs (WAGO-
+	// Quelltext, FW22 und FW24+ gleich); alle drei Konten bekommen ihr
+	// Passwort darum über usermod, nie über config_linux_user.
 	aufrufe := strings.Join(a.p.Aufrufe(), "\n")
-	if strings.Contains(aufrufe, "config_linux_user user=root") {
-		t.Error("root darf nie über config_linux_user laufen (das Werkzeug lehnt user=root ab)")
+	if strings.Contains(aufrufe, "config_linux_user") {
+		t.Error("kein Konto darf über config_linux_user laufen (siehe Testfälle zu dessen hash=-Format)")
 	}
-	if !strings.Contains(aufrufe, "usermod user=root hash=gesetzt") {
-		t.Error("root bekommt sein neues Passwort nicht über usermod")
+	for _, u := range []string{"root", "admin", "user"} {
+		if !strings.Contains(aufrufe, "usermod user="+u+" hash=gesetzt") {
+			t.Errorf("%s bekommt sein neues Passwort nicht über usermod", u)
+		}
 	}
 	if a.p.Lies("ssh/password-request-state") != "disabled" {
 		t.Error("Anmeldung mit Passwort nicht aus")
@@ -439,6 +445,66 @@ func TestLaufAbWerk(t *testing.T) {
 		if !passt {
 			t.Errorf("Befehl fasst die SPS unerwartet an: %q", z)
 		}
+	}
+}
+
+// TestConfigLinuxUserVerlangtVolleShadowZeile belegt, wovor der Schritt
+// zugaenge mit usermod ausweicht (für root seit PR #2003, für admin und user
+// mit dieser Änderung): config_linux_user nimmt bei hash= nicht den bloßen
+// Hash, den passwort.ShadowHash liefert, sondern verlangt die restlichen
+// Shadow-Felder dahinter (hash:lstchg:min:max:warn:inactive:expire:flag,
+// siehe get_user_hash --shadow-get-info und die Hilfe des Werkzeugs im
+// WAGO-Quelltext: "password hash and additional infos in /etc/shadow
+// format"). Ohne sie scheitert es an sgetspent() mit SYSTEM_CALL_ERROR=7,
+// ohne jede Ausgabe - genau der Fehler, den die Werkstatt am Gerät antraf.
+// Der dritte Benutzer des Schritts (user) scheitert auf dieselbe Weise.
+func TestConfigLinuxUserVerlangtVolleShadowZeile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for name, inhalt := range attrappe.PFCWerkzeuge() {
+		p := filepath.Join(dir, "etc/config-tools", name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, inhalt, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	skript := filepath.Join(dir, "etc/config-tools/config_linux_user")
+	nurHash := "$6$abcdefghijklmnop$" + strings.Repeat("a", 86)
+	volleZeile := nurHash + ":0:0:99999:7:::"
+
+	ausfuehren := func(u, hash string) ([]byte, int) {
+		cmd := exec.Command(skript, "user="+u, "hash="+hash)
+		cmd.Env = append(os.Environ(), "VP_PFC_WURZEL="+dir)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			return out, 0
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return out, exitErr.ExitCode()
+		}
+		t.Fatalf("config_linux_user user=%s: %v", u, err)
+		return nil, -1
+	}
+
+	for _, u := range []string{"admin", "user"} {
+		out, code := ausfuehren(u, nurHash)
+		if code != 7 {
+			t.Errorf("config_linux_user user=%s hash=<bloßer Hash>: Exit-Code %d, erwartet 7 (SYSTEM_CALL_ERROR)", u, code)
+		}
+		if len(out) != 0 {
+			t.Errorf("config_linux_user user=%s hash=<bloßer Hash>: Ausgabe %q, erwartet keine", u, out)
+		}
+	}
+	for _, u := range []string{"admin", "user"} {
+		if out, code := ausfuehren(u, volleZeile); code != 0 {
+			t.Errorf("config_linux_user user=%s hash=<volle Shadow-Zeile>: Exit-Code %d, Ausgabe %q", u, code, out)
+		}
+	}
+	if _, code := ausfuehren("root", volleZeile); code != 2 {
+		t.Errorf("config_linux_user user=root: Exit-Code %d, erwartet 2 (INVALID_PARAMETER)", code)
 	}
 }
 
