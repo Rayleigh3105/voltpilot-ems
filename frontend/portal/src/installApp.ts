@@ -200,10 +200,18 @@ export const APP_GROUP_EXPLAIN =
 /** Eines der echten Symbole, die der Kunde auf seinem Schirm wiederfinden soll - nie ein Unicode-Zeichen. */
 export type InstallStepIcon = 'share' | 'more-vertical' | 'more-horizontal';
 
-/** Ein einzelner Anleitungsschritt. `icons` ist leer, wo der Schritt keins braucht (ein Menüeintrag ohne festes Icon). */
+/**
+ * Ein Stück eines Anleitungssatzes: entweder Text oder genau das Symbol, das an dieser Stelle
+ * im Satz gemeint ist - „tippen Sie auf [Symbol] Teilen", nicht ein Symbol VOR dem ganzen Satz.
+ * So liest der Kunde Satz und Symbol in einem Zug, in der Reihenfolge, in der er sie auf dem
+ * Schirm sucht (Rückmeldung zur ersten Fassung: Symbole standen klein vor dem Satz statt genau
+ * dort, wo sie genannt werden).
+ */
+export type InstallStepPart = { text: string } | { icon: InstallStepIcon };
+
+/** Ein einzelner Anleitungsschritt, aus Text- und Symbol-Stücken in Lesereihenfolge zusammengesetzt. */
 export interface InstallStep {
-  icons: InstallStepIcon[];
-  text: string;
+  parts: InstallStepPart[];
 }
 
 export interface InstallView {
@@ -258,18 +266,32 @@ export function installView(
   if (state === 'ios-anleitung') {
     const fremderBrowser = ios?.fremderBrowser === true;
     const teilenSchritt: InstallStep = ios?.ipad
-      ? { icons: ['share'], text: 'Tippen Sie oben im Bildschirm auf das Teilen-Symbol.' }
+      ? { parts: [{ text: 'Tippen Sie oben auf ' }, { icon: 'share' }, { text: ' Teilen.' }] }
       : fremderBrowser
-        ? { icons: ['share'], text: 'Tippen Sie oben neben der Adressleiste auf das Teilen-Symbol.' }
+        ? {
+            parts: [
+              { text: 'Tippen Sie oben neben der Adressleiste auf ' },
+              { icon: 'share' },
+              { text: ' Teilen.' },
+            ],
+          }
         : {
-            icons: ['more-horizontal', 'share'],
-            text: 'Tippen Sie auf das Teilen-Symbol - sehen Sie es nicht direkt, zuerst auf das Menü daneben.',
+            parts: [
+              { text: 'Tippen Sie unten auf ' },
+              { icon: 'share' },
+              { text: ' Teilen. Sehen Sie nur ' },
+              { icon: 'more-horizontal' },
+              { text: ', tippen Sie zuerst darauf.' },
+            ],
           };
+    const zumHomeBildschirmSchritt: InstallStep = {
+      parts: [{ text: 'Wählen Sie „Zum Home-Bildschirm“.' }],
+    };
     return {
       state,
       text: 'Auf dem iPhone und iPad legen Sie VoltPilot über das Teilen-Menü ab:',
       action: null,
-      steps: [teilenSchritt, { icons: [], text: 'Wählen Sie „Zum Home-Bildschirm“.' }],
+      steps: [teilenSchritt, zumHomeBildschirmSchritt],
       hint: fremderBrowser
         ? 'Danach startet VoltPilot im Vollbild, ganz ohne Browser-Leiste.'
         : 'Danach startet VoltPilot im Vollbild, ganz ohne Browser-Leiste. Fragt Safari dabei noch, ob die Seite wie eine App statt nur als Lesezeichen geöffnet wird, lassen Sie das eingeschaltet.',
@@ -281,10 +303,9 @@ export function installView(
       text: 'Dieser Browser hat das Einrichten hier noch nicht von sich aus angeboten.',
       action: null,
       steps: [
-        { icons: ['more-vertical'], text: 'Tippen Sie oben rechts auf das Menü.' },
+        { parts: [{ text: 'Tippen Sie oben rechts auf ' }, { icon: 'more-vertical' }, { text: ' Menü.' }] },
         {
-          icons: [],
-          text: 'Wählen Sie „App installieren“ oder „Zum Startbildschirm hinzufügen“.',
+          parts: [{ text: 'Wählen Sie „App installieren“ oder „Zum Startbildschirm hinzufügen“.' }],
         },
       ],
       hint: 'Taucht der Eintrag nicht auf, hilft meist ein Neuladen der Seite.',

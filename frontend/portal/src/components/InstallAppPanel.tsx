@@ -46,12 +46,15 @@ export function InstallAppPanel() {
       <p className="vp-installapp-text">{view.text}</p>
       {view.steps.length > 0 && (
         <ol className="vp-installapp-steps">
-          {view.steps.map((s) => (
-            <li key={s.text}>
-              {s.icons.map((icon, i) => (
-                <Icon key={i} name={icon} size={16} className="vp-installapp-step-icon" />
-              ))}
-              {s.text}
+          {view.steps.map((s, i) => (
+            <li key={i}>
+              {s.parts.map((p, j) =>
+                'icon' in p ? (
+                  <Icon key={j} name={p.icon} size={18} className="vp-installapp-step-icon" />
+                ) : (
+                  <span key={j}>{p.text}</span>
+                ),
+              )}
             </li>
           ))}
         </ol>
