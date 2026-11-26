@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,6 +32,7 @@ type huaweiSim struct {
 	silent  bool
 	deaf    time.Duration
 	units   []byte
+	writes  []string // "addr=value" of every FC6/FC16 write, in order
 	refused atomic.Int32
 	unheard atomic.Int32
 }
@@ -194,9 +196,27 @@ func (s *huaweiSim) serve(c net.Conn) {
 		addr := binary.BigEndian.Uint16(body[1:])
 		count := binary.BigEndian.Uint16(body[3:])
 		var resp []byte
-		if body[0] != 3 || refuse[addr] {
+		switch {
+		case refuse[addr]:
 			resp = []byte{body[0] | 0x80, 2}
-		} else {
+		case body[0] == 6:
+			v := binary.BigEndian.Uint16(body[3:])
+			s.regs[addr] = v
+			s.writes = append(s.writes, strconv.Itoa(int(addr))+"="+strconv.Itoa(int(v)))
+			resp = append([]byte(nil), body[:5]...)
+		case body[0] == 16:
+			n := binary.BigEndian.Uint16(body[3:])
+			v := 0
+			for i := uint16(0); i < n; i++ {
+				w := binary.BigEndian.Uint16(body[6+2*i:])
+				s.regs[addr+i] = w
+				v = v<<16 | int(w)
+			}
+			s.writes = append(s.writes, strconv.Itoa(int(addr))+"="+strconv.Itoa(v))
+			resp = append([]byte(nil), body[:5]...)
+		case body[0] != 3:
+			resp = []byte{body[0] | 0x80, 2}
+		default:
 			resp = []byte{3, byte(count * 2)}
 			for i := uint16(0); i < count; i++ {
 				resp = binary.BigEndian.AppendUint16(resp, regs[addr+i])

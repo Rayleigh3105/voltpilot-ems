@@ -811,18 +811,27 @@ Zwei Schritte, in dieser Reihenfolge:
 EMS über die Vendor-Modelle 64201-64204 (Zustandsmaschine, Lade-/Entladekennlinie,
 Pflicht-Watchdog 60 s) — ein eigener Bau mit eigener Untersuchung.
 
-## Checkliste Huawei SUN2000 + LUNA2000 — VORBEREITET und GESPERRT, nichts ist gemessen
+## Checkliste Huawei SUN2000 + LUNA2000 — Entladegrenze gemessen, auf Edge Light/Industrie freigegeben (SUN2000-M1)
 
-Wie KACO: die Register-Lage ist **dokumentiert** (Herstellerquelle „SUN2000MA
-Modbus Interface Definitions" Issue 08 + Feldquellen), aber an keinem
-Huawei-Gerät hat jemand von uns je etwas gemessen. Lesepfade + Registerkarte:
-[`HUAWEI.md`](HUAWEI.md); Analyse: firstmate `data/vp-kundenanlage-huawei-s1`.
+Stand 26.11.2026: Die **Entladegrenze 47077** ist an einer Feldanlage SUN2000-3KTL-M1 mit LUNA2000 mit Wirkung
+gemessen ([Messbericht](huawei/MESSBERICHT-2026-11.md)). Auf Edge Light und Edge Industrie ist sie für das Modell
+`sun2000-m1` freigegeben (`core/internal/layer1/freigabe.go`), allein (Captain-Entscheid C).
 
-⚠ **Die Sperre ist genauso hart wie bei KACO.** `writes` bleibt in
-`huaweiControl` leer **unabhängig von der Freigabe** — eine First-Light-Karte
-öffnet hier nichts, die Sperre fällt erst mit einer bewussten Code-Änderung an
-`inverter-control-routing.js`. **Ohne dieses Programm gibt es also gar keine
-Möglichkeit, versehentlich zu schreiben.**
+- Die **Ladegrenze 47075** bleibt gesperrt, bis an einem sonnigen Tag ihre Wirkung bei PV-Überschuss gemessen ist.
+  Das sind Schritt 6 mit Überschuss und `vp-huawei-pruefstand steuerweg` mit positivem Sollwert.
+- Die Sonnen-Tests brauchen ein Fenster ohne den Poll der Box: Der Dongle nimmt nur einen Client. Schreiben darf er erst mit Zertifizierung über das
+Plattform-Register, mit Scharfschaltung der Anlage und mit `control_enabled`. Registerkarte und Pfad: [`HUAWEI.md`](HUAWEI.md).
+
+- **Netzladen (N) ist nicht freigegeben** und wird an Kundenanlagen nicht getestet (Captain 25.11.2026).
+- Die Docker-Box hat keinen Huawei-Ausführer: `huaweiControl` liefert dort weiter nur `planned`.
+- Werkzeug für Prüfstand und Feld: `core/cmd/vp-huawei-pruefstand`.
+  - Es sichert jeden Ausgangswert vor dem Schreiben, schreibt nur Absichtsregister und stellt alles wieder her.
+  - `steuerweg` fährt den Go-Pfad der Box selbst und endet mit Not-Aus.
+- Ein weiteres Modell der Familie (L1, MB0, MAP0) bekommt die Freigabe erst mit eigener Messung: Schritte 1, 2, 3
+  ohne Netzladen, 6 und `steuerweg`.
+
+Die folgenden Schritte sind die ursprüngliche Checkliste. Am SUN2000-3KTL-M1 sind 1, 2, 3 (nur Laden, nur
+abends) und 6 gefahren; 4 (Totmann des Zwangsladens) ist gemessen, gilt aber nur für das nicht freigegebene N.
 
 ### Vorbereitung
 
@@ -873,17 +882,17 @@ falsche Skala bewegt eine echte Batterie.
 
 ### Freigabe
 
-Zwei Schritte, in dieser Reihenfolge:
-
-1. **Die Adapter-Sperre lösen** (`inverter-control-routing.js`,
-   `huaweiControl`): `writes` darf erst dann dem üblichen Freigabe-Tor folgen.
-   Das ist eine bewusste Code-Änderung mit Review, kein Klick.
-2. Danach Freigabe **pro Gerät** über die First-Light-Karte, inklusive der
-   Pflicht-Bench-Prüfung „Überschuss mit kurzen Verbrauchern" (oben,
-   `TestSurplusWithShortConsumers`/`TestShortConsumersInEverySlotKind`) mit den
-   am Gerät gemessenen Einschwingzeit-/Messtakt-Werten statt der Vorgabe
-   15 s/25 s. Die flottenweite Aufnahme in `VP_CONTROL_CERTIFIED_FAMILIES` /
-   `CERTIFIED_CONTROL_FAMILIES` erst, wenn die Modellklasse belegt ist.
+1. **Edge Light / Edge Industrie:** Eintrag (`huawei_sun2000_luna`, `huawei`, Modelle) in
+   `core/internal/layer1/freigabe.go`, gestützt auf eine Messung am Gerät dieses Modells. Für `sun2000-m1` gesetzt
+   (26.11.2026).
+2. Danach die Zertifizierung (`device_certified`) über das **Plattform-Register** (Portal: Marke, Modell, Familie,
+   ohne Steuerpfad) und die Scharfschaltung der Anlage. First-Light-Kalibrierung gibt es für Huawei nicht: ihr
+   Beleg, die gemessene Bewegung gegen einen Sollwert, passt nicht zum Fensterpfad. Dazu gehört die
+   Pflicht-Bench-Prüfung „Überschuss mit kurzen Verbrauchern“ (oben,
+   `TestSurplusWithShortConsumers`/`TestShortConsumersInEverySlotKind`).
+3. Die Docker-Box bräuchte einen eigenen Huawei-Ausführer im Flow; bis dahin bleibt `huaweiControl` gesperrt.
+4. Die flottenweite Aufnahme in `VP_CONTROL_CERTIFIED_FAMILIES` / `CERTIFIED_CONTROL_FAMILIES` folgt erst, wenn die
+   Modellklasse belegt ist.
 
 ## OCPP-Ladepunkt (Ladesäule) — SIMULATOR-BEWIESEN, Bench steht aus
 

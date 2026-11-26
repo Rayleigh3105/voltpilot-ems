@@ -44,7 +44,8 @@ type Ablage struct {
 	// durable ('file')
 	Snapshot Obj            // deye_ctrl_snapshot
 	Pfad     map[string]Obj // deye_path:<ziel>
-	Budget   map[string]any // deye_tou_budget:<ziel>
+	Budget   map[string]any // deye_tou_budget:<ziel>; huawei:<ziel> the Huawei day budget
+	Huawei   map[string]Obj // the Huawei Ausgang per ip:port (HuaweiAusgangObj)
 	// volatile ('memory')
 	Faehigkeit    map[string]Obj // deye_cap:<ziel>
 	Geraetekonfig map[string]Obj // deye_native_cfg:<ziel>
@@ -55,7 +56,7 @@ type Ablage struct {
 
 // NeueAblage is an empty store.
 func NeueAblage() *Ablage {
-	return &Ablage{Pfad: map[string]Obj{}, Budget: map[string]any{}, Faehigkeit: map[string]Obj{},
+	return &Ablage{Pfad: map[string]Obj{}, Budget: map[string]any{}, Huawei: map[string]Obj{}, Faehigkeit: map[string]Obj{},
 		Geraetekonfig: map[string]Obj{}, Letzte: map[string]Geschrieben{}}
 }
 

@@ -70,10 +70,18 @@
           "ziel": {
             "register": 47075
           }
+        },
+        {
+          "hinweis": "max. Entladen = eigener Wert des Geräts",
+          "speicher": "dauerspeicher",
+          "wert": "ausgangswert",
+          "ziel": {
+            "register": 47077
+          }
         }
       ],
       "sicherheit": "D",
-      "wie": "47086 = 2 + 47075 = 0."
+      "wie": "47086 = 2 + 47075 = 0; 47077 zurück auf den eigenen Wert des Geräts (sonst stünde nach Halten/Laden 47077 = 0)."
     },
     "E_gedrosselt": {
       "beleg": null,
@@ -98,6 +106,7 @@
       "beleg": null,
       "hebel": "geraet",
       "quellen": [
+        "huawei_feld_m1",
         "dd",
         "evcc"
       ],
@@ -119,8 +128,8 @@
           }
         }
       ],
-      "sicherheit": "C",
-      "wie": "47086 = 2 + 47077 = 0 (evcc nutzt 47077 = 0 als „Halten“)."
+      "sicherheit": "B",
+      "wie": "47086 = 2 + 47077 = 0 (gemessen 25.11.2026: Entladen aus nach 1,4 s, nachts kein Laden aus dem Netz; evcc nutzt 47077 = 0 als „Halten“)."
     },
     "G": {
       "beleg": null,
@@ -136,6 +145,7 @@
       "beleg": null,
       "hebel": "geraet",
       "quellen": [
+        "huawei_feld_m1",
         "dd"
       ],
       "rueckfall": "box",
@@ -155,8 +165,8 @@
           }
         }
       ],
-      "sicherheit": "C",
-      "wie": "47075 = 47077 = 0."
+      "sicherheit": "B",
+      "wie": "47075 = 47077 = 0 (gemessen 25.11.2026: Entladen −3,22 kW → 0 in ≤ 11 s, zurück nach der Rückgabe)."
     },
     "N": {
       "adapter_folge": "netzladen",
@@ -212,10 +222,12 @@
   },
   "adapter": {
     "abweichungen": [
-      "Schreiben ist im Adapter hart gesperrt: writes bleibt leer, auch mit Zertifikat - kein Huawei-Gerät wurde je gemessen.",
-      "Die Folge „laden_gedrosselt“ vereint die Absichten E_laden (47086+47077) und E_gedrosselt (47075): aus dem gegebenen Sollwert allein lässt sich ohne weiteres Signal nicht unterscheiden, welche gemeint ist - der Adapter schreibt beide Register, was beide Absichten abdeckt.",
+      "Der Node-RED-Adapter (huaweiControl) bleibt gesperrt: writes bleibt leer, auch mit Zertifikat. Geschrieben wird nur auf Edge Light und Edge Industrie über den Go-Pfad (core/internal/steuerplan/huawei.go), freigegeben für SUN2000-M1 und bis zu den Sonnen-Tests nur mit dem 47077-Schritt dieser Folgen: halten und laden_gedrosselt schreiben dort nur 47077 = 0, decken und rueckgabe nur 47077 = eigener Wert; 47075 und 47086 schreibt der Go-Pfad nicht (47086 = 2 ist Vorbedingung).",
+      "Die Folge „laden_gedrosselt“ vereint die Absichten E_laden (47086+47077) und E_gedrosselt (47075): aus dem gegebenen Sollwert allein lässt sich ohne weiteres Signal nicht unterscheiden, welche gemeint ist - der Adapter schreibt beide Register, was beide Absichten abdeckt. Die Ladegrenze 47075 ist im Go-Pfad gesperrt, bis ihre Wirkung bei PV-Überschuss gemessen ist.",
       "Absicht A (Verkaufen, erzwungener Export über 47249/47100 = 2) ist in der Landkarte dokumentiert, aber nicht verdrahtet: es gibt noch kein Upstream-Signal, das diese Absicht von E_decken unterscheidet (anders als bei N, das `grid_charge_allowed` hat).",
-      "47083 (Dauer, Minuten) wird im Adapter immer auf die kürzeste Einheit (1) gesetzt und auf jedem Tick neu geschrieben - der robuste Failsafe tritt an die Stelle einer am Gerät gemessenen Dauer."
+      "Absicht N (Netzladen) ist nicht freigegeben (Captain 25.11.2026: die Feldanlage darf nicht aus dem Netz laden) und im Go-Pfad nicht enthalten: ein positiver Sollwert mit grid_charge_allowed lädt dort nur aus dem Überschuss (laden_gedrosselt). Der Node-RED-Plan führt N weiter als gesperrten Entwurf. 47087 (Netzladen am Gerät) schreibt die Box nie auf 0 und keine Rückgabe fasst es an: an der Feldanlage steht es auf 1, vermutlich nötig für die AC-Kopplung eines zweiten Wechselrichters.",
+      "47083 (Dauer, Minuten) wird im Node-RED-Plan für N immer auf die kürzeste Einheit (1) gesetzt und auf jedem Tick neu geschrieben; am Feldgerät gemessen: einmal geschrieben endet das Zwangsladen nach ~60–67 s von selbst (47100 → 0), neu geschrieben hält es.",
+      "Rückgabe: die eigenen Werte des Geräts (47075/47077/47086, vor dem ersten Schreiben gelesen und dauerhaft abgelegt) statt 0/0 - 0/0 ist Halten und sperrt den Speicher (bis 25.11.2026 so im Adapter)."
     ],
     "ausfuehrbar": false,
     "datei": "edge-app/nodered/inverter-control-routing.js",
@@ -236,6 +248,14 @@
             "wert": 0,
             "ziel": {
               "register": 47075
+            }
+          },
+          {
+            "hinweis": "max. Entladen = eigener Wert des Geräts",
+            "speicher": "dauerspeicher",
+            "wert": "ausgangswert",
+            "ziel": {
+              "register": 47077
             }
           }
         ]
@@ -332,25 +352,27 @@
         "beleg": null,
         "schreibfolge": [
           {
-            "hinweis": "Stopp",
-            "speicher": "ram",
-            "wert": 0,
-            "ziel": {
-              "register": 47100
-            }
-          },
-          {
+            "hinweis": "eigener Wert des Geräts",
             "speicher": "dauerspeicher",
-            "wert": 0,
+            "wert": "ausgangswert",
             "ziel": {
               "register": 47075
             }
           },
           {
+            "hinweis": "eigener Wert des Geräts",
             "speicher": "dauerspeicher",
-            "wert": 0,
+            "wert": "ausgangswert",
             "ziel": {
               "register": 47077
+            }
+          },
+          {
+            "hinweis": "eigener Wert des Geräts",
+            "speicher": "unbelegt",
+            "wert": "ausgangswert",
+            "ziel": {
+              "register": 47086
             }
           }
         ]
@@ -375,7 +397,7 @@
       "huawei_if"
     ],
     "sicherheit": "D",
-    "text": "Grenzen-Hebel vorhanden; Einschwingzeit und Messtakt am Gerät messen (K9)."
+    "text": "Grenzen-Hebel vorhanden. Gemessen 25.11.2026 (B, nur als Wissen): eine Fenstergrenze wirkt nach 1,4–6 s, die Messregister ändern sich alle 1–3 s. Die Box-Vorgabe (15 s / 25 s) bleibt, bis geklärt ist, ob die Box beim Fensterpfad (Dauerspeicher-Hebel, Tagesbudget) überhaupt nachregeln soll (K9)."
   },
   "eigenmodus": {
     "sicherheit": "C",
@@ -392,16 +414,17 @@
   "firmware_bedingung": {
     "gelesen": true,
     "quellen": [
+      "huawei_feld_m1",
       "huawei_if"
     ],
-    "sicherheit": "D",
-    "wert": null,
-    "wie": "Firmware-Stand am Gerät lesen; welche Stände 47086/47075/47077 mit der beschriebenen Wirkung tragen, ist unbelegt - am Gerät prüfen (K9)."
+    "sicherheit": "B",
+    "wert": "V100R001C00SPC153",
+    "wie": "Software-Stand aus 30050 lesen (Firmware 30035). Belegt ist der Fensterpfad (47086/47075/47077) an V100R001C00SPC153 (SUN2000-3KTL-M1, Firmware V100R001-02); andere Stände sind unbelegt."
   },
   "freigabe": "keine",
   "hersteller": "Huawei",
   "id": "huawei",
-  "im_repo": "Lesepfad gebunden (Telemetrie, nodered/huawei/huawei-decode.js); Steuer-Adapter gebaut, Schreiben hart gesperrt (bench_pending)",
+  "im_repo": "Lesepfad gebunden (Telemetrie, nodered/huawei/huawei-decode.js + core/internal/huaweidecode); Go-Pfad auf Edge Light und Edge Industrie für SUN2000-M1 freigegeben, nur mit der Entladegrenze 47077 (E_laden/H: Entladen gesperrt, E_decken: Entladen frei; Captain-Entscheid C 26.11.2026); Ladegrenze 47075 gesperrt bis zu den Sonnen-Tests; Node-RED-Adapter gesperrt; Netzladen (N) und erzwungener Export (A) nicht freigegeben",
   "modelle": [
     "SUN2000-L1",
     "SUN2000-M1",
@@ -413,7 +436,8 @@
     "huawei_if",
     "huawei_lib",
     "dd",
-    "evcc"
+    "evcc",
+    "huawei_feld_m1"
   ],
   "schema_version": "1.0",
   "schreibbudget": {
@@ -422,12 +446,12 @@
     "speicher": "gemischt",
     "text": "47075/47077 als Einstellungen vermutlich dauerhaft – Schreibhäufigkeit am Gerät klären (D)."
   },
-  "stand": "2026-09-24",
+  "stand": "2026-11-26",
   "stufe": 2,
   "totmann": {
     "sekunden": null,
-    "sicherheit": "C",
-    "text": "Nur Zwangsladen/-entladen im Dauer-Modus (47246 = 0) endet nach 47083 Minuten (flüchtig) (C).",
+    "sicherheit": "B",
+    "text": "Nur Zwangsladen/-entladen im Dauer-Modus (47246 = 0) endet nach 47083 Minuten (flüchtig): gemessen 25.11.2026 mit 47083 = 1, einmal geschrieben → 47100 nach ~60–67 s von selbst 0, Laden endet (B). Der Fensterpfad (47075/47077) hat keinen Totmann: die Box gibt die eigenen Werte bei Not-Aus, veraltetem Sollwert, Budgetende und Neustart zurück.",
     "vorhanden": false,
     "ziel": {
       "register": 47083

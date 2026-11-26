@@ -1,6 +1,9 @@
 package layer1
 
-import "sync/atomic"
+import (
+	"strings"
+	"sync/atomic"
+)
 
 // The Edge Light release of the Go control path (Steuern in Go, Teil 1b).
 //
@@ -33,8 +36,11 @@ import "sync/atomic"
 // Freigabe is one release of the Go control path.
 type Freigabe struct {
 	Familie string // the selection's family ("hybrid_3p"), for the curtailment the source's communication ("fronius_sunspec")
-	Pfad    string // "remote", "tou", "abregelung" or "modbus"
+	Pfad    string // "remote", "tou", "abregelung", "modbus" or "huawei"
 	Beleg   string // why it is released: bench record, or the captain's own release and its grounds
+	// Modelle narrows the release to these models of the selection (its
+	// "model", e.g. "sun2000-m1"); empty = every model of the family.
+	Modelle []string
 }
 
 // freigaben holds the families and paths the captain has released so far.
@@ -49,6 +55,15 @@ var freigaben = []Freigabe{
 		"gestützt auf die Gleichheit mit dem Node-RED-Verhalten (gemeinsame Vektoren, PR #1965)"},
 	{Familie: "hybrid_1p", Pfad: "tou", Beleg: "Freigabe durch den Captain am 20.11.2026 ohne Prüfstand, " +
 		"gestützt auf die Gleichheit mit dem Node-RED-Verhalten (gemeinsame Vektoren, PR #1965)"},
+	// Huawei: the discharge limit 47077 alone (option C, captain 26.11.2026),
+	// only the measured model. The charge limit 47075 stays locked until its
+	// effect under PV surplus is measured; grid charging (N) and the forced
+	// setpoint are not part of the path at all.
+	{Familie: "huawei_sun2000_luna", Pfad: PfadHuawei, Modelle: []string{"sun2000-m1"},
+		Beleg: "Feldmessung 25./26.11.2026 an einem SUN2000-3KTL-M1 (Software V100R001C00SPC153) mit LUNA2000 10 kWh " +
+			"über den Wartungstunnel: Entladegrenze 47077 mit Wirkung (0 = Entladen aus, 1000 W = gedrosselt), Rücklesen " +
+			"und Rückgabe belegt, auch durch den Go-Pfad selbst (edge-app/nodered/huawei/MESSBERICHT-2026-11.md); nur 47077 " +
+			"freigegeben, Ladegrenze 47075 gesperrt bis zu den Sonnen-Tests (Captain-Entscheid C vom 26.11.2026)"},
 }
 
 // pruefstandBuild is true only in a build with the tag `pruefstand`.
@@ -58,14 +73,35 @@ var pruefstandBuild atomic.Bool
 func PruefstandBuild() bool { return pruefstandBuild.Load() }
 
 // steuernFreigegeben says whether Edge Light may write to a device of this
-// family over this path.
+// family over this path (a release narrowed to models does not count here).
 func steuernFreigegeben(familie, pfad string) bool {
 	if pruefstandBuild.Load() {
 		return true
 	}
 	for _, f := range freigaben {
-		if f.Familie == familie && f.Pfad == pfad && f.Beleg != "" {
+		if f.Familie == familie && f.Pfad == pfad && f.Beleg != "" && len(f.Modelle) == 0 {
 			return true
+		}
+	}
+	return false
+}
+
+// steuernFreigegebenModell is steuernFreigegeben for one model of the family.
+func steuernFreigegebenModell(familie, pfad, modell string) bool {
+	if pruefstandBuild.Load() {
+		return true
+	}
+	for _, f := range freigaben {
+		if f.Familie != familie || f.Pfad != pfad || f.Beleg == "" {
+			continue
+		}
+		if len(f.Modelle) == 0 {
+			return true
+		}
+		for _, m := range f.Modelle {
+			if strings.EqualFold(m, modell) {
+				return true
+			}
 		}
 	}
 	return false

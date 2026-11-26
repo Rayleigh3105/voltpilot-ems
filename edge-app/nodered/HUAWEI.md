@@ -104,47 +104,73 @@ Der Verbindungstest unterscheidet dort `unreachable`, `no_answer` und
 `invalid_response`; ein Gerät, das jeden Block ablehnt, bekommt den Hinweis
 auf Unit-ID und Modbus-TCP-Freischaltung.
 
-## 4. Steuerung (erzwungener Sollwert, Tier 2 - vorbereitet, HART gesperrt)
+## 4. Steuerung
 
-Huaweis "Forcible Charge/Discharge" ist ein echter forced-watts RAM-Sollwert -
-dieselbe Primitiv-Klasse wie KOSTAL, aber auf **zwei** Registerfamilien
-verteilt (Details + exakte Schreibfolgen:
-[`catalog/control-profiles/profiles/huawei.json`](../../catalog/control-profiles/profiles/huawei.json),
-Adapter: `inverter-control-routing.js` → `huaweiControl`):
+Huawei bietet zwei Registerfamilien (Details und exakte Schreibfolgen:
+[`catalog/control-profiles/profiles/huawei.json`](../../catalog/control-profiles/profiles/huawei.json)):
 
-| Absicht | Hebel | Register |
-|---|---|---|
-| Eigenverbrauchs-Fenster (E/E_laden/E_decken/E_gedrosselt/H) | Gerät regelt selbst innerhalb der Grenzen | **47075** max. Ladeleistung, **47077** max. Entladeleistung (je U32 W), **47086** Arbeitsmodus |
-| Netzladen (N) | erzwungener Sollwert | **47087** Netzladen freigeben, **47100** Richtung, **47246** Modus, **47083** Dauer (Minuten), **47247** Ladeleistung (U32 W) |
-| Verkaufen (A) | erzwungener Sollwert | **47249** Entladeleistung (U32 W) + 47100/47246/47083 - in der Landkarte dokumentiert, im Adapter **nicht verdrahtet** (kein Upstream-Signal unterscheidet "gezielt verkaufen" von "nur decken") |
+| Absicht | Hebel | Register | Stand |
+|---|---|---|---|
+| Eigenverbrauchs-Fenster (E_laden/E_gedrosselt, E_decken, H) | Gerät regelt selbst innerhalb der Grenzen | **47075** max. Ladeleistung, **47077** max. Entladeleistung (je U32 W), **47086** Arbeitsmodus | **47077 freigegeben** auf Edge Light und Edge Industrie für SUN2000-M1; **47075 gesperrt** bis zu den Sonnen-Tests (Captain-Entscheid C, 26.11.2026) |
+| Netzladen (N) | erzwungener Sollwert | **47087** Netzladen, **47100** Richtung, **47246** Modus, **47083** Dauer (Minuten), **47247** Ladeleistung (U32 W) | **nicht freigegeben** (Captain 25.11.2026); nur als gesperrter Entwurf im Node-RED-Plan |
+| Verkaufen (A) | erzwungener Sollwert | **47249** Entladeleistung (U32 W) + 47100/47246/47083 | nicht verdrahtet (kein Signal unterscheidet „gezielt verkaufen“ von „nur decken“) |
 
-**⚠ Der geräteeigene Totmann ist flüchtig und nur im Dauer-Modus wirksam:**
-ein erzwungenes Laden/Entladen endet nach `47083` Minuten - ABER nur wenn
-`47246 = 0` (Dauer-Modus). `47246 = 1` (SoC-Modus) hat **keinen Zeit-Rückfall**;
-der Adapter schreibt `47246` deshalb niemals auf 1. Der Failsafe ist deshalb
-unser eigener: `47083` wird auf die kürzeste verfügbare Einheit (**1 Minute**)
-gesetzt und bei jedem Tick neu geschrieben - solange die Box schreibt, läuft
-die Minute nie ab; verstummt sie, fällt das Gerät spätestens nach der
-laufenden Minute von selbst in seinen Eigenverbrauchsmodus zurück.
+**Der Fensterpfad** (`core/internal/steuerplan/huawei.go`, `core/internal/layer1/steuern_huawei.go`): das
+Gerät bleibt im Eigenverbrauch, und die Box setzt nur die **Entladegrenze 47077**. Die Ladegrenze 47075 ist
+gesperrt, bis ihre Wirkung bei PV-Überschuss an einem sonnigen Tag gemessen ist (Captain-Entscheid C vom 26.11.2026).
 
-**Hängende Zwangsentladung (evcc #26917):** ein fremdes Projekt berichtet ein
-Gerät, das eine gesetzte Zwangsentladung nicht von selbst beendet - die
-dokumentierte Abhilfe ist Rücklesen + Neusetzen. Das ist einer der Gründe,
-warum Absicht A (Verkaufen) hier bewusst nicht verdrahtet ist.
+- **Vorbedingung:** 47086 = 2 (Eigenverbrauch). Nur in diesem Modus ist die Grenze gemessen; die Box liest 47086
+  und schreibt es nie.
+- **Halten und Laden** (Sollwert ≥ 0): 47077 = 0, das Entladen ist gesperrt. Das Laden regelt das Gerät selbst,
+  auch bei einem Sollwert mit `grid_charge_allowed`.
+- **Decken** (negativer Sollwert): 47077 = eigener Wert des Geräts, das Entladen ist frei; eine Ladesperre gibt es
+  nicht.
+- **Rückgabe:** 47077 zurück auf den eigenen Wert des Geräts. 47087/47088 (Netzladen am Gerät) fasst die Box nie
+  an.
+  - Die Box liest diese Werte vor dem ersten Schreiben und legt sie dauerhaft in `steuern.json` ab; ohne die
+    Ablage schreibt sie nicht.
+  - Die Rückgabe läuft bei Not-Aus, bei einem veralteten Sollwert (20 min), ohne Freigabe oder Zertifizierung, am
+    Ende des Tagesbudgets und nach einem Neustart der Box.
+  - Die Box löscht die Werte erst, wenn sie zurückgelesen sind.
+- **Schreiben:** nur, wenn das Gerät einen anderen Wert hält (Toleranz 100 W). Jeder Takt mit Schreiben
+  verbraucht einen Planwechsel des Tagesbudgets (höchstens 20, der letzte Platz gehört der Rückgabe), weil
+  47077 als Dauerspeicher gilt.
+- **Tore:**
+  - Edge-Light-Freigabe je Familie, Pfad und Modell (`layer1/freigabe.go`).
+  - `control_enabled` (Not-Aus).
+  - Zertifizierung des Geräts (`device_certified`): über das **Plattform-Register** im Portal (Marke `huawei`,
+    Modell `sun2000-m1`, Familie `huawei_sun2000_luna`, ohne Steuerpfad) und die **Scharfschaltung** der Anlage.
+    First-Light gibt es für Huawei nicht (`calibrationControllable`): ihr Beleg, die gemessene Bewegung gegen
+    einen Sollwert, passt nicht zum Fensterpfad, in dem das Gerät selbst regelt.
+- **Verbindung:** eine Sitzung je Takt auf der Spur des Geräts (geteilt mit dem Poll), 1 s Wartezeit nach dem
+  Verbinden.
 
-**Freigabe-Status:** `huawei` steht NICHT in `CERTIFIED_CONTROL_FAMILIES` und
-wird dort auch durch ein First-Light-Grant NICHT ersetzt (härter gesperrt als
-die Freigabeliste, wie bei KACO NH3) - `writes` bleibt in jedem Fall leer, der
-Adapter liefert nur `planned` als Bench-Artefakt. Vor jeder Freigabe gehört
-dazu: Firmware-Stand am Gerät lesen, Schreibbudget/Dämpfung messen (alle
-Sicherheit D in huawei.json), und die Pflicht-Bench-Prüfung „Überschuss mit
-kurzen Verbrauchern" (`CONTROL-BENCH.md`) bestehen.
+**Gemessen** an einer Feldanlage SUN2000-3KTL-M1 mit LUNA2000
+([Messbericht](huawei/MESSBERICHT-2026-11.md)):
+
+- 47075/47077 sind W mit Gain 1 und wirken nach 1,4–6 s.
+- Das Zwangsladen endet einmal geschrieben nach 47083 Minuten von selbst; neu geschrieben hält es.
+- Die frühere Rückgabe des Node-RED-Adapters (47075 = 47077 = 0) war Halten. Sie schreibt jetzt die eigenen
+  Werte zurück.
+- E_decken setzt 47077 zurück, damit der Speicher nach Halten oder Laden wieder entladen darf.
+
+**Die Docker-Box** hat keinen Huawei-Ausführer. `huaweiControl` liefert dort weiter nur `planned`
+(`writes` leer).
+
+**Prüfstand:** [`core/cmd/vp-huawei-pruefstand`](../core/cmd/vp-huawei-pruefstand)
+
+- `lesen`, `wartezeit` und `leseplan` lesen nur.
+- `folge` fährt eine Schreibfolge des Adapters: Ausgangswerte sichern, schreiben, halten, wiederherstellen,
+  gegenlesen.
+- `steuerweg` fährt den Go-Pfad der Box selbst und endet mit Not-Aus.
+- Geschrieben werden nur die Absichtsregister, 47246 nie 1.
 
 ## 5. Abgrenzungen / offene Punkte
 
-- **Keine Verbindungsversuche zu einem Kundengerät** sind Teil dieser Änderung
-  gewesen - jede Zahl zu Einschwingzeit, Messtakt oder Schreibverhalten ist
-  unbelegt (Sicherheit D), bis ein Prüfstand/Feldtermin sie misst.
+- Ob 47075/47077 im Dauerspeicher liegen, ist ohne Stromunterbrechung nicht
+  gemessen (Sicherheit D); deshalb Tagesbudget und nur Abweichungen schreiben.
+- Ob die Box beim Fensterpfad nachregeln soll (`daempfung.box_regelt`), ist
+  offen; die gemessene Einschwingzeit steht nur als Wissen im Profil.
 - Die **Wechselrichter-Automatik** (Selbstregel-Modus, wie bei KOSTAL §Wechselrichter-Automatik
   oder KACO NH3) ist für Huawei noch NICHT verdrahtet: ohne ein dokumentiertes
   "Schreiben einstellen reicht"-Register wäre ein Übergabe-Primitiv hier
