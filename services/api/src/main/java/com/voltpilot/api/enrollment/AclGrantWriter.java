@@ -388,6 +388,8 @@ class AclGrantWriter {
                 "{deny, {username, \"" + deviceId + "\"}, subscribe, [\"" + base
                         + "/v2/measurement-config-status\", \"" + base
                         + "/v2/measurement-samples\"]}.",
+                "{deny, {username, \"" + deviceId + "\"}, publish,   [\"" + base
+                        + "/v2/direktvermarktung\", \"" + base + "/v2/direktvermarktung-zugang\"]}.",
                 "{allow, {username, \"" + deviceId + "\"}, publish,   [\"" + base + "/v2/#\"]}.",
                 "{allow, {username, \"" + deviceId + "\"}, subscribe, [\"" + base + "/v2/#\"]}.",
                 "%%<<end device " + deviceId + ">>");

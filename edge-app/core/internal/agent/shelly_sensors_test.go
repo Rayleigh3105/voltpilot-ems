@@ -357,10 +357,19 @@ func TestOnShellySensorPlanPublishesNothingForUnownedPointKey(t *testing.T) {
 // leaves to the core (measurements.KernEigeneVorlagen) - Edge Light's library
 // skips them, so a point is never read twice.
 func TestShellySensorTemplatesAreTheCoreOwnedTemplates(t *testing.T) {
-	if len(shellySensorTemplates) != len(measurements.KernEigeneVorlagen) {
-		t.Fatalf("%d Vorlagen im Leser, %d in der Liste", len(shellySensorTemplates), len(measurements.KernEigeneVorlagen))
+	// The list holds EXACTLY the two core readers' templates: the Shelly
+	// add-on sensors here and the dv.* points of the direct-marketing
+	// connection (direktvermarktung_messpunkte.go).
+	if len(shellySensorTemplates)+len(dvMesspunktVorlagen) != len(measurements.KernEigeneVorlagen) {
+		t.Fatalf("%d+%d Vorlagen in den Lesern, %d in der Liste", len(shellySensorTemplates),
+			len(dvMesspunktVorlagen), len(measurements.KernEigeneVorlagen))
 	}
 	for k := range shellySensorTemplates {
+		if !measurements.KernEigeneVorlagen[k] {
+			t.Errorf("%s fehlt in measurements.KernEigeneVorlagen", k)
+		}
+	}
+	for k := range dvMesspunktVorlagen {
 		if !measurements.KernEigeneVorlagen[k] {
 			t.Errorf("%s fehlt in measurements.KernEigeneVorlagen", k)
 		}

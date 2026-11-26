@@ -134,6 +134,13 @@
       "advertised": true,
       "box_arten": ["edge_light", "edge_industrie"],
       "evidence": "edge-app/core/internal/layer1/deyemodbus_test.go"
+    },
+    {
+      "name": "direktvermarktung",
+      "meaning": "Die Box nimmt die Direktvermarktungs-Zustellung an (vp-direktvermarktung-konzept d2 §5.7, direktvermarktung-zustellung.md): sie übernimmt das retained Partnerprofil auf v2/direktvermarktung und legt den Anschluss im Dateivertrag des Tunnel-Verwalters ab (internal/vermarktertunnel: anschluss.json plus zugang/), erbittet den Zugang mit dem Fingerabdruck, den sie noch nicht hat, quittiert auf v2/direktvermarktung-quittung (zugestellt/geloescht - der Box-Tausch wartet auf genau diese Quittung) und meldet den Herzschlag-Block direktvermarktung samt Ereignisliste im Flash. Erst dann stellt die Cloud Profil und Zugang an diese Box zu; Tunnel, Firewall und Einspeisegrenze sind Stufe 2 (Mango) bzw. Stufe 4 (PFC200) und schon da.",
+      "advertised": true,
+      "box_arten": ["edge_light", "edge_industrie"],
+      "evidence": "edge-app/core/internal/agent/direktvermarktung_test.go"
     }
   ],
   "cases": [
@@ -284,6 +291,18 @@
       "expected": [
         "data_sources",
         "geraetesuche"
+      ]
+    },
+    {
+      "name": "reported_direktvermarktung_is_recognized",
+      "supports": [
+        "data_sources",
+        "direktvermarktung"
+      ],
+      "table": [],
+      "expected": [
+        "data_sources",
+        "direktvermarktung"
       ]
     }
   ]

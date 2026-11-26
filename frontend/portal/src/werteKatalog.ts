@@ -37,7 +37,8 @@ export type LeserArt =
   | 'zaehlung'
   | 'erzeuger'
   | 'ladepunkt'
-  | 'steuerlogik';
+  | 'steuerlogik'
+  | 'direktvermarktung';
 
 /** Geschlossenes Vokabular der Bedingungsarten (§6.4). `periode` und `aenderung` (Scheibe 4) gelten
  * nur für periodische Einträge (an ihren `bedingungen`, nicht an der Leserart zu erkennen - Scheibe 5
@@ -502,6 +503,68 @@ export const WERTE_KATALOG: WerteKatalogEintrag[] = [
     zustaende: ['in_ordnung', 'stoerung'],
     bedingungen: ['zustand'],
     vorschlag: { dauer_s: 120, erholen_s: 300, schwere: 'warnung', ziel: ['stoerung'] },
+  },
+  // Direktvermarktung-Zustellung (Konzept d2 §5.7 "Alarme"): fünf Meldungen ab Werk, gesät an Anlagen
+  // mit einem Anschluss über den Entwurf hinaus; "Unbekannt hält" wie beim Erzeuger-Leser.
+  {
+    wertart: 'direktvermarktung.verbindung_weg',
+    name: 'Verbindung zum Direktvermarkter',
+    satzname: 'die Verbindung',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'direktvermarktung', feld: 'verbindung' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['verbunden', 'getrennt'],
+    bedingungen: ['zustand'],
+    vorschlag: { dauer_s: 720, erholen_s: 300, schwere: 'warnung', ziel: ['getrennt'] },
+  },
+  {
+    wertart: 'direktvermarktung.partner_liest_nicht',
+    name: 'Direktvermarkter fragt nicht ab',
+    satzname: 'die Abfrage',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'direktvermarktung', feld: 'partner_abfrage' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['liest', 'liest_nicht'],
+    bedingungen: ['zustand'],
+    vorschlag: { dauer_s: 2700, erholen_s: 300, schwere: 'warnung', ziel: ['liest_nicht'] },
+  },
+  {
+    wertart: 'direktvermarktung.anlage_folgt_nicht',
+    name: 'Anlage folgt dem Direktvermarkter nicht',
+    satzname: 'die Einspeisegrenze',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'direktvermarktung', feld: 'einspeisegrenze' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['folgt', 'folgt_nicht'],
+    bedingungen: ['zustand'],
+    vorschlag: { dauer_s: 300, erholen_s: 300, schwere: 'warnung', ziel: ['folgt_nicht'] },
+  },
+  {
+    wertart: 'direktvermarktung.zugang_laeuft_ab',
+    name: 'Zugang zum Direktvermarkter läuft ab',
+    satzname: 'der Zugang',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'direktvermarktung', feld: 'zugang_frist_30' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['gueltig', 'laeuft_ab'],
+    bedingungen: ['zustand'],
+    vorschlag: { dauer_s: 0, erholen_s: 300, schwere: 'hinweis', ziel: ['laeuft_ab'] },
+  },
+  {
+    wertart: 'direktvermarktung.zugang_laeuft_gleich_ab',
+    name: 'Zugang zum Direktvermarkter läuft gleich ab',
+    satzname: 'der Zugang',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'direktvermarktung', feld: 'zugang_frist_7' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['gueltig', 'laeuft_ab'],
+    bedingungen: ['zustand'],
+    vorschlag: { dauer_s: 0, erholen_s: 300, schwere: 'warnung', ziel: ['laeuft_ab'] },
   },
 ];
 

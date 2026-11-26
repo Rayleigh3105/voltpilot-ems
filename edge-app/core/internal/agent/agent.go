@@ -523,6 +523,19 @@ type Agent struct {
 	priceFeedMu     sync.Mutex
 	priceFeedMirror *pricefeed.Feed
 
+	// Direktvermarktung-Zustellung (agent/direktvermarktung.go): the delivery's
+	// own bookkeeping beside the tunnel manager - request back-off and the
+	// queries-per-minute derivation between two heartbeats.
+	dvMu            sync.Mutex
+	dvLetzteAnfrage time.Time
+	dvRateCount     uint64
+	dvRateAt        time.Time
+
+	// The dv.* measurement-point reader (direktvermarktung_messpunkte.go).
+	dvMessMu             sync.Mutex
+	dvMessPlan           []dvMesspunktSelection
+	dvMessCatalogVersion string
+
 	// Einheitsmodell Stufe 1 (agent/component_apply.go): WHO owns this plant's
 	// device configuration, and which push revision was last applied. The
 	// configuration itself stays where it always was (invStore + srcStore) -
@@ -1159,6 +1172,11 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := bus.Subscribe(measurements.LocalConfigTopic, 23, a.onShellySensorPlan); err != nil {
 		return err
 	}
+	// Direktvermarktung: the dv.* reader caches the SAME retained config and
+	// acknowledges only its own points (direktvermarktung_messpunkte.go).
+	if err := bus.Subscribe(measurements.LocalConfigTopic, 25, a.onDvMesspunktPlan); err != nil {
+		return err
+	}
 	if err := bus.Subscribe(TopicKoppelStatus, 24, a.onKoppelStatus); err != nil {
 		return err
 	}
@@ -1203,6 +1221,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	// every other source read path; idles cheaply without shelly sources.
 	a.startShellySourcePoll(ctx)
 	a.startShellySensorPoll(ctx)
+	// Direktvermarktung §5.4 "Nachweis": the dv.* sampler; idles cheaply
+	// without a delivered connection or selected points.
+	a.startDvMesspunktPoll(ctx)
 	a.startLogikMitlauf(ctx)
 	a.startEbyteSourcePoll(ctx)
 	// Self-built Modbus devices with write values (K3): the core reads and
@@ -1655,6 +1676,10 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// siehe override.go.
 		OnDesiredDownlink:   a.onDesiredDownlink,
 		OnMeasurementConfig: a.onMeasurementConfig,
+		// Direktvermarktung-Zustellung: das retained Partnerprofil und die
+		// nicht-retained Einmal-Zugangsantwort - siehe direktvermarktung.go.
+		OnDirektvermarktung:       a.onDirektvermarktung,
+		OnDirektvermarktungZugang: a.onDirektvermarktungZugang,
 		OnConnect: func(connected bool) {
 			a.handleLinkConnect(link, connected)
 		},
@@ -1691,11 +1716,13 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 			soc := a.lastRawSoc
 			a.mu.Unlock()
 			a.logControlGateDivergence(snap)
+			a.dvNachfassen()
 			if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 				a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
 				a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
 				a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports(a.boxArt()),
-					GemeinsameSteuerung: a.gemeinsameSteuerung(), Logik: a.logikSummary(), Koppel: a.koppelSummary()}); err != nil {
+					GemeinsameSteuerung: a.gemeinsameSteuerung(), Logik: a.logikSummary(), Koppel: a.koppelSummary(),
+					Direktvermarktung: a.dvSummary()}); err != nil {
 				slog.Warn("status publish failed", "err", err)
 			}
 			return true

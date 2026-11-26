@@ -157,6 +157,145 @@ public class DirektvermarktungRepository {
                 direktvermarktungId, ereignis, von, rolle, datenJson, Timestamp.from(jetzt));
     }
 
+    // --- Zustellung (V20261125200000, docs/contracts/v2/direktvermarktung-zustellung.md) -----------------
+
+    /** Die Zustell-Buchführung eines Anschlusses: welche Box welches Profil (Fingerabdruck) hält. */
+    public record Zustellung(UUID eintragId, UUID boxId, Instant profilZugestelltAm, int profilRevision,
+            String zugestellterFingerabdruck) {}
+
+    public Zustellung zustellung(UUID id) {
+        List<Zustellung> r = jdbc.query("SELECT id, box_id, profil_zugestellt_am, profil_revision, "
+                + "zugestellter_fingerabdruck FROM direktvermarktung WHERE id = ?",
+                DirektvermarktungRepository::mapZustellung, id);
+        return r.isEmpty() ? null : r.get(0);
+    }
+
+    /** Jede Zustell-Buchführung der Anlage mit gehaltener Box - auch an beendeten Einträgen (Rückzug!). */
+    public List<Zustellung> zustellungenMitBox(UUID siteId) {
+        return jdbc.query("SELECT id, box_id, profil_zugestellt_am, profil_revision, zugestellter_fingerabdruck "
+                + "FROM direktvermarktung WHERE site_id = ? AND box_id IS NOT NULL",
+                DirektvermarktungRepository::mapZustellung, siteId);
+    }
+
+    /** Merkt die Box, die das retained Profil eben bekam, samt Revision und Fingerabdruck. */
+    public void profilZugestellt(UUID id, UUID boxId, int revision, String fingerabdruck, Instant jetzt) {
+        jdbc.update("UPDATE direktvermarktung SET box_id = ?, profil_zugestellt_am = ?, profil_revision = ?, "
+                + "zugestellter_fingerabdruck = ?, aktualisiert_am = ? WHERE id = ?", boxId,
+                Timestamp.from(jetzt), revision, fingerabdruck, Timestamp.from(jetzt), id);
+    }
+
+    private static Zustellung mapZustellung(ResultSet rs, int i) throws SQLException {
+        return new Zustellung(rs.getObject("id", UUID.class), rs.getObject("box_id", UUID.class),
+                ts(rs, "profil_zugestellt_am"), rs.getInt("profil_revision"),
+                rs.getString("zugestellter_fingerabdruck"));
+    }
+
+    /**
+     * Löscht die Zustell-Buchführung, sobald die Box den Rückzug quittiert hat ({@code geloescht}) - erst
+     * danach darf der Abgleich an eine andere Box zustellen (PS-D22).
+     */
+    public void profilZurueckgezogen(UUID id, Instant jetzt) {
+        jdbc.update("UPDATE direktvermarktung SET box_id = NULL, profil_zugestellt_am = NULL, "
+                + "zugestellter_fingerabdruck = NULL, aktualisiert_am = ? WHERE id = ?",
+                Timestamp.from(jetzt), id);
+    }
+
+    /** Eine Zeile aus {@code direktvermarktung_zugang} - das Chiffrat bleibt hier bewusst draußen. */
+    public record ZugangZeile(UUID id, UUID direktvermarktungId, String fingerabdruck, Instant gueltigBis,
+            Instant zugestelltAm, Instant zurueckgezogenAm) {}
+
+    /** Das verschlüsselte Material eines Zugangs - nur der Entschlüssler liest es, nie ein DTO.
+     * Mandant und Anlage reisen mit, weil sie Teil der AAD-Bindung des Chiffrats sind. */
+    public record ZugangChiffrat(UUID tenantId, UUID siteId, byte[] chiffrat, byte[] nonce) {}
+
+    private static final String ZUGANG_SPALTEN =
+            "id, direktvermarktung_id, fingerabdruck, gueltig_bis, zugestellt_am, zurueckgezogen_am";
+
+    /** Der aktuelle (nicht zurückgezogene) Zugang eines Anschlusses, der neueste zuerst. */
+    public ZugangZeile aktuellerZugang(UUID direktvermarktungId) {
+        List<ZugangZeile> r = jdbc.query("SELECT " + ZUGANG_SPALTEN + " FROM direktvermarktung_zugang "
+                + "WHERE direktvermarktung_id = ? AND zurueckgezogen_am IS NULL "
+                + "ORDER BY hochgeladen_am DESC LIMIT 1",
+                DirektvermarktungRepository::mapZugang, direktvermarktungId);
+        return r.isEmpty() ? null : r.get(0);
+    }
+
+    /** Der Zugang einer Anlage zu einem Fingerabdruck (für Quittungen der Box). */
+    public ZugangZeile zugangZuFingerabdruck(UUID siteId, String fingerabdruck) {
+        List<ZugangZeile> r = jdbc.query("SELECT " + ZUGANG_SPALTEN + " FROM direktvermarktung_zugang "
+                + "WHERE site_id = ? AND fingerabdruck = ? ORDER BY hochgeladen_am DESC LIMIT 1",
+                DirektvermarktungRepository::mapZugang, siteId, fingerabdruck);
+        return r.isEmpty() ? null : r.get(0);
+    }
+
+    public ZugangChiffrat zugangChiffrat(UUID zugangId) {
+        List<ZugangChiffrat> r = jdbc.query("SELECT tenant_id, site_id, chiffrat, nonce "
+                        + "FROM direktvermarktung_zugang WHERE id = ?",
+                (rs, i) -> new ZugangChiffrat(rs.getObject("tenant_id", UUID.class),
+                        rs.getObject("site_id", UUID.class), rs.getBytes("chiffrat"), rs.getBytes("nonce")),
+                zugangId);
+        return r.isEmpty() ? null : r.get(0);
+    }
+
+    /** Setzt {@code zugestellt_am} einmal; {@code false}, wenn es schon stand (idempotente Quittung). */
+    public boolean zugangZugestellt(UUID zugangId, Instant jetzt) {
+        return jdbc.update("UPDATE direktvermarktung_zugang SET zugestellt_am = ? "
+                + "WHERE id = ? AND zugestellt_am IS NULL", Timestamp.from(jetzt), zugangId) > 0;
+    }
+
+    /** Setzt {@code zurueckgezogen_am} einmal; {@code false}, wenn es schon stand. */
+    public boolean zugangZurueckgezogen(UUID zugangId, Instant jetzt) {
+        return jdbc.update("UPDATE direktvermarktung_zugang SET zurueckgezogen_am = ? "
+                + "WHERE id = ? AND zurueckgezogen_am IS NULL", Timestamp.from(jetzt), zugangId) > 0;
+    }
+
+    /**
+     * Die Referenzleistung der Anlage in Watt für das Prozent-Register des Partners: die Summe der
+     * installierten PV-Modulleistung über die PV-Assets der Anlage (F6-Annahme "installierte Leistung",
+     * dieselbe Quelle wie Prognose und MaStR-Übernahme). 0 = unbekannt - dann wird nicht zugestellt,
+     * eine erfundene Referenz drosselte die falsche Menge (vermarktertunnel.LadeAnschluss lehnt sie ab).
+     */
+    public double referenzWp(UUID siteId) {
+        Double kwp = jdbc.queryForObject("SELECT COALESCE(SUM(pv_capacity_kwp), 0) FROM asset "
+                + "WHERE site_id = ? AND type = 'pv'", Double.class, siteId);
+        return kwp == null ? 0 : kwp * 1000;
+    }
+
+    /** Ersetzt den Herzschlag-Spiegel der Anlage (eine Zeile je Anlage, nur Anzeige). */
+    public void standSchreiben(UUID tenantId, UUID siteId, Stand stand, Instant gemeldetAm) {
+        jdbc.update("INSERT INTO direktvermarktung_stand (site_id, tenant_id, tunnel_oben_seit, handshake_am, "
+                + "gegenstelle, letzte_abfrage_am, abfragen_je_minute, letzte_schreibung_am, vorgabe_pct, "
+                + "lebenszeichen_am, einspeisung_w, erzeugung_w, netzbetreiber_pct, referenz_w, gemeldet_am) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT (site_id) DO UPDATE SET tunnel_oben_seit = EXCLUDED.tunnel_oben_seit, "
+                + "handshake_am = EXCLUDED.handshake_am, gegenstelle = EXCLUDED.gegenstelle, "
+                + "letzte_abfrage_am = EXCLUDED.letzte_abfrage_am, abfragen_je_minute = EXCLUDED.abfragen_je_minute, "
+                + "letzte_schreibung_am = EXCLUDED.letzte_schreibung_am, vorgabe_pct = EXCLUDED.vorgabe_pct, "
+                + "lebenszeichen_am = EXCLUDED.lebenszeichen_am, einspeisung_w = EXCLUDED.einspeisung_w, "
+                + "erzeugung_w = EXCLUDED.erzeugung_w, netzbetreiber_pct = EXCLUDED.netzbetreiber_pct, "
+                + "referenz_w = EXCLUDED.referenz_w, gemeldet_am = EXCLUDED.gemeldet_am",
+                siteId, tenantId, nullableTs(stand.tunnelObenSeit()), nullableTs(stand.handshakeAm()),
+                stand.gegenstelle(), nullableTs(stand.letzteAbfrageAm()), stand.abfragenJeMinute(),
+                nullableTs(stand.letzteSchreibungAm()), stand.vorgabePct(), nullableTs(stand.lebenszeichenAm()),
+                stand.einspeisungW(), stand.erzeugungW(), stand.netzbetreiberPct(), stand.referenzW(),
+                Timestamp.from(gemeldetAm));
+    }
+
+    /** Räumt den Herzschlag-Spiegel, wenn der Anschluss endet - "Stand unbekannt" statt alter Zahlen. */
+    public void standLoeschen(UUID siteId) {
+        jdbc.update("DELETE FROM direktvermarktung_stand WHERE site_id = ?", siteId);
+    }
+
+    private static Timestamp nullableTs(Instant t) {
+        return t == null ? null : Timestamp.from(t);
+    }
+
+    private static ZugangZeile mapZugang(ResultSet rs, int i) throws SQLException {
+        return new ZugangZeile(rs.getObject("id", UUID.class),
+                rs.getObject("direktvermarktung_id", UUID.class), rs.getString("fingerabdruck"),
+                ts(rs, "gueltig_bis"), ts(rs, "zugestellt_am"), ts(rs, "zurueckgezogen_am"));
+    }
+
     public List<ProtokollZeile> protokoll(UUID siteId, int grenze) {
         return jdbc.query("SELECT id, ereignis, von, rolle, daten::text, am FROM direktvermarktung_protokoll "
                 + "WHERE site_id = ? ORDER BY am DESC, id DESC LIMIT ?",

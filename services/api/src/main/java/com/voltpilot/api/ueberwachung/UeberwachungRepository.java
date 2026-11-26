@@ -90,6 +90,12 @@ public class UeberwachungRepository {
         return jdbc.queryForList("SELECT DISTINCT site_id FROM steuerlogik WHERE zustand = 'scharf'", UUID.class);
     }
 
+    /** Anlagen mit einem Direktvermarktungs-Anschluss über den Entwurf hinaus (Aussaat der §6-Alarme). */
+    public List<UUID> anlagenMitDirektvermarktung() {
+        return jdbc.queryForList("SELECT DISTINCT site_id FROM direktvermarktung "
+                + "WHERE zustand NOT IN ('entwurf', 'beendet')", UUID.class);
+    }
+
     /**
      * Die Empfänger einer Regel ab Werk (Kunden-Alarmierung P2, KA-5 A): Kundenadministrator und Energiemanager im
      * ganzen Unternehmen, dazu Bearbeiter und Bedienberechtigt - jeder nur für seine Standorte, das entscheidet die

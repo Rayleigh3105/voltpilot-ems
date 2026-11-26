@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/direktvermarkter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 )
 
@@ -21,6 +22,9 @@ type StatusExtension struct {
 	// Koppel: the Koppelbild status of the plant controllers (koppelbild.md
 	// §15), as Layer 1 published it; nil = no block.
 	Koppel json.RawMessage
+	// Direktvermarktung: nil = no direct-marketing connection delivered (no
+	// block; the cloud shows "Stand unbekannt", never a fabricated rest state).
+	Direktvermarktung *DirektvermarktungSummary
 }
 
 // BuiltSupports advertises only capabilities implemented by this runtime bundle.
@@ -141,6 +145,16 @@ type StatusExtension struct {
 // deye_modbus_tcp (25.11.2026): Layer 1 reads and steers a Deye over the
 // Modbus TCP of its logger stick (layer1/deyemodbus.go). Only the Go core;
 // the Docker box's Node-RED does not read that way.
+//
+// direktvermarktung (vp-direktvermarktung-konzept d2 §5.7 "Zustellung"): the
+// box consumes the retained partner profile on v2/direktvermarktung, lays the
+// connection down in the tunnel manager's file contract
+// (internal/vermarktertunnel: anschluss.json plus zugang/), asks for the
+// access it does not hold, acknowledges on v2/direktvermarktung-quittung and
+// reports the heartbeat block direktvermarktung - the word gates the
+// DELIVERY. Tunnel, firewall and the feed-in limit are Stage 2 (Mango) /
+// Stage 4 (PFC200) and already there. The two Go-core box kinds are the
+// concept's targets (§4 Machbarkeit); the Docker box never reports it.
 func BuiltSupports(boxArt string) []string {
 	out := []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
 		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component"}
@@ -148,7 +162,7 @@ func BuiltSupports(boxArt string) []string {
 	out = append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
 		"modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten")
 	if geraetesuche.GoKern(boxArt) {
-		out = append(out, "koppelbild", "deye_modbus_tcp")
+		out = append(out, "koppelbild", "deye_modbus_tcp", direktvermarkter.Capability)
 	}
 	return out
 }

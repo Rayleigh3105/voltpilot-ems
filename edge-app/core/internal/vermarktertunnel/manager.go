@@ -58,6 +58,7 @@ type schnittstelle interface {
 	LastQuery() time.Time
 	Limit() (pct int, active bool)
 	SetValues(at time.Time, values map[string]float64)
+	Stand() direktvermarkter.ServerStand
 }
 
 // Options wires a Manager. Zero values mean: real clock, real runner, host-
@@ -95,7 +96,10 @@ type Status struct {
 	Partner       string     `json:"partner,omitempty"`
 	TunnelAdresse string     `json:"tunnel_adresse,omitempty"`
 	Gegenstelle   string     `json:"gegenstelle,omitempty"`
-	LetzteAbfrage *time.Time `json:"letzte_abfrage,omitempty"`
+	// TunnelLebteZuletzt is the last proof of the peer (the keepalive byte
+	// counters grew) - the heartbeat block's handshake_am.
+	TunnelLebteZuletzt *time.Time `json:"tunnel_lebte_zuletzt,omitempty"`
+	LetzteAbfrage      *time.Time `json:"letzte_abfrage,omitempty"`
 	VorgabePct    *int       `json:"vorgabe_pct,omitempty"`
 	GrenzeKw      *float64   `json:"grenze_kw,omitempty"`
 	GueltigBis    *time.Time `json:"gueltig_bis,omitempty"`
@@ -531,6 +535,27 @@ func (m *Manager) Grenze() (kw float64, wirktAuf string, aktiv bool) {
 	return a.ReferenzWp * float64(pct) / 100 / 1000, p.Rules.WirktAuf, true
 }
 
+// ServerStand is the partner interface's own snapshot (watchdog, last write,
+// query counter, cached values) - the heartbeat block's facts beyond Status.
+// ok=false while no profile is adopted.
+func (m *Manager) ServerStand() (direktvermarkter.ServerStand, bool) {
+	m.mu.Lock()
+	s := m.server
+	m.mu.Unlock()
+	if s == nil {
+		return direktvermarkter.ServerStand{}, false
+	}
+	return s.Stand(), true
+}
+
+// Ereignis records a DELIVERY event (profile received, access stored or
+// deleted) in the same flash list as the tunnel's own - one evidence trail
+// per connection (§5.4 "Nachweis"). The text carries state words only, never
+// a key or file content; the caller holds to that like every ereignis here.
+func (m *Manager) Ereignis(text string) {
+	m.ereignis(Ereignis{Zeit: m.jetzt(), Text: text})
+}
+
 // Anschluss returns the delivered connection facts (ok=false without one).
 func (m *Manager) Anschluss() (Anschluss, bool) {
 	m.mu.Lock()
@@ -548,6 +573,10 @@ func (m *Manager) Status() Status {
 	st := Status{Lage: m.lage, Seit: m.lageSeit, Grund: m.grund, Fehler: m.fehler, TunnelAdresse: m.addr}
 	if m.anschluss != nil {
 		st.Partner = m.anschluss.Partner
+	}
+	if !m.lebteZuletzt.IsZero() {
+		t := m.lebteZuletzt
+		st.TunnelLebteZuletzt = &t
 	}
 	if m.zugang != nil {
 		st.Gegenstelle = fmt.Sprintf("%s:%d", m.zugang.Gegenstelle.Host, m.zugang.Gegenstelle.Port)

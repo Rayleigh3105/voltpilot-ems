@@ -300,6 +300,8 @@ class EnrollmentServiceStartupReloadTest {
                 + "/v2/measurement-config\"]}.\n"
                 + "{deny, {username, \"" + device + "\"}, subscribe, [\"" + base
                 + "/v2/measurement-config-status\", \"" + base + "/v2/measurement-samples\"]}.\n"
+                + "{deny, {username, \"" + device + "\"}, publish,   [\"" + base
+                + "/v2/direktvermarktung\", \"" + base + "/v2/direktvermarktung-zugang\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, publish,   [\"" + base + "/v2/#\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base + "/v2/#\"]}.\n"
                 + "%%<<end device " + device + ">>\n";
