@@ -600,14 +600,7 @@ export function TechnikSection({
                 standortNeuLaden();
                 onSiteSaved(ergebnis.site);
               }}
-              verweise={
-                <AnlageStandortZeile
-                  anlageStandort={anlageStandort}
-                  antwort={standortAntwort}
-                  onGeaendert={standortNeuLaden}
-                  nurVerweise
-                />
-              }
+              onStandorteNeuLaden={standortNeuLaden}
             />
           )}
           {anlageStandort && standortAntwort && anlageStandort.standort.esFehlt.length > 0 && (

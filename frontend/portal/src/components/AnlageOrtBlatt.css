@@ -8,6 +8,12 @@
   font-size: var(--vp-text-sm);
   color: var(--vp-text-muted);
 }
+/* vp-standort-konzept §6.2/§6.5: ersetzt "Anderem Standort zuordnen"/"Zuordnung korrigieren". */
+.vp-ob-gehoert-zu {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted);
+}
 .vp-ob-uebernahme {
   margin: 0;
   font-size: var(--vp-text-sm);
@@ -16,8 +22,9 @@
   display: inline-flex;
   align-self: flex-start;
 }
-/* captain-Korrektur (§6.5): "Details" trägt auch "Koordinaten manuell bearbeiten" und die
-   Übergangs-Verweise "Anderem Standort zuordnen"/"Zuordnung korrigieren" - nicht mehr an der Zeile. */
+/* captain-Korrektur (§6.5): "Details" trägt "Koordinaten manuell bearbeiten" statt eines eigenen
+   Links direkt unter der Karte; "Gehört zu" (oben im Blatt, vp-ob-gehoert-zu) ersetzt die beiden
+   früheren Verweise "Anderem Standort zuordnen"/"Zuordnung korrigieren". */
 .vp-ob-details {
   display: flex;
   flex-direction: column;
@@ -43,11 +50,6 @@
 .vp-ob-details-werte dd {
   margin: 0;
   font-weight: 600;
-}
-.vp-ob-details-verweise {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vp-space-3);
 }
 .vp-ob-ergebnis {
   display: flex;

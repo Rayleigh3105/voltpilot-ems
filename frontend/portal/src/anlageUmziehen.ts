@@ -25,14 +25,18 @@ import { datumText, type Tag } from './uemsOrtsbaum';
 
 export const UMZUG_TITEL = 'Anlage zuordnen';
 export const UMZUG_GESPEICHERT_TITEL = 'Zuordnung gespeichert';
-export const KNOPF_ANDEREM_STANDORT = 'Anderem Standort zuordnen';
-export const KNOPF_ZUORDNUNG_KORRIGIEREN = 'Zuordnung korrigieren';
 export const KNOPF_ZUORDNEN = 'Zuordnen';
 export const KNOPF_FERTIG = 'Fertig';
+export const KNOPF_NEUER_STANDORT = 'Neuer Standort';
 export const UMZUG_VORSPANN =
   'Die Anlage gehört ab dem gewählten Tag zu einem anderen Standort. Das ist eine Aussage über die Zugehörigkeit — am Betrieb der Anlage ändert sich nichts.';
 export const KORREKTUR_VORSPANN =
   'Die Anlage gehört seit ihrem ersten Tag zu einem anderen Standort? Hier ändern Sie das rückwirkend. Steuerung und Messwerte bleiben unberührt.';
+/** vp-standort-konzept §6.3/§6.5: die Frage, die „Anderem Standort zuordnen“ und „Zuordnung
+ * korrigieren“ von heute ersetzt — ein einziges „Gehört zu › Ändern“ fragt sie im selben Dialog. */
+export const LABEL_SEIT_WANN = 'Seit wann?';
+export const SEIT_WANN_AB_EINEM_TAG = 'Ab einem Tag';
+export const SEIT_WANN_SCHON_IMMER = 'Schon immer (war falsch)';
 export const FOLGEN_AENDERT_TITEL = 'Das ändert sich';
 export const FOLGEN_BLEIBT_TITEL = 'Das bleibt, wie es ist';
 export const FOLGEN_PRUEFEN = 'Die Folgen werden geprüft …';
@@ -44,18 +48,23 @@ export const HINWEIS_BEGRUENDUNG = 'Steht im Änderungsprotokoll der Anlage und 
 export const VERLAUF_TITEL = 'Zuordnungen der Anlage';
 export const BEGRUENDUNG_MAX = 500;
 
+export type SeitWann = 'ab_einem_tag' | 'schon_immer';
+
 export interface UmzugForm {
   standortId: string | null;
   gueltigAb: Tag | null;
   begruendung: string;
+  /** §6.5: ersetzt die beiden getrennten Einstiege von heute durch eine Frage im selben Dialog. */
+  seitWann: SeitWann;
 }
 
 export type UmzugFeld = 'standortId' | 'gueltigAb' | 'begruendung';
 export type UmzugFehler = Partial<Record<UmzugFeld, string>>;
 
-/** Der normale Umzug öffnet heute; die geführte Korrektur reicht den ersten Anlagentag ein. */
-export function umzugStart(heute: Tag, gueltigAb = heute): UmzugForm {
-  return { standortId: null, gueltigAb, begruendung: '' };
+/** Öffnet mit heute und „Ab einem Tag“ — den Einstieg „Schon immer“ setzt `AnlageStandortDialog`
+ * selbst (`anfangsSeitWann`), inklusive des passenden Datums. */
+export function umzugStart(heute: Tag): UmzugForm {
+  return { standortId: null, gueltigAb: heute, begruendung: '', seitWann: 'ab_einem_tag' };
 }
 
 /**

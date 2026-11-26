@@ -126,9 +126,9 @@ describe('Folgen-Karte (T6b, A11)', () => {
 });
 
 describe('Form, Anfrage, Ablehnung', () => {
-  it('öffnet ohne Wahl mit heute; fehlende Wahl und zu lange Begründung sind Fehler', () => {
+  it('öffnet ohne Wahl mit heute und „Ab einem Tag“; fehlende Wahl und zu lange Begründung sind Fehler', () => {
     const f = umzugStart('2027-02-20');
-    expect(f).toEqual({ standortId: null, gueltigAb: '2027-02-20', begruendung: '' });
+    expect(f).toEqual({ standortId: null, gueltigAb: '2027-02-20', begruendung: '', seitWann: 'ab_einem_tag' });
     expect(pruefeUmzug(f)).toEqual({ standortId: 'Bitte wählen Sie den Standort, zu dem die Anlage gehören soll.' });
     expect(umzugAnfrage(f)).toBeNull();
     expect(pruefeUmzug({ ...f, standortId: ST3.id, begruendung: 'x'.repeat(501) }).begruendung).toBe(
@@ -136,23 +136,21 @@ describe('Form, Anfrage, Ablehnung', () => {
     );
   });
 
-  it('öffnet die geführte Korrektur mit dem ersten Tag der Anlage statt mit heute', () => {
-    expect(umzugStart('2026-11-20', '2026-10-15')).toEqual({
-      standortId: null,
-      gueltigAb: '2026-10-15',
-      begruendung: '',
-    });
-  });
-
-  it('sendet die Begründung getrimmt — und eine leere gar nicht', () => {
-    expect(umzugAnfrage({ standortId: ST3.id, gueltigAb: '2027-03-01', begruendung: '   ' })).toEqual({
+  it('sendet die Begründung getrimmt — und eine leere gar nicht; „Schon immer“ wird zur Korrektur', () => {
+    const ab = { standortId: ST3.id, gueltigAb: '2027-03-01', begruendung: '   ', seitWann: 'ab_einem_tag' } as const;
+    expect(umzugAnfrage(ab)).toEqual({
       standortId: ST3.id,
       gueltigAb: '2027-03-01',
     });
-    expect(umzugAnfrage({ standortId: ST3.id, gueltigAb: '2027-03-01', begruendung: ' Halle 2 gehört zu Nord. ' })).toEqual({
+    expect(umzugAnfrage({ ...ab, begruendung: ' Halle 2 gehört zu Nord. ' })).toEqual({
       standortId: ST3.id,
       gueltigAb: '2027-03-01',
       begruendung: 'Halle 2 gehört zu Nord.',
+    });
+    expect(umzugAnfrage({ ...ab, seitWann: 'schon_immer' }, true)).toEqual({
+      standortId: ST3.id,
+      gueltigAb: '2027-03-01',
+      korrektur: true,
     });
   });
 

@@ -34,7 +34,10 @@ for (const px of [375, 1440] as const) {
     await einstieg.click();
     const dialog = page.getByRole('dialog', { name: 'Anlage zuordnen' });
     await expect(dialog).toContainText('Die Anlage gehört seit ihrem ersten Tag zu einem anderen Standort? Hier ändern Sie das rückwirkend. Steuerung und Messwerte bleiben unberührt.');
-    await expect(dialog.getByRole('combobox', { name: 'Gültig ab *' })).toContainText('15.10.2026');
+    // Schritt 2c: „Seit wann?" steht auf „Schon immer" - kein sichtbares Datum (Regel 5), der
+    // erste Anlagentag (15.10.2026) gilt dahinter.
+    await expect(dialog.getByRole('radio', { name: 'Schon immer (war falsch)' })).toBeChecked();
+    await expect(dialog.getByRole('combobox', { name: 'Gültig ab *' })).toHaveCount(0);
     await bild(page, `zuordnung-korrigieren-dialog-${px}.png`);
 
     await dialog.getByRole('combobox', { name: 'Neuer Standort *' }).click();
@@ -62,17 +65,17 @@ for (const px of [375, 1440] as const) {
     await breite(page, px);
     await page.goto('/e2e/startansicht.html?bild=korrektur&ansicht=korrektur-anlage');
     // Seit den kurzen Einstellungen (main 41ed67c26) ist „Meine Anlage“ auch am Telefon offen — kein Aufklappen mehr.
-    // Captain-Korrektur (§6.5): beide Verweise stehen bis Schritt 2c im Blatt „Ort berichtigen"
-    // unter „Details", nicht mehr an der Zeile.
+    // Schritt 2c (§6.2/§6.5): EIN Einstieg „Gehört zu: … · Ändern" oben im Blatt „Ort
+    // berichtigen" statt der beiden früheren Verweise - „Seit wann?" wählt im Dialog selbst.
     await page.getByRole('button', { name: /^Standort bearbeiten/ }).click();
     const blatt = page.getByRole('dialog', { name: 'Standort' });
-    await blatt.getByRole('button', { name: 'Details' }).click();
-    const korrektur = blatt.getByRole('button', { name: 'Zuordnung korrigieren: Werk Lindach' });
-    await expect(korrektur).toBeVisible();
+    const aendern = blatt.getByRole('button', { name: 'Ändern: Werk Lindach' });
+    await expect(aendern).toBeVisible();
     await bild(page, `zuordnung-korrigieren-anlagen-dialog-${px}.png`);
 
-    await blatt.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Lindach' }).click();
+    await aendern.click();
     const normal = page.getByRole('dialog', { name: 'Anlage zuordnen' });
+    await expect(normal.getByRole('radio', { name: 'Ab einem Tag' })).toBeChecked();
     await expect(normal.getByRole('combobox', { name: 'Gültig ab *' })).toContainText('20.11.2026');
     await expect(normal).toContainText('Die Anlage gehört ab dem gewählten Tag zu einem anderen Standort.');
     await expect(normal).not.toContainText('seit ihrem ersten Tag');

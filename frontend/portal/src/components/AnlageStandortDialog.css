@@ -124,3 +124,32 @@
 .vp-au-archiv p {
   margin: 0;
 }
+
+/* vp-standort-konzept §6.3/§6.5: "Seit wann?" ersetzt die beiden früheren Einstiege. */
+.vp-au-seitwann {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.vp-au-seitwann legend {
+  padding: 0 0 var(--vp-c-space-1, 4px);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-au-seitwann-wahl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-au-seitwann-option {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  cursor: pointer;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

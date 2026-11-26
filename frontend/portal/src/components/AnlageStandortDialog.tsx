@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { ApiError, type AnlageUmzug, type StandorteAmStichtag } from '../api';
+import { ApiError, type AnlageUmzug, type StandorteAmStichtag, type Unternehmen } from '../api';
 import { api } from '../apiVoll';
 import type { BerichteFolgen } from '../berichteFolgen';
 import {
@@ -14,10 +14,14 @@ import {
   HINWEIS_BEGRUENDUNG,
   KORREKTUR_VORSPANN,
   KNOPF_FERTIG,
+  KNOPF_NEUER_STANDORT,
   KNOPF_ZUORDNEN,
   LABEL_BEGRUENDUNG,
   LABEL_GUELTIG_AB,
+  LABEL_SEIT_WANN,
   LABEL_ZIEL,
+  SEIT_WANN_AB_EINEM_TAG,
+  SEIT_WANN_SCHON_IMMER,
   UMZUG_GESPEICHERT_TITEL,
   UMZUG_TITEL,
   UMZUG_VORSPANN,
@@ -31,6 +35,7 @@ import {
   verlaufZeilen,
   zielOptionen,
   type FolgenKarte,
+  type SeitWann,
   type UmzugFehler,
   type UmzugFeld,
   type UmzugForm,
@@ -38,6 +43,7 @@ import {
 import { alsOrtFehler } from '../standorte';
 import { useBerichteFolgen } from '../useBerichteFolgen';
 import { ArchivierenDialog, type ArchivObjekt } from './ArchivierenDialog';
+import { StandortDialog } from './StandortDialog';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import './StandortDialog.css';
@@ -48,37 +54,48 @@ type Vorschau = { stand: 'leer' } | { stand: 'pruefen' } | { stand: 'da'; umzug:
 type ArchivAngebot = { objekt: ArchivObjekt; archiviert: boolean } | null;
 
 /**
- * Dialog „Anlage zuordnen“ (UEMS AP-02 IP-11, Mockup T6b): neuer Standort, „gültig ab“, eine
- * freiwillige Begründung — und die Folgen-Karte, BEVOR gespeichert wird. Die Karte kommt aus
- * `GET …/standort/vorschau` (dieselbe Regel wie der Eintrag) und nennt, was sich ändert und was
- * bleibt: Box, Datenwege, Freigaben, Betriebsmodell … und dass kein Befehl gesendet wird.
- * Lehnt der Server ab, steht sein Satz am Feld, das er nennt. Nach dem Speichern zeigt der Dialog
- * die Zuordnungen, wie der Server sie gelesen hat.
+ * Dialog „Gehört zu › Ändern“ (vp-standort-konzept §6.2/§6.3/§6.5, vormals UEMS AP-02 IP-11 „Anlage
+ * zuordnen" T6b): neuer Standort (mit „Neuer Standort" am Fuß der Liste, B4), „Seit wann?" (Ab
+ * einem Tag / Schon immer — war falsch, B2), eine freiwillige Begründung — und die Folgen-Karte,
+ * BEVOR gespeichert wird. Die Karte kommt aus `GET …/standort/vorschau` (dieselbe Regel wie der
+ * Eintrag) und nennt, was sich ändert und was bleibt: Box, Datenwege, Freigaben, Betriebsmodell …
+ * und dass kein Befehl gesendet wird. Lehnt der Server ab, steht sein Satz am Feld, das er nennt.
+ * Nach dem Speichern zeigt der Dialog die Zuordnungen, wie der Server sie gelesen hat.
+ *
+ * Die zwei früheren Einstiege „Anderem Standort zuordnen"/„Zuordnung korrigieren" sind EIN Dialog
+ * geworden; „Seit wann?" ersetzt den äußeren `modus`-Schalter von früher.
  */
 export function AnlageStandortDialog({
   open,
   anlageId,
   anlageName,
   standorte,
-  modus = 'umzug',
   gueltigAbVorgabe,
+  anfangsSeitWann = 'ab_einem_tag',
   onClose,
   onGespeichert,
+  onStandorteNeuLaden,
 }: {
   open: boolean;
   anlageId: string;
   anlageName: string;
   /** `GET /api/v1/standorte` von heute — Zielliste und „heute“. */
   standorte: StandorteAmStichtag;
-  /** Geführter Einstieg; Vorschau und Schreibweg bleiben identisch zum normalen Umzug. */
-  modus?: 'umzug' | 'korrektur';
-  /** Erster Tag der Anlage aus ihrer bestätigten Zuordnung. */
-  gueltigAbVorgabe?: string;
+  /** Erster Tag der Anlage aus ihrer bestätigten Zuordnung — Vorbelegung für „Schon immer". */
+  gueltigAbVorgabe: string;
+  /** Geführter Einstieg (AP-14 IP-15): öffnet mit „Schon immer“ vorgewählt, bleibt umschaltbar. */
+  anfangsSeitWann?: SeitWann;
   onClose: () => void;
   onGespeichert: (umzug: AnlageUmzug) => void;
+  /** Nach „Neuer Standort": die Liste neu lesen, damit sie den frischen Standort zeigt (B4). */
+  onStandorteNeuLaden?: () => void;
 }) {
   const basis = `vp-au-${useId().replace(/:/g, '')}`;
-  const [form, setForm] = useState<UmzugForm>(() => umzugStart(standorte.stichtag, gueltigAbVorgabe));
+  const [form, setForm] = useState<UmzugForm>(() => ({
+    ...umzugStart(standorte.stichtag),
+    seitWann: anfangsSeitWann,
+    gueltigAb: anfangsSeitWann === 'schon_immer' ? gueltigAbVorgabe : standorte.stichtag,
+  }));
   const [versucht, setVersucht] = useState(false);
   const [serverFehler, setServerFehler] = useState<UmzugFehler>({});
   const [allgemein, setAllgemein] = useState<string | null>(null);
@@ -87,13 +104,15 @@ export function AnlageStandortDialog({
   const [ergebnis, setErgebnis] = useState<AnlageUmzug | null>(null);
   const [archivAngebot, setArchivAngebot] = useState<ArchivAngebot>(null);
   const [archivDialog, setArchivDialog] = useState(false);
+  const [neuerStandort, setNeuerStandort] = useState<{ unternehmen: Unternehmen | null } | null>(null);
   const ergebnisKopf = useRef<HTMLParagraphElement>(null);
+  const korrektur = form.seitWann === 'schon_immer';
 
   // Nach einer Korrektur urteilt der bestehende Ortsbaum-Weg, ob der bisherige Standort
   // wirklich leer und damit archivierbar ist. Keine lokale Näherung aus Anlagenzahlen.
   useEffect(() => {
     const bisher = ergebnis?.bisher;
-    if (modus !== 'korrektur' || !bisher) {
+    if (!korrektur || !bisher) {
       setArchivAngebot(null);
       return;
     }
@@ -113,7 +132,7 @@ export function AnlageStandortDialog({
       () => undefined,
     );
     return () => { aktiv = false; };
-  }, [ergebnis, modus]);
+  }, [ergebnis, korrektur]);
 
   const pruefung = pruefeUmzug(form);
   const fehler: UmzugFehler = { ...(versucht ? pruefung : {}), ...serverFehler };
@@ -137,7 +156,7 @@ export function AnlageStandortDialog({
     setVorschau({ stand: 'pruefen' });
     const warten = setTimeout(() => {
       api
-        .anlageStandortVorschau(anlageId, standortId, gueltigAb, modus === 'korrektur')
+        .anlageStandortVorschau(anlageId, standortId, gueltigAb, korrektur)
         .then((umzug) => {
           if (aktiv) setVorschau({ stand: 'da', umzug });
         })
@@ -154,10 +173,18 @@ export function AnlageStandortDialog({
       aktiv = false;
       clearTimeout(warten);
     };
-  }, [anlageId, form.standortId, form.gueltigAb, modus]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anlageId, form.standortId, form.gueltigAb, korrektur]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setze<K extends keyof UmzugForm>(feld: K, wert: UmzugForm[K]) {
     setForm((f) => ({ ...f, [feld]: wert }));
+    setServerFehler({});
+    setAllgemein(null);
+  }
+
+  // „Schon immer“ fragt nie nach einem Datum (Regel 5): der erste Anlagentag gilt, nicht einmal
+  // sichtbar. Zurück zu „Ab einem Tag“ setzt wieder den heutigen Tag vor.
+  function setzeSeitWann(wert: SeitWann) {
+    setForm((f) => ({ ...f, seitWann: wert, gueltigAb: wert === 'schon_immer' ? gueltigAbVorgabe : standorte.stichtag }));
     setServerFehler({});
     setAllgemein(null);
   }
@@ -171,7 +198,7 @@ export function AnlageStandortDialog({
     if (busy) return;
     setVersucht(true);
     setAllgemein(null);
-    const anfrage = umzugAnfrage(form, modus === 'korrektur');
+    const anfrage = umzugAnfrage(form, korrektur);
     if (!anfrage) {
       fokus(pruefung.standortId ? 'standortId' : pruefung.gueltigAb ? 'gueltigAb' : 'begruendung');
       return;
@@ -200,6 +227,13 @@ export function AnlageStandortDialog({
   const fertig = () => {
     if (ergebnis) onGespeichert(ergebnis);
   };
+
+  // B4: „Neuer Standort“ am Fuß der Liste — derselbe Standort-Dialog, derselbe Weg wie am
+  // Standort-Kopf (IP-6), hier nur mit einem anderen Rücksprung: gewählt statt geöffnet.
+  async function neuerStandortOeffnen() {
+    const unternehmen = await api.unternehmen().catch(() => null);
+    setNeuerStandort({ unternehmen });
+  }
 
   return (
     <Modal
@@ -261,7 +295,7 @@ export function AnlageStandortDialog({
           <>
             <div className="vp-fd-kopf">
               <p className="vp-fd-name">{anlageName}</p>
-              <p className="vp-sd-vorspann">{modus === 'korrektur' ? KORREKTUR_VORSPANN : UMZUG_VORSPANN}</p>
+              <p className="vp-sd-vorspann">{korrektur ? KORREKTUR_VORSPANN : UMZUG_VORSPANN}</p>
             </div>
             <VpPicker
               id={feldId('standortId')}
@@ -271,14 +305,43 @@ export function AnlageStandortDialog({
               value={form.standortId}
               onChange={(v) => setze('standortId', v)}
               error={fehler.standortId}
+              createLabel={KNOPF_NEUER_STANDORT}
+              onCreate={() => void neuerStandortOeffnen()}
             />
-            <VpDatePicker
-              id={feldId('gueltigAb')}
-              label={LABEL_GUELTIG_AB}
-              value={form.gueltigAb}
-              onChange={(v) => setze('gueltigAb', v)}
-              error={fehler.gueltigAb}
-            />
+            <fieldset className="vp-au-seitwann">
+              <legend>{LABEL_SEIT_WANN}</legend>
+              <div role="radiogroup" aria-label={LABEL_SEIT_WANN} className="vp-au-seitwann-wahl">
+                <label className="vp-au-seitwann-option">
+                  <input
+                    type="radio"
+                    name={`${basis}-seitwann`}
+                    value="ab_einem_tag"
+                    checked={form.seitWann === 'ab_einem_tag'}
+                    onChange={() => setzeSeitWann('ab_einem_tag')}
+                  />
+                  <span>{SEIT_WANN_AB_EINEM_TAG}</span>
+                </label>
+                <label className="vp-au-seitwann-option">
+                  <input
+                    type="radio"
+                    name={`${basis}-seitwann`}
+                    value="schon_immer"
+                    checked={form.seitWann === 'schon_immer'}
+                    onChange={() => setzeSeitWann('schon_immer')}
+                  />
+                  <span>{SEIT_WANN_SCHON_IMMER}</span>
+                </label>
+              </div>
+            </fieldset>
+            {form.seitWann === 'ab_einem_tag' && (
+              <VpDatePicker
+                id={feldId('gueltigAb')}
+                label={LABEL_GUELTIG_AB}
+                value={form.gueltigAb}
+                onChange={(v) => setze('gueltigAb', v)}
+                error={fehler.gueltigAb}
+              />
+            )}
             <Input
               id={feldId('begruendung')}
               label={LABEL_BEGRUENDUNG}
@@ -312,6 +375,25 @@ export function AnlageStandortDialog({
           onFertig={() => {
             setArchivDialog(false);
             setArchivAngebot({ ...archivAngebot, archiviert: true });
+          }}
+        />
+      )}
+      {neuerStandort && (
+        <StandortDialog
+          open
+          standort={null}
+          unternehmen={neuerStandort.unternehmen}
+          standorte={standorte.standorte}
+          heute={standorte.stichtag}
+          onClose={() => setNeuerStandort(null)}
+          onGespeichert={(s) => {
+            setNeuerStandort(null);
+            setze('standortId', s.id);
+            onStandorteNeuLaden?.();
+          }}
+          onOeffnen={(s) => {
+            setNeuerStandort(null);
+            setze('standortId', s.id);
           }}
         />
       )}

@@ -2,13 +2,16 @@ import { Recht } from './Recht';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type StandorteAmStichtag, type Unternehmen } from '../api';
 import {
+  gehoertZuText,
   KNOPF_ADRESSE_NACHTRAGEN,
+  KNOPF_GEHOERT_ZU_AENDERN,
   STANDORT_OBJEKT_LABEL,
   standortDerAnlage,
   standortZeile,
   type AnlageStandort,
 } from '../anlageStandort';
-import { KNOPF_ANDEREM_STANDORT, KNOPF_ZUORDNUNG_KORRIGIEREN, geplantZeile, tagPlus } from '../anlageUmziehen';
+import { mehrereStandorte } from '../anlageOrtBerichtigen';
+import { geplantZeile, tagPlus } from '../anlageUmziehen';
 import { AnlageStandortDialog } from './AnlageStandortDialog';
 import { StandortDialog } from './StandortDialog';
 import './AnlageStandortZeile.css';
@@ -80,38 +83,30 @@ function useDanach(a: AnlageStandort): AnlageStandort | null {
  * „vervollständigen“. Für Einzel-Anlagen-Kunden ist das der einzige Weg zu ihrem
  * Standort (die Liste „Standorte“ erreichen sie nicht).
  *
- * Seit IP-11 (T6b) führt „Anderem Standort zuordnen“ in den Dialog mit Folgen-Karte;
- * endet die heutige Zuordnung (ein geplanter Wechsel), sagt die Zeile, wann und wohin.
+ * vp-standort-konzept §6.2/§6.5: „Gehört zu: … · Ändern“ ersetzt die früheren Verweise
+ * „Anderem Standort zuordnen“/„Zuordnung korrigieren“ — nur ab zwei Standorten gezeigt
+ * (`mehrereStandorte`), sonst gibt es nichts umzuhängen.
  *
  * ⚠ Nur rendern, wenn es ein Objekt gibt; die Koordinaten-Zeile darunter heißt
  * dann „Standort auf der Karte“ (W4, `koordinatenLabel`).
- *
- * `nurVerweise` (vp-standort-konzept §6.5: ein vollständiger Standort zeigt sein Objekt über die
- * neue Zeile „Standort" (`AnlageOrtZeile`), bis Schritt 2c „Gehört zu" dafür eine eigene Fläche
- * bekommt) — nur die beiden Verweise „Anderem Standort zuordnen"/„Zuordnung korrigieren" bleiben
- * erreichbar, als Fragment ohne eigene Hülle: `AnlageOrtBlatt` reicht sie unter „Details" weiter,
- * kein zweites Objekt, keine eigene Zeile.
  */
 export function AnlageStandortZeile({
   anlageStandort,
   antwort,
   onGeaendert,
-  nurVerweise = false,
 }: {
   anlageStandort: AnlageStandort;
   antwort: StandorteAmStichtag;
   onGeaendert: () => void;
-  nurVerweise?: boolean;
 }) {
   const [dialog, setDialog] = useState<{ unternehmen: Unternehmen | null } | null>(null);
-  const [umzug, setUmzug] = useState(false);
-  const [korrektur, setKorrektur] = useState(false);
+  const [gehoertZuOffen, setGehoertZuOffen] = useState(false);
   const ausloeser = useRef<HTMLButtonElement>(null);
-  const umzugAusloeser = useRef<HTMLButtonElement>(null);
-  const korrekturAusloeser = useRef<HTMLButtonElement>(null);
+  const gehoertZuAusloeser = useRef<HTMLButtonElement>(null);
   const z = standortZeile(anlageStandort);
   const { standort, zuordnung } = anlageStandort;
   const geplant = geplantZeile(anlageStandort, useDanach(anlageStandort));
+  const mehrere = mehrereStandorte(antwort);
 
   async function oeffne() {
     const unternehmen = await api.unternehmen().catch(() => null);
@@ -125,61 +120,11 @@ export function AnlageStandortZeile({
     });
   }
 
-  function schliesseUmzug() {
-    const fokus = korrektur ? korrekturAusloeser : umzugAusloeser;
-    setUmzug(false);
-    setKorrektur(false);
+  function schliesseGehoertZu() {
+    setGehoertZuOffen(false);
     requestAnimationFrame(() => {
-      if (fokus.current?.isConnected) fokus.current.focus();
+      if (gehoertZuAusloeser.current?.isConnected) gehoertZuAusloeser.current.focus();
     });
-  }
-
-  const verweise = (
-    <>
-      <Recht aktion="anlage.zuordnen"><button
-        ref={umzugAusloeser}
-        type="button"
-        className="vp-as-verweis"
-        aria-label={`${KNOPF_ANDEREM_STANDORT}: ${zuordnung.name}`}
-        onClick={() => setUmzug(true)}
-      >
-        {KNOPF_ANDEREM_STANDORT}
-      </button></Recht>
-      <Recht aktion="anlage.zuordnen"><button
-        ref={korrekturAusloeser}
-        type="button"
-        className="vp-as-verweis"
-        aria-label={`${KNOPF_ZUORDNUNG_KORRIGIEREN}: ${zuordnung.name}`}
-        onClick={() => setKorrektur(true)}
-      >
-        {KNOPF_ZUORDNUNG_KORRIGIEREN}
-      </button></Recht>
-    </>
-  );
-
-  const umzugDialog = (umzug || korrektur) && (
-    <AnlageStandortDialog
-      open
-      anlageId={zuordnung.id}
-      anlageName={zuordnung.name}
-      standorte={antwort}
-      modus={korrektur ? 'korrektur' : 'umzug'}
-      gueltigAbVorgabe={korrektur ? zuordnung.gueltigAb : undefined}
-      onClose={schliesseUmzug}
-      onGespeichert={() => {
-        schliesseUmzug();
-        onGeaendert();
-      }}
-    />
-  );
-
-  if (nurVerweise) {
-    return (
-      <>
-        {verweise}
-        {umzugDialog}
-      </>
-    );
   }
 
   return (
@@ -201,7 +146,20 @@ export function AnlageStandortZeile({
             {KNOPF_ADRESSE_NACHTRAGEN}
           </button></Recht>
         )}
-        {verweise}
+        {mehrere && (
+          <span className="vp-as-zeile vp-as-gehoert-zu">
+            {gehoertZuText(standort)} ·{' '}
+            <Recht aktion="anlage.zuordnen"><button
+              ref={gehoertZuAusloeser}
+              type="button"
+              className="vp-as-verweis"
+              aria-label={`${KNOPF_GEHOERT_ZU_AENDERN}: ${zuordnung.name}`}
+              onClick={() => setGehoertZuOffen(true)}
+            >
+              {KNOPF_GEHOERT_ZU_AENDERN}
+            </button></Recht>
+          </span>
+        )}
         {dialog && (
           <StandortDialog
             open
@@ -216,7 +174,21 @@ export function AnlageStandortZeile({
             }}
           />
         )}
-        {umzugDialog}
+        {gehoertZuOffen && (
+          <AnlageStandortDialog
+            open
+            anlageId={zuordnung.id}
+            anlageName={zuordnung.name}
+            standorte={antwort}
+            gueltigAbVorgabe={zuordnung.gueltigAb}
+            onClose={schliesseGehoertZu}
+            onStandorteNeuLaden={onGeaendert}
+            onGespeichert={() => {
+              schliesseGehoertZu();
+              onGeaendert();
+            }}
+          />
+        )}
       </dd>
     </div>
   );

@@ -2110,6 +2110,13 @@
       "verschoben_nach": "components/KoordinatenManuellFelder.tsx",
       "commit": "fm/vp-standort-bau",
       "grund": "vp-standort-konzept §6.1 (captain-Korrektur): dasselbe Herausziehen wie oben - das Feld „Längengrad“ steht Zeichen für Zeichen in KoordinatenManuellFelder.tsx."
+    },
+    {
+      "datei": "components/AnlageStandortZeile.tsx",
+      "vorher": "8a196ca013c5c3e58b9f3615ded314495690f519b3e8768af4e6476530163837",
+      "nachher": "cfa4ad7ac1d506c303210c8a14ada5ce192f299f8feeb01fb11445d605a7a9a1",
+      "commit": "fm/vp-standort-bau",
+      "grund": "vp-standort-konzept §6.2/§6.5 (Schritt 2c): „Anderem Standort zuordnen“ und „Zuordnung korrigieren“ sind EIN Knopf „Ändern“ hinter „Gehört zu: …“ geworden, nur ab zwei Standorten gezeigt - dieselbe Wirkung (AnlageStandortDialog), „Seit wann?“ wählt jetzt im Dialog selbst zwischen Umzug und Korrektur."
     }
   ],
   "assistentZusammenfuehrung": {
