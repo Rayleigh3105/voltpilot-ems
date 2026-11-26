@@ -1,4 +1,5 @@
 import { AuthRedirectError, freshToken } from './auth';
+import type { DirektvermarktungStatus } from './direktvermarktung';
 import type { BezugsbasisVergleichMonat } from './bezugsbasisVergleich';
 import type { SiteProfiles } from './profiles';
 import type {
@@ -11791,6 +11792,14 @@ export const api = {
     request<CurtailmentStatus | undefined>(
       `/api/v1/sites/${siteId}/curtailment-status`,
     ).then((v) => v ?? null),
+  /**
+   * Der Anschluss an einen Direktvermarkter (Konzept vp-direktvermarktung-konzept d2 §7.3): die
+   * Cockpit-Schale selbst braucht nur dieses EINE GET (Zustand der Anlage, Statuspille), darum lebt
+   * es hier und nicht erst in `apiVoll` - alle schreibenden Routen (wählen/zustimmen/beenden/...)
+   * bleiben dort, nur von der Direktvermarktung-Seite selbst gebraucht.
+   */
+  direktvermarktung: (siteId: string) =>
+    request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung`),
   /** Erzeuger-Cockpit (EZ-8): null = keine Anlagensteuerung (204) oder älteres Backend (404). */
   erzeugerJetzt: (siteId: string) =>
     request<ErzeugerJetzt | undefined>(`/api/v1/sites/${siteId}/erzeuger/jetzt`).then(

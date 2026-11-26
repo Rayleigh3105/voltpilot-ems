@@ -380,3 +380,33 @@ describe('Konzept b1: die Abweichung der Einspeisegrenze ist ein Befund mit Weg'
     expect(sameHealthFacts({ geraeteGrenze: SATZ }, { geraeteGrenze: null })).toBe(false);
   });
 });
+
+describe('Konzept vp-direktvermarktung-konzept d2 §7.3: Direktvermarktung gestört ist ein Befund mit Weg', () => {
+  const SATZ = 'luox erreicht die Anlage nicht · seit 12 Min.';
+
+  it('erscheint nur mit Beleg, nie beim ruhigen Begrenzen (§7.2 Regel 5), als LAUTER Befund mit Weg zur Seite', () => {
+    expect(byKey(healthChecklist(input({})), 'direktvermarktung')).toBeUndefined();
+    expect(byKey(healthChecklist(input({ direktvermarktungGestoert: null })), 'direktvermarktung')).toBeUndefined();
+    const items = healthChecklist(input({ direktvermarktungGestoert: SATZ }));
+    expect(byKey(items, 'direktvermarktung')).toMatchObject({ state: 'warn', detail: SATZ });
+    const zustand = zustandView(items)!;
+    expect(zustand.state).toBe('befund');
+    expect(zustand.toneWord).toBe('Warnung');
+    expect(zustand.findings).toEqual([
+      expect.objectContaining({
+        key: 'direktvermarktung', state: 'warn', text: `Direktvermarktung: ${SATZ}`,
+        lever: { sub: 'direktvermarktung', label: 'Direktvermarktung' },
+      }),
+    ]);
+  });
+
+  it('Kopf-Abzeichen und Zustand sagen dasselbe (eine Wahrheit) - eine Warnung, nicht nur ein Hinweis', () => {
+    const badge = healthBadge({
+      devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 }, direktvermarktungGestoert: SATZ,
+    });
+    expect(badge.state).toBe('warnung');
+    expect(badge.detail).toBe(`Direktvermarktung: ${SATZ}`);
+    expect(sameHealthFacts({ direktvermarktungGestoert: SATZ }, { direktvermarktungGestoert: SATZ })).toBe(true);
+    expect(sameHealthFacts({ direktvermarktungGestoert: SATZ }, { direktvermarktungGestoert: null })).toBe(false);
+  });
+});
