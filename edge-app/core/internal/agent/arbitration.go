@@ -143,13 +143,21 @@ func (a *Agent) startArbitration(ctx context.Context) error {
 	return nil
 }
 
-// onEntityDesired ingests one desired payload from the local bus.
+// onEntityDesired ingests one desired payload from the local bus. arb.Submit
+// is synchronous (admits, clamps through the guard chain, applies the
+// decision) - by the time it returns, DecisionFor(id) already reflects
+// whatever the arbiter decided, so waking consumerControlLoop right after is
+// never a race with a stale decision (vp-schalten-sofort, Captain-Befund auf
+// #2035): the woken pass reads and writes the ALREADY-ARBITRATED outcome
+// sooner, it decides nothing new. A guard that holds still holds; it is
+// reported sooner, not bypassed.
 func (a *Agent) onEntityDesired(topic string, payload []byte) {
 	id := entities.IDFromTopic(topic, "desired")
 	if id == "" {
 		return
 	}
 	a.arb.Submit(id, payload)
+	a.requestConsumerControlNow()
 }
 
 // onEntityReadback records the per-entity register-level readback verdict
@@ -174,7 +182,7 @@ func (a *Agent) onEntityReadback(topic string, payload []byte) {
 	}
 	a.entReadback[id] = m.AllMatch
 	a.arbMu.Unlock()
-	a.noteConsumerReadback()
+	a.noteConsumerReadback(id)
 }
 
 // arbitrationLoop drives the plan executors and the arbiter's expiry/reclamp

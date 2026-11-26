@@ -96,11 +96,12 @@ func (a *Agent) startConsumerControl(ctx context.Context) {
 // shelly; both re-assert a stable command every goeReassertInterval - for
 // shelly the re-assert additionally re-arms the on-device dead-man timer).
 // Loop-local state (last executed plan fingerprint + last assert time + phase
-// switcher per entity) lives here. The write+readback itself runs on this
-// tick, but the early status heartbeat that follows a visible change is
-// requested from onEntityReadback (arbitration.go) the moment the readback
-// actually lands, not from here - this tick can be up to consumerControlTick
-// stale (consumer_status_kick.go).
+// switcher per entity) lives here. Besides the regular tick, a pass also runs
+// right away when onEntityDesired admits a fresh desired (consumer_override_
+// now.go) - a manual override no longer waits out consumerControlTick before
+// the box even tries it. The early status heartbeat that follows a visible
+// change is requested from onEntityReadback (arbitration.go) the moment the
+// readback actually lands, not from here (consumer_status_kick.go).
 func (a *Agent) consumerControlLoop(ctx context.Context) {
 	t := time.NewTicker(consumerControlTick)
 	defer t.Stop()
@@ -114,6 +115,7 @@ func (a *Agent) consumerControlLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		case <-a.consumerControlKick():
 		}
 		a.runGoeControlPass(ctx, a.goeDoer, lastFP, lastAssert, switchers, time.Now())
 		a.runShellyControlPass(ctx, a.shellyDoerRef(), shellyFP, shellyAssert, time.Now())

@@ -31,16 +31,26 @@ import (
 // onEntityReadback right after a per-entity readback lands. consumerFPOnce
 // seeds the baseline on the very first call (a box that just started asks
 // for nothing), exactly like ocppStatusWatch.
-func (a *Agent) noteConsumerReadback() {
+//
+// entityID picks the channel: takePriorityConfirm consumes the one-shot flag
+// a manual override's own confirmation earns (consumer_override_now.go) and,
+// if set, this readback's heartbeat ignores statusKickMinGap; every other
+// change - repeated, automatic, flapping - keeps the normal rate limit.
+func (a *Agent) noteConsumerReadback(entityID string) {
 	fp := consumersStatusFingerprint(a.consumersSummary())
 	a.consumerFPMu.Lock()
 	seeded := a.consumerFPSeeded
 	changed := seeded && fp != a.consumerFP
 	a.consumerFP, a.consumerFPSeeded = fp, true
 	a.consumerFPMu.Unlock()
-	if changed {
-		a.requestStatusHeartbeat()
+	if !changed {
+		return
 	}
+	if a.takePriorityConfirm(entityID) {
+		a.requestPriorityStatusHeartbeat()
+		return
+	}
+	a.requestStatusHeartbeat()
 }
 
 // consumersStatusFingerprint is what the consumers block shows a customer, in

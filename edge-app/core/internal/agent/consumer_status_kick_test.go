@@ -86,7 +86,7 @@ func TestHeizstabSwitchConfirmationReachesTheHeartbeatWithinSecondsNotOnTheNextT
 	hbDone := make(chan struct{})
 	go func() {
 		defer close(hbDone)
-		statusHeartbeatLoop(ctx, statusHeartbeatEvery, statusKickMinGap, a.statusKick(), rec.publish)
+		statusHeartbeatLoop(ctx, statusHeartbeatEvery, statusKickMinGap, a.statusKick(), a.priorityStatusKick(), rec.publish)
 	}()
 	t.Cleanup(func() { cancel(); <-hbDone })
 

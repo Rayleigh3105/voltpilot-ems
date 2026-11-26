@@ -51,6 +51,11 @@ func (a *Agent) onDesiredDownlink(payload []byte) {
 		// slot per entity, so the key is stable.
 		a.arb.Withdraw(env.EntityID, desired.Source{Kind: desired.SourceLocalUI}.Key(), false)
 		a.pokeArbitration()
+		// This IS a Handeingriff too (a person ended it on purpose): wake the
+		// control pass now and let its own next readback skip statusKickMinGap
+		// (vp-schalten-sofort round 2).
+		a.requestConsumerControlNow()
+		a.markPriorityConfirm(env.EntityID)
 		slog.Info("manual consumer override withdrawn", "entity", env.EntityID)
 		return
 	}
@@ -58,14 +63,20 @@ func (a *Agent) onDesiredDownlink(payload []byte) {
 		return
 	}
 	// Forward the desired verbatim to the local bus; the arbiter's onEntityDesired
-	// picks it up and does the validation + clamp + TTL. NOT retained on the local
-	// bus either (a desire is an input with an expiry, never a state).
+	// picks it up and does the validation + clamp + TTL (and itself wakes
+	// consumerControlLoop once admitted, arbitration.go). NOT retained on the
+	// local bus either (a desire is an input with an expiry, never a state).
 	if err := a.Bus.Publish(desired.DesiredTopic(env.EntityID), payload, false); err != nil {
 		slog.Warn("could not forward manual override to the local bus",
 			"entity", env.EntityID, "err", err)
 		return
 	}
 	a.pokeArbitration()
+	// The readback that follows is THIS override's own confirmation - it earns
+	// the one statusKickMinGap exception (consumer_override_now.go). Marked
+	// before the async bus round trip resolves on purpose: the flag only needs
+	// to be set by the time a LATER readback checks it, never before.
+	a.markPriorityConfirm(env.EntityID)
 	slog.Info("manual consumer override forwarded to the arbiter", "entity", env.EntityID)
 }
 
