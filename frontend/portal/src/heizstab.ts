@@ -110,6 +110,31 @@ export function stufeText(ausgaenge: number): string {
   return ausgaenge === 1 ? '1 Phase' : `${ausgaenge} Phasen`;
 }
 
+/** Eine Stufe des Box-Reglers, mit ihrer Leistung und Zahl geschalteter Phasen. */
+export interface ReglerStufe {
+  ausgaenge: number;
+  kw: number;
+}
+
+/**
+ * Die kleinste Stufe eines gestuften Heizstabs. `levelsKw` enthält manchmal
+ * die Nullstufe; sie ist kein möglicher Start des Reglers.
+ */
+export function kleinsteReglerStufe(levelsKw: number[] | null | undefined): ReglerStufe | null {
+  const stufen = (levelsKw ?? []).filter((kw) => Number.isFinite(kw) && kw > 0).sort((a, b) => a - b);
+  return stufen.length > 0 ? { ausgaenge: 1, kw: stufen[0] } : null;
+}
+
+/**
+ * Die nächste Stufe, die der Regler einschalten könnte. Seine Stufe ist ein
+ * Index in die erlaubten positiven Stufen, mit 0 = aus.
+ */
+export function naechsteReglerStufe(levelsKw: number[] | null | undefined, aktuelleStufe: number): ReglerStufe | null {
+  const stufen = (levelsKw ?? []).filter((kw) => Number.isFinite(kw) && kw > 0).sort((a, b) => a - b);
+  if (!Number.isInteger(aktuelleStufe) || aktuelleStufe < 0 || aktuelleStufe >= stufen.length) return null;
+  return { ausgaenge: aktuelleStufe + 1, kw: stufen[aktuelleStufe] };
+}
+
 /** kW deutsch, eine Stelle, mit geschütztem Leerzeichen. */
 export function kwText(kw: number): string {
   return `${kw.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kW`;

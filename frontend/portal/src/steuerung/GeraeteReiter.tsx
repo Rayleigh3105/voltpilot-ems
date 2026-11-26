@@ -379,8 +379,9 @@ function NeuKarte({ g, bild, busy, oeffne, onUebernehmen, onNurMessen }: {
     const n = bits.filter(Boolean).length;
     if (sp.length) {
       folge = `Läuft dann voraussichtlich ${spannenText(sp, 2)}${g.nennKw ? ` · ≈ ${fKwh((n * g.nennKw) / 4)}` : ''}`;
-    } else if (s.quelle === 'ueberschuss' && s.schwelleKw != null) {
-      folge = `Bis morgen Abend bleiben voraussichtlich keine ${fKw(s.schwelleKw)} Sonnenstrom übrig; es läuft, sobald es passt.`;
+    } else if (s.quelle === 'ueberschuss' && (g.heizstabStartStufe?.kw ?? s.schwelleKw) != null) {
+      const braucht = g.heizstabStartStufe?.kw ?? s.schwelleKw!;
+      folge = `Bis morgen Abend bleiben voraussichtlich keine ${fKw(braucht)} Sonnenstrom übrig; es läuft, sobald es passt.`;
     } else if (s.quelle === 'guenstig') {
       folge = 'Bis morgen Abend liegt der Börsenpreis voraussichtlich nie unter der Grenze.';
     }
@@ -443,7 +444,7 @@ export function auftragFuerWunsch(g: GeraetBild, w: SteuerartWunsch): string {
       zielEnergieKwh: w.zielEnergieKwh ?? null,
       zielLaufzeitMinuten: w.zielLaufzeitMinuten ?? null,
     },
-    { form: g.form, ladepunkt: !!g.eintrag.ladepunkt },
+    { form: g.form, ladepunkt: !!g.eintrag.ladepunkt, heizstabStartStufe: g.heizstabStartStufe },
   );
 }
 
@@ -1059,4 +1060,3 @@ function ImmerKarte({ bild, oeffne, netzanschlussKw, plantKind, netzladenErlaubt
     </section>
   );
 }
-

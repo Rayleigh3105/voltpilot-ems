@@ -138,6 +138,31 @@ describe('geraete', () => {
     expect(laeuft.jetztKw).toBe(2.5);
   });
 
+  it('zeigt beim gestuften Heizstab den nächsten Regler-Schritt statt der gespeicherten Überschuss-Schwelle', () => {
+    const rh = leereReihen();
+    rh.pv[52] = 1.5; rh.netz[52] = 0; rh.netz[53] = -1.5;
+    const [stab] = geraete({
+      raster: r,
+      reihen: rh,
+      verbraucher: {
+        verbraucher: [eintrag({ entityId: 'weiss', steuerart: { quelle: 'ueberschuss', herkunft: 'policy', schwelleKw: 4.5 } })],
+        ladepunkte: { standard: null, standardFolger: 0, gesamt: 0, rahmen: null },
+        rangliste: [{ position: 1, art: 'speicher', entityId: null, name: 'Speicher' }, { position: 2, art: 'verbraucher', entityId: 'weiss', name: 'Heizstab' }],
+      },
+      consumers: [{ id: 'weiss', controlKind: 'stepped', ratedPowerKw: 4.5, levelsKw: [0, 1.5, 3, 4.5] } as never],
+      status: [{
+        entityId: 'weiss', state: 'waiting', reasonCode: 'storage_first', reportedAt: NOW.toISOString(),
+        heizstab: { stufe: 0, ausgaenge: 0, kw: 0, code: 'kein_ueberschuss', grund: 'Kein Überschuss.', verfuegbar_kw: 0 },
+      }],
+    });
+    expect(stab.auftrag).toBe('Mit Sonnenstrom ab 1,5 kW (1 Phase)');
+    expect(stab.warum).toBe('Wartet · Kein Überschuss. · braucht 1,5 kW');
+    expect(stab.warumLang).toBe('Kein Überschuss. Die nächste Stufe braucht 1,5 kW, frei sind 0,0 kW.');
+    expect(stab.kw[53]).toBe(1.5);
+    expect(leiste(rh, 52, [stab], [SPEICHER, 'weiss'], 52)?.wartet)
+      .toMatchObject({ id: 'weiss', platz: 2, braucht: 1.5, frei: 0 });
+  });
+
   it('ein von der Box gemeldeter Handeingriff liest ehrlich „von Hand", nie „läuft" wie ein Plan (Teil B)', () => {
     const [g] = geraete({
       raster: r,
