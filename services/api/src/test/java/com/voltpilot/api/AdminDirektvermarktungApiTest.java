@@ -89,8 +89,12 @@ class AdminDirektvermarktungApiTest {
         UUID tenant = UUID.randomUUID();
         UUID site = UUID.randomUUID();
         UUID dv = UUID.randomUUID();
+        UUID device = UUID.randomUUID();
         exec("INSERT INTO tenant (id, name) VALUES ('" + tenant + "', 'Admin-DV-Probe " + tenant + "')");
         exec("INSERT INTO site (id, tenant_id, name) VALUES ('" + site + "', '" + tenant + "', 'Werk')");
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind, status) VALUES ('" + device + "', '"
+                + tenant + "', '" + site + "', 'VP-ADMIN-DV-" + device + "', 'inverter', 'claimed')");
+        exec("UPDATE site SET lead_device_id = '" + device + "' WHERE id = '" + site + "'");
         exec("INSERT INTO direktvermarktung (id, tenant_id, site_id, partner, zustand, zustimmung_am, "
                 + "zustimmung_von, zustimmung_rolle, startdatum) VALUES ('" + dv + "', '" + tenant + "', '" + site
                 + "', 'luox', 'verbunden', now(), 'kunde', 'kundenadministrator', CURRENT_DATE)");
@@ -117,6 +121,8 @@ class AdminDirektvermarktungApiTest {
         assertThat(zeile.get("zustand")).isEqualTo("verbunden");
         assertThat(zeile.get("zugangGueltigBis")).as("die Plattform-Liste zeigt die Gültigkeit, nie das Zertifikat")
                 .isNotNull();
+        assertThat(zeile.get("leadDeviceRef")).as("die Geräteakte-Route braucht die Leitbox-Kennung")
+                .isEqualTo("VP-ADMIN-DV-" + device);
         assertThat(zeile).as("Chiffrat/Nonce/Passwort verlassen diese Route nie")
                 .doesNotContainKeys("chiffrat", "nonce", "passwort");
 

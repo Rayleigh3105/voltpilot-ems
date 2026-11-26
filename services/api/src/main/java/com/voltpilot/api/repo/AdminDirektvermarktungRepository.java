@@ -26,10 +26,12 @@ public class AdminDirektvermarktungRepository {
      * Eine Zeile der Plattform-Liste: Anlage, Mandant, Partner, Zustand, wie lange schon (Plattform ›
      * Übersicht, "Braucht dich"). {@code zugangGueltigBis} ist der der AKTUELLEN Zugangsdatei (noch
      * nicht zurückgezogen, jüngste zuerst) - ohne Zustellung (eigener Auftrag) bleibt die Spalte leer.
+     * {@code leadDeviceRef} ist die Kennung der Leitbox der Anlage (für die Geräteakte-Route der
+     * "Braucht dich"-Zeile) - {@code null}, solange die Anlage keine trägt.
      */
     public record Zeile(UUID siteId, String siteName, UUID tenantId, String tenantName, String partner,
             String zustand, LocalDate startdatum, LocalDate ende, Instant aktualisiertAm,
-            Instant letzteAbfrageAm, Instant lebenszeichenAm, Instant zugangGueltigBis) {}
+            Instant letzteAbfrageAm, Instant lebenszeichenAm, Instant zugangGueltigBis, String leadDeviceRef) {}
 
     /**
      * Die Geräteakte › Verbindung-Sicht EINER Anlage (§7.7): der aktuelle Anschluss, sein Herzschlag
@@ -57,11 +59,13 @@ public class AdminDirektvermarktungRepository {
         return jdbc.query("""
                 SELECT dv.site_id, s.name AS site_name, dv.tenant_id, t.name AS tenant_name, dv.partner,
                        dv.zustand, dv.startdatum, dv.ende, dv.aktualisiert_am,
-                       dvs.letzte_abfrage_am, dvs.lebenszeichen_am, dvz.gueltig_bis AS zugang_gueltig_bis
+                       dvs.letzte_abfrage_am, dvs.lebenszeichen_am, dvz.gueltig_bis AS zugang_gueltig_bis,
+                       lead.external_ref AS lead_device_ref
                 FROM direktvermarktung dv
                 JOIN site s ON s.id = dv.site_id
                 JOIN tenant t ON t.id = dv.tenant_id
                 LEFT JOIN direktvermarktung_stand dvs ON dvs.site_id = dv.site_id
+                LEFT JOIN device lead ON lead.id = s.lead_device_id
                 LEFT JOIN LATERAL (
                     SELECT z.gueltig_bis FROM direktvermarktung_zugang z
                     WHERE z.direktvermarktung_id = dv.id AND z.zurueckgezogen_am IS NULL
@@ -110,7 +114,7 @@ public class AdminDirektvermarktungRepository {
                 rs.getObject("tenant_id", UUID.class), rs.getString("tenant_name"), rs.getString("partner"),
                 rs.getString("zustand"), startdatum == null ? null : startdatum.toLocalDate(),
                 ende == null ? null : ende.toLocalDate(), ts(rs, "aktualisiert_am"), ts(rs, "letzte_abfrage_am"),
-                ts(rs, "lebenszeichen_am"), ts(rs, "zugang_gueltig_bis"));
+                ts(rs, "lebenszeichen_am"), ts(rs, "zugang_gueltig_bis"), rs.getString("lead_device_ref"));
     }
 
     private static SiteDetail mapDetail(ResultSet rs, int i) throws SQLException {

@@ -31,12 +31,12 @@ public class AdminDirektvermarktungController {
     /** Eine Zeile der Plattform-Liste. */
     public record AdminDirektvermarktungZeileDto(UUID siteId, String siteName, UUID tenantId, String tenantName,
             String partner, String zustand, LocalDate startdatum, LocalDate ende, Instant aktualisiertAm,
-            Instant letzteAbfrageAm, Instant lebenszeichenAm, Instant zugangGueltigBis) {
+            Instant letzteAbfrageAm, Instant lebenszeichenAm, Instant zugangGueltigBis, String leadDeviceRef) {
 
         static AdminDirektvermarktungZeileDto von(Zeile z) {
             return new AdminDirektvermarktungZeileDto(z.siteId(), z.siteName(), z.tenantId(), z.tenantName(),
                     z.partner(), z.zustand(), z.startdatum(), z.ende(), z.aktualisiertAm(), z.letzteAbfrageAm(),
-                    z.lebenszeichenAm(), z.zugangGueltigBis());
+                    z.lebenszeichenAm(), z.zugangGueltigBis(), z.leadDeviceRef());
         }
     }
 
