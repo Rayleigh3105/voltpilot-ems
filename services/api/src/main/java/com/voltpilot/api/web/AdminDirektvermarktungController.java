@@ -28,15 +28,20 @@ import org.springframework.web.server.ResponseStatusException;
 @PreAuthorize("hasRole('platform-admin')")
 public class AdminDirektvermarktungController {
 
-    /** Eine Zeile der Plattform-Liste. */
+    /**
+     * Eine Zeile der Plattform-Liste. {@code ez8Direktvermarkter}: Abgleich mit dem älteren,
+     * hardwaregestützten Feld der Anlagensteuerung (EZ-8) - {@code null} ohne ein solches Feld; kein
+     * Datenbezug, keine Sperre.
+     */
     public record AdminDirektvermarktungZeileDto(UUID siteId, String siteName, UUID tenantId, String tenantName,
             String partner, String zustand, LocalDate startdatum, LocalDate ende, Instant aktualisiertAm,
-            Instant letzteAbfrageAm, Instant lebenszeichenAm, Instant zugangGueltigBis, String leadDeviceRef) {
+            Instant letzteAbfrageAm, Instant lebenszeichenAm, Instant zugangGueltigBis, String leadDeviceRef,
+            String ez8Direktvermarkter) {
 
         static AdminDirektvermarktungZeileDto von(Zeile z) {
             return new AdminDirektvermarktungZeileDto(z.siteId(), z.siteName(), z.tenantId(), z.tenantName(),
                     z.partner(), z.zustand(), z.startdatum(), z.ende(), z.aktualisiertAm(), z.letzteAbfrageAm(),
-                    z.lebenszeichenAm(), z.zugangGueltigBis(), z.leadDeviceRef());
+                    z.lebenszeichenAm(), z.zugangGueltigBis(), z.leadDeviceRef(), z.ez8Direktvermarkter());
         }
     }
 
@@ -46,7 +51,8 @@ public class AdminDirektvermarktungController {
             Instant tunnelObenSeit, Instant handshakeAm, String gegenstelle, Double abfragenJeMinute,
             Instant letzteSchreibungAm, Instant lebenszeichenAm, Integer vorgabePct, Integer einspeisungW,
             Integer erzeugungW, Integer netzbetreiberPct, Integer referenzW, String zugangHochgeladenVon,
-            Instant zugangGueltigBis, String zugangFingerabdruck, Instant zugangZurueckgezogenAm) {
+            Instant zugangGueltigBis, String zugangFingerabdruck, Instant zugangZurueckgezogenAm,
+            String ez8Direktvermarkter) {
 
         static AdminDirektvermarktungDetailDto von(SiteDetail d) {
             return new AdminDirektvermarktungDetailDto(d.siteId(), d.tenantId(), d.partner(), d.zustand(),
@@ -54,7 +60,7 @@ public class AdminDirektvermarktungController {
                     d.handshakeAm(), d.gegenstelle(), d.abfragenJeMinute(), d.letzteSchreibungAm(),
                     d.lebenszeichenAm(), d.vorgabePct(), d.einspeisungW(), d.erzeugungW(), d.netzbetreiberPct(),
                     d.referenzW(), d.zugangHochgeladenVon(), d.zugangGueltigBis(), d.zugangFingerabdruck(),
-                    d.zugangZurueckgezogenAm());
+                    d.zugangZurueckgezogenAm(), d.ez8Direktvermarkter());
         }
     }
 

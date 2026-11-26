@@ -157,6 +157,63 @@ class AdminDirektvermarktungApiTest {
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    /**
+     * EZ-8-Abgleich (kein Datenbezug, keine Sperre): die Plattform-Liste und die
+     * Geräteakte nennen zusätzlich den Namen des älteren, hardwaregestützten Felds der
+     * Anlagensteuerung, wenn die Anlage eines trägt - rein gelesen, kein Schreibzugriff, das EZ-8-Feld
+     * selbst bleibt unverändert.
+     */
+    @Test
+    void platformListeUndAkteNennenDenEz8DirektvermarkterWennGesetzt() {
+        UUID tenant = UUID.randomUUID();
+        UUID site = UUID.randomUUID();
+        UUID dv = UUID.randomUUID();
+        exec("INSERT INTO tenant (id, name) VALUES ('" + tenant + "', 'Admin-DV-EZ8-Probe " + tenant + "')");
+        exec("INSERT INTO site (id, tenant_id, name) VALUES ('" + site + "', '" + tenant + "', 'Werk EZ-8')");
+        exec("INSERT INTO direktvermarktung (id, tenant_id, site_id, partner, zustand, zustimmung_am, "
+                + "zustimmung_von, zustimmung_rolle, startdatum) VALUES ('" + dv + "', '" + tenant + "', '" + site
+                + "', 'luox', 'verbunden', now(), 'kunde', 'kundenadministrator', CURRENT_DATE)");
+        exec("INSERT INTO anlage_netz_vermarktung (site_id, tenant_id, direktvermarkter, direktvermarkter_kanal) "
+                + "VALUES ('" + site + "', '" + tenant + "', 'Stadtwerke Nord', 'relais_ma')");
+
+        String admin = token("admin", "admin");
+
+        ResponseEntity<List<Map<String, Object>>> liste = rest.exchange(
+                url("/api/v1/admin/direktvermarktung"), HttpMethod.GET, new HttpEntity<>(bearer(admin)),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        Map<String, Object> zeile = liste.getBody().stream()
+                .filter(z -> site.toString().equals(z.get("siteId"))).findFirst().orElseThrow();
+        assertThat(zeile.get("ez8Direktvermarkter")).isEqualTo("Stadtwerke Nord");
+
+        ResponseEntity<Map<String, Object>> akte = rest.exchange(
+                url("/api/v1/admin/direktvermarktung/" + site), HttpMethod.GET, new HttpEntity<>(bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {});
+        assertThat(akte.getBody().get("ez8Direktvermarkter")).isEqualTo("Stadtwerke Nord");
+    }
+
+    /** Ein Kanal "keiner" (nicht erhoben) zeigt sich NICHT als EZ-8-Direktvermarkter, auch mit einem Namen. */
+    @Test
+    void ez8DirektvermarkterBleibtLeerOhneEchtenKanal() {
+        UUID tenant = UUID.randomUUID();
+        UUID site = UUID.randomUUID();
+        UUID dv = UUID.randomUUID();
+        exec("INSERT INTO tenant (id, name) VALUES ('" + tenant + "', 'Admin-DV-EZ8-Ohne-Probe " + tenant + "')");
+        exec("INSERT INTO site (id, tenant_id, name) VALUES ('" + site + "', '" + tenant + "', 'Werk ohne EZ-8')");
+        exec("INSERT INTO direktvermarktung (id, tenant_id, site_id, partner, zustand, zustimmung_am, "
+                + "zustimmung_von, zustimmung_rolle, startdatum) VALUES ('" + dv + "', '" + tenant + "', '" + site
+                + "', 'luox', 'verbunden', now(), 'kunde', 'kundenadministrator', CURRENT_DATE)");
+        exec("INSERT INTO anlage_netz_vermarktung (site_id, tenant_id, direktvermarkter, direktvermarkter_kanal) "
+                + "VALUES ('" + site + "', '" + tenant + "', 'Alter Name ohne Kanal', 'keiner')");
+
+        String admin = token("admin", "admin");
+        ResponseEntity<List<Map<String, Object>>> liste = rest.exchange(
+                url("/api/v1/admin/direktvermarktung"), HttpMethod.GET, new HttpEntity<>(bearer(admin)),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        Map<String, Object> zeile = liste.getBody().stream()
+                .filter(z -> site.toString().equals(z.get("siteId"))).findFirst().orElseThrow();
+        assertThat(zeile.get("ez8Direktvermarkter")).isNull();
+    }
+
     private String url(String path) {
         return "http://localhost:" + port + path;
     }

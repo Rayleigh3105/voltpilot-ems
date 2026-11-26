@@ -47,7 +47,7 @@ describe('DirektvermarkterKarte', () => {
       lebenszeichenAm: new Date().toISOString(), vorgabePct: 100, einspeisungW: 12000, erzeugungW: 14000,
       netzbetreiberPct: 100, referenzW: 85000, zugangHochgeladenVon: 'kunde@example.test',
       zugangGueltigBis: new Date(Date.now() + 10 * 86400000).toISOString(), zugangFingerabdruck: 'ab:cd:ef',
-      zugangZurueckgezogenAm: null,
+      zugangZurueckgezogenAm: null, ez8Direktvermarkter: null,
     });
     render(<DirektvermarkterKarte siteId="s1" />);
     const karte = await screen.findByTestId('akte-direktvermarkter');
@@ -59,6 +59,34 @@ describe('DirektvermarkterKarte', () => {
     expect(karte.textContent).not.toMatch(/chiffrat|nonce/i);
   });
 
+  it('EZ-8-Abgleich: nennt den Namen des älteren Anlagensteuerung-Felds, wenn gesetzt', async () => {
+    direktvermarktungAkte.mockResolvedValue({
+      siteId: 's1', tenantId: 't1', partner: 'luox', zustand: 'verbunden', zustimmungAm: null,
+      startdatum: null, ende: null, aktualisiertAm: new Date().toISOString(), tunnelObenSeit: null,
+      handshakeAm: null, gegenstelle: null, abfragenJeMinute: null, letzteSchreibungAm: null,
+      lebenszeichenAm: null, vorgabePct: null, einspeisungW: null, erzeugungW: null, netzbetreiberPct: null,
+      referenzW: null, zugangHochgeladenVon: null, zugangGueltigBis: null, zugangFingerabdruck: null,
+      zugangZurueckgezogenAm: null, ez8Direktvermarkter: 'Stadtwerke Nord',
+    });
+    render(<DirektvermarkterKarte siteId="s1" />);
+    const karte = await screen.findByTestId('akte-direktvermarkter');
+    expect(karte).toHaveTextContent('Stadtwerke Nord');
+  });
+
+  it('EZ-8-Abgleich: ohne das Feld steht auch kein Hinweis darauf in der Karte', async () => {
+    direktvermarktungAkte.mockResolvedValue({
+      siteId: 's1', tenantId: 't1', partner: 'luox', zustand: 'verbunden', zustimmungAm: null,
+      startdatum: null, ende: null, aktualisiertAm: new Date().toISOString(), tunnelObenSeit: null,
+      handshakeAm: null, gegenstelle: null, abfragenJeMinute: null, letzteSchreibungAm: null,
+      lebenszeichenAm: null, vorgabePct: null, einspeisungW: null, erzeugungW: null, netzbetreiberPct: null,
+      referenzW: null, zugangHochgeladenVon: null, zugangGueltigBis: null, zugangFingerabdruck: null,
+      zugangZurueckgezogenAm: null, ez8Direktvermarkter: null,
+    });
+    render(<DirektvermarkterKarte siteId="s1" />);
+    const karte = await screen.findByTestId('akte-direktvermarkter');
+    expect(karte.textContent).not.toMatch(/EZ-8/);
+  });
+
   it('getrennt (gestoert) zeigt den Warn-Ton, nicht den grünen', async () => {
     direktvermarktungAkte.mockResolvedValue({
       siteId: 's1', tenantId: 't1', partner: 'luox', zustand: 'gestoert', zustimmungAm: null,
@@ -66,7 +94,7 @@ describe('DirektvermarkterKarte', () => {
       handshakeAm: null, gegenstelle: null, abfragenJeMinute: null, letzteSchreibungAm: null,
       lebenszeichenAm: null, vorgabePct: null, einspeisungW: null, erzeugungW: null, netzbetreiberPct: null,
       referenzW: null, zugangHochgeladenVon: null, zugangGueltigBis: null, zugangFingerabdruck: null,
-      zugangZurueckgezogenAm: null,
+      zugangZurueckgezogenAm: null, ez8Direktvermarkter: null,
     });
     render(<DirektvermarkterKarte siteId="s1" />);
     const karte = await screen.findByTestId('akte-direktvermarkter');

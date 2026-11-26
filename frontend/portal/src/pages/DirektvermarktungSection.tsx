@@ -127,6 +127,19 @@ function EinrichtenModal({ site, status, onClose, onFertig }: {
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const gewaehlt = status.partner ?? status.katalog.find((p) => p.partner === partner) ?? null;
+  // EZ-8-Abgleich (kein Datenbezug, keine Sperre): das ältere, hardwaregestützte
+  // Feld der Anlagensteuerung ist eine ANDERE, von VoltPilot nicht verwaltete Beziehung - nur eine
+  // ruhige Zeile im Wählen-Schritt, solange die Anlage eines trägt.
+  const [ez8Name, setEz8Name] = useState<string | null>(null);
+  useEffect(() => {
+    let aktiv = true;
+    api.netzVermarktung(site.id).then((n) => {
+      if (aktiv && n?.direktvermarkter_kanal && n.direktvermarkter_kanal !== 'keiner' && n.direktvermarkter) {
+        setEz8Name(n.direktvermarkter);
+      }
+    }, () => undefined);
+    return () => { aktiv = false; };
+  }, [site.id]);
 
   const waehlen = async () => {
     if (!partner) {
@@ -170,6 +183,13 @@ function EinrichtenModal({ site, status, onClose, onFertig }: {
       {schritt === 'waehlen' && (
         <div className="vp-dv-schritt">
           <h3>Wer vermarktet Ihren Strom?</h3>
+          {ez8Name && (
+            <p className="vp-dv-hinweis">
+              Diese Anlage hat bereits einen Direktvermarkter ({ez8Name}) über die Anlagensteuerung.
+              Wechseln Sie zu {gewaehlt?.name ?? 'einem neuen Partner'}, beenden Sie den bisherigen
+              Vertrag dort.
+            </p>
+          )}
           <ul className="vp-dv-partnerliste">
             {status.katalog.map((p) => (
               <li key={p.partner}>
