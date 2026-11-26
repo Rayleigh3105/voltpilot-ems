@@ -1743,6 +1743,16 @@ describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
 });
 
 describe('Anwendungs-Programm Stufe 5 · die eigene Auswertung im Cockpit', () => {
+  // `EigeneAuswertungDialog` lädt per React.lazy nach; die Seite stößt das Nachladen erst an, sobald der
+  // Anpassen-Modus angeht (`layout.anpassen`) - also erst Sekundenbruchteile vor dem Klick auf „+ Eigene
+  // Auswertung" in den Tests. Unter Last (100 Läufe mit gleichzeitigem vollem Suite-Lauf) kam der erste Import
+  // seltener (4/60) später als die 1-s-Frist von `findByRole`/`waitFor` zurück, und „Komponente" fand keine
+  // Combobox. Vorgewärmt wie die anderen nachgeladenen Stücke dieser Datei, damit die Frist die Seite prüft, nie
+  // die Ladezeit des Testlaufs.
+  beforeAll(async () => {
+    await import('../components/EigeneAuswertungDialog');
+  }, 60_000);
+
   /** Alle Schichten leer, aber MIT den zwei Vorlagen (Stufe 5). */
   function stubLayout5(eigen: Record<string, unknown> | null = null) {
     vi.spyOn(api, 'cockpitLayout').mockResolvedValue({
