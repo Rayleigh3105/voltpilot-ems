@@ -2089,6 +2089,27 @@
       "nachher": "66e0f9455c3bfb3e923e7c44ddd123b7a420fb9fb137734b3da23b74222fae09",
       "commit": "c929dea4a",
       "grund": "Abrechnung prüfen (#1876, R1-R5): der CSV-Export der Energie-Tabelle folgt dem freien Zeitraum (Raster-Zeitraum, Kennzeichen für einen gewählten Zeitraum) und benennt die Datei über den gemeinsamen Dateinamen; Text, Art und Ort des Knopfes bleiben gleich. Nachgetragen, weil die Fortschreibung beim Merge fehlte."
+    },
+    {
+      "datei": "components/LocationMap.tsx",
+      "vorher": "a4dc818a56bf18f4510be0194488ae6be5a1b0e7bb7664e40bc393c1be820a8c",
+      "verschoben_nach": "components/KoordinatenManuellFelder.tsx",
+      "commit": "fm/vp-standort-bau",
+      "grund": "vp-standort-konzept §6.1 (captain-Korrektur): „Koordinaten manuell bearbeiten“ steht im Blatt „Ort berichtigen“ unter „Details“ statt direkt unter der Karte - der Umschalter samt Feldern ist jetzt eine eigene, geteilte Komponente; das Bedienelement steht Zeichen für Zeichen in KoordinatenManuellFelder.tsx."
+    },
+    {
+      "datei": "components/LocationMap.tsx",
+      "vorher": "c91f50eb739890607332bb85c1462ff998df5190b54d76df4d45c6647eaa8626",
+      "verschoben_nach": "components/KoordinatenManuellFelder.tsx",
+      "commit": "fm/vp-standort-bau",
+      "grund": "vp-standort-konzept §6.1 (captain-Korrektur): dasselbe Herausziehen wie oben - das Feld „Breitengrad“ steht Zeichen für Zeichen in KoordinatenManuellFelder.tsx."
+    },
+    {
+      "datei": "components/LocationMap.tsx",
+      "vorher": "bc0413f26d4240f25bc746ca01cf057f96b97f39c732be1d6d0496b313c31810",
+      "verschoben_nach": "components/KoordinatenManuellFelder.tsx",
+      "commit": "fm/vp-standort-bau",
+      "grund": "vp-standort-konzept §6.1 (captain-Korrektur): dasselbe Herausziehen wie oben - das Feld „Längengrad“ steht Zeichen für Zeichen in KoordinatenManuellFelder.tsx."
     }
   ],
   "assistentZusammenfuehrung": {

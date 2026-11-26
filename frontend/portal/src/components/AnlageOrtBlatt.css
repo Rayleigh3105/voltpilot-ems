@@ -16,26 +16,38 @@
   display: inline-flex;
   align-self: flex-start;
 }
+/* captain-Korrektur (§6.5): "Details" trägt auch "Koordinaten manuell bearbeiten" und die
+   Übergangs-Verweise "Anderem Standort zuordnen"/"Zuordnung korrigieren" - nicht mehr an der Zeile. */
 .vp-ob-details {
   display: flex;
   flex-direction: column;
-  gap: var(--vp-space-1);
-  margin: 0;
+  gap: var(--vp-space-3);
   padding: var(--vp-space-2) var(--vp-space-3);
   background: var(--vp-bg-light);
   border-radius: var(--vp-radius-md);
 }
-.vp-ob-details div {
+.vp-ob-details-werte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-1);
+  margin: 0;
+}
+.vp-ob-details-werte div {
   display: flex;
   justify-content: space-between;
   gap: var(--vp-space-3);
 }
-.vp-ob-details dt {
+.vp-ob-details-werte dt {
   color: var(--vp-text-muted);
 }
-.vp-ob-details dd {
+.vp-ob-details-werte dd {
   margin: 0;
   font-weight: 600;
+}
+.vp-ob-details-verweise {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-3);
 }
 .vp-ob-ergebnis {
   display: flex;

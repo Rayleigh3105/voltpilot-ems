@@ -1,5 +1,5 @@
 import { Recht } from './Recht';
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { ApiError, type AnlageOrtErgebnis, type OrtTreffer, type StandortAmStichtag } from '../api';
@@ -18,6 +18,7 @@ import {
 import { adresseAusTreffer, adresseText, type Adresse } from '../anlageOrt';
 import { alsOrtFehler } from '../standorte';
 import { AdressSuche, type AdressWahl } from './AdressSuche';
+import { KoordinatenManuellFelder } from './KoordinatenManuellFelder';
 import { LocationMap } from './LocationMap';
 import './AnlageOrtBlatt.css';
 
@@ -40,6 +41,7 @@ export function AnlageOrtBlatt({
   siteId,
   standort,
   mehrereStandorte,
+  verweise,
   onClose,
   onGespeichert,
 }: {
@@ -47,6 +49,11 @@ export function AnlageOrtBlatt({
   standort: StandortAmStichtag;
   /** §6.2: ab zwei Standorten trägt die Adresse „Gilt für alle Anlagen im Werk". */
   mehrereStandorte: boolean;
+  /**
+   * §6.5 (captain-Korrektur): „Anderem Standort zuordnen"/„Zuordnung korrigieren" stehen bis
+   * Schritt 2c hier unter „Details", nicht mehr an der Zeile davor.
+   */
+  verweise?: ReactNode;
   onClose: () => void;
   onGespeichert: (ergebnis: AnlageOrtErgebnis) => void;
 }) {
@@ -91,6 +98,14 @@ export function AnlageOrtBlatt({
     } else {
       setUebernahme(null);
     }
+  }
+
+  // Dieselbe Regel für den gezogenen Pin wie für die manuell eingetragenen Koordinaten unter
+  // „Details" (Regel 3: ein verschobener Punkt ändert nie die Adresse).
+  function pinSetzen(lat: number | null, lon: number | null) {
+    if (!form || lat == null || lon == null) return;
+    vorZugRef.current = form.punkt;
+    setForm((f) => (f ? pinZiehen(f, { breitengrad: lat, laengengrad: lon }) : f));
   }
 
   function uebernahmeAnnehmen() {
@@ -175,13 +190,10 @@ export function AnlageOrtBlatt({
               lon={form.punkt.laengengrad}
               fokus={fokus}
               pflichtPunkt
+              manuellAusblenden
               ortAufloesen
               onOrtAufgeloest={ortAufgeloest}
-              onChange={(lat, lon) => {
-                if (lat == null || lon == null) return;
-                vorZugRef.current = form.punkt;
-                setForm((f) => (f ? pinZiehen(f, { breitengrad: lat, laengengrad: lon }) : f));
-              }}
+              onChange={pinSetzen}
             />
             {uebernahme && (
               <p className="vp-ob-uebernahme" role="status">
@@ -217,16 +229,20 @@ export function AnlageOrtBlatt({
               {KNOPF_DETAILS}
             </button>
             {detailsOffen && (
-              <dl className="vp-ob-details">
-                <div>
-                  <dt>Strommarkt</dt>
-                  <dd>{gebotszone}</dd>
-                </div>
-                <div>
-                  <dt>Zeitzone</dt>
-                  <dd>{zeitzone}</dd>
-                </div>
-              </dl>
+              <div className="vp-ob-details">
+                <dl className="vp-ob-details-werte">
+                  <div>
+                    <dt>Strommarkt</dt>
+                    <dd>{gebotszone}</dd>
+                  </div>
+                  <div>
+                    <dt>Zeitzone</dt>
+                    <dd>{zeitzone}</dd>
+                  </div>
+                </dl>
+                <KoordinatenManuellFelder lat={form.punkt.breitengrad} lon={form.punkt.laengengrad} onChange={pinSetzen} />
+                {verweise && <div className="vp-ob-details-verweise">{verweise}</div>}
+              </div>
             )}
             {fehler && (
               <div className="vp-alert vp-alert-err" role="alert">

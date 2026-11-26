@@ -86,10 +86,11 @@ function useDanach(a: AnlageStandort): AnlageStandort | null {
  * ⚠ Nur rendern, wenn es ein Objekt gibt; die Koordinaten-Zeile darunter heißt
  * dann „Standort auf der Karte“ (W4, `koordinatenLabel`).
  *
- * `nurVerweise` (vp-standort-konzept §6: ein vollständiger Standort zeigt sein Objekt über die
+ * `nurVerweise` (vp-standort-konzept §6.5: ein vollständiger Standort zeigt sein Objekt über die
  * neue Zeile „Standort" (`AnlageOrtZeile`), bis Schritt 2c „Gehört zu" dafür eine eigene Fläche
  * bekommt) — nur die beiden Verweise „Anderem Standort zuordnen"/„Zuordnung korrigieren" bleiben
- * erreichbar, kein zweites Objekt, keine eigene Zeile.
+ * erreichbar, als Fragment ohne eigene Hülle: `AnlageOrtBlatt` reicht sie unter „Details" weiter,
+ * kein zweites Objekt, keine eigene Zeile.
  */
 export function AnlageStandortZeile({
   anlageStandort,
@@ -174,10 +175,10 @@ export function AnlageStandortZeile({
 
   if (nurVerweise) {
     return (
-      <span className="vp-as-verweise">
+      <>
         {verweise}
         {umzugDialog}
-      </span>
+      </>
     );
   }
 

@@ -13,6 +13,7 @@ Migration: geschrieben über `PUT /api/v1/orte/{id}/flaeche` (IP-5), gelesen üb
 | Ableitung Standort der Anlage und Picker (rein) | `src/anlageStandort.ts` · `anlageStandort.test.ts` |
 | Zeile „Standort” (unvollständiger Standort) + Lese-Hook, Wirt `TechnikSection` | `src/components/AnlageStandortZeile.tsx` (+ `.css`) · `pages/AnlageTechnik.tsx` |
 | Zeile „Standort” + Blatt „Ort berichtigen” (vollständiger Standort, vp-standort-konzept §6.1, B1/B3/B6/E3) | `src/components/AnlageOrtZeile.tsx`/`.css`, `AnlageOrtBlatt.tsx`/`.css` · `src/anlageOrtBerichtigen.ts` (+ `.test.ts`) |
+| Umschalter + Felder „Koordinaten manuell bearbeiten” (geteilt: `LocationMap` selbst UND unter „Details” im Blatt) | `src/components/KoordinatenManuellFelder.tsx` |
 | Picker in Schritt 1 | `AnlageStep` in `src/components/AnlageFlow.tsx` |
 | Bestandsschutz (Snapshots aufgenommen VOR IP-8, eigener Commit) | `pages/AnlageTechnik.standort.test.tsx`, `components/AnlageFlow.standort.test.tsx`, je `__snapshots__/*.html` |
 | 375/1440 px + Bilder | `e2e/flaeche-aendern.spec.ts` (Bühnen `standorte.html`, `meine-anlage.html`), `e2e/anlage-ort-berichtigen.spec.ts`; `FLAECHE_BILDER=<Ordner>`/`ORT_BILDER=<Ordner>` |
@@ -50,6 +51,11 @@ Migration: geschrieben über `PUT /api/v1/orte/{id}/flaeche` (IP-5), gelesen üb
    `AnlageOrtBlatt` (Karte groß + Adresssuche, schreibt Adresse/Lage/Gebotszone/Box-Neubau/
    Wetter-Nachholung in einem Zug über `PUT /api/v1/sites/{id}/ort`). Grund: B1 beschreibt genau den
    Fall einer VOLLSTÄNDIGEN, nur falschen Adresse — die Objekt-Zeile bot dafür keinen Schreibweg.
+   **Captain-Korrektur (gleiche Fassung):** die Zeile sieht aus wie ihre Nachbarn - eigenes `<li>`
+   mit denselben Klassen wie `Zeile` in `AnlageTechnik.tsx` (`vp-einst-zeile`/`vp-einst-lab`/
+   `vp-einst-wert`/`vp-einst-ende`, die Karte ersetzt nur die Symbol-Kachel, kein `vp-kv`). Die
+   kompakte Karte verankert ihren Marker in seiner eigenen Mitte (nicht an der Pin-Spitze wie die
+   große Karte), sonst klebt er in 44 px Höhe sichtbar am oberen Rand.
 6. **„Adresse nachtragen“** öffnet den Standort-Dialog aus IP-6 („vervollständigen“) — für
    Einzel-Anlagen-Kunden der einzige Weg zu ihrem Standort; `unternehmen` wird erst beim Öffnen gelesen.
 7. **Picker:** mehrere Standorte ohne Wahl → der Satz des Servers (`standortWaehlenSatz` ≡
@@ -60,16 +66,22 @@ Migration: geschrieben über `PUT /api/v1/orte/{id}/flaeche` (IP-5), gelesen üb
    `m2Text`-Sätzen suchen mit Leerzeichen (`sp()` in `FlaecheDialog.test.tsx`). E2E: Leaflet-Kacheln
    liegen abgeschnitten außerhalb ihres Rahmens — die Elementprüfung nimmt `.leaflet-container` aus
    (`seite` misst trotzdem); am Telefon ist `TechCard` zugeklappt.
-9. **Anlage zuordnen/umziehen (IP-11, T6b) bleibt übergangsweise an `AnlageStandortZeile` hängen.**
-   `AnlageOrtZeile` nimmt einen optionalen `verweise`-Slot; solange
-   Schritt 2c („Gehört zu” mit Liste/„Neuer Standort”/„Seit wann?”, B4) noch nicht steht, rendert
-   `AnlageTechnik.tsx` für einen vollständigen Standort zusätzlich
-   `<AnlageStandortZeile nurVerweise />` darin — NUR die beiden Verweise „Anderem Standort
-   zuordnen”/„Zuordnung korrigieren”, kein zweites Objekt. Ohne diesen Slot verlöre ein
-   vollständiger Standort die Fähigkeit ersatzlos (AGENTS.md: bestehende Funktion erhalten). **Nicht
-   hier:** die Fläche eines STANDORTS ändern (keine Schreibroute), der Verlauf vor dem Speichern
-   (Server-Weg), die Lage des Standorts als Karten-Vorschlag im Assistenten. Befund: unter dem Picker
-   steht im Assistenten weiter „Gleicher Standort wie …” (Koordinaten) — W4 ist dort nicht aufgelöst.
+9. **Anlage zuordnen/umziehen (IP-11, T6b) bleibt übergangsweise an `AnlageStandortZeile` hängen -
+   aber unter „Details” im Blatt, nicht mehr an der Zeile.** `AnlageOrtZeile` nimmt einen optionalen
+   `verweise`-Slot und reicht ihn nur an `AnlageOrtBlatt` weiter; solange Schritt 2c („Gehört zu” mit
+   Liste/„Neuer Standort”/„Seit wann?”, B4) noch nicht steht, rendert `AnlageTechnik.tsx` für einen
+   vollständigen Standort `<AnlageStandortZeile nurVerweise />` als `verweise` - dieser Zweig gibt
+   seit der Korrektur ein Fragment zurück (keine eigene Hülle, `AnlageOrtBlatt` platziert die beiden
+   Verweise „Anderem Standort zuordnen”/„Zuordnung korrigieren” selbst unter „Details”, zusammen mit
+   Strommarkt/Zeitzone UND „Koordinaten manuell bearbeiten” (`KoordinatenManuellFelder`, dieselbe
+   Komponente wie in `LocationMap` selbst - die Karte im Blatt blendet ihre eigene Kopie über
+   `manuellAusblenden` aus). Ohne den Slot verlöre ein vollständiger Standort die Fähigkeit
+   ersatzlos (AGENTS.md: bestehende Funktion erhalten). Ein Test, der „Anderem Standort
+   zuordnen”/„Zuordnung korrigieren” sucht, muss die Zeile erst öffnen und „Details” aufklappen
+   (`e2e/anlage-umziehen.spec.ts`, `e2e/zuordnung-korrigieren.spec.ts`). **Nicht hier:** die Fläche
+   eines STANDORTS ändern (keine Schreibroute), der Verlauf vor dem Speichern (Server-Weg), die Lage
+   des Standorts als Karten-Vorschlag im Assistenten. Befund: unter dem Picker steht im Assistenten
+   weiter „Gleicher Standort wie …” (Koordinaten) — W4 ist dort nicht aufgelöst.
 
 ## Prüfen
 

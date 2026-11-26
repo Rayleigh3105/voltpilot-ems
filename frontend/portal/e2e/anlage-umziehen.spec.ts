@@ -190,13 +190,18 @@ test.describe('T6b · Anlage zuordnen mit Folgen-Karte (AP-02 IP-11)', () => {
       await expect(karte).toBeVisible();
       const aufklappen = karte.locator('button[aria-expanded="false"]');
       if (await aufklappen.count()) await aufklappen.first().click();
-      const knopf = karte.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Ahrenberg – Halle 2' });
-      await expect(knopf).toBeVisible();
       if (VARIANTE === 'a') {
         await karte.scrollIntoViewIfNeeded();
         await messeUndFotografiere(page, breite, 't6a-zeile', karte);
       }
 
+      // Captain-Korrektur (§6.5): „Anderem Standort zuordnen" steht bis Schritt 2c im Blatt
+      // „Ort berichtigen" unter „Details", nicht mehr an der Zeile.
+      await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+      const blatt = page.getByRole('dialog', { name: 'Standort' });
+      await blatt.getByRole('button', { name: 'Details' }).click();
+      const knopf = blatt.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Ahrenberg – Halle 2' });
+      await expect(knopf).toBeVisible();
       await knopf.click();
       const dialog = page.locator('.vp-modal').last();
       await expect(dialog.getByRole('heading', { name: 'Anlage zuordnen' })).toBeVisible();
@@ -241,7 +246,10 @@ test.describe('T6b · Anlage zuordnen mit Folgen-Karte (AP-02 IP-11)', () => {
     await expect(karte).toBeVisible();
     const aufklappen = karte.locator('button[aria-expanded="false"]');
     if (await aufklappen.count()) await aufklappen.first().click();
-    await karte.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Ahrenberg – Halle 2' }).click();
+    await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    const blatt = page.getByRole('dialog', { name: 'Standort' });
+    await blatt.getByRole('button', { name: 'Details' }).click();
+    await blatt.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Ahrenberg – Halle 2' }).click();
     const dialog = page.locator('.vp-modal').last();
     await expect(dialog.getByRole('heading', { name: 'Anlage zuordnen' })).toBeVisible();
     await dialog.getByRole('combobox', { name: 'Neuer Standort *' }).click();

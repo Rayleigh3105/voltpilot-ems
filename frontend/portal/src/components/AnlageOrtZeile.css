@@ -1,33 +1,6 @@
-.vp-ort-zeile-knopf {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-3);
-  width: 100%;
-  padding: 0;
-  background: none;
-  border: none;
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-}
-.vp-ort-zeile-knopf:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color);
-  outline-offset: 2px;
-  border-radius: var(--vp-radius-sm);
-}
+/* Captain-Korrektur: dieselbe Zeilen-Form wie die Nachbarn (`.vp-einst-zeile` aus
+   AnlageTechnik.tsx/Einstellungen.css) - hier wird nur die Symbol-Kachel durch die
+   58×44-px-Karte ersetzt; Grid-Spalten, Höhe und Abstand kommen unverändert von dort. */
 .vp-ort-zeile-karte {
-  flex: none;
-}
-.vp-ort-zeile-text {
-  overflow-wrap: anywhere;
-}
-/* §6: die Übergangs-Verweise "Anderem Standort zuordnen"/"Zuordnung korrigieren" (bis Schritt 2c)
-   stehen bündig unter der Adresse, nicht unter der kleinen Karte (58 px + Abstand). */
-.vp-as-verweise {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vp-space-3);
-  margin-top: 6px;
-  padding-left: calc(58px + var(--vp-space-3));
+  pointer-events: none;
 }

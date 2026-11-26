@@ -62,11 +62,16 @@ for (const px of [375, 1440] as const) {
     await breite(page, px);
     await page.goto('/e2e/startansicht.html?bild=korrektur&ansicht=korrektur-anlage');
     // Seit den kurzen Einstellungen (main 41ed67c26) ist „Meine Anlage“ auch am Telefon offen — kein Aufklappen mehr.
-    const korrektur = page.getByRole('button', { name: 'Zuordnung korrigieren: Werk Lindach' });
+    // Captain-Korrektur (§6.5): beide Verweise stehen bis Schritt 2c im Blatt „Ort berichtigen"
+    // unter „Details", nicht mehr an der Zeile.
+    await page.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    const blatt = page.getByRole('dialog', { name: 'Standort' });
+    await blatt.getByRole('button', { name: 'Details' }).click();
+    const korrektur = blatt.getByRole('button', { name: 'Zuordnung korrigieren: Werk Lindach' });
     await expect(korrektur).toBeVisible();
     await bild(page, `zuordnung-korrigieren-anlagen-dialog-${px}.png`);
 
-    await page.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Lindach' }).click();
+    await blatt.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Lindach' }).click();
     const normal = page.getByRole('dialog', { name: 'Anlage zuordnen' });
     await expect(normal.getByRole('combobox', { name: 'Gültig ab *' })).toContainText('20.11.2026');
     await expect(normal).toContainText('Die Anlage gehört ab dem gewählten Tag zu einem anderen Standort.');

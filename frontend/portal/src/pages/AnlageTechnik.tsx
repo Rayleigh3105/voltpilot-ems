@@ -588,35 +588,36 @@ export function TechnikSection({
               bekommt EINE Zeile mit Adresse und kleiner Karte statt des Standort-Objekts und der
               getrennten Zeile "Standort auf der Karte" - B1 nennt das ausdrücklich den Fall einer
               VOLLSTÄNDIGEN, nur falschen Adresse. Ein Entwurf (es fehlt noch etwas, z. B. gerade
-              erst automatisch angelegt) bleibt beim bestehenden "Adresse nachtragen". */}
-          {anlageStandort && standortAntwort && (
+              erst automatisch angelegt) bleibt beim bestehenden "Adresse nachtragen". Captain-
+              Korrektur: die vollständige Zeile sieht wie ihre Nachbarn aus (eigenes `<li>`, kein
+              `vp-kv`), der Entwurf behält seine alte `vp-kv`-Hülle (Bestandsschutz). */}
+          {anlageStandort && standortAntwort && anlageStandort.standort.esFehlt.length === 0 && (
+            <AnlageOrtZeile
+              siteId={site.id}
+              standort={anlageStandort.standort}
+              antwort={standortAntwort}
+              onGeaendert={(ergebnis) => {
+                standortNeuLaden();
+                onSiteSaved(ergebnis.site);
+              }}
+              verweise={
+                <AnlageStandortZeile
+                  anlageStandort={anlageStandort}
+                  antwort={standortAntwort}
+                  onGeaendert={standortNeuLaden}
+                  nurVerweise
+                />
+              }
+            />
+          )}
+          {anlageStandort && standortAntwort && anlageStandort.standort.esFehlt.length > 0 && (
             <li className="vp-einst-standort">
               <dl className="vp-kv">
-                {anlageStandort.standort.esFehlt.length === 0 ? (
-                  <AnlageOrtZeile
-                    siteId={site.id}
-                    standort={anlageStandort.standort}
-                    antwort={standortAntwort}
-                    onGeaendert={(ergebnis) => {
-                      standortNeuLaden();
-                      onSiteSaved(ergebnis.site);
-                    }}
-                    verweise={
-                      <AnlageStandortZeile
-                        anlageStandort={anlageStandort}
-                        antwort={standortAntwort}
-                        onGeaendert={standortNeuLaden}
-                        nurVerweise
-                      />
-                    }
-                  />
-                ) : (
-                  <AnlageStandortZeile
-                    anlageStandort={anlageStandort}
-                    antwort={standortAntwort}
-                    onGeaendert={standortNeuLaden}
-                  />
-                )}
+                <AnlageStandortZeile
+                  anlageStandort={anlageStandort}
+                  antwort={standortAntwort}
+                  onGeaendert={standortNeuLaden}
+                />
               </dl>
             </li>
           )}
