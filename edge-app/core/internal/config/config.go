@@ -258,6 +258,25 @@ type Config struct {
 	NodeRedUser     string `json:"nodered_user"`
 	NodeRedPassword string `json:"nodered_password"`
 
+	// VermarkterDir is the direct-marketing delivery dir of the box
+	// (vp-direktvermarktung-konzept d2 §5.4, internal/vermarktertunnel's
+	// zugang.go documents its files). Empty = <DataDir>/vermarkter. The
+	// connection runs ONLY when anschluss.json exists there, so a box
+	// without a delivered partner never starts a tunnel. VP_VERMARKTER_DIR.
+	VermarkterDir string `json:"vermarkter_dir"`
+	// VermarkterRAMDir is the tmpfs for the tunnel's pidfile and status
+	// file - deliberately NOT in flash: nothing of a run survives a reboot
+	// (§5.4 "Neustart und Update"). VP_VERMARKTER_RAM_DIR.
+	VermarkterRAMDir string `json:"vermarkter_ram_dir"`
+	// VermarkterOpenVPN is the OpenVPN executable (VP_VERMARKTER_OPENVPN,
+	// default "openvpn" from PATH).
+	VermarkterOpenVPN string `json:"vermarkter_openvpn"`
+	// VermarkterLebenszeichenS SHORTENS the partner watchdog deadline for
+	// test rigs (VP_VERMARKTER_LEBENSZEICHEN_S). Shorten-only: a value at or
+	// above the profile's deadline - or 0 - changes nothing, so this knob
+	// can never loosen the watchdog on a customer box.
+	VermarkterLebenszeichenS int `json:"vermarkter_lebenszeichen_s"`
+
 	// Dev-only escape hatches (mirrors tools/edge-simulator): a fixed
 	// identity skips enrollment, and a plain-MQTT cloud URL skips mTLS.
 	// NEVER set these on a customer device.
@@ -306,6 +325,7 @@ func Defaults() Config {
 		CalibrationTTLSeconds:       30,               // auto-revert to neutral fast; the write never latches
 		CalibrationTTL:              30 * time.Second, // derived; Load() recomputes it from the seconds
 		MirrorAdvertisePort:         502,              // lockstep with the compose mapping ${VP_MIRROR_PORT:-502}:1502
+		VermarkterRAMDir:            "/tmp/vp-vermarkter",
 		NodeRedUser:                 "voltpilot",
 	}
 }
@@ -439,6 +459,10 @@ func applyEnv(cfg *Config) {
 	num("VP_CALIBRATION_TTL_SECONDS", &cfg.CalibrationTTLSeconds)
 	str("VP_CALIBRATION_ADMIN_SECRET", &cfg.CalibrationAdminSecret)
 	num("VP_MIRROR_PORT", &cfg.MirrorAdvertisePort)
+	str("VP_VERMARKTER_DIR", &cfg.VermarkterDir)
+	str("VP_VERMARKTER_RAM_DIR", &cfg.VermarkterRAMDir)
+	str("VP_VERMARKTER_OPENVPN", &cfg.VermarkterOpenVPN)
+	num("VP_VERMARKTER_LEBENSZEICHEN_S", &cfg.VermarkterLebenszeichenS)
 	boolEnv := func(key string, dst *bool) {
 		if v := os.Getenv(key); v != "" {
 			*dst = v == "1" || strings.EqualFold(v, "true")

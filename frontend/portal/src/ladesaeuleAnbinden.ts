@@ -643,12 +643,17 @@ export function cockpitHinweis(gemeldet: boolean): string | null {
  *
  * ⚠ Und sie nennt, was GLEICH bleibt (die anderen Säulen, die Anschlussgrenze)
  * — sonst liest sich jede Rücknahme wie ein Lockern der Regeln.
+ *
+ * Die Zeile zu Steuerung › Laden gibt es nur hier, nicht auf `:8484`: sie ist
+ * eine Folge im Portal (vp-ladepunkte-doppelt) — mit der Kennung geht der
+ * Ladepunkt samt seinem Ladeziel; nach dem erneuten Eintragen entsteht er neu.
  */
 export function entfernenFolgen(name: string): string[] {
   return [
     `„${name}“ wird nicht mehr angenommen: die Verbindung zur Säule wird getrennt, und ein Wiederverbinden weist VoltPilot ab.`,
     'Ein laufender Ladevorgang endet dadurch NICHT. Die Säule behält ihr zuletzt hinterlegtes Sicherheitsprofil und lädt damit weiter — langsam, aber sie lädt.',
     'Alle anderen Säulen, Ihre Anschlussgrenze und der Ausfall-Schutz bleiben unverändert.',
+    `Unter Steuerung › Laden verschwindet „${name}“ ebenfalls, samt einem dort eingestellten Ladeziel.`,
     'Sie können dieselbe Kennung jederzeit wieder eintragen — dann lässt VoltPilot die Säule wieder herein.',
   ];
 }

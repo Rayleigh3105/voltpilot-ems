@@ -34,7 +34,8 @@ type portKette struct {
 // kette is the order of ports and recognisers. A Solarman logger answers on
 // 8899 first; Modbus before HTTP, because on an inverter the web server is
 // only its surface; KACO's stick on 8484 (the box's own 8484 is never a
-// target: its own address is out).
+// target: its own address is out). The Deye logger without local access is
+// the last of port 80: its page is all it shows (deyelogger.go).
 var kette = []portKette{
 	{port: 8899, erkenner: []erkenner{{"solarman", erkenneSolarman}}},
 	{port: 502, modbus: true, erkenner: []erkenner{{"sunspec", erkenneSunSpec}, {"sma", erkenneSMA},
@@ -42,7 +43,7 @@ var kette = []portKette{
 	{port: 1502, modbus: true, erkenner: []erkenner{{"kostal", erkenneKostal}, {"sunspec", erkenneSunSpec}}},
 	{port: 8484, erkenner: []erkenner{{"kaco_aiswei", erkenneKaco}}},
 	{port: 80, erkenner: []erkenner{{"shelly", erkenneShelly}, {"goe", erkenneGoe},
-		{"fronius_solar_api", erkenneFronius}, {"opendtu_ahoy", erkenneOpenDTU}}},
+		{"fronius_solar_api", erkenneFronius}, {"opendtu_ahoy", erkenneOpenDTU}, {"deye_logger", erkenneDeyeLogger}}},
 }
 
 // erkenne runs the chains of one device; true = it became a find.
@@ -472,8 +473,12 @@ func erkenneSMA(ctx context.Context, g *geraet, port int, mb *modbus) (geraetesu
 }
 
 // erkenneHuawei: SUN2000 names its model from 30000 and its serial from 30015;
-// unit 1 behind the Smart Dongle, unit 0 directly.
+// unit 1 behind the Smart Dongle, unit 0 directly. The dongle leaves a request
+// unanswered that comes right after the connect, so this recogniser asks only
+// Takt.HuaweiRuhe after it (1 s, field 25.11.2026).
 func erkenneHuawei(ctx context.Context, g *geraet, port int, mb *modbus) (geraetesuche.Fund, bool) {
+	mb.ruhe = g.lauf.u.Takt.huaweiRuhe()
+	defer func() { mb.ruhe = 0 }()
 	b := g.budget()
 	for _, unit := range []int{1, 0} {
 		regs, err := mb.lies(ctx, b, byte(unit), 30000, 25)

@@ -2882,6 +2882,15 @@ paths:
         Box kennt das Feld nicht und behält die Kennung - der Vorzustand, nie
         eine falsche Handlung; die Rücknahme wirkt dort erst nach dem nächsten
         Edge-Release. RLS-gefenced (fremde Anlage 404).
+
+
+        DIE KOMPONENTE GEHT MIT (vp-ladepunkte-doppelt): die gemeldete Zeile der
+        Säule wird gelöscht und mit ihr die `ev-charger`-Komponente, die die
+        Plattform aus ihr komponiert hatte - sie steht danach nicht mehr unter
+        Steuerung › Laden. Eine Komponente, die ein Beleg oder der Zählerbaum
+        festhält, bleibt gespeichert; die Rücknahme gelingt trotzdem. Für eine
+        zurückgenommene Kennung entsteht keine neue Komponente, auch wenn die
+        Box sie noch einmal meldet.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: chargePointId, in: path, required: true, schema: { type: string, maxLength: 64 } }
@@ -8506,6 +8515,7 @@ paths:
                       programm_sha256: { type: string }
                       skripte_sha256: { type: string }
                       wartung_sha256: { type: string, description: "Das Tunnel-Programm vp-wartung-linux-arm, aus dem signierten Manifest (wartung)." }
+                      grundprogramm_sha256: { type: string, description: "Die Boot-Applikation des Basisprojekts, aus dem signierten Manifest (grundprogramm). Fehlt dieses Feld, trägt die Fassung kein Grundprogramm (optional, anders als wartung_sha256)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: "Keine Freigabe: angehalten, keine passende Fassung oder Tagesgrenze erreicht (Grund in `message`); oder eine andere Box-Art als mango und pfc200." }
@@ -40568,7 +40578,7 @@ components:
           items:
             type: string
             enum: [solarman, shelly, goe, netztechnik, modbus_offen, sunspec, fronius_solar_api, kaco_aiswei, kostal,
-              huawei, sma, victron, opendtu_ahoy, ebyte, wago, mdns, ssdp, funkmodul]
+              huawei, sma, victron, opendtu_ahoy, ebyte, wago, deye_logger, mdns, ssdp, funkmodul]
         gruppen:
           type: array
           description: Alle sechs Gruppen in der Reihenfolge von `GeraetesucheGruppe.gruppe`.
@@ -40624,7 +40634,7 @@ components:
         erkenner:
           type: string
           enum: [solarman, shelly, goe, netztechnik, modbus_offen, sunspec, fronius_solar_api, kaco_aiswei, kostal,
-            huawei, sma, victron, opendtu_ahoy, ebyte, wago]
+            huawei, sma, victron, opendtu_ahoy, ebyte, wago, deye_logger]
         art:
           type: string
           enum: [wechselrichter, wallbox, schaltaktor, zaehler, io_modul, sps, dtu, modbus_geraet, router, zugangspunkt]

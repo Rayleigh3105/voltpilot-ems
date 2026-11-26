@@ -49,7 +49,7 @@ Der Prüfer führt den Structured Text der Bibliothek selbst aus und prüft:
 4. **Prüfwert über die Packfunktion** (Vertrag §1, Fall E5), nie als zwei Konstanten.
 5. **Grundprogramm:** Kopf lesbar (Fassung 1.0, Programmstand 2611), keine Anlage (`te_anzahl` 0), der Herzschlag läuft.
 6. **Probeprojekt:** lesbar, Einspeisung negativ, Umlaut im Typnamen; `erwartung.json` aktuell.
-7. **Koppelbild, Vertragsfälle:** für jeden Schritt jedes Falls der [Vektor-Datei](../../docs/contracts/v2/koppelbild-vectors.json) (29 Fälle K1 bis K28) setzt er die Halteregister, ruft den Baustein mit den Eingängen der Anlage auf und verlangt genau die 116 Wörter der Quittung und dieselben Ausgänge (Urteile, zugelassene Werte, Frist, `edge_lebt`).
+7. **Koppelbild, Vertragsfälle:** für jeden Schritt jedes Falls der [Vektor-Datei](../../docs/contracts/v2/koppelbild-vectors.json) (30 Fälle K1 bis K29) setzt er die Halteregister, ruft den Baustein mit den Eingängen der Anlage auf und verlangt genau die 116 Wörter der Quittung und dieselben Ausgänge (Urteile, zugelassene Werte, Frist, `edge_lebt`).
 8. **Koppelbild, Uhr:** Frist und `edge_lebt` rechnen über den Überlauf von `TIME()` nach 49 Tagen; eine Edge, die 49 Tage schweigt, lebt danach nicht wieder auf. Der Prüfwert der Quittung geht über `VP_KoppelSetzeU32`.
 9. **Grundprogramm:** Probe-Stellplatz 8 schaltet die Lampe und lässt sie nach 20 s Frist los (Fall K20).
 10. **Vorlagen:** PV begrenzt auf Wunsch, der Netzbetreiber überstimmt, nach der Frist und bei Hand fährt die Anlage mit eigenen Werten; BHKW begrenzt und schaltet Motor 1 aus, ein Abruf des Direktvermarkters geht vor.

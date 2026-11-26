@@ -60,6 +60,10 @@ const testFrist = 10 * time.Minute
 
 const fassung = "edge-industrie-2026.11.1"
 
+// codesysOrdner ist der Ordner der Boot-Applikation (pfc200.codesysBootApplikation,
+// hier als Literal, weil das Paket das Feld nicht exportiert).
+const codesysOrdner = "/home/codesys/PlcLogic/Application"
+
 var geheimCode = geheim.Neu("K7M2-XQ3P-9RTV")
 
 type aufbau struct {
@@ -111,7 +115,8 @@ func neu(t *testing.T) *aufbau {
 	programm := []byte("\x7fELF vp-edge-industrie attrappe")
 	tunnel := []byte("\x7fELF vp-wartung attrappe")
 	skripte := attrappe.SkripteTarGzPFC200(t)
-	manifest := attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie", summe(skripte), summe(tunnel))
+	grundprogramm := attrappe.GrundprogrammTarGzPFC200(t)
+	manifest := attrappe.ManifestPFC200MitGrundprogramm(fassung, 77, summe(programm), "industrie", summe(skripte), summe(tunnel), summe(grundprogramm))
 	wurzel := attrappe.NeueSignierteWurzel(t)
 	signatur := wurzel.SigniereManifest(t, manifest)
 	a.manifestOhneTunnel = attrappe.ManifestPFC200(fassung, 77, summe(programm), "industrie", summe(skripte), "")
@@ -142,6 +147,8 @@ func neu(t *testing.T) *aufbau {
 			_, _ = w.Write(skripte)
 		case "/edge/" + fassungen.WartungProgramm:
 			_, _ = w.Write(tunnel)
+		case "/edge/" + fassungen.GrundprogrammDatei:
+			_, _ = w.Write(grundprogramm)
 		default:
 			http.NotFound(w, r)
 		}
@@ -149,7 +156,8 @@ func neu(t *testing.T) *aufbau {
 	t.Cleanup(srv.Close)
 	a.f = freigabe.Freigabe{Schema: freigabe.Schema, Kennung: "2026-11-pfc200-1", BoxArt: freigabe.PFC200, ErteiltVon: "Test",
 		ErteiltAm: time.Now().Add(-time.Hour), GueltigBis: time.Now().Add(24 * time.Hour), Obergrenze: 5,
-		EdgeIndustrie: freigabe.Industrie{Fassung: fassung, Quelle: srv.URL + "/edge/", ProgrammSha256: summe(programm), SkripteSha256: summe(skripte), WartungSha256: summe(tunnel)},
+		EdgeIndustrie: freigabe.Industrie{Fassung: fassung, Quelle: srv.URL + "/edge/", ProgrammSha256: summe(programm), SkripteSha256: summe(skripte), WartungSha256: summe(tunnel),
+			GrundprogrammSha256: summe(grundprogramm)},
 	}
 	a.id, _ = age.GenerateX25519Identity()
 	a.ablage, _ = protokoll.NeueAblage(filepath.Join(t.TempDir(), "laeufe"))
@@ -286,7 +294,7 @@ func TestLaufAbWerk(t *testing.T) {
 			t.Errorf("Schritt %s gehört nicht in den Lauf", s)
 		}
 	}
-	if fw := wert(t, b["erkennen"], "firmware"); fw != "03.10.08(22)" {
+	if fw := wert(t, b["erkennen"], "firmware"); fw != "04.02.13(24)" {
 		t.Errorf("Firmware im Beleg %q", fw)
 	}
 
@@ -319,6 +327,15 @@ func TestLaufAbWerk(t *testing.T) {
 	}
 	if a.p.NimmtAn("root", "wago") || a.p.NimmtAn("admin", "wago") || a.p.NimmtAn("user", "user") {
 		t.Error("ein Werkspasswort gilt noch")
+	}
+	// config_linux_user lehnt user=root ab (WAGO-Quelltext, FW22 und FW24+
+	// gleich): root bekommt sein Passwort über usermod, nie darüber.
+	aufrufe := strings.Join(a.p.Aufrufe(), "\n")
+	if strings.Contains(aufrufe, "config_linux_user user=root") {
+		t.Error("root darf nie über config_linux_user laufen (das Werkzeug lehnt user=root ab)")
+	}
+	if !strings.Contains(aufrufe, "usermod user=root hash=gesetzt") {
+		t.Error("root bekommt sein neues Passwort nicht über usermod")
 	}
 	if a.p.Lies("ssh/password-request-state") != "disabled" {
 		t.Error("Anmeldung mit Passwort nicht aus")
@@ -370,15 +387,40 @@ func TestLaufAbWerk(t *testing.T) {
 	if !strings.Contains(wert(t, u, "versand"), "Nicht versenden") {
 		t.Error("der Satz zum Versand fehlt")
 	}
-	// Nie angefasst: Docker, die SPS.
+	// Nie angefasst: Docker.
 	for _, z := range a.p.Aufrufe() {
 		if strings.Contains(z, "docker") || strings.Contains(z, "codesys") && !strings.Contains(z, "--set-if") {
 			t.Errorf("Aufruf %q", z)
 		}
 	}
+	// Die SPS fasst nur der Schritt grundprogramm an, und nur mit seinen
+	// eigenen Befehlen (Stand lesen, Boot-Applikation auspacken, Marke
+	// schreiben, Laufzeit neu starten) - nie eine Koppelprobe, nie die
+	// Firmware, nie config_docker jenseits von deactivate.
+	codesysErlaubt := []string{
+		"D='" + codesysOrdner + "'",
+		"mkdir -p '" + codesysOrdner + "' && tar -xzf - -C '" + codesysOrdner + "'",
+		"printf '%s' '" + a.f.EdgeIndustrie.GrundprogrammSha256 + "' > '" + codesysOrdner + "/.vp-grundprogramm-sha256'",
+		"/etc/init.d/runtime stop",
+		"echo \"codesys=",
+	}
 	for _, z := range a.p.Befehle() {
-		if strings.Contains(z, "PlcLogic") || strings.Contains(z, "init.d/runtime") || strings.Contains(z, "config_docker") {
-			t.Errorf("Befehl fasst die Steuerung an: %q", z)
+		spsBefehl := strings.Contains(z, "PlcLogic") || strings.Contains(z, "pidof codesys3") || strings.Contains(z, "init.d/runtime")
+		if !spsBefehl {
+			if strings.Contains(z, "config_docker") && !strings.Contains(z, "deactivate") {
+				t.Errorf("config_docker jenseits von deactivate: %q", z)
+			}
+			continue
+		}
+		passt := false
+		for _, e := range codesysErlaubt {
+			if strings.HasPrefix(z, e) {
+				passt = true
+				break
+			}
+		}
+		if !passt {
+			t.Errorf("Befehl fasst die SPS unerwartet an: %q", z)
 		}
 	}
 }
@@ -478,7 +520,7 @@ func TestLaufMitApiUndProbeUeberDenTunnel(t *testing.T) {
 		t.Fatalf("Code geholt für %v, erwartet einmal für pfc200", ptl.codeFuer)
 	}
 	an := ptl.abnahmen[0]
-	if an.Geraet != "pfc200" || an.Angaben["firmware"] != "03.10.08(22)" || an.Angaben["artikel"] != "750-8212" || an.Angaben["seriennummer"] == "" ||
+	if an.Geraet != "pfc200" || an.Angaben["firmware"] != "04.02.13(24)" || an.Angaben["artikel"] != "750-8212" || an.Angaben["seriennummer"] == "" ||
 		an.Fassung != fassung || an.HostSchluessel != a.p.Host() || an.LanNetz != "10.213.0.1/24" {
 		t.Fatalf("Abnahme %+v", an)
 	}
@@ -762,6 +804,48 @@ func TestKeinInternetHaeltVorDenZugaengenAn(t *testing.T) {
 	a.halt(t, "internet", faelle.KeinInternet)
 	if !a.p.NimmtAn("root", "wago") || a.p.Lies("ssh/password-request-state") == "disabled" {
 		t.Fatal("ein Zugang wurde geändert")
+	}
+}
+
+// Produktion lässt VP_WERKSTATT_PORTAL_URL leer und setzt VP_WERKSTATT_API_URL
+// auf die Portal-API im Cluster: konfig.Lies lässt PortalURL dann auf diese
+// Adresse zurückfallen (Fehlerbild kein_internet, 25.11.2026: Standardweg über
+// die Brücke stand, curl scheiterte mit "Could not resolve host:
+// api.voltpilot-prod.svc.cluster.local"). l.k.PortalURL ist genau diese
+// Adresse, über die der DIENST SELBST sein Vertrauens-Set lädt (hier der
+// Testserver srv, wie neu() ihn setzt - stünde in Produktion für die nur im
+// Cluster aufgelöste Portal-API). Das Gerät hinter der Werkbank-Brücke kann
+// so eine Adresse nie auflösen: Der Internet-Check und das dauerhaft
+// eingespielte portal_url müssen immer die öffentliche, vom Gerät aus
+// erreichbare Adresse verwenden (GeraetPortalURL, hier ihre Vorgabe), nie die
+// des Dienstes im Cluster.
+func TestInternetUndEingespieltesPortalSindNieDieClusterAdresseDesDienstes(t *testing.T) {
+	t.Parallel()
+	a := neu(t)
+	// a.k.PortalURL ist bereits srv.URL (neu()): die Adresse, über die der
+	// Dienst selbst das Vertrauens-Set lädt. a.k.GeraetPortalURL bleibt leer:
+	// Dann gilt für das Gerät die Vorgabe https://portal.voltpilot.de.
+	l, z := a.fahre(t, pfc200.AbWerk)
+	if z != lauf.Fertig {
+		t.Fatalf("Zustand %s im Schritt %s: %s", z, l.Stand().Schritt, l.Stand().Grund)
+	}
+	clusterAdresse := strings.TrimPrefix(strings.TrimPrefix(a.k.PortalURL, "https://"), "http://")
+	for _, c := range a.p.Befehle() {
+		if strings.Contains(c, clusterAdresse) {
+			t.Errorf("Befehl ans Gerät nennt die Adresse des Dienstes im Cluster (%s): %q", clusterAdresse, c)
+		}
+	}
+	var internetBefehl string
+	for _, c := range a.p.Befehle() {
+		if strings.Contains(c, "/api/v1/edge/trust-set/trust-set.json") {
+			internetBefehl = c
+		}
+	}
+	if !strings.Contains(internetBefehl, "https://portal.voltpilot.de/api/v1/edge/trust-set/trust-set.json") {
+		t.Fatalf("der Internet-Check zielt nicht auf das öffentliche Portal: %q", internetBefehl)
+	}
+	if konfig := a.p.Datei("/home/voltpilot/konfig"); !strings.Contains(konfig, "portal_url = https://portal.voltpilot.de") {
+		t.Fatalf("das eingespielte portal_url auf der Box: %q", konfig)
 	}
 }
 

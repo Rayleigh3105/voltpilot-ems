@@ -1,0 +1,412 @@
+#!/bin/sh
+# Direktvermarkter-Tunnel (vp-vermarkter) auf dem WAGO PFC200: der EINE
+# root-Helfer der Direktvermarktung (vp-direktvermarktung-konzept d2 §5.4,
+# Stufe 4; PS-D11, PS-D12, PS-D14).
+#
+#   /etc/init.d/vp-vermarkter start|stop|restart|status
+#
+# Er tut genau eine Sache: aus dem Partnerprofil-Zugang unter
+# /home/voltpilot/vermarkter die Konfiguration fuer das Firmware-OpenVPN
+# schreiben, den Tunnel starten/stoppen/ueberwachen und die Firewall-Regeln
+# des Tunnels setzen. Jeden anderen Aufruf und jeden Aufruf ohne root lehnt
+# er ab (PS-D14). Die Zugangs-Dateien schreibt die Zustellung aus der Cloud
+# ueber das Box-Programm (als voltpilot); dieser Helfer liest sie nur.
+#
+# Der Tunnel gehoert zum System, nicht zum Box-Programm (Konzept §5.4
+# "Neustart und Update"): er startet mit dem Geraet (rc-Link S99) und ein
+# Programm-Update laesst ihn stehen. Ein Waechter (Verb "lauf", nur intern,
+# von "start" in den Hintergrund gelegt) prueft alle 10 s den Soll-Stand:
+# kommt oder geht der Zugang (Zustellung, Widerruf), folgt der Tunnel ohne
+# Neustart des Geraets.
+#
+# Belegt an der WAGO-Firmware-Quelle (github.com/WAGO/pfc-firmware-sdk-G2,
+# Tags FW22-V03.10.08 und FW24-V04.02.13):
+#   - /etc/init.d/openvpn startet jede /etc/openvpn/<name>.conf und nimmt
+#     "start <name>"/"stop <name>" fuer einen einzelnen Tunnel; PID-Datei
+#     /run/openvpn/<name>.pid, Status /run/openvpn/<name>.status (10 s).
+#     (projectroot/etc/init.d/openvpn, start_vpn/stop_vpn)
+#   - Die Firewall setzt Basisregeln per iptables-restore (voller Ersatz)
+#     und laedt danach JEDE Datei unter /var/run/firewall/iptables/default/
+#     mit iptables-restore -n nach - im ein- UND ausgeschalteten Zustand
+#     (projectroot/etc/firewall/iptables/ipfirewall.sh: set_dynamic_default
+#     in set_firewall und clean_firewall; denselben Weg nutzt WAGOs
+#     Docker-Hook projectroot/etc/config-tools/events/firewall/iptables/
+#     docker). ipbase.rls nennt "iptables-restore -n < aux_rules.rls"
+#     ausdruecklich als den Weg fuer zusaetzliche Regeln.
+#   - Der Port-Forward des config-tools (firewall iptables --add-pfw)
+#     erzeugt DNAT-Regeln nur bei eingeschalteter Weiterleitung
+#     (ipnat.xsl: $is_forwarding_on) - die Direktvermarktung laesst die
+#     Weiterleitung aus (§8), darum die eigene REDIRECT-Regel hier.
+#   - /etc/passwd der Firmware fuehrt nobody:65534, /etc/group nogroup.
+#
+# Sicherheit (Konzept §8): der Partner erreicht genau EINEN Port.
+#   - NAT: TCP 502 wird NUR an der Tunnel-Schnittstelle auf 1512 umgeleitet
+#     (dort lauscht das Box-Programm an der Tunnel-Adresse); 502 an X1/X2
+#     bleibt beim Modbus-Server der SPS, 1502 beim Datenspiegel der Box
+#     (PS-D12; unter Linux koennen Wildcard-:1502 und Tunnel-Adresse:1502
+#     nicht nebeneinander lauschen, darum der eigene Port - der Partner
+#     sieht nur 502).
+#   - Filter: eingehend am Tunnel nur TCP 1502, alles andere faellt - auch
+#     bei ausgeschalteter Geraete-Firewall (die Fragment-Datei wird in
+#     beiden Zustaenden geladen); keine Weiterleitung von/zu dem Tunnel.
+#   - OpenVPN: die Box baut ihre Konfiguration selbst (nie die Datei des
+#     Partners im Ganzen); keine Routen, kein DNS, kein Gateway vom Partner
+#     (route-nopull + pull-filter), keine Skripte (script-security 0 wie
+#     Konzept §8: die Firmware-OpenVPN ist ohne iproute2 gebaut
+#     (rules/openvpn.make: --disable-iproute2, Netlink) und braucht kein
+#     externes Programm; nur ein iproute2-Build wie der der Container-Probe
+#     bekommt Stufe 1, weil er /sbin/ip fuer die Schnittstelle rufen muss -
+#     erkannt am Build selbst, openvpn --version enable_iproute2),
+#     Server-Zertifikatspruefung (remote-cert-tls server), Prozess nach dem
+#     Start ohne Rechte (user nobody). Schluessel liegen 0600 unter root;
+#     nichts davon wird protokolliert.
+
+QUELLE=/home/voltpilot/vermarkter
+ZUGANG=$QUELLE/zugang
+KONF=/etc/openvpn/vp-vermarkter.conf
+SCHLUESSEL=/etc/openvpn/vp-vermarkter
+NAME=vp-vermarkter
+TUN=tun-vermarkter
+PORT_EDGE=1512
+FRAGMENT=/var/run/firewall/iptables/default/vp-vermarkter
+PIDDATEI=/var/run/vp-vermarkter.pid
+STAND=/var/run/vp-vermarkter.stand
+OVPN_INIT=/etc/init.d/openvpn
+OVPN_PID=/run/openvpn/$NAME.pid
+MARKE=vp-vermarkter
+TAKT=10
+
+PATH="${PATH:+$PATH:}/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
+umask 077
+
+melde() { logger -t "$MARKE" "$*" 2>/dev/null; }
+
+# Nur root darf alles davon; als voltpilot wird jeder Aufruf abgelehnt
+# (PS-D14 "Darf der Helfer nur das Eine?").
+if [ "$(id -u)" != 0 ]; then
+  echo "$MARKE: nur root" >&2
+  exit 1
+fi
+
+# zeile <pid> - die Befehlszeile eines Prozesses in einer Zeile.
+zeile() { tr '\000' ' ' <"/proc/$1/cmdline" 2>/dev/null; }
+
+# dienst_pid - die PID des laufenden Waechters, sonst nichts.
+dienst_pid() {
+  p="$(cat "$PIDDATEI" 2>/dev/null)"
+  case "$p" in '' | *[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null || return 1
+  case "$(zeile "$p")" in
+    *"vp-vermarkter lauf"*) echo "$p" ;;
+    *) return 1 ;;
+  esac
+}
+
+# zugang_da - 0, wenn alle Pflichtdateien des Zugangs lesbar und plausibel
+# sind. Prueft Form, nie Inhalt; protokolliert nie Dateiinhalte.
+zugang_da() {
+  [ -s "$ZUGANG/gegenstelle" ] && [ -s "$ZUGANG/ca.pem" ] &&
+    [ -s "$ZUGANG/zertifikat.pem" ] && [ -s "$ZUGANG/schluessel.pem" ] || return 1
+  grep -q "BEGIN" "$ZUGANG/ca.pem" 2>/dev/null || return 1
+  grep -q "BEGIN" "$ZUGANG/zertifikat.pem" 2>/dev/null || return 1
+  grep -q "BEGIN" "$ZUGANG/schluessel.pem" 2>/dev/null || return 1
+  gegenstelle_lesen >/dev/null
+}
+
+# gegenstelle_lesen - "host port proto" aus der Zugangsdatei, streng geprueft
+# (der Partner ist ein Punkt, kein Netz; F1: Port und Protokoll offen, darum
+# stehen sie in der Zustellung, nie geraten).
+gegenstelle_lesen() {
+  # read liefert 1 ohne Zeilenumbruch am Ende; die Felder sind dann trotzdem da.
+  read -r host port proto _rest <"$ZUGANG/gegenstelle" 2>/dev/null || [ -n "${proto:-}" ] || return 1
+  case "$host" in
+    '' | *[!A-Za-z0-9.-]*) return 1 ;;
+  esac
+  case "$port" in
+    '' | *[!0-9]*) return 1 ;;
+  esac
+  [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || return 1
+  case "$proto" in
+    udp | tcp) ;;
+    *) return 1 ;;
+  esac
+  echo "$host $port $proto"
+}
+
+# zugang_stand - der Aenderungsstempel des Waechters: Pruefsummen der
+# Zugangsdateien (ls -ln hat nur Minuten-Aufloesung und uebersaehe einen
+# Tausch gleicher Groesse in derselben Minute) plus die erkannte
+# script-security-Stufe, damit auch ein getauschter OpenVPN-Build die
+# Konfiguration erneuert. Der Stempel landet nur in $STAND (root, 0600 im
+# RAM); Pruefsummen sind keine Schluessel und nichts davon geht ins Log.
+zugang_stand() {
+  sha256sum "$ZUGANG/gegenstelle" "$ZUGANG/ca.pem" "$ZUGANG/zertifikat.pem" \
+    "$ZUGANG/schluessel.pem" "$ZUGANG/ta.key" 2>/dev/null
+  echo "script_security=$(script_security)"
+}
+
+# konfigurieren - Konfiguration und Schluesselkopien fuer das Firmware-OpenVPN
+# schreiben (0600, root). Nur aus einem vollstaendigen Zugang aufrufen.
+konfigurieren() {
+  satz="$(gegenstelle_lesen)" || return 1
+  host="${satz%% *}"
+  rest="${satz#* }"
+  port="${rest%% *}"
+  proto="${rest##* }"
+  mkdir -p "$SCHLUESSEL"
+  chmod 700 "$SCHLUESSEL"
+  for d in ca.pem zertifikat.pem schluessel.pem; do
+    cp "$ZUGANG/$d" "$SCHLUESSEL/$d" || return 1
+    chmod 600 "$SCHLUESSEL/$d"
+  done
+  ta=""
+  if [ -s "$ZUGANG/ta.key" ]; then
+    cp "$ZUGANG/ta.key" "$SCHLUESSEL/ta.key" || return 1
+    chmod 600 "$SCHLUESSEL/ta.key"
+    richtung="$(head -c 2 "$ZUGANG/ta-richtung" 2>/dev/null | tr -cd '01')"
+    ta="tls-auth $SCHLUESSEL/ta.key${richtung:+ $richtung}"
+  fi
+  {
+    echo "# vp-vermarkter: erzeugt aus $ZUGANG - nicht von Hand aendern."
+    echo "client"
+    echo "dev $TUN"
+    echo "dev-type tun"
+    echo "remote $host $port"
+    echo "proto $proto"
+    echo "nobind"
+    echo "resolv-retry infinite"
+    echo "connect-retry 5 300"
+    echo "keepalive 10 120"
+    echo "remote-cert-tls server"
+    echo "auth-nocache"
+    echo "ca $SCHLUESSEL/ca.pem"
+    echo "cert $SCHLUESSEL/zertifikat.pem"
+    echo "key $SCHLUESSEL/schluessel.pem"
+    [ -z "$ta" ] || echo "$ta"
+    # Der Partner ist ein Punkt, kein Netz: keine Routen, kein Gateway,
+    # kein DNS, kein IPv6 vom Server (Konzept §8, PS-D17).
+    echo "route-nopull"
+    echo "pull-filter ignore \"redirect-gateway\""
+    echo "pull-filter ignore \"route \""
+    echo "pull-filter ignore \"route-ipv6\""
+    echo "pull-filter ignore \"dhcp-option\""
+    echo "pull-filter ignore \"block-outside-dns\""
+    echo "pull-filter ignore \"ifconfig-ipv6\""
+    echo "pull-filter ignore \"tun-ipv6\""
+    # 0 auf dem Netlink-Build der Firmware, 1 nur wenn der Build iproute2
+    # per exec braucht (s. Kopfkommentar); nie up/down oder fremde Skripte.
+    echo "script-security $(script_security)"
+    echo "user nobody"
+    echo "group nogroup"
+    echo "persist-key"
+    echo "persist-tun"
+    echo "verb 2"
+    echo "mute 10"
+  } >"$KONF.neu" || return 1
+  chmod 600 "$KONF.neu"
+  mv "$KONF.neu" "$KONF"
+}
+
+# regeln_setzen - die Firewall des Tunnels: Fragment-Datei fuer die
+# Geraete-Firewall schreiben UND sofort laden. Die eigenen Ketten werden im
+# Fragment geleert, die Sprungregeln vorher entdoppelt - mehrfaches Laden
+# laesst genau einen Stand zurueck.
+regeln_setzen() {
+  mkdir -p "$(dirname "$FRAGMENT")"
+  {
+    echo "*nat"
+    echo ":vp_vermarkter - [0:0]"
+    echo "-F vp_vermarkter"
+    echo "-A vp_vermarkter -p tcp --dport 502 -j REDIRECT --to-ports $PORT_EDGE"
+    echo "-A PREROUTING -i $TUN -j vp_vermarkter"
+    echo "COMMIT"
+    echo "*filter"
+    echo ":vp_vermarkter_ein - [0:0]"
+    echo "-F vp_vermarkter_ein"
+    echo "-A vp_vermarkter_ein -p tcp --dport $PORT_EDGE -j ACCEPT"
+    echo "-A vp_vermarkter_ein -j DROP"
+    echo "-I INPUT 1 -i $TUN -j vp_vermarkter_ein"
+    echo "-I FORWARD 1 -i $TUN -j DROP"
+    echo "-I FORWARD 1 -o $TUN -j DROP"
+    echo "COMMIT"
+  } >"$FRAGMENT.neu"
+  mv "$FRAGMENT.neu" "$FRAGMENT"
+  spruenge_entfernen
+  iptables-restore -n <"$FRAGMENT" || melde "iptables-restore: Regeln nicht geladen"
+}
+
+# spruenge_entfernen - alle eigenen Sprung- und Sperrregeln aus den festen
+# Ketten loesen (beliebig oft vorhanden nach Teil-Reloads der Firewall).
+spruenge_entfernen() {
+  while iptables -t nat -D PREROUTING -i "$TUN" -j vp_vermarkter 2>/dev/null; do :; done
+  while iptables -D INPUT -i "$TUN" -j vp_vermarkter_ein 2>/dev/null; do :; done
+  while iptables -D FORWARD -i "$TUN" -j DROP 2>/dev/null; do :; done
+  while iptables -D FORWARD -o "$TUN" -j DROP 2>/dev/null; do :; done
+}
+
+# regeln_entfernen - Fragment weg, lebende Regeln weg, Ketten weg.
+regeln_entfernen() {
+  rm -f "$FRAGMENT"
+  spruenge_entfernen
+  iptables -t nat -F vp_vermarkter 2>/dev/null
+  iptables -t nat -X vp_vermarkter 2>/dev/null
+  iptables -F vp_vermarkter_ein 2>/dev/null
+  iptables -X vp_vermarkter_ein 2>/dev/null
+}
+
+# script_security - 0 (Konzept §8) auf einem Netlink-Build wie der
+# WAGO-Firmware, 1 nur auf einem Build, der iproute2 per exec braucht
+# (openvpn --version: enable_iproute2=yes). Unbekannt heisst 0: die strenge
+# Vorgabe; ein falsch erkannter iproute2-Build scheitert sichtbar beim
+# Schnittstellen-Setup statt still mit einer weicheren Stufe zu laufen.
+script_security() {
+  # die Ausgabe schreibt den Wert in Anfuehrungszeichen: enable_iproute2='yes'
+  if openvpn --version 2>/dev/null | grep -Eq "enable_iproute2='?yes"; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
+tunnel_starten() { "$OVPN_INIT" start "$NAME" >/dev/null 2>&1; }
+
+tunnel_stoppen() { "$OVPN_INIT" stop "$NAME" >/dev/null 2>&1; }
+
+tunnel_laeuft() {
+  p="$(cat "$OVPN_PID" 2>/dev/null)"
+  case "$p" in '' | *[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null
+}
+
+# abbauen - Tunnel, Regeln, Konfiguration und Schluesselkopien entfernen
+# (Widerruf: "Profil leer, Box loescht und schliesst", Konzept §8).
+abbauen() {
+  tunnel_stoppen
+  regeln_entfernen
+  rm -f "$KONF" "$STAND"
+  rm -rf "$SCHLUESSEL"
+}
+
+# abgleich - ein Schritt des Waechters: Soll-Stand herstellen.
+abgleich() {
+  if ! zugang_da; then
+    if [ -f "$KONF" ] || tunnel_laeuft; then
+      melde "Zugang entfernt oder unvollstaendig - Tunnel wird abgebaut"
+      abbauen
+    fi
+    return 0
+  fi
+  stand="$(zugang_stand)"
+  if [ "$stand" != "$(cat "$STAND" 2>/dev/null)" ]; then
+    if konfigurieren; then
+      printf '%s' "$stand" >"$STAND"
+      melde "Zugang uebernommen - Tunnel wird (neu) gestartet"
+      tunnel_stoppen
+    else
+      melde "Zugang unbrauchbar - Tunnel bleibt aus"
+      abbauen
+      return 0
+    fi
+  fi
+  regeln_da || regeln_setzen
+  if ! regeln_da; then
+    # Sicher scheitern: ohne die Filter- und Umleitungsregeln kommt der
+    # Tunnel nicht hoch (und faellt, wenn er lief) - lieber kein Anschluss
+    # als einer ohne Schranke. Der naechste Takt versucht es erneut.
+    if [ "${REGELN_GEMELDET:-0}" = 0 ]; then
+      melde "Firewall-Regeln liessen sich nicht laden - Tunnel bleibt aus"
+      REGELN_GEMELDET=1
+    fi
+    tunnel_laeuft && tunnel_stoppen
+    return 0
+  fi
+  if [ "${REGELN_GEMELDET:-0}" = 1 ]; then
+    melde "Firewall-Regeln geladen - Tunnel darf wieder"
+    REGELN_GEMELDET=0
+  fi
+  tunnel_laeuft || tunnel_starten
+}
+
+# regeln_da - 0, wenn Fragment und lebende Regeln stehen.
+regeln_da() {
+  [ -f "$FRAGMENT" ] || return 1
+  iptables -t nat -C PREROUTING -i "$TUN" -j vp_vermarkter 2>/dev/null || return 1
+  iptables -C INPUT -i "$TUN" -j vp_vermarkter_ein 2>/dev/null
+}
+
+# lauf - der Waechter (nur von "start" aufgerufen).
+lauf() {
+  trap '' HUP
+  echo "$$" >"$PIDDATEI"
+  ENDE=0
+  trap 'ENDE=1' TERM INT
+  while [ "$ENDE" = 0 ]; do
+    abgleich
+    sleep "$TAKT" &
+    schlaf=$!
+    wait "$schlaf"
+    kill "$schlaf" 2>/dev/null
+  done
+  rm -f "$PIDDATEI"
+}
+
+start() {
+  if p="$(dienst_pid)"; then
+    echo "$MARKE: laeuft schon (Waechter $p)"
+    return 0
+  fi
+  "$0" lauf </dev/null >/dev/null 2>&1 &
+  echo "$MARKE: gestartet"
+}
+
+stop() {
+  if p="$(dienst_pid)"; then
+    kill -TERM "$p" 2>/dev/null
+    i=0
+    while kill -0 "$p" 2>/dev/null && [ "$i" -lt 15 ]; do
+      sleep 1
+      i=$((i + 1))
+    done
+    kill -KILL "$p" 2>/dev/null
+  fi
+  rm -f "$PIDDATEI"
+  abbauen
+  echo "$MARKE: beendet"
+}
+
+status() {
+  code=0
+  if p="$(dienst_pid)"; then
+    echo "dienst=laeuft"
+  else
+    echo "dienst=steht"
+    code=3
+  fi
+  if zugang_da; then echo "zugang=da"; else echo "zugang=fehlt"; fi
+  if tunnel_laeuft; then echo "openvpn=laeuft"; else echo "openvpn=steht"; fi
+  if ip link show "$TUN" >/dev/null 2>&1; then echo "tunnel=oben"; else echo "tunnel=unten"; fi
+  if regeln_da; then echo "umleitung=da"; else echo "umleitung=fehlt"; fi
+  return "$code"
+}
+
+# PS-D14: genau ein bekanntes Verb, jeder fremde Pfad oder Zusatz wird
+# abgewiesen - der Helfer darf nur das Eine.
+if [ $# -ne 1 ]; then
+  echo "Aufruf: $0 start|stop|restart|status" >&2
+  exit 2
+fi
+case "$1" in
+  start) start ;;
+  stop) stop ;;
+  restart)
+    stop
+    start
+    ;;
+  status) status ;;
+  lauf) lauf ;;
+  *)
+    echo "Aufruf: $0 start|stop|restart|status" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,42 @@
+#!/bin/sh
+# Stand-in des Firmware-Init-Skripts /etc/init.d/openvpn des WAGO PFC200 fuer
+# die Container-Probe (vermarkter-probe.sh) - dieselbe Schnittstelle, die der
+# Helfer vp-vermarkter am Geraet benutzt, belegt an der WAGO-Quelle
+# (github.com/WAGO/pfc-firmware-sdk-G2, projectroot/etc/init.d/openvpn,
+# Tags FW22-V03.10.08 und FW24-V04.02.13):
+#   - "start <name>" startet /etc/openvpn/<name>.conf ueber start-stop-daemon
+#     mit --daemon ovpn-<name>, --status /run/openvpn/<name>.status 10 und
+#     --writepid /run/openvpn/<name>.pid, Arbeitsverzeichnis /etc/openvpn;
+#   - "stop <name>" beendet ueber die PID-Datei und raeumt sie weg.
+# Nur die Teilmenge, die vp-vermarkter aufruft; kein Autostart aller Tunnel.
+# Alpine hat kein start-stop-daemon (das gehoert dort zu openrc); der Start
+# laeuft deshalb direkt ueber openvpn --daemon mit denselben Argumenten, das
+# Stoppen ueber die PID-Datei - dasselbe beobachtbare Verhalten.
+CONFIG_DIR=/etc/openvpn
+DAEMON=/usr/sbin/openvpn
+
+case "$1" in
+  start)
+    mkdir -p /run/openvpn
+    NAME="$2"
+    [ -n "$NAME" ] && [ -e "$CONFIG_DIR/$NAME.conf" ] || exit 1
+    if [ -f "/run/openvpn/$NAME.pid" ] && kill -0 "$(cat "/run/openvpn/$NAME.pid")" 2>/dev/null; then
+      exit 0
+    fi
+    "$DAEMON" --daemon "ovpn-$NAME" --status "/run/openvpn/$NAME.status" 10 \
+      --writepid "/run/openvpn/$NAME.pid" --cd "$CONFIG_DIR" \
+      --config "$CONFIG_DIR/$NAME.conf"
+    ;;
+  stop)
+    NAME="$2"
+    [ -n "$NAME" ] || exit 1
+    if [ -f "/run/openvpn/$NAME.pid" ]; then
+      kill "$(cat "/run/openvpn/$NAME.pid")" 2>/dev/null || true
+    fi
+    rm -f "/run/openvpn/$NAME.pid" "/run/openvpn/$NAME.status"
+    ;;
+  *)
+    echo "Aufruf: $0 start|stop <name>" >&2
+    exit 1
+    ;;
+esac

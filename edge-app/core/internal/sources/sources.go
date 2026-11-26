@@ -294,7 +294,7 @@ func TransportIdentity(s Source) string {
 		parts = append(parts, strings.TrimSpace(s.Connection.Serial),
 			strconv.Itoa(s.Connection.MbSlaveID))
 	case inverter.CommModbusTCP, inverter.CommFroniusSunSpec, inverter.CommSunSpecTCP,
-		inverter.CommKacoModbus, inverter.CommEbyteModbusTCP:
+		inverter.CommKacoModbus, inverter.CommEbyteModbusTCP, inverter.CommDeyeModbusTCP:
 		parts = append(parts, strconv.Itoa(s.Connection.UnitID))
 	case inverter.CommKacoHTTP:
 		// Die Seriennummer adressiert EINEN Wechselrichter hinter der
@@ -366,8 +366,13 @@ func (s Source) busEntry() map[string]any {
 		"port": s.Connection.Port,
 	}
 	switch s.Communication {
-	case inverter.CommSolarmanV5:
-		conn["serial"] = s.Connection.Serial
+	case inverter.CommSolarmanV5, inverter.CommDeyeModbusTCP:
+		if s.Communication == inverter.CommDeyeModbusTCP {
+			// The same Deye over its stick's Modbus TCP: the unit, no serial.
+			conn["unit_id"] = s.Connection.UnitID
+		} else {
+			conn["serial"] = s.Connection.Serial
+		}
 		conn["mb_slave_id"] = s.Connection.MbSlaveID
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 		// The narrow "the BMS reports no SoC" opt-in. A battery-family Deye is

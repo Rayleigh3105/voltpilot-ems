@@ -188,3 +188,97 @@ func TestStand(t *testing.T) {
 		t.Fatalf("%+v", st)
 	}
 }
+
+func TestVertragsgrenzeMinimumUndGrund(t *testing.T) {
+	jetzt := time.Unix(1_800_000_000, 0)
+	s := Neu(u32(1042), 0x2C01)
+	angebot := map[int][3]int64{1: {1, 0, 265000}}
+	s.Lies(spsQuittung(1042, 10, 0, 0, angebot, 0), jetzt)
+
+	// Der Partner bindet allein (kein Fahrplan-Wunsch), auch ohne frei:
+	// luox muss auch ohne Cloud-Freigabe begrenzen koennen (Konzept d2 §5.6).
+	g := int32(79500)
+	s.SetzeVertragsgrenze(1, &g)
+	w := s.Telegramm(nil, false, nil, jetzt)
+	if art, grund, wert, _ := platz(t, w, 1); art != 1 || grund != 6 || wert != 79500 {
+		t.Fatalf("Partner allein: %d %d %d", art, grund, wert)
+	}
+	if w[4] != 0x0101 {
+		t.Fatalf("Versionswort %#x statt 0x0101 (Grund 6 im Telegramm)", w[4])
+	}
+
+	// Der Fahrplan ist niedriger: er bindet, Grund markt, Versionswort 1.0.
+	jetzt = jetzt.Add(5 * time.Second)
+	s.Lies(spsQuittung(1042, 15, 1, 1, angebot, 0x2C01), jetzt)
+	w = s.Telegramm(map[int]Wunsch{1: {Art: "limit_w", Wert: 50000, Grund: "markt"}}, true, nil, jetzt)
+	if art, grund, wert, _ := platz(t, w, 1); art != 1 || grund != 1 || wert != 50000 {
+		t.Fatalf("Fahrplan bindet: %d %d %d", art, grund, wert)
+	}
+	if w[4] != 0x0100 {
+		t.Fatalf("Versionswort %#x statt 0x0100 (kein Grund 6 im Telegramm)", w[4])
+	}
+
+	// Der Fahrplan oeffnet: das Minimum ist wieder der Partner.
+	jetzt = jetzt.Add(5 * time.Second)
+	s.Lies(spsQuittung(1042, 20, 2, 1, angebot, 0x2C01), jetzt)
+	w = s.Telegramm(map[int]Wunsch{1: {Art: "limit_w", Wert: 159000, Grund: "markt"}}, true, nil, jetzt)
+	if art, grund, wert, _ := platz(t, w, 1); art != 1 || grund != 6 || wert != 79500 {
+		t.Fatalf("Partner bindet wieder: %d %d %d", art, grund, wert)
+	}
+
+	// Grenze geloescht: nur der Fahrplan bleibt.
+	s.SetzeVertragsgrenze(0, nil)
+	jetzt = jetzt.Add(5 * time.Second)
+	s.Lies(spsQuittung(1042, 25, 3, 1, angebot, 0x2C01), jetzt)
+	w = s.Telegramm(map[int]Wunsch{1: {Art: "limit_w", Wert: 159000, Grund: "markt"}}, true, nil, jetzt)
+	if art, grund, wert, _ := platz(t, w, 1); art != 1 || grund != 1 || wert != 159000 {
+		t.Fatalf("ohne Grenze: %d %d %d", art, grund, wert)
+	}
+}
+
+func TestVertragsgrenzeNurAufAngebotenemPlatz(t *testing.T) {
+	jetzt := time.Unix(1_800_000_000, 0)
+	s := Neu(u32(1042), 0x2C02)
+	// Stellplatz 2 bietet setpoint_w, keinen limit_w: die Grenze faellt weg,
+	// lieber kein Wunsch als ein falscher (Vertrag §5).
+	s.Lies(spsQuittung(1042, 10, 0, 0, map[int][3]int64{2: {3, -50000, 50000}}, 0), jetzt)
+	g := int32(79500)
+	s.SetzeVertragsgrenze(2, &g)
+	w := s.Telegramm(nil, false, nil, jetzt)
+	if art, _, _, _ := platz(t, w, 2); art != 0 {
+		t.Fatalf("Grenze auf fremder Art geschrieben: %d", art)
+	}
+	// Ein Schalt-Test auf demselben Platz gewinnt fuer seine Zeit.
+	s2 := Neu(u32(1042), 0x2C03)
+	s2.Lies(spsQuittung(1042, 10, 0, 0, map[int][3]int64{1: {1, 0, 265000}}, 0), jetzt)
+	s2.SetzeVertragsgrenze(1, &g)
+	s2.SetzeTest(&Test{Platz: 1, Art: "limit_w", Wert: 100000, Bis: jetzt.Add(30 * time.Second)})
+	w = s2.Telegramm(nil, false, nil, jetzt)
+	if art, grund, wert, _ := platz(t, w, 1); art != 1 || grund != 5 || wert != 100000 {
+		t.Fatalf("Schalt-Test verliert gegen die Grenze: %d %d %d", art, grund, wert)
+	}
+}
+
+func TestVertragsgrenzeMarkiertAenderung(t *testing.T) {
+	s := Neu(u32(1042), 0x2C04)
+	g := int32(79500)
+	s.SetzeVertragsgrenze(1, &g)
+	if !s.geaendert {
+		t.Fatal("neue Grenze nicht als Aenderung markiert")
+	}
+	s.geaendert = false
+	s.SetzeVertragsgrenze(1, &g)
+	if s.geaendert {
+		t.Fatal("gleiche Grenze als Aenderung markiert")
+	}
+	h := int32(50000)
+	s.SetzeVertragsgrenze(1, &h)
+	if !s.geaendert {
+		t.Fatal("geaenderter Wert nicht markiert")
+	}
+	s.geaendert = false
+	s.SetzeVertragsgrenze(0, nil)
+	if !s.geaendert {
+		t.Fatal("geloeschte Grenze nicht markiert")
+	}
+}

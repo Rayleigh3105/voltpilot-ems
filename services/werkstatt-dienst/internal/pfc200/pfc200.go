@@ -11,9 +11,15 @@
 //
 // Was der Dienst am Gerät ändert, ändert er mit den Werkzeugen der
 // WAGO-Firmware (/etc/config-tools), so wie sie die Firmware selbst aufruft.
-// Nie angefasst: die SPS-Laufzeit (CODESYS), ihre Einstellungen, ihr Programm
-// und ihr Modbus-Server; die Firmware des Geräts; fremde Container. Der Stand
-// der Firmware steht nur als Angabe im Beleg.
+// Eine Ausnahme: der Schritt grundprogramm spielt die Boot-Applikation des
+// Basisprojekts (Modbus TCP, WAGO Telecontrol, VoltPilot-Bibliothek, leerer
+// Klemmenbus - gebaut im Repo voltpilot-sps, nicht hier) auf die
+// SPS-Laufzeit (CODESYS), nur auf Firmware 04.xx oder neuer (CODESYS V3.5);
+// das Anlagenprogramm und seine Koppelprobe bleiben SPS-Programmierung nach
+// dem Lauf, nicht Werkstatt. Sonst nie angefasst: die Einstellungen und der
+// Modbus-Server der Laufzeit; die Firmware des Geräts selbst; fremde
+// Container. Der Stand der Firmware steht als Angabe im Beleg, außer dass der
+// Schritt grundprogramm ihre Hauptlinie prüft.
 package pfc200
 
 import (
@@ -86,14 +92,15 @@ type Werkbank interface {
 
 // Zeiten der Schritte; in Tests kürzer.
 type Zeiten struct {
-	Takt      time.Duration // Abstand beim Warten auf das Gerät
-	Verbinden time.Duration // je Anmeldeversuch
-	Neustart  time.Duration // bis das Gerät nach dem Neustart antwortet
-	Netz      time.Duration // bis Internet bzw. die neue Adresse stehen
-	Programm  time.Duration // bis /health die Referenz nennt
-	Tunnel    time.Duration // bis Handshake und Abholer stehen
-	Schalter  time.Duration // so lange wartet der Lauf auf den Betriebsartenschalter
-	SSHDienst time.Duration // bis der SSH-Dienst nach seinem Neustart wieder annimmt
+	Takt          time.Duration // Abstand beim Warten auf das Gerät
+	Verbinden     time.Duration // je Anmeldeversuch
+	Neustart      time.Duration // bis das Gerät nach dem Neustart antwortet
+	Netz          time.Duration // bis Internet bzw. die neue Adresse stehen
+	Programm      time.Duration // bis /health die Referenz nennt
+	Grundprogramm time.Duration // bis die CODESYS-Laufzeit die Boot-Applikation meldet
+	Tunnel        time.Duration // bis Handshake und Abholer stehen
+	Schalter      time.Duration // so lange wartet der Lauf auf den Betriebsartenschalter
+	SSHDienst     time.Duration // bis der SSH-Dienst nach seinem Neustart wieder annimmt
 	// Firewall: Bestätigt der Dienst die eingeschaltete Firewall nicht in
 	// dieser Zeit mit einer NEUEN Anmeldung, schaltet das Gerät sie selbst
 	// wieder aus (der Lauf sperrt sich nicht aus).
@@ -102,7 +109,8 @@ type Zeiten struct {
 
 // VorgabeZeiten für das echte Gerät.
 var VorgabeZeiten = Zeiten{Takt: 3 * time.Second, Verbinden: 20 * time.Second, Neustart: 8 * time.Minute, Netz: 2 * time.Minute,
-	Programm: 3 * time.Minute, Tunnel: 3 * time.Minute, Schalter: 30 * time.Minute, SSHDienst: 90 * time.Second, Firewall: 3 * time.Minute}
+	Programm: 3 * time.Minute, Grundprogramm: 2 * time.Minute, Tunnel: 3 * time.Minute, Schalter: 30 * time.Minute,
+	SSHDienst: 90 * time.Second, Firewall: 3 * time.Minute}
 
 // Konfig gilt für alle Läufe eines Dienstes.
 type Konfig struct {
@@ -123,9 +131,18 @@ type Konfig struct {
 	WartungPub string       // öffentlicher Schlüssel des Wartungsservers (Portal)
 	WartungEP  string       // Name des Wartungsservers; leer: Vorgabe von wartung.sh
 	BoxNetz    netip.Prefix // Tunnel-Adressen der Boxen
-	// PortalURL ist das Portal: Dort lädt der Dienst das Vertrauens-Set, und
-	// dorthin prüft das Gerät seinen Weg ins Internet. Leer: das Standard-Portal.
+	// PortalURL ist das Portal, von dem der DIENST SELBST (im Cluster) das
+	// Vertrauens-Set laedt und die Signatur des Manifests prueft. Leer: das
+	// Standard-Portal. Kann eine nur im Cluster aufloesbare Adresse sein
+	// (Fallback auf die Portal-API) - das Gerät bekommt diese Adresse nie zu
+	// sehen, dafür gilt GeraetPortalURL.
 	PortalURL string
+	// GeraetPortalURL ist das Portal, wie das GERÄT hinter der Werkbank-Brücke
+	// es erreicht: der befristete Internet-Check (Zertifikat des Portals) und
+	// das dauerhaft eingespielte portal_url auf der Box. Leer: das
+	// Standard-Portal (https://portal.voltpilot.de), nie PortalURL oder sein
+	// In-Cluster-Fallback.
+	GeraetPortalURL string
 	// Portal ist der Dienst-Baum der API: Einmal-Code, Probe-Fenster der
 	// Einlösung, Abnahme mit Belegen. nil: Tunnel-Adresse als Eingabe, Probe
 	// und Abnahme im Portal von Hand.
@@ -194,12 +211,25 @@ func (k Konfig) jetzt() time.Time {
 	return time.Now()
 }
 
-// portalURL ist das Portal ohne Schrägstrich am Ende.
+// portalURL ist das Portal, von dem der Dienst selbst (im Cluster) lädt, ohne
+// Schrägstrich am Ende. Nie an das Gerät geben: siehe geraetPortalURL.
 func (k Konfig) portalURL() string {
 	if k.PortalURL == "" {
 		return "https://portal.voltpilot.de"
 	}
 	return strings.TrimRight(k.PortalURL, "/")
+}
+
+// geraetPortalURL ist das Portal, wie das Gerät hinter der Werkbank-Brücke es
+// erreicht, ohne Schrägstrich am Ende: der Internet-Check und das dauerhaft
+// eingespielte portal_url auf der Box. Fällt NIE auf PortalURL oder dessen
+// In-Cluster-Fallback zurück (das Gerät kann eine Cluster-interne Adresse nie
+// auflösen).
+func (k Konfig) geraetPortalURL() string {
+	if k.GeraetPortalURL == "" {
+		return "https://portal.voltpilot.de"
+	}
+	return strings.TrimRight(k.GeraetPortalURL, "/")
 }
 
 // Einstieg: wo das Gerät steht, wenn sein Lauf beginnt.
@@ -252,11 +282,14 @@ type Lauf struct {
 	dnsGesetzt               []string // DNS-Server, die dieser Lauf eingetragen hat
 
 	pfadProgramm, pfadSkripte, pfadWartung string
-	pfadManifest                           string
-	stand                                  *fassungen.Stand
-	nichtBereit                            string
-	dr                                     *durchreiche.Server
-	belege                                 map[string]string // Prüfung → wo ihr Beleg steht
+	// pfadGrundprogramm ist leer, solange die Freigabe kein Grundprogramm
+	// nennt (Schritt grundprogramm hält dann mit einem Handgriff an).
+	pfadGrundprogramm string
+	pfadManifest      string
+	stand             *fassungen.Stand
+	nichtBereit       string
+	dr                *durchreiche.Server
+	belege            map[string]string // Prüfung → wo ihr Beleg steht
 }
 
 // NeuerLauf legt den Zustand für ein Gerät an.
@@ -304,9 +337,10 @@ func (l *Lauf) Schliesse() {
 // MAC des Geräts, sobald erkannt.
 func (l *Lauf) MAC() string { return l.mac }
 
-// Schritte gibt die Folge für einen Einstieg zurück. Es gibt keinen Schritt
-// für die SPS: Programm und Koppelprobe kommen mit CODESYS, nicht aus der
-// Werkstatt.
+// Schritte gibt die Folge für einen Einstieg zurück. Das Anlagenprogramm und
+// seine Koppelprobe kommen weiter mit CODESYS, nicht aus der Werkstatt; nur
+// das Grundprogramm des Basisprojekts spielt der Schritt grundprogramm ein,
+// vor dem Edge-Industrie-Programm und nur auf Firmware 04.xx oder neuer.
 func (l *Lauf) Schritte(e Einstieg) []lauf.Schritt {
 	z := l.k.Zeiten
 	if e == HalbImLan {
@@ -319,6 +353,7 @@ func (l *Lauf) Schritte(e Einstieg) []lauf.Schritt {
 		{Kennung: "internet", Titel: titelInternet, Frist: z.Netz + 3*time.Minute, Tun: l.internetAn},
 		{Kennung: "zugaenge", Titel: titelZugaenge, Frist: z.SSHDienst + 4*time.Minute, Tun: l.zugaengeSetzen},
 		{Kennung: "notfall", Titel: titelNotfall, Frist: 2 * time.Minute, Tun: l.notfallSchluessel},
+		{Kennung: "grundprogramm", Titel: titelGrundprogramm, Frist: z.Grundprogramm + 5*time.Minute, Tun: l.grundprogrammEinspielen},
 		{Kennung: "programm", Titel: titelProgramm, Frist: z.Programm + 10*time.Minute, Tun: l.programmEinspielen},
 		{Kennung: "tunnel_schluessel", Titel: titelTunnelSchluessel, Frist: 5 * time.Minute, Tun: l.tunnelSchluessel},
 		l.adressSchritt(),
@@ -434,7 +469,7 @@ func (l *Lauf) fuehre(ctx context.Context, befehl string, ein string) (box.Ergeb
 		return erg, err
 	}
 	if erg.Code != 0 {
-		return erg, fmt.Errorf("auf dem Gerät: %q endete mit %d: %s", kurz(befehl, 70), erg.Code, letzte(geheim.Schwaerze(erg.Text()), 4))
+		return erg, fmt.Errorf("auf dem Gerät: %q endete mit %d: %s", kurz(befehl, 70), erg.Code, ausgabeOderHinweis(geheim.Schwaerze(erg.Text()), 4))
 	}
 	return erg, nil
 }
@@ -504,6 +539,18 @@ func letzte(s string, n int) string {
 		z = z[len(z)-n:]
 	}
 	return strings.Join(z, " | ")
+}
+
+// ausgabeOderHinweis gibt die letzten n Zeilen einer Ausgabe zurück, oder
+// einen Hinweis statt nichts: Manche Werkzeuge der Firmware geben bei einem
+// Fehler nichts aus (etwa config_linux_user bei user=root), und ein Satz, der
+// mitten im Nichts endet, liest sich wie eine abgeschnittene Anzeige statt
+// wie eine leere Ausgabe.
+func ausgabeOderHinweis(s string, n int) string {
+	if t := letzte(s, n); t != "" {
+		return t
+	}
+	return "(keine Ausgabe)"
 }
 
 // zeilenMit gibt die Zeilen zurück, die eines der Stichwörter enthalten.

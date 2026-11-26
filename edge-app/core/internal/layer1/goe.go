@@ -222,7 +222,7 @@ func (r *Runtime) readSource(ctx context.Context, p sourcePlan) {
 	case CommShellyEM:
 		out = r.readShellyEMSource(rctx, p)
 		release()
-	case CommSolarmanV5:
+	case CommSolarmanV5, CommDeyeModbusTCP:
 		res, requests, err := r.readDeyeSource(rctx, p.Deye)
 		release()
 		in := deyeSourceReading(res, err)

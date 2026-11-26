@@ -55,11 +55,13 @@ func (a *Agent) gridPrimaryDeye() (label, target string, ratedKw float64, ok boo
 	a.invMu.Lock()
 	sel := a.inv
 	a.invMu.Unlock()
-	if sel == nil || sel.Communication != inverter.CommSolarmanV5 {
+	if sel == nil || (sel.Communication != inverter.CommSolarmanV5 && sel.Communication != inverter.CommDeyeModbusTCP) {
 		return "", "", 0, false
 	}
 	port := sel.Connection.Port
-	if port <= 0 {
+	if port <= 0 && sel.Communication == inverter.CommDeyeModbusTCP {
+		port = 502
+	} else if port <= 0 {
 		port = 8899
 	}
 	label = sel.Label

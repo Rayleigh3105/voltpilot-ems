@@ -131,7 +131,11 @@ func (r *Runtime) koppelAustausch(c *modbustcp.Client, z koppelZiel, erzwingen b
 	var w []uint16
 	if klasse == "" && u.Schreibt && (erzwingen || st.Faellig(jetzt)) {
 		b := r.koppelBefehl[z.entityID]
-		w = st.Telegramm(koppelbild.WuenscheAus(b.befehl, r.koppelCaps[z.entityID]), b.frei, nil, jetzt)
+		wuensche := koppelbild.WuenscheAus(b.befehl, r.koppelCaps[z.entityID])
+		// The direct marketer's limit joins here (vermarkter.go): the
+		// minimum of plan and partner, reason "vertrag" when it binds.
+		r.vermarkterWunsch(st, wuensche)
+		w = st.Telegramm(wuensche, b.frei, nil, jetzt)
 	}
 	r.koppelMu.Unlock()
 	geschrieben := false

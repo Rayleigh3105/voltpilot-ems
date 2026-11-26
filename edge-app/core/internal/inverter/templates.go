@@ -233,7 +233,9 @@ func BuiltinTemplates() []Template {
 	for _, b := range cat.Brands {
 		for _, m := range b.Models {
 			// Der VORGABE-Weg des Modells bestimmt Anbindung, Formular und - wo das
-			// Modell keine eigene Registerkarte nennt - das Decode-Profil.
+			// Modell keine eigene Registerkarte nennt - das Decode-Profil. Ein
+			// weiterer Weg mit EigeneVorlage bekommt danach seine eigene Zeile
+			// (BuiltinTemplateRefWeg) - eine communication je Vorlage bleibt wahr.
 			//
 			// ⚠ Exportiert wird GENAU EINE Zeile je Marke+Modell, auf dem
 			// Vorgabeweg. Das Experten-Auswahlfeld „Verbindungsweg" bleibt bewusst
@@ -242,47 +244,77 @@ func BuiltinTemplates() []Template {
 			// Sorte Behauptung, die dieses Haus nicht macht. Der cloud-seitige
 			// Ausweg ist der ehrliche Modell-Eintrag („Anderes Fronius-Modell").
 			transport, _ := b.resolveTransport(m, "")
-			family := familyFor(m, transport)
-			famLabel := ""
-			if f, ok := b.family(family); ok {
-				famLabel = f.Label
+			out = append(out, builtinTemplate(b, m, transport, BuiltinTemplateRef(b.ID, m.ID)))
+			for _, comm := range b.TransportsFor(m)[1:] {
+				if t, ok := b.transport(comm); ok && t.EigeneVorlage {
+					out = append(out, builtinTemplate(b, m, t, BuiltinTemplateRefWeg(b.ID, m.ID, comm)))
+				}
 			}
-			var rated *float64
-			if m.RatedKw > 0 {
-				v := m.RatedKw
-				rated = &v
-			}
-			superseded := ""
-			if b.Hidden && b.SupersededBy != "" {
-				superseded = BuiltinTemplateRef(b.SupersededBy, m.ID)
-			}
-			out = append(out, Template{
-				TemplateRef:        BuiltinTemplateRef(b.ID, m.ID),
-				Kind:               TemplateKindBuiltin,
-				Version:            1,
-				Brand:              b.ID,
-				BrandLabel:         b.Label,
-				Model:              m.ID,
-				ModelLabel:         m.Label,
-				ModelAliases:       m.Aliases,
-				DeviceType:         b.DeviceTypeOf(m),
-				SupersededBy:       superseded,
-				Family:             family,
-				FamilyLabel:        famLabel,
-				Communication:      transport.Communication,
-				CommunicationLabel: transport.Label,
-				TransportSchema:    transport.Fields,
-				// Siehe die Feld-Kommentare: null, nicht [].
-				Channels:            nil,
-				Writes:              nil,
-				RatedKw:             rated,
-				ControlTier:         b.ControlTierOf(m),
-				CertificationStatus: TemplateCertBuiltin,
-				Note:                templateNote(b, m),
-			})
 		}
 	}
 	return out
+}
+
+// BuiltinTemplateRefWeg is the key of a built-in template on a way that is
+// not the model's default: `builtin:<marke>:<modell>:<communication>`. The
+// control certification stays keyed on brand+model - it is the same device.
+func BuiltinTemplateRefWeg(brand, model, communication string) string {
+	return BuiltinTemplateRef(brand, model) + ":" + strings.TrimSpace(communication)
+}
+
+// builtinTemplate is the template of one model on one way.
+func builtinTemplate(b Brand, m Model, transport Transport, ref string) Template {
+	note := templateNote(b, m)
+	schema := transport.Fields
+	if ref != BuiltinTemplateRef(b.ID, m.ID) {
+		// A way of its own says what it needs (the stick's Modbus TCP switched on)
+		// and names itself in the form: the connection carries `transport`, so the
+		// connection test, the stored connection and the push all choose this way
+		// instead of the model's default (Brand.resolveTransport).
+		note = joinNote(note, transport.Note)
+		schema = append([]Field{{Key: "transport", Label: "Verbindungsweg", Type: "select",
+			Default: transport.Communication, Options: []Opt{{Value: transport.Communication, Label: transport.Label}},
+			Help: "Der Weg dieser Vorlage; für den anderen Weg die andere Vorlage desselben Modells wählen."}},
+			transport.Fields...)
+	}
+	family := familyFor(m, transport)
+	famLabel := ""
+	if f, ok := b.family(family); ok {
+		famLabel = f.Label
+	}
+	var rated *float64
+	if m.RatedKw > 0 {
+		v := m.RatedKw
+		rated = &v
+	}
+	superseded := ""
+	if b.Hidden && b.SupersededBy != "" {
+		superseded = BuiltinTemplateRef(b.SupersededBy, m.ID)
+	}
+	return Template{
+		TemplateRef:        ref,
+		Kind:               TemplateKindBuiltin,
+		Version:            1,
+		Brand:              b.ID,
+		BrandLabel:         b.Label,
+		Model:              m.ID,
+		ModelLabel:         m.Label,
+		ModelAliases:       m.Aliases,
+		DeviceType:         b.DeviceTypeOf(m),
+		SupersededBy:       superseded,
+		Family:             family,
+		FamilyLabel:        famLabel,
+		Communication:      transport.Communication,
+		CommunicationLabel: transport.Label,
+		TransportSchema:    schema,
+		// Siehe die Feld-Kommentare: null, nicht [].
+		Channels:            nil,
+		Writes:              nil,
+		RatedKw:             rated,
+		ControlTier:         b.ControlTierOf(m),
+		CertificationStatus: TemplateCertBuiltin,
+		Note:                note,
+	}
 }
 
 // joinNote setzt Marken- und Modell-Hinweis zu EINEM Anzeigetext zusammen, ohne

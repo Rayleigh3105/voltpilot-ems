@@ -149,7 +149,7 @@ func (a *Agent) currentFamily() string {
 // the go-e consumer never get a calibration write.
 func calibrationControllable(sel inverter.Selection) bool {
 	switch sel.Communication {
-	case inverter.CommSolarmanV5, inverter.CommModbusTCP:
+	case inverter.CommSolarmanV5, inverter.CommDeyeModbusTCP, inverter.CommModbusTCP:
 		return true
 	}
 	return false

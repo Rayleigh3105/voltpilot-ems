@@ -13,7 +13,9 @@ package direktvermarkter
 // as not-yet-advertised, means editing Java and TS files, and this Stage 1
 // PR is the box-side interface only (Firstmate decision 25.11.2026, Option
 // A for the conflict with "out of scope: ... anything in the cloud or
-// portal"). Stage 2/4 adds this constant to cloud.BuiltSupports() together
-// with the matching contract/Java/TS entries, when the heartbeat actually
-// has something true to say.
+// portal"). Stage 4 (PFC200) wired the interface and the Koppelbild wish but
+// still ships no heartbeat block - the delivery stage (vp-dv-zustellung)
+// adds the block and this constant to cloud.BuiltSupports() together with
+// the matching contract/Java/TS entries, when the heartbeat actually has
+// something true to say.
 const Capability = "direktvermarktung"

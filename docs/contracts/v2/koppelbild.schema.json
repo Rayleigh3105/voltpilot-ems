@@ -224,7 +224,8 @@
           "code": { "$ref": "#/$defs/wort" },
           "name": { "$ref": "#/$defs/name" },
           "einheit": { "type": "string", "minLength": 1 },
-          "bedeutung": { "type": "string", "minLength": 1 }
+          "bedeutung": { "type": "string", "minLength": 1 },
+          "ab_nebenversion": { "type": "integer", "minimum": 1, "maximum": 255 }
         }
       }
     },

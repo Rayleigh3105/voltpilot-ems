@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/deyedecode"
-	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/solarmanv5"
 )
 
 // A Deye behind its Solarman V5 logger as an ADDITIONAL source: the
@@ -17,7 +16,7 @@ import (
 // readDeyeSource is one read of a Deye source; requests is the number of
 // blocks asked.
 func (r *Runtime) readDeyeSource(ctx context.Context, p *solarmanPlan) (*deyedecode.Result, int, error) {
-	sess, err := solarmanv5.Dial(ctx, r.opts.Dialer, p.Addr, p.Serial, p.Slave, r.opts.ConnectTimeout, r.opts.ReadTimeout)
+	sess, err := r.deyeVerbinde(ctx, p)
 	if err != nil {
 		return nil, 0, err
 	}

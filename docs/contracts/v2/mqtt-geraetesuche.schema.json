@@ -50,7 +50,7 @@
       }
     },
     "erkenner": {
-      "enum": ["solarman", "shelly", "goe", "netztechnik", "modbus_offen", "sunspec", "fronius_solar_api", "kaco_aiswei", "kostal", "huawei", "sma", "victron", "opendtu_ahoy", "ebyte", "wago", "mdns", "ssdp", "funkmodul"],
+      "enum": ["solarman", "shelly", "goe", "netztechnik", "modbus_offen", "sunspec", "fronius_solar_api", "kaco_aiswei", "kostal", "huawei", "sma", "victron", "opendtu_ahoy", "ebyte", "wago", "deye_logger", "mdns", "ssdp", "funkmodul"],
       "description": "Das geschlossene Vokabular der Erkenner (Tabelle erkennungskatalog und wege in geraetesuche-vectors.json). mdns, ssdp und funkmodul sind Wege, keine Fund-Erzeuger, und laufen nur auf Edge Light."
     },
     "uuid": {

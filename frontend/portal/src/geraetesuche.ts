@@ -38,7 +38,7 @@ export type GeraetesucheGrund = (typeof GERAETESUCHE_GRUENDE)[keyof typeof GERAE
 
 export const GERAETESUCHE_ERKENNER = [
   'solarman', 'shelly', 'goe', 'netztechnik', 'modbus_offen', 'sunspec', 'fronius_solar_api', 'kaco_aiswei',
-  'kostal', 'huawei', 'sma', 'victron', 'opendtu_ahoy', 'ebyte', 'wago', 'mdns', 'ssdp', 'funkmodul',
+  'kostal', 'huawei', 'sma', 'victron', 'opendtu_ahoy', 'ebyte', 'wago', 'deye_logger', 'mdns', 'ssdp', 'funkmodul',
 ] as const;
 export type GeraetesucheErkenner = (typeof GERAETESUCHE_ERKENNER)[number];
 

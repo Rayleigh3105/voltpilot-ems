@@ -45,9 +45,18 @@ func TestBuiltinTemplatesCoverEveryCatalogModel(t *testing.T) {
 	cat := DefaultCatalog()
 	tpl := BuiltinTemplates()
 
+	// Every model once on its default way, plus one row per further way that
+	// has a template of its own (EigeneVorlage: the Deye over Modbus TCP).
 	want := 0
 	for _, b := range cat.Brands {
-		want += len(b.Models)
+		for _, m := range b.Models {
+			want++
+			for _, comm := range b.TransportsFor(m)[1:] {
+				if tr, ok := b.transport(comm); ok && tr.EigeneVorlage {
+					want++
+				}
+			}
+		}
 	}
 	if len(tpl) != want {
 		t.Fatalf("Vorlagen %d, Katalog-Modelle %d", len(tpl), want)
@@ -67,6 +76,37 @@ func TestBuiltinTemplatesCoverEveryCatalogModel(t *testing.T) {
 				t.Fatalf("Modell %s/%s fehlt im Export", b.ID, m.ID)
 			}
 		}
+	}
+}
+
+// The Deye over its stick's Modbus TCP is a template of its own next to the
+// Solarman one: the same brand+model (the same control certification), the
+// same family, its own communication and form - and no logger serial.
+func TestDeyeModbusTCPHatEigeneVorlage(t *testing.T) {
+	sol := findRef(t, "builtin:deye:sun-10k-sg04lp3")
+	mb := findRef(t, "builtin:deye:sun-10k-sg04lp3:deye_modbus_tcp")
+	if sol.Communication != CommSolarmanV5 || mb.Communication != CommDeyeModbusTCP || mb.Brand != sol.Brand ||
+		mb.Model != sol.Model || mb.Family != sol.Family || mb.ControlTier != sol.ControlTier || mb.SupersededBy != "" {
+		t.Fatalf("solarman %+v\nmodbus %+v", sol, mb)
+	}
+	keys := map[string]bool{}
+	for _, f := range mb.TransportSchema {
+		keys[f.Key] = true
+	}
+	if !keys["ip"] || !keys["port"] || !keys["unit_id"] || !keys["remote_mode"] || keys["serial"] || keys["mb_slave_id"] {
+		t.Fatalf("form: %v", keys)
+	}
+	// The form names its way: the connection test and the push choose it.
+	if w := mb.TransportSchema[0]; w.Key != "transport" || w.Default != CommDeyeModbusTCP || len(w.Options) != 1 {
+		t.Fatalf("way field: %+v", w)
+	}
+	for _, f := range sol.TransportSchema {
+		if f.Key == "transport" {
+			t.Fatal("the Solarman template stays without a way field")
+		}
+	}
+	if !strings.Contains(mb.Note, "Modbus TCP") || strings.Contains(sol.Note, "Modbus TCP in der Weboberfläche") {
+		t.Fatalf("notes: %q / %q", mb.Note, sol.Note)
 	}
 }
 

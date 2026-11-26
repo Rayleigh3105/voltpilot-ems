@@ -25,6 +25,18 @@ am echten Kundengerät (Abschnitt 4).
 | Port | **502** (Werk) |
 | Unit-ID | **0** bei direkter Verbindung (WLAN/LAN), oft **1** hinter einem Smart Dongle |
 | Wort-Reihenfolge (32-Bit-Register) | **immer Big-Endian, High-Word zuerst** - am Gerät nicht umschaltbar, anders als bei KOSTAL gibt es kein Byte-Order-Register |
+| Wartezeit nach dem Verbinden | **1 s** vor der ersten Anfrage (Leser, Verbindungstest und Gerätesuche, Docker-Box und Edge Light) |
+
+**Wartezeit nach dem Verbinden:** Der Smart Dongle einer Feldanlage
+(SUN2000-3KTL-M1, Software V100R001C00SPC153) lässt eine Anfrage, die gleich
+nach dem Verbindungsaufbau kommt, unbeantwortet. Gemessen am 25.11.2026 über
+den Wartungstunnel, Modell-Register 30000 je Pause dreimal: sofort 0 von 3
+beantwortet, nach 0,3 s und 0,5 s je 1 von 3, nach 0,7 s, 1 s und 1,5 s je 3
+von 3. Deshalb fragen der Leser (`makeHuaweiReader`, `connectPauseMs`; Go:
+`layer1.Options.HuaweiConnectPause`) und der Huawei-Erkenner der Gerätesuche
+(`suche.Takt.HuaweiRuhe`) erst 1 s nach dem Verbinden. Ein Mehrregister-Feld
+beantwortet der Dongle nur ganz; ein Teil davon (30000 mit 8 statt 15
+Registern) endet mit Ausnahme 02.
 
 **Voraussetzung am Gerät:** Modbus TCP muss über ein **Installateur-Konto**
 freigeschaltet werden - ohne diese Freischaltung antwortet das Gerät gar

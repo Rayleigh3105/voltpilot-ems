@@ -74,7 +74,7 @@ class WerkstattDienstVertragTest {
         Instant t = Instant.parse("2026-11-02T10:00:00Z");
         FreigabeRepository.Freigabe f = new FreigabeRepository.Freigabe(UUID.randomUUID(), "2026-11-pfc200-1", "pfc200",
                 t, t.plusSeconds(86400), 5, null,
-                new FreigabeRepository.Programm("edge-industrie-2026.11.0", "https://x.example/", sha, sha, sha),
+                new FreigabeRepository.Programm("edge-industrie-2026.11.0", "https://x.example/", sha, sha, sha, sha),
                 "notiz", t, "sub", "Admin", t.plusSeconds(60), "sub", "Admin", FreigabeRepository.REGEL, 42L);
         ObjectMapper m = new ObjectMapper().registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
