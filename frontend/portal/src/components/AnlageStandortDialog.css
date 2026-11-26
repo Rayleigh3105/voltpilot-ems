@@ -1,7 +1,7 @@
 /*
- * „Anlage zuordnen“ (UEMS AP-02 IP-11, Mockup T6b). Die Schale ist `vp-sd` aus dem
- * Standort-Dialog, Kopf und Verlauf die aus „Fläche ändern“; hier die Folgen-Karte mit
- * ihren zwei Teilen „Das ändert sich“ · „Das bleibt, wie es ist“.
+ * „Gehört zu" (UEMS AP-02 IP-11, vormals Mockup T6b „Anlage zuordnen"). Die Schale ist `vp-sd`
+ * aus dem Standort-Dialog, Kopf und Verlauf die aus „Fläche ändern"; die volle Folgen-Karte
+ * („Das ändert sich" / „Das bleibt, wie es ist") steht erst hinter „Alle Folgen".
  * ⚠ 375 px: jeder Satz bricht um, nie über den Rand (`min-width: 0`, `overflow-wrap`).
  */
 
@@ -123,4 +123,152 @@
 
 .vp-au-archiv p {
   margin: 0;
+}
+
+/* vp-standort-konzept §6.3/§6.5: "Seit wann?" ersetzt die beiden früheren Einstiege. */
+.vp-au-seitwann {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.vp-au-seitwann legend {
+  padding: 0 0 var(--vp-c-space-1, 4px);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-au-seitwann-wahl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-au-seitwann-option {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  cursor: pointer;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Schritt 2c (Captain-Korrektur): zwei Schritte statt eines einseitigen Formulars.
+ * „Zu welchem Standort?" / „Seit wann?" als Fragen über der jeweiligen Wahl; die Liste
+ * der Standorte als volle Karten (kein Dropdown, kein Blatt-im-Blatt, Muster wie
+ * `.vp-sa-karte` in `SteuerartDialog.css`).
+ */
+.vp-au-frage {
+  margin: 0;
+  font-size: var(--vp-c-fs-16, 1rem);
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+
+.vp-au-frage-sub {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-au-opts {
+  display: grid;
+  gap: var(--vp-c-space-2, 8px);
+}
+
+.vp-au-opt {
+  display: flex;
+  gap: var(--vp-c-space-2, 8px);
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #d9dde3);
+  border-radius: var(--vp-c-radius-sm);
+  background: #fff;
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 0;
+}
+
+.vp-au-opt:hover {
+  border-color: var(--vp-c-primary);
+}
+
+.vp-au-opt.is-gewaehlt {
+  border-color: var(--vp-c-primary);
+  box-shadow: 0 0 0 1px var(--vp-c-primary) inset;
+}
+
+.vp-au-opt > input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.vp-au-opt-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-au-opt-text > small {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-au-neuer-standort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-c-space-2, 6px);
+  margin: 0;
+  padding: var(--vp-c-space-2, 6px) 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-600);
+  cursor: pointer;
+}
+
+.vp-au-zurueck {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-right: var(--vp-c-space-2, 8px);
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.vp-au-folgen-kurz {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2, 8px);
+}
+
+.vp-au-folgen-kurz ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1, 4px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-au-folgen-kurz li {
+  overflow-wrap: anywhere;
+}
+
+.vp-au-folgen-links {
+  display: flex;
+  gap: var(--vp-c-space-4, 16px);
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.vp-au-details {
+  min-width: 0;
 }

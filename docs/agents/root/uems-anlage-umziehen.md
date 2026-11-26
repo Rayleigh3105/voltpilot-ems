@@ -11,8 +11,11 @@ eine Aussage über Zugehörigkeit, kein Eingriff in den Betrieb: geschrieben wer
 | Neue Ablehnungs-Codes | `OrtAbgelehnt`: `vor_dem_ersten_intervall` 422, `objekt_archiviert` 409, `gleicher_tag` 409, `ziel_ist_bisheriger_eltern` 400 |
 | Sätze im Änderungsprotokoll | `AenderungSatz.verschoben`; Begründung = `neu.begruendung`, im Lesemodell `grund` (Orts-Zweig) |
 | Portal (rein) | `frontend/portal/src/anlageUmziehen.ts` · `anlageUmziehen.test.ts` |
-| Dialog T6b + Einstieg an der Zeile „Standort“ | `components/AnlageStandortDialog.tsx` (+ `.css`, `.test.tsx`) · `components/AnlageStandortZeile.tsx` |
-| 375/1440 px + Bilder | `e2e/anlage-umziehen.spec.ts` (Bühne `meine-anlage.html`); `UMZUG_BILDER=<Ordner>`, `ANSICHT_VARIANTE=b` |
+| Dialog „Gehört zu › Ändern“ (vormals T6b „Anlage zuordnen“) | `components/AnlageStandortDialog.tsx` (+ `.css`, `.test.tsx`) |
+| Einstieg „Gehört zu: … · Ändern“ (unvollständiger Standort) | `components/AnlageStandortZeile.tsx` |
+| Einstieg „Gehört zu: … · Ändern“ (vollständiger Standort, oben im Blatt „Ort berichtigen“) | `components/AnlageOrtBlatt.tsx` |
+| Geführter Einstieg „Zuordnung korrigieren“ (AP-14 IP-15, Portfolio-Übersicht) | `components/EbenenCockpit.tsx` (`anfangsSeitWann="schon_immer"`) |
+| 375/1440 px + Bilder | `e2e/anlage-umziehen.spec.ts` (Bühne `meine-anlage.html`), `e2e/zuordnung-korrigieren.spec.ts`; `UMZUG_BILDER=<Ordner>`, `ANSICHT_VARIANTE=b` |
 | Vertrag | `docs/contracts/openapi.yaml` (`AnlageUmzug*`, `OrtFehler`), geprüft in `OrtSchnittstelleVertragTest` |
 | Übersicht nach dem Umzug (AP-01 IP-6) | `frontend/portal/src/uebersichtNachUmzug.test.ts` gegen `uebersicht.ts` (`standortGruppen`, `kopfzeile`) |
 
@@ -45,19 +48,41 @@ eine Aussage über Zugehörigkeit, kein Eingriff in den Betrieb: geschrieben wer
    die MENGE der aktiven Teilnahmen: nach dem Umzug steht jede Anlage genau einmal beim neuen Standort, „steuert“
    zieht mit, die Kopfzeile zählt nicht doppelt — aber die Zeile „Steuern & Optimieren“ des NEUEN Standorts
    sagt „Noch nicht eingerichtet“, während seine Gruppe „1 steuert“ zählt (`uebersichtNachUmzug.test.ts`).
-6. **Keine Korrektur:** `gleicher_tag` sagt „Ändern Sie diese, statt eine zweite anzulegen“ — der Vertrag kennt
-   `vorgang: korrektur`, die Route noch nicht. Ausweg heute: ein anderes Datum.
-7. **Zeile „Standort“:** der Knopf „Anderem Standort zuordnen“ steht nur, wenn es ein Objekt gibt (ohne Objekt
-   bleibt „Meine Anlage“ byte-identisch, IP-8-Snapshots). Endet die heutige Zuordnung, liest die Zeile
-   `GET /standorte?stichtag=<Ende+1>` und sagt „bis 28.02.2027 · ab 01.03.2027: Werk Ahrenberg Nord (ST-3)“ —
-   ohne Ende kein zweiter Aufruf.
-8. **Rechte:** `anlage.zuordnen`, mit „gültig ab“ vor heute zusätzlich `aenderung.rueckwirkend` — Kommentar,
+6. **B2 behoben (Schritt 1, PR #2029):** die Route lernte `vorgang: korrektur` (`AnlageUmzugDto.Anfrage.korrektur`,
+   `AnlageUmzugService.planen`/`vorschau`); eine Korrektur ersetzt die laufende Zuordnung AB IHREM EIGENEN
+   BEGINN statt einen zweiten Eintrag danebenzulegen — sonst lehnt der Server mit `gleicher_tag` ab.
+   `umzugAnfrage(form, korrektur)` sendet `korrektur: true` nur, wenn `korrektur` wahr ist.
+7. **Schritt 2c (vp-standort-konzept §6.3/§6.5, B2/B4):** „Anderem Standort zuordnen“ und „Zuordnung
+   korrigieren“ sind EIN Knopf „Ändern“ hinter „Gehört zu: {Standort} ({Kurzzeichen}) · {n} Anlagen“ geworden
+   (`gehoertZuText`, `anlageStandort.ts`) — nur ab ZWEI Standorten gezeigt (`mehrereStandorte`,
+   `anlageOrtBerichtigen.ts`); mit nur einem gibt es nichts umzuhängen. Er öffnet das Blatt „Gehört zu“
+   (`GEHOERT_ZU_TITEL`) in ZWEI Schritten (`AnlageStandortDialog`'s `schritt`-State, Captain-Korrektur zum
+   ersten Entwurf - der war noch ein einseitiges Formular):
+   1. „Zu welchem Standort gehört {Anlage}?“ (`zuWelchemStandortFrage`) - die VOLLE Liste aller Standorte
+      als Karten (`.vp-au-opt`, Muster wie `.vp-sa-karte` in `SteuerartDialog.css`; kein Dropdown, kein
+      Blatt-im-Blatt), der heutige trägt „Heute zugeordnet“; am Fuß „Neuer Standort“ - derselbe
+      `StandortDialog` wie am Standort-Kopf (IP-6, B4 behoben), wählt die neue ID direkt und ruft
+      `onStandorteNeuLaden`. Knopf „Weiter“ validiert nur den Standort (`pruefeStandort`).
+   2. „Seit wann gehört {Anlage} zu {Ziel}?“ (`seitWannFrage`) - „Ab einem Tag“ (Datum darunter, vorbelegt
+      mit heute) oder „Schon immer (war falsch)“ (`SeitWann`, Regel 5: kein sichtbares Datum, intern der
+      erste Anlagentag, `gueltigAbVorgabe`, PFLICHT-Prop). Darunter drei kurze Sätze aus der
+      Vorschau (`kurzeFolgen`: erster und letzter Satz von `FolgenKarte.aendert` plus `befehl`) statt der
+      vollen Karte; „Alle Folgen“ klappt sie auf (`FolgenKarteAnsicht`, unveränderte Zwei-Teile-Form),
+      „Details“ zeigt erst dort die Begründung. Ein `icon`-Pfeil im Modal-Kopf (`vp-au-zurueck`) führt
+      zurück zu Schritt 1, die Wahl bleibt erhalten. Knopf „Speichern“ (vormals „Zuordnen“).
+   Ein Server-Fehler am Feld `standortId` (z. B. `ziel_ist_bisheriger_eltern`) hat auf Schritt 2 kein
+   eigenes Feld mehr - er steht allgemein, nicht an einem gerade unsichtbaren Feld. Der geführte Einstieg
+   „Zuordnung korrigieren“ (Portfolio-Übersicht, `EbenenCockpit.tsx`) bleibt eigenständig, startet aber
+   wie jeder andere Einstieg auf Schritt 1 und trägt nur `anfangsSeitWann="schon_immer"` für Schritt 2 vor.
+8. **Zeile „Standort“:** endet die heutige Zuordnung, liest die Zeile `GET /standorte?stichtag=<Ende+1>` und
+   sagt „bis 28.02.2027 · ab 01.03.2027: Werk Ahrenberg Nord (ST-3)“ — ohne Ende kein zweiter Aufruf.
+9. **Rechte:** `anlage.zuordnen`, mit „gültig ab“ vor heute zusätzlich `aenderung.rueckwirkend` — Kommentar,
    keine Durchsetzung (AP-03).
 
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='AnlageUmzugApiTest,OrtSchnittstelleVertragTest,AenderungSatzTest,RechteKennungenDerRoutenTest')
-(cd frontend/portal && npx vitest run src/anlageUmziehen.test.ts src/components/AnlageStandortDialog.test.tsx src/pages/AnlageTechnik.standort.test.tsx src/copy.test.ts)
-(cd frontend/portal && npx playwright test e2e/anlage-umziehen.spec.ts --project=desktop-chromium)
+(cd frontend/portal && npx vitest run src/anlageUmziehen.test.ts src/anlageStandort.test.ts src/components/AnlageStandortDialog.test.tsx src/components/Uebersicht.test.tsx src/pages/AnlageTechnik.standort.test.tsx src/copy.test.ts src/migration.test.ts)
+(cd frontend/portal && npx playwright test e2e/anlage-umziehen.spec.ts e2e/zuordnung-korrigieren.spec.ts --project=desktop-chromium)
 ```

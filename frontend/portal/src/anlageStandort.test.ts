@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  gehoertZuText,
   koordinatenLabel,
   standortDerAnlage,
   standortWaehlenSatz,
@@ -40,6 +41,20 @@ describe('Meine Anlage · die Zeile „Standort“ (AP-02 IP-8, T6a, W4)', () =>
   it('ein Standort, den es am Stichtag nicht gab, ist kein Standort der Anlage', () => {
     const antwort = { ...ahrenbergHeute(), standorte: [werkAhrenberg({ bestand: 'gab_es_noch_nicht' })] };
     expect(standortDerAnlage(antwort, FIXTURE_IDS.an2)).toBeNull();
+  });
+});
+
+describe('gehoertZuText (vp-standort-konzept §6.2/§6.5)', () => {
+  it('nennt Name, Kurzzeichen und die Anzahl der Anlagen — mit Plural', () => {
+    expect(gehoertZuText(werkAhrenberg({ anlagenZahl: 2 }))).toBe('Gehört zu: Werk Ahrenberg (ST-1) · 2 Anlagen');
+  });
+
+  it('eine einzige Anlage steht im Singular', () => {
+    expect(gehoertZuText(werkAhrenberg({ anlagenZahl: 1 }))).toBe('Gehört zu: Werk Ahrenberg (ST-1) · 1 Anlage');
+  });
+
+  it('ohne gezählte Anzahl zählt die Liste der Anlagen', () => {
+    expect(gehoertZuText(werkAhrenberg({ anlagenZahl: null }))).toBe('Gehört zu: Werk Ahrenberg (ST-1) · 2 Anlagen');
   });
 });
 

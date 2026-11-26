@@ -126,7 +126,7 @@ async function messe(page: Page, breite: number) {
       .filter(({ r }) => r.width > 0 && (r.right > b + 0.5 || r.left < -0.5))
       .map(({ el }) => `${el.tagName.toLowerCase()}.${String((el as HTMLElement).className)}`);
     const koerper = [...document.querySelectorAll('.vp-modal .dbody')] as HTMLElement[];
-    const folgen = document.querySelector('[data-testid="umzug-folgen"]') as HTMLElement | null;
+    const folgen = document.querySelector('[data-testid="umzug-folgen-kurz"]') as HTMLElement | null;
     const bleibt = document.querySelector('.vp-au-folgen .vp-au-teil:has(.vp-au-bleibt)') as HTMLElement | null;
     return {
       seite: document.documentElement.scrollWidth - window.innerWidth,
@@ -195,29 +195,33 @@ test.describe('T6b · Anlage zuordnen mit Folgen-Karte (AP-02 IP-11)', () => {
         await messeUndFotografiere(page, breite, 't6a-zeile', karte);
       }
 
-      // Captain-Korrektur (§6.5): „Anderem Standort zuordnen" steht bis Schritt 2c im Blatt
-      // „Ort berichtigen" unter „Details", nicht mehr an der Zeile.
+      // Schritt 2c (§6.2/§6.5): „Gehört zu: … · Ändern" steht oben im Blatt „Ort berichtigen",
+      // vor der Karte - es ersetzt „Anderem Standort zuordnen"/„Zuordnung korrigieren" von heute.
       await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
       const blatt = page.getByRole('dialog', { name: 'Standort' });
-      await blatt.getByRole('button', { name: 'Details' }).click();
-      const knopf = blatt.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Ahrenberg – Halle 2' });
+      const knopf = blatt.getByRole('button', { name: 'Ändern: Werk Ahrenberg – Halle 2' });
       await expect(knopf).toBeVisible();
       await knopf.click();
       const dialog = page.locator('.vp-modal').last();
-      await expect(dialog.getByRole('heading', { name: 'Anlage zuordnen' })).toBeVisible();
-      await dialog.getByRole('combobox', { name: 'Neuer Standort *' }).click();
-      await page.getByRole('option', { name: /Werk Ahrenberg Nord \(ST-3\)/ }).click();
-      await dialog.getByRole('combobox', { name: 'Gültig ab *' }).click();
+      // Captain-Korrektur zu PR 2041: zwei Schritte wie im Prototyp statt eines einseitigen Formulars -
+      // erst die volle Liste der Standorte („Zu welchem Standort?“), dann „Seit wann?“.
+      await expect(dialog.getByRole('heading', { name: 'Gehört zu' })).toBeVisible();
+      await dialog.getByRole('radio', { name: /Werk Ahrenberg Nord \(ST-3\)/ }).click();
+      await dialog.getByRole('button', { name: 'Weiter' }).click();
+      await expect(dialog.getByText('Seit wann gehört Werk Ahrenberg – Halle 2 zu Werk Ahrenberg Nord?')).toBeVisible();
+      await dialog.getByRole('combobox', { name: 'Gültig ab' }).click();
       await page.getByRole('button', { name: 'Nächster Monat' }).click();
       await page.getByRole('gridcell', { name: '1', exact: true }).first().click();
 
-      const folgen = dialog.getByTestId('umzug-folgen');
+      const folgen = dialog.getByTestId('umzug-folgen-kurz');
       await expect(folgen.getByText('Ab 01.03.2027 gehört die Anlage zu Werk Ahrenberg Nord (ST-3).')).toBeVisible();
       await expect(folgen.getByText('Geplant: bis dahin ändert sich nichts.')).toBeVisible();
       await expect(folgen.getByText('Es wird kein Befehl an die Anlage gesendet.')).toBeVisible();
       // AP-12 IP-9: eine geplante Zuordnung trifft keinen freigegebenen Berichtsstand.
       const berichte = folgen.getByTestId('berichte-folgen');
       await expect(berichte).toHaveText('Freigegebene Berichte: keine betroffen');
+      // „Begründung“ steht nur unter „Details“ (Captain-Korrektur).
+      await dialog.getByRole('button', { name: 'Details' }).click();
       await dialog.getByLabel('Begründung (freiwillig)').fill(BEGRUENDUNG);
       if (VARIANTE === 'b') {
         await sammelsatz(page);
@@ -227,7 +231,7 @@ test.describe('T6b · Anlage zuordnen mit Folgen-Karte (AP-02 IP-11)', () => {
       await berichte.scrollIntoViewIfNeeded();
       await messeUndFotografiere(page, breite, 't6b-folgen', dialog);
 
-      await dialog.getByRole('button', { name: 'Zuordnen', exact: true }).click();
+      await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
       await expect(dialog.getByText('Zuordnung gespeichert')).toBeVisible();
       await expect(dialog.getByText('Werk Ahrenberg – Halle 2 gehört ab 01.03.2027 zu Werk Ahrenberg Nord (ST-3).')).toBeVisible();
       expect(gesendet).toEqual([{ standortId: NORD, gueltigAb: '2027-03-01', begruendung: BEGRUENDUNG }]);
@@ -248,17 +252,16 @@ test.describe('T6b · Anlage zuordnen mit Folgen-Karte (AP-02 IP-11)', () => {
     if (await aufklappen.count()) await aufklappen.first().click();
     await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
     const blatt = page.getByRole('dialog', { name: 'Standort' });
-    await blatt.getByRole('button', { name: 'Details' }).click();
-    await blatt.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Ahrenberg – Halle 2' }).click();
+    await blatt.getByRole('button', { name: 'Ändern: Werk Ahrenberg – Halle 2' }).click();
     const dialog = page.locator('.vp-modal').last();
-    await expect(dialog.getByRole('heading', { name: 'Anlage zuordnen' })).toBeVisible();
-    await dialog.getByRole('combobox', { name: 'Neuer Standort *' }).click();
-    await page.getByRole('option', { name: /Werk Ahrenberg Nord \(ST-3\)/ }).click();
-    await dialog.getByRole('combobox', { name: 'Gültig ab *' }).click();
+    await expect(dialog.getByRole('heading', { name: 'Gehört zu' })).toBeVisible();
+    await dialog.getByRole('radio', { name: /Werk Ahrenberg Nord \(ST-3\)/ }).click();
+    await dialog.getByRole('button', { name: 'Weiter' }).click();
+    await dialog.getByRole('combobox', { name: 'Gültig ab' }).click();
     for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Voriger Monat' }).click();
     await page.getByRole('gridcell', { name: '1', exact: true }).first().click();
 
-    const folgen = dialog.getByTestId('umzug-folgen');
+    const folgen = dialog.getByTestId('umzug-folgen-kurz');
     await expect(folgen).toContainText('01.12.2026');
     const berichte = folgen.getByTestId('berichte-folgen');
     await expect(berichte).toHaveText('Freigegebene Berichte: BR-2026-0001 Nr. 2 bekommt den Vermerk „Revision nötig“');

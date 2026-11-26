@@ -55,7 +55,7 @@ describe('Folgen-Karte (T6b, A11)', () => {
       expect(k.bleibt.filter((s) => ding.test(s)), String(ding)).toHaveLength(1);
     }
     expect(k.bleibt).toEqual([
-      'Die VoltPilot-Box bleibt mit der Anlage verbunden — nichts wird neu eingerichtet.',
+      'Die VoltPilot-Box bleibt mit der Anlage verbunden. Nichts wird neu eingerichtet.',
       'Die Datenwege bleiben gleich: Messwerte kommen weiter auf demselben Weg an.',
       'Die Freigaben zum Steuern bleiben, wie sie sind.',
       'Das Betriebsmodell und Ihre Regeln bleiben, wie sie sind.',
@@ -99,13 +99,13 @@ describe('Folgen-Karte (T6b, A11)', () => {
     const ohne = folgenKarte(a11({ bleibt: ['topics', 'freigaben', 'betriebsmodell', 'fahrplaene', 'messstellen'], boxen: 0, netzanschluss: null }));
     expect(ohne.bleibt.join(' ')).not.toMatch(/VoltPilot-Box|Ladepark|Netzanschluss/);
     expect(folgenKarte(a11({ boxen: 2 })).bleibt[0]).toBe(
-      'Die 2 VoltPilot-Boxen bleiben mit der Anlage verbunden — nichts wird neu eingerichtet.',
+      'Die 2 VoltPilot-Boxen bleiben mit der Anlage verbunden. Nichts wird neu eingerichtet.',
     );
   });
 
   it('die Teilnahme an „Steuern & Optimieren“ bleibt — und sagt, wo sie geführt wird', () => {
     expect(folgenKarte(a11({ steuern: { funktion: 'steuern', zustand: 'aktiv', standort: ST1 } })).bleibt.at(-1)).toBe(
-      'Die Teilnahme an „Steuern & Optimieren“ bleibt, wie sie ist — geführt wird sie weiter bei Werk Ahrenberg (ST-1).',
+      'Die Teilnahme an „Steuern & Optimieren“ bleibt, wie sie ist. Geführt wird sie weiter bei Werk Ahrenberg (ST-1).',
     );
     expect(folgenKarte(a11({ steuern: { funktion: 'steuern', zustand: 'aktiv', standort: ST3 } })).bleibt.at(-1)).toBe(
       'Die Teilnahme an „Steuern & Optimieren“ bleibt, wie sie ist.',
@@ -126,9 +126,9 @@ describe('Folgen-Karte (T6b, A11)', () => {
 });
 
 describe('Form, Anfrage, Ablehnung', () => {
-  it('öffnet ohne Wahl mit heute; fehlende Wahl und zu lange Begründung sind Fehler', () => {
+  it('öffnet ohne Wahl mit heute und „Ab einem Tag“; fehlende Wahl und zu lange Begründung sind Fehler', () => {
     const f = umzugStart('2027-02-20');
-    expect(f).toEqual({ standortId: null, gueltigAb: '2027-02-20', begruendung: '' });
+    expect(f).toEqual({ standortId: null, gueltigAb: '2027-02-20', begruendung: '', seitWann: 'ab_einem_tag' });
     expect(pruefeUmzug(f)).toEqual({ standortId: 'Bitte wählen Sie den Standort, zu dem die Anlage gehören soll.' });
     expect(umzugAnfrage(f)).toBeNull();
     expect(pruefeUmzug({ ...f, standortId: ST3.id, begruendung: 'x'.repeat(501) }).begruendung).toBe(
@@ -136,23 +136,21 @@ describe('Form, Anfrage, Ablehnung', () => {
     );
   });
 
-  it('öffnet die geführte Korrektur mit dem ersten Tag der Anlage statt mit heute', () => {
-    expect(umzugStart('2026-11-20', '2026-10-15')).toEqual({
-      standortId: null,
-      gueltigAb: '2026-10-15',
-      begruendung: '',
-    });
-  });
-
-  it('sendet die Begründung getrimmt — und eine leere gar nicht', () => {
-    expect(umzugAnfrage({ standortId: ST3.id, gueltigAb: '2027-03-01', begruendung: '   ' })).toEqual({
+  it('sendet die Begründung getrimmt — und eine leere gar nicht; „Schon immer“ wird zur Korrektur', () => {
+    const ab = { standortId: ST3.id, gueltigAb: '2027-03-01', begruendung: '   ', seitWann: 'ab_einem_tag' } as const;
+    expect(umzugAnfrage(ab)).toEqual({
       standortId: ST3.id,
       gueltigAb: '2027-03-01',
     });
-    expect(umzugAnfrage({ standortId: ST3.id, gueltigAb: '2027-03-01', begruendung: ' Halle 2 gehört zu Nord. ' })).toEqual({
+    expect(umzugAnfrage({ ...ab, begruendung: ' Halle 2 gehört zu Nord. ' })).toEqual({
       standortId: ST3.id,
       gueltigAb: '2027-03-01',
       begruendung: 'Halle 2 gehört zu Nord.',
+    });
+    expect(umzugAnfrage({ ...ab, seitWann: 'schon_immer' }, true)).toEqual({
+      standortId: ST3.id,
+      gueltigAb: '2027-03-01',
+      korrektur: true,
     });
   });
 
