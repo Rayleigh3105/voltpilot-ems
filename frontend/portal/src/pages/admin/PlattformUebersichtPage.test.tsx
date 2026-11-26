@@ -134,7 +134,7 @@ describe('PlattformUebersichtPage', () => {
     render(<PlattformUebersichtPage />);
     const kacheln = within(await screen.findByTestId('ueb-kacheln'));
     expect(kacheln.queryByText('Direktvermarktung')).toBeNull();
-    expect(await screen.findByTestId('ueb-direktvermarktung')).toHaveTextContent('1 Anlage · 1 verbunden');
+    expect(await screen.findByTestId('ueb-direktvermarktung')).toHaveTextContent('1 Anlage · Alle verbunden ✓');
     expect(direktvermarktungListe).toHaveBeenCalledTimes(1);
   });
 
