@@ -1849,6 +1849,43 @@ paths:
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
         "409": { $ref: "#/components/responses/OrtAbgelehnt" }
         "422": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/sites/{siteId}/ort:
+    put:
+      tags: [ortsstruktur]
+      summary: "\"Ort berichtigen\" (vp-standort-konzept §6.1): Adresse und Kartenpunkt in einem Zug (B1/B3/B6)."
+      description: >
+        EIN Schreibweg statt drei: schreibt Adresse und Lage des Standorts der Anlage, ihren
+        eigenen Kartenpunkt und - aus dem Land abgeleitet, B6 - die Gebotszone, in einer
+        Transaktion. Nie ein Datum (eine Korrektur, kein Umzug - dafür PUT .../standort). Die
+        Adresse setzt den Pin; der Client löst beides auf (Adresssuche setzt den Punkt, ein
+        gezogener Pin ändert nie die Adresse) und schickt immer den fertigen Punkt mit - der
+        Server sucht nie selbst nach einer Adresse. Hat der Standort mehrere Anlagen (§6.6): die
+        anderen ziehen nur mit, wenn ihr eigener Punkt noch genau auf dem alten Standortpunkt lag
+        (kein gezogener Pin wird überschrieben) - außer der neue Punkt liegt mehr als 2 km vom
+        alten entfernt, dann zieht JEDE Anlage des Standorts mit derselben Verschiebung mit. Jede
+        Anlage, deren Punkt sich ändert, bekommt ihre Steuerlogik-Bündel mit Sonnenbezug neu
+        gebaut und zugestellt (`boxZugestellt`); liegt ihr neuer Punkt mehr als 2 km vom alten
+        entfernt, wird zusätzlich das gespeicherte Wetter verworfen und 28 Tage am neuen Punkt
+        nachgeholt (`wetterNachholungAngestossen`, services/forecast). Abgelehnt mit dem Satz des
+        Vertrags wie jede Ortsstruktur-Route (fehlende Adresse, fehlender Punkt, falsches Land);
+        eine fremde Anlage ist 404. Rechte: vorläufig `anlage.verwalten` (das eigene Recht „Ort
+        berichtigen" nach E2 folgt).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnlageOrtAnfrage" }
+      responses:
+        "200":
+          description: Berichtigt - Anlage und Standort wie sie jetzt im Lesemodell stehen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnlageOrtErgebnis" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/sites/{siteId}/deletion-preview:
     get:
       tags: [sites]
@@ -32968,6 +33005,27 @@ components:
               id: { type: integer, format: int64 }
               objektArt: { type: string, enum: [anlage, standort] }
               objektId: { type: string, format: uuid }
+    AnlageOrtAnfrage:
+      type: object
+      additionalProperties: false
+      required: [adresse, lage]
+      description: >
+        "Ort berichtigen" (§6.1): die Adresse setzt den Pin - der Client schickt immer den
+        fertigen Punkt mit, nie nur die Adresse.
+      properties:
+        adresse: { $ref: "#/components/schemas/StandortAdresse" }
+        lage: { $ref: "#/components/schemas/StandortLage" }
+    AnlageOrtErgebnis:
+      type: object
+      properties:
+        site: { $ref: "#/components/schemas/Site" }
+        standort: { $ref: "#/components/schemas/StandortAmStichtag" }
+        boxZugestellt:
+          type: boolean
+          description: Die Steuerlogik-Bündel der Anlage wurden mit dem neuen Sonnenbezug neu gebaut und zugestellt.
+        wetterNachholungAngestossen:
+          type: boolean
+          description: Der neue Punkt lag mehr als 2 km vom alten entfernt - das Wetter der Anlage wird nachgeholt.
     OrtVerschiebenAnfrage:
       type: object
       additionalProperties: false

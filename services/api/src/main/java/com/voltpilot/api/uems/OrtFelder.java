@@ -83,6 +83,14 @@ public final class OrtFelder {
     }
 
     /**
+     * Die Gebotszone aus dem Land (B6): DE/LU teilen sich eine Zone, AT und CH sind je eine.
+     * Wie {@code zoneForCountry} im Portal (`anlageFlow.ts`) und bisher {@code SiteController.gebotszone}.
+     */
+    public static String gebotszoneFuerLand(String land) {
+        return "AT".equals(land) ? "AT" : "CH".equals(land) ? "CH" : "DE-LU";
+    }
+
+    /**
      * Eine Adresse in ihrer gespeicherten Form: jedes Feld ohne Randleerzeichen, leer ist
      * {@code null}; das Land aus dem Vokabular; eine PLZ nur mit Land und im Format je Land
      * (§5.10: „Die PLZ 84xxx passt nicht zu Österreich (vierstellig).").

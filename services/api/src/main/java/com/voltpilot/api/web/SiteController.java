@@ -289,7 +289,7 @@ public class SiteController {
 
     /** Die Gebotszone aus dem Land des Standorts (wie {@code zoneForCountry} im Portal). */
     static String gebotszone(String land) {
-        return "AT".equals(land) ? "AT" : "CH".equals(land) ? "CH" : "DE-LU";
+        return com.voltpilot.api.uems.OrtFelder.gebotszoneFuerLand(land);
     }
 
     /**
