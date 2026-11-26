@@ -103,7 +103,7 @@ public final class ComponentAdoption {
      */
     @FunctionalInterface
     public interface TemplateLookup {
-        Optional<ComponentTemplateDto> find(String brand, String model);
+        Optional<ComponentTemplateDto> find(String brand, String model, String communication);
     }
 
     /** Die Rollen, deren Geräteart eindeutig ist. */
@@ -172,7 +172,7 @@ public final class ComponentAdoption {
                         + ") lässt sich die Geräteart nicht eindeutig bestimmen.");
             }
             Optional<ComponentTemplateDto> template =
-                    templates.find(trim(row.edgeBrand()), trim(row.edgeModel()));
+                    templates.find(trim(row.edgeBrand()), trim(row.edgeModel()), link.communication());
             if (template.isEmpty()) {
                 return refuse(Verdict.UNKNOWN_DEVICE, "Ein gemeldetes Gerät (" + label(row)
                         + ") steht noch nicht in unserem Geräte-Verzeichnis.");
