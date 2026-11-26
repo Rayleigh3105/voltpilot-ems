@@ -48,20 +48,28 @@ public class DirektvermarktungService {
     private final TransactionTemplate tx;
     private final ObjectMapper json;
     private final Clock clock;
+    private final ZugangsdateiOeffner oeffner;
+    private final FingerabdruckEindeutigkeit eindeutigkeit;
+    private final AesGcmPartnerzugangSpeicher speicher;
 
     @Autowired
     public DirektvermarktungService(DirektvermarktungRepository repo, PartnerKatalog katalog, SiteRepository sites,
-            TransactionTemplate tx, ObjectMapper json) {
-        this(repo, katalog, sites, tx, json, Clock.systemUTC());
+            TransactionTemplate tx, ObjectMapper json, ZugangsdateiOeffner oeffner,
+            FingerabdruckEindeutigkeit eindeutigkeit, AesGcmPartnerzugangSpeicher speicher) {
+        this(repo, katalog, sites, tx, json, oeffner, eindeutigkeit, speicher, Clock.systemUTC());
     }
 
     DirektvermarktungService(DirektvermarktungRepository repo, PartnerKatalog katalog, SiteRepository sites,
-            TransactionTemplate tx, ObjectMapper json, Clock clock) {
+            TransactionTemplate tx, ObjectMapper json, ZugangsdateiOeffner oeffner,
+            FingerabdruckEindeutigkeit eindeutigkeit, AesGcmPartnerzugangSpeicher speicher, Clock clock) {
         this.repo = repo;
         this.katalog = katalog;
         this.sites = sites;
         this.tx = tx;
         this.json = json;
+        this.oeffner = oeffner;
+        this.eindeutigkeit = eindeutigkeit;
+        this.speicher = speicher;
         this.clock = clock;
     }
 
@@ -238,6 +246,85 @@ public class DirektvermarktungService {
         repo.protokolliere(TenantContext.get(), siteId, e.id(), "zustand", von, rolle,
                 daten("zustand", DirektvermarktungRepository.VERBINDET), jetzt);
         return stand(siteId);
+    }
+
+    /**
+     * Die Antwort auf einen erfolgreichen Upload (§5.7 "Routen"): Name, Gültigkeit, Fingerabdruck - nie
+     * Chiffrat, Nonce oder Passwort. {@code name} ist der Dateiname ohne {@code .zip} (Muster des luox-
+     * Verbindungstests: "der Zertifikatsname entspricht dem Dateinamen des VPN-Zertifikats").
+     */
+    public record ZugangErgebnis(String name, Instant gueltigBis, String fingerabdruck) {}
+
+    /**
+     * Bildschirm 7-10 "Zugangsdatei hochladen" (§5.7): öffnet die ZIP nur im Speicher
+     * ({@link ZugangsdateiOeffner}), prüft die plattformweite Eindeutigkeit des Fingerabdrucks
+     * ({@link FingerabdruckEindeutigkeit} - niemals ein zweites Chiffrat über dasselbe Zertifikat) und
+     * legt die verschlüsselte Zeile an ({@link AesGcmPartnerzugangSpeicher}). Der ERSTE Zugang einer
+     * Anlage setzt den Zustand auf {@code verbindet} (Bildschirm 11, Muster {@link #neuVerbinden}); ein
+     * ERSATZ-Zugang (z. B. vor dem Ablauf, Alarm "zugang_laeuft_ab") lässt den Zustand unberührt - was die
+     * Box wirklich tut, zeigt {@code direktvermarktung_stand}, nicht dieses grobe Feld.
+     */
+    public ZugangErgebnis zugangHochladen(UUID siteId, byte[] zip, String passwort, String dateiname, String von,
+            String rolle) {
+        requireSite(siteId);
+        Eintrag e = repo.aktiverOhneEnde(siteId);
+        if (e == null) {
+            throw new Abgelehnt("nicht_gewaehlt", "Diese Anlage hat keinen Direktvermarkter.");
+        }
+        if (DirektvermarktungRepository.ENTWURF.equals(e.zustand())) {
+            throw new Abgelehnt("noch_nicht_zugestimmt", "Bitte zuerst zustimmen.");
+        }
+        Instant jetzt = clock.instant();
+        ZugangsdateiOeffner.Ergebnis ergebnis = oeffner.oeffne(zip, passwort, jetzt);
+        if (ergebnis instanceof ZugangsdateiOeffner.Fehlschlag f) {
+            throw abgelehntFuer(f.fehler());
+        }
+        ZugangsdateiOeffner.Geoeffnet g = ((ZugangsdateiOeffner.Erfolg) ergebnis).geoeffnet();
+        // Plattformweit, nicht nur je Mandant (Begründung an der Migration V20261125140000 und an
+        // FingerabdruckEindeutigkeit) - derselbe stille Satz wie jede andere Ablehnung hier, nennt nie wo.
+        if (eindeutigkeit.istSchonInVerwendung(g.fingerabdruck())) {
+            throw new Abgelehnt("schon_in_verwendung", "Diese Zugangsdatei wird schon verwendet.");
+        }
+        UUID tenant = TenantContext.get();
+        UUID zugangId = UUID.randomUUID();
+        var verschluesselt = speicher.verschluessele(tenant, siteId, zugangId, g.klartext());
+        if (verschluesselt.isEmpty()) {
+            // Kein Byte des Klartexts im Log (dieselbe Regel wie AesGcmPartnerzugangSpeicher selbst) -
+            // die Ursache (fehlender Schlüssel, Ablageform) steht schon in dessen eigener Warnung.
+            throw new Abgelehnt("nicht_ablegbar", "Das hat leider nicht geklappt. Bitte erneut versuchen.");
+        }
+        boolean ersterZugang = DirektvermarktungRepository.WARTET_AUF_ZUGANG.equals(e.zustand());
+        tx.executeWithoutResult(s -> {
+            repo.zugangAnlegen(zugangId, tenant, siteId, e.id(), verschluesselt.get().chiffrat(),
+                    verschluesselt.get().nonce(), g.fingerabdruck(), g.gueltigBis(), von, jetzt);
+            if (ersterZugang) {
+                repo.zustandSetzen(e.id(), DirektvermarktungRepository.VERBINDET, jetzt);
+            }
+            repo.protokolliere(tenant, siteId, e.id(), "zugang_hochgeladen", von, rolle,
+                    daten("gueltig_bis", String.valueOf(g.gueltigBis())), jetzt);
+        });
+        return new ZugangErgebnis(zertifikatsname(dateiname), g.gueltigBis(), g.fingerabdruck());
+    }
+
+    /** "Der Zertifikatsname entspricht dem Dateinamen... ohne Dateiformatbezeichnung" (luox-Verbindungstest). */
+    private static String zertifikatsname(String dateiname) {
+        if (dateiname == null || dateiname.isBlank()) return null;
+        String ohnePfad = dateiname.contains("/") ? dateiname.substring(dateiname.lastIndexOf('/') + 1) : dateiname;
+        int punkt = ohnePfad.lastIndexOf('.');
+        return punkt > 0 ? ohnePfad.substring(0, punkt) : ohnePfad;
+    }
+
+    /** Die fünf Fehlerarten aus §5.7, Wortlaut aus report.md Zeile 529. */
+    private static Abgelehnt abgelehntFuer(ZugangsdateiOeffner.Fehler fehler) {
+        return switch (fehler) {
+            case PASSWORT_FALSCH -> new Abgelehnt("passwort_falsch", "Das Passwort passt nicht. Bitte noch einmal.");
+            case KEINE_ZUGANGSDATEI ->
+                new Abgelehnt("keine_zugangsdatei", "Das ist keine Zugangsdatei von luox. Bitte die .zip aus der "
+                        + "E-Mail wählen.");
+            case BESCHAEDIGT ->
+                new Abgelehnt("beschaedigt", "Diese Datei ist beschädigt. Bitte neu aus der E-Mail speichern.");
+            case ABGELAUFEN -> new Abgelehnt("abgelaufen", "Diese Zugangsdatei ist schon abgelaufen.");
+        };
     }
 
     // --- Nachtlauf ------------------------------------------------------------------------------------------------

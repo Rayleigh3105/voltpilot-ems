@@ -12,11 +12,13 @@ import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import com.voltpilot.api.zugriff.ZugriffContext;
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -27,14 +29,18 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Der Anschluss einer Anlage an einen Direktvermarkter (Einstellungen › Strom &amp; Geld, Seite
  * {@code #/anlage/{id}/direktvermarktung}; Konzept vp-direktvermarktung-konzept d2 §5.7/§7, E4 = A "der Kunde
- * richtet allein ein"). Das Hochladen der Zugangsdatei ({@code POST .../zugang}) ist sicherheitskritisch und
- * eigener Auftrag - diese Route gibt es hier bewusst (noch) nicht.
+ * richtet allein ein"). Das Hochladen der Zugangsdatei ({@code POST .../zugang}, Bildschirme 7-10) öffnet die
+ * ZIP nur im Speicher ({@link com.voltpilot.api.direktvermarktung.ZugangsdateiOeffner}) und legt sie
+ * verschlüsselt ab ({@link com.voltpilot.api.direktvermarktung.AesGcmPartnerzugangSpeicher}) - eigener,
+ * sicherheitskritischer PR, nicht mit den übrigen Routen gebündelt.
  *
  * <p>Recht: lesend wie jede {@code /api/v1/sites/**}-Route (Anmeldung + RLS); schreibend {@code anlage.verwalten}
  * (Muster {@link SiteEinspeiseverguetungController}) - derselbe Code, mit dem der Kunde heute schon Einspeise­
@@ -131,6 +137,28 @@ public class SiteDirektvermarktungController {
     public DirektvermarktungDto neuVerbinden(@PathVariable UUID siteId, Authentication auth) {
         geltungsbereich.requireSite(siteId);
         return antwort(siteId, dienst.neuVerbinden(siteId, akteur(auth), rolle()));
+    }
+
+    /**
+     * Bildschirme 7-10 "Zugangsdatei hochladen" (§5.7). Multipart: {@code datei} (ZIP) und
+     * {@code passwort}. Antwort 200 {@code {name, gueltig_bis, fingerabdruck}} oder eine Ablehnung mit
+     * genau einem Grund aus {@code passwort_falsch}, {@code keine_zugangsdatei}, {@code abgelaufen},
+     * {@code schon_in_verwendung}, {@code beschaedigt} (409, über {@link #abgelehnt}).
+     */
+    @PostMapping(path = "/zugang", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Recht(value = RECHT, ziel = RechtZiel.ANLAGE)
+    public DirektvermarktungDto.ZugangErgebnisDto zugangHochladen(@PathVariable UUID siteId,
+            @RequestPart("datei") MultipartFile datei, @RequestPart("passwort") String passwort,
+            Authentication auth) {
+        geltungsbereich.requireSite(siteId);
+        byte[] zip;
+        try {
+            zip = datei.getBytes();
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Die Datei ließ sich nicht lesen.");
+        }
+        return DirektvermarktungDto.ZugangErgebnisDto.von(
+                dienst.zugangHochladen(siteId, zip, passwort, datei.getOriginalFilename(), akteur(auth), rolle()));
     }
 
     private DirektvermarktungDto antwort(UUID siteId, Status status) {

@@ -131,6 +131,16 @@
             <version>1.86</version>
         </dependency>
 
+        <!-- Direktvermarktung-Zugangsdatei (Konzept vp-direktvermarktung-konzept d2 §5.7): java.util.zip
+             öffnet keine passwortgeschützten ZIPs. zip4j liest ZipCrypto UND WinZip-AES-verschlüsselte
+             Einträge, mit klarer Unterscheidung "falsches Passwort" vs. "kein ZIP"/"beschädigt" -
+             genau die Fehlerarten, die diese Route einzeln braucht. Lizenz Apache-2.0. -->
+        <dependency>
+            <groupId>net.lingala.zip4j</groupId>
+            <artifactId>zip4j</artifactId>
+            <version>2.11.6</version>
+        </dependency>
+
         <!-- UEMS AP-12 IP-11 (E11 DA2): das PDF eines Berichtsstands, server-seitig aus dem Abzug
              (uems/BerichtPdf). Lizenz: Apache License 2.0 (pdfbox, fontbox, pdfbox-io; LICENSE und
              NOTICE liegen in META-INF der Jars und reisen im Boot-Jar mit). Gewählt statt OpenPDF

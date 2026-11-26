@@ -6,8 +6,8 @@ import java.util.UUID;
 
 /**
  * Liest das entschlüsselte Material eines Partnerzugangs aus {@code direktvermarktung_zugang} - die EINE
- * Schnittstelle zwischen der Zustellung (dieser Auftrag) und der Zugangsdatei-Übernahme (eigener,
- * sicherheitskritischer Auftrag, beim Captain; sie schreibt Chiffrat und Nonce).
+ * Schnittstelle zwischen der Zustellung (dieser Auftrag) und der Zugangsdatei-Übernahme
+ * ({@link DirektvermarktungService#zugangHochladen}, eigener PR; sie schreibt Chiffrat und Nonce).
  *
  * <p><b>Ablageform, an die sich BEIDE Seiten binden</b> (Migration V20261125140000, Konzept §5.7 "Die
  * Zugangsdatei"): AES-256-GCM, Schlüssel aus {@code VP_PARTNERZUGANG_SCHLUESSEL} (Base64, 32 Byte, nur

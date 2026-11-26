@@ -20,8 +20,8 @@ import org.springframework.stereotype.Component;
 /**
  * BEIDE Richtungen der in {@link PartnerzugangSpeicher} festgeschriebenen Ablageform an EINER Stelle:
  * Schlüssel, Nonce, Format und die AAD-Bindung wohnen nur hier. Die Zustellung liest
- * ({@link #lade}); die Zugangsdatei-Übernahme (eigener, beim Captain gehaltener Auftrag) schreibt über
- * {@link #verschluessele} - sie erzeugt nie selbst ein Chiffrat.
+ * ({@link #lade}); die Zugangsdatei-Übernahme ({@link DirektvermarktungService#zugangHochladen}) schreibt
+ * über {@link #verschluessele} - sie erzeugt nie selbst ein Chiffrat.
  *
  * <p><b>AAD-Bindung:</b> jedes Chiffrat ist über die GCM-Zusatzdaten an Mandant, Anlage und die
  * Zugangs-Zeile gebunden ({@link #aad}: {@code vp-partnerzugang.v1|tenant|site|zugangId}). Ein Chiffrat,
@@ -29,8 +29,8 @@ import org.springframework.stereotype.Component;
  * NICHT - der GCM-Tag fällt, bevor ein Byte Klartext entsteht. Die Zugangs-ID vergibt die Übernahme vor
  * dem INSERT (client-seitige UUID, das Muster jeder Zeile hier); die ID und nicht der Fingerabdruck,
  * weil ein Ersatz-Upload desselben Zertifikats eine NEUE Zeile ist und das alte Chiffrat auch dort nicht
- * gelten darf. Es gibt keine Alt-Chiffrate ohne AAD (die Übernahme ist noch nicht gebaut), darum keine
- * Übergangslesung.
+ * gelten darf. Jede Zeile trägt die AAD-Bindung seit ihrem ersten Schreiben - keine Alt-Chiffrate ohne
+ * sie, darum keine Übergangslesung.
  *
  * <p>Jede Abweichung ist dasselbe stille {@code empty()}: welcher Teil fehlte oder welcher Tag fiel,
  * gehört nicht in ein Log neben ein Chiffrat.
