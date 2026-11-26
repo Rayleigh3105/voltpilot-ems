@@ -166,7 +166,7 @@ export function reconcileProducerPv(
     // healthy. A stale producer can be the last value from the former
     // producer-only publisher, while its pinned `/sources` measurement is
     // already live again. Do not keep that frozen value in either row.
-    if (m.value_kw != null && (e?.health === 'ok' || !isProducer(e))) return;
+    if (m.value_kw != null && e?.health === 'ok') return;
     if (!e || !isProducer(e)) return;
     const src = sourceById.get(pinByEntity.get(m.entity_id) ?? '');
     if (!src) {
