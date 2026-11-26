@@ -12,6 +12,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,9 +43,19 @@ public class ZugangsdateiOeffner {
     private static final long MAX_GESAMT_BYTES = 256 * 1024;
 
     private static final Pattern SICHERER_EINTRAGSNAME = Pattern.compile("^[A-Za-z0-9_.\\- ]+$");
-    private static final Pattern REMOTE_ZEILE =
-            Pattern.compile("^\\s*remote\\s+(\\S+)\\s+(\\d+)(?:\\s+(tcp|udp)\\S*)?\\s*$",
-                    Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
+
+    /**
+     * Ein DNS-Name wie RFC 1035/1123 ihn formt: Labels aus Buchstaben, Ziffern und inneren Bindestrichen,
+     * je 1-63 Zeichen, insgesamt höchstens 253 - mehr Zeichenvorrat gibt es nicht. Ein IPv4-Literal hat
+     * dieselbe Form (nur Ziffern-Labels) und ist damit mit abgedeckt; IPv6 prüft {@link #istIpv6Literal}.
+     * Geprüft wird immer die kleingeschriebene Form.
+     */
+    private static final Pattern DNS_NAME = Pattern.compile(
+            "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$");
+
+    /** Der eingebettete IPv4-Schwanz eines IPv6-Literals ("::ffff:192.0.2.1"): strikt 0-255, keine führende Null. */
+    private static final Pattern IPV4_LITERAL = Pattern.compile(
+            "^(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(?:\\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}$");
 
     public ZugangsdateiOeffner() {
         this(new ObjectMapper());
@@ -65,12 +76,25 @@ public class ZugangsdateiOeffner {
     public record Erfolg(Geoeffnet geoeffnet) implements Ergebnis {}
     public record Fehlschlag(Fehler fehler) implements Ergebnis {}
 
+    /** Wie {@link #oeffne(byte[], String, Instant, List)} ohne Gegenstellen-Schranke (Partner ohne Liste). */
+    public Ergebnis oeffne(byte[] zip, String passwort, Instant jetzt) {
+        return oeffne(zip, passwort, jetzt, List.of());
+    }
+
     /**
      * Öffnet die ZIP mit dem Passwort, prüft Größe/Anzahl/Namen der Einträge, sucht die OpenVPN-
      * Konfiguration und baut daraus das Klartext-JSON für {@link AesGcmPartnerzugangSpeicher}.
      * {@code jetzt} kommt vom Aufrufer (Testbarkeit) - die Ablaufprüfung vergleicht dagegen.
+     *
+     * <p>Die Gegenstelle der {@code remote}-Zeile wird geprüft, BEVOR irgendetwas gespeichert wird: der
+     * Host nur als DNS-Name oder IPv4-/IPv6-Literal (kein anderes Zeichen, Länge begrenzt), der Port als
+     * 1-65535, das Protokoll nur wörtlich {@code tcp} oder {@code udp}. Trägt das Partnerprofil
+     * {@code zugang.vpn.gegenstellen} (eine Liste erlaubter Host-Muster,
+     * {@code catalog/direktvermarkter/vectors/gegenstellen.json}), muss der Host zusätzlich einem Muster
+     * entsprechen. Es zählt die ERSTE {@code remote}-Zeile - eine ungültige erste Zeile lehnt die Datei
+     * ab, statt still auf eine spätere auszuweichen.
      */
-    public Ergebnis oeffne(byte[] zip, String passwort, Instant jetzt) {
+    public Ergebnis oeffne(byte[] zip, String passwort, Instant jetzt, List<String> erlaubteGegenstellen) {
         if (zip == null || zip.length == 0 || passwort == null || passwort.isEmpty()) {
             return new Fehlschlag(Fehler.KEINE_ZUGANGSDATEI);
         }
@@ -91,8 +115,11 @@ public class ZugangsdateiOeffner {
         String key = block(konfiguration, "key");
         String tlsCrypt = block(konfiguration, "tls-crypt");
         String tlsAuth = tlsCrypt == null ? block(konfiguration, "tls-auth") : null;
-        Matcher remote = REMOTE_ZEILE.matcher(konfiguration);
-        if (ca == null || cert == null || key == null || !remote.find()) {
+        GepruefteGegenstelle gegenstelleZeile = gegenstelleAusKonfiguration(konfiguration);
+        if (ca == null || cert == null || key == null || gegenstelleZeile == null) {
+            return new Fehlschlag(Fehler.KEINE_ZUGANGSDATEI);
+        }
+        if (!gegenstelleErlaubt(gegenstelleZeile.host(), erlaubteGegenstellen)) {
             return new Fehlschlag(Fehler.KEINE_ZUGANGSDATEI);
         }
 
@@ -114,9 +141,9 @@ public class ZugangsdateiOeffner {
         }
 
         ObjectNode gegenstelle = json.createObjectNode();
-        gegenstelle.put("host", remote.group(1));
-        gegenstelle.put("port", Integer.parseInt(remote.group(2)));
-        gegenstelle.put("protokoll", remote.group(3) == null ? "udp" : remote.group(3).toLowerCase(Locale.ROOT));
+        gegenstelle.put("host", gegenstelleZeile.host());
+        gegenstelle.put("port", gegenstelleZeile.port());
+        gegenstelle.put("protokoll", gegenstelleZeile.protokoll());
 
         ObjectNode dateien = json.createObjectNode();
         dateien.put("zertifikat_pem", cert);
@@ -178,6 +205,127 @@ public class ZugangsdateiOeffner {
             throw new Beschaedigt();
         }
         return gefunden;
+    }
+
+    /** Die geprüfte Gegenstelle der ersten {@code remote}-Zeile: Host kleingeschrieben, Protokoll aufgelöst. */
+    private record GepruefteGegenstelle(String host, int port, String protokoll) {}
+
+    /**
+     * Die ERSTE {@code remote}-Zeile der Konfiguration, streng geprüft ({@code remote <host> <port> [proto]},
+     * das Format des OpenVPN-"unified"-Pakets). Eine ungültige erste Zeile liefert {@code null} (Ablehnung) -
+     * nie ein stilles Ausweichen auf eine spätere Zeile. Direktiven, die nur mit "remote" BEGINNEN
+     * ({@code remote-cert-tls}, {@code remote-random}), zählen nicht.
+     */
+    private static GepruefteGegenstelle gegenstelleAusKonfiguration(String konfiguration) {
+        for (String zeile : konfiguration.split("\\r?\\n")) {
+            String s = zeile.strip();
+            if (s.length() < 7 || !s.regionMatches(true, 0, "remote", 0, 6)
+                    || !Character.isWhitespace(s.charAt(6))) {
+                continue;
+            }
+            String[] token = s.split("\\s+");
+            if (token.length < 3 || token.length > 4) return null;
+            String host = token[1].toLowerCase(Locale.ROOT);
+            if (!istGueltigerHost(host)) return null;
+            if (token[2].length() > 5 || !token[2].chars().allMatch(Character::isDigit)) return null;
+            int port = Integer.parseInt(token[2]);
+            if (port < 1 || port > 65535) return null;
+            String protokoll = token.length == 4 ? token[3].toLowerCase(Locale.ROOT) : "udp";
+            if (!protokoll.equals("tcp") && !protokoll.equals("udp")) return null;
+            return new GepruefteGegenstelle(host, port, protokoll);
+        }
+        return null;
+    }
+
+    /** Ein gültiger Host: DNS-Name (deckt IPv4-Literale mit ab) oder IPv6-Literal; immer kleingeschrieben prüfen. */
+    private static boolean istGueltigerHost(String host) {
+        if (host.isEmpty() || host.length() > 253) return false;
+        if (host.indexOf(':') >= 0) return istIpv6Literal(host);
+        return DNS_NAME.matcher(host).matches();
+    }
+
+    /**
+     * Ein IPv6-Literal (RFC 4291, ohne Klammern und ohne Zone - so steht es in einer OpenVPN-remote-Zeile):
+     * höchstens ein {@code ::}, Gruppen aus 1-4 Hexziffern, am Ende optional ein IPv4-Schwanz, der als zwei
+     * Gruppen zählt; ohne {@code ::} genau 8 Gruppen, mit höchstens 7. Zwilling der Python-Prüfung in
+     * {@code catalog/direktvermarkter/tools/profilelib.py}, belegt über
+     * {@code catalog/direktvermarkter/vectors/gegenstellen.json}.
+     */
+    private static boolean istIpv6Literal(String s) {
+        if (s.length() < 2 || s.length() > 45) return false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c != ':' && c != '.' && Character.digit(c, 16) < 0) return false;
+        }
+        int doppelt = s.indexOf("::");
+        if (doppelt >= 0 && s.indexOf("::", doppelt + 1) >= 0) return false;
+        String vorn = doppelt >= 0 ? s.substring(0, doppelt) : null;
+        String hinten = doppelt >= 0 ? s.substring(doppelt + 2) : s;
+        int gruppen = 0;
+        if (vorn != null && !vorn.isEmpty()) {
+            for (String g : vorn.split(":", -1)) {
+                if (!istHexGruppe(g)) return false;
+                gruppen++;
+            }
+        }
+        if (!hinten.isEmpty()) {
+            String[] teile = hinten.split(":", -1);
+            for (int i = 0; i < teile.length; i++) {
+                if (i == teile.length - 1 && teile[i].indexOf('.') >= 0) {
+                    if (!IPV4_LITERAL.matcher(teile[i]).matches()) return false;
+                    gruppen += 2;
+                } else {
+                    if (!istHexGruppe(teile[i])) return false;
+                    gruppen++;
+                }
+            }
+        }
+        return doppelt >= 0 ? gruppen <= 7 : gruppen == 8;
+    }
+
+    private static boolean istHexGruppe(String g) {
+        if (g.isEmpty() || g.length() > 4) return false;
+        for (int i = 0; i < g.length(); i++) {
+            if (Character.digit(g.charAt(i), 16) < 0) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Die Gegenstellen-Schranke des Partnerprofils ({@code zugang.vpn.gegenstellen}): eine leere Liste
+     * heißt "keine Schranke" (so steht luox heute da, F1 offen); sonst muss der Host einem Muster
+     * entsprechen. Ein Muster ist ein exakter Host (Vergleich kleingeschrieben, IP-Literale nach Wortlaut)
+     * oder {@code *.domain} (jeder Host, der auf {@code .domain} endet, mindestens ein weiteres Label).
+     * Ein ungültiges Muster passt NIE (geschlossen scheitern) - die Autorenseite weist es schon
+     * {@code catalog/direktvermarkter/tools/validate.py} ab. Semantik belegt in
+     * {@code catalog/direktvermarkter/vectors/gegenstellen.json}.
+     */
+    static boolean gegenstelleErlaubt(String host, List<String> muster) {
+        if (muster == null || muster.isEmpty()) return true;
+        String h = host.toLowerCase(Locale.ROOT);
+        for (String eintrag : muster) {
+            if (eintrag == null) continue;
+            String m = eintrag.strip().toLowerCase(Locale.ROOT);
+            if (!istGueltigesMuster(m)) continue;
+            if (m.startsWith("*.")) {
+                String endung = m.substring(1); // ".domain"
+                if (h.length() > endung.length() && h.endsWith(endung)) return true;
+            } else if (h.equals(m)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Ein gültiges Gegenstellen-Muster: ein gültiger Host, optional mit führendem {@code *.} vor einem DNS-Namen. */
+    static boolean istGueltigesMuster(String muster) {
+        if (muster == null || muster.isEmpty()) return false;
+        String m = muster.toLowerCase(Locale.ROOT);
+        if (m.startsWith("*.")) {
+            String rest = m.substring(2);
+            return rest.indexOf(':') < 0 && istGueltigerHost(rest);
+        }
+        return istGueltigerHost(m);
     }
 
     /** Der Inhalt eines {@code <tag>...</tag>}-Blocks (OpenVPN-"unified"-Format), getrimmt; {@code null} ohne ihn. */

@@ -52,7 +52,14 @@
             "art": {"enum": ["openvpn", "wireguard", "ipsec"]},
             "paket": {"enum": ["zip_mit_passwort", "einzeldateien"]},
             "ein_zertifikat_je_anlage": {"type": "boolean"},
-            "port_protokoll": {"$ref": "#/$defs/offen_markiert"}
+            "port_protokoll": {"$ref": "#/$defs/offen_markiert"},
+            "gegenstellen": {
+              "description": "optional: erlaubte VPN-Gegenstellen einer Zugangsdatei. Ein Muster ist ein exakter Host (DNS-Name kleingeschrieben oder IP-Literal) oder '*.domain' (jeder Host, der auf '.domain' endet). Ist die Liste gesetzt, lehnt der Upload eine Zugangsdatei mit anderer Gegenstelle als keine_zugangsdatei ab; fehlt sie, gibt es keine Schranke. Semantik: vectors/gegenstellen.json, Feinprüfung: tools/validate.py.",
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[a-z0-9*][a-z0-9.:*-]{0,252}$"}
+            }
           }
         },
         "modbus": {

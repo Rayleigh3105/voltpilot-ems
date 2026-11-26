@@ -275,7 +275,11 @@ public class DirektvermarktungService {
             throw new Abgelehnt("noch_nicht_zugestimmt", "Bitte zuerst zustimmen.");
         }
         Instant jetzt = clock.instant();
-        ZugangsdateiOeffner.Ergebnis ergebnis = oeffner.oeffne(zip, passwort, jetzt);
+        // Die Gegenstellen-Schranke des Partnerprofils (zugang.vpn.gegenstellen): ohne Profil oder ohne
+        // Liste gibt es keine Schranke - genau der heutige luox-Stand (F1 offen).
+        PartnerProfil profil = katalog.finde(e.partner());
+        List<String> erlaubteGegenstellen = profil == null ? List.of() : profil.vpnGegenstellen();
+        ZugangsdateiOeffner.Ergebnis ergebnis = oeffner.oeffne(zip, passwort, jetzt, erlaubteGegenstellen);
         if (ergebnis instanceof ZugangsdateiOeffner.Fehlschlag f) {
             throw abgelehntFuer(f.fehler());
         }

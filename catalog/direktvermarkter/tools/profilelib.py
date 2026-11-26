@@ -9,7 +9,9 @@ evaluate).
 from __future__ import annotations
 
 import importlib.util
+import ipaddress
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +46,41 @@ def profile_paths() -> list[Path]:
 
 def load_profiles() -> list[dict[str, Any]]:
     return [load_json(path) for path in profile_paths()]
+
+
+# Ein DNS-Name wie RFC 1035/1123 ihn formt: Labels aus Kleinbuchstaben, Ziffern und inneren
+# Bindestrichen, je 1-63 Zeichen; IPv4-Literale haben dieselbe Form und sind mit abgedeckt.
+# Zwilling der Java-Prüfung in ZugangsdateiOeffner (istGueltigerHost), belegt über
+# vectors/gegenstellen.json.
+_DNS_NAME = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
+_IPV6_ZEICHEN = set("0123456789abcdefABCDEF:.")
+
+
+def gueltiger_host(wert: str) -> bool:
+    """Ein gültiger Host: DNS-Name (kleingeschrieben) oder IPv6-Literal ohne Klammern und Zone."""
+    if not wert or len(wert) > 253:
+        return False
+    if ":" in wert:
+        if len(wert) > 45 or any(c not in _IPV6_ZEICHEN for c in wert):
+            return False
+        try:
+            ipaddress.IPv6Address(wert)
+        except ValueError:
+            return False
+        return True
+    return _DNS_NAME.match(wert) is not None
+
+
+def gueltiges_gegenstellen_muster(muster: str) -> bool:
+    """Ein gültiges Muster für zugang.vpn.gegenstellen: ein Host, optional mit führendem '*.' vor
+    einem DNS-Namen (vectors/gegenstellen.json, Abschnitt 'muster')."""
+    if not isinstance(muster, str) or not muster:
+        return False
+    m = muster.lower()
+    if m.startswith("*."):
+        rest = m[2:]
+        return bool(rest) and ":" not in rest and gueltiger_host(rest)
+    return gueltiger_host(m)
 
 
 def split_offen(value: str) -> tuple[str | None, str | None]:

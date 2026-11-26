@@ -30,6 +30,7 @@ flowchart LR
 | `profiles/<partner>.json` | ein Profil je Partner, die einzige von Hand gepflegte Wahrheit |
 | `vocabulary.json` | Registerbedeutungen (Fassung 1), für spätere Partner vorgesehene Bedeutungen, Einrichtungsschritte, die offenen Fragen F1-F18 |
 | `vectors/<partner>.json` | Testvektoren für den Go-Zwilling: Dekodieren/Kodieren je Wortfolge, rohe Modbus-Telegramme (FC 3/4/6/16, Band-Verstoß, unbekannte Adresse, Lebenszeichen), Lebenszeichen-Ablauf, veraltete Werte; trägt auch die vorläufigen Laufzeit-Annahmen für die noch offenen Fragen F3 und F8 |
+| `vectors/gegenstellen.json` | gemeinsame Vektoren für das optionale Feld `zugang.vpn.gegenstellen` (erlaubte VPN-Gegenstellen einer Zugangsdatei): Muster-Gültigkeit (`tools/profilelib.py` ↔ `ZugangsdateiOeffner.istGueltigesMuster`) und Abgleich-Semantik des Cloud-Uploads (`ZugangsdateiOeffner.gegenstelleErlaubt`, Java-Test `GegenstellenVectorsTest`). Ist die Liste gesetzt, lehnt der Upload eine Zugangsdatei mit anderer Gegenstelle als `keine_zugangsdatei` ab; luox bleibt vorerst ohne Liste (F1 offen) |
 | `schema/profile.schema.json` | JSON-Schema des Profils |
 | `tools/validate.py` | Schema plus Projekt-Invarianten |
 | `tools/package_edge_runtime.py` | erzeugt die Box-Sicht für den Go-Core (`--check` im CI) |

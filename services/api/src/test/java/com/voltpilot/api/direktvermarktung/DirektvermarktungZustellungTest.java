@@ -62,7 +62,7 @@ class DirektvermarktungZustellungTest {
         faehigkeiten = mock(BoxFaehigkeiten.class);
         publisher = mock(DirektvermarktungPublisher.class);
         PartnerKatalog katalog = mock(PartnerKatalog.class);
-        when(katalog.finde("luox")).thenReturn(new PartnerProfil("luox", "luox energy", null, null));
+        when(katalog.finde("luox")).thenReturn(new PartnerProfil("luox", "luox energy", null, null, null));
         when(repo.referenzWp(SITE)).thenReturn(12000.0);
         zustellung = new DirektvermarktungZustellung(repo, katalog, lead, faehigkeiten,
                 provider(publisher), leererProvider(), leererProvider(), JSON,

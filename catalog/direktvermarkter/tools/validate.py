@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from profilelib import PROFILE_SCHEMA, VOCABULARY, SchemaValidationError, load_json, profile_paths, split_offen, validate_json_schema
+from profilelib import PROFILE_SCHEMA, VOCABULARY, SchemaValidationError, gueltiges_gegenstellen_muster, load_json, profile_paths, split_offen, validate_json_schema
 
 WIDTH = {"u16": 1, "s16": 1, "u32": 2, "s32": 2}
 
@@ -74,6 +74,11 @@ def validate_profile(profile: dict[str, Any], name: str, schema: dict[str, Any],
     known = set(vocabulary["bedeutungen"])
     vorgesehen = set(vocabulary["vorgesehen"])
     errors += _register_errors(pid, profile["register"], known, vorgesehen)
+
+    for muster in profile["zugang"]["vpn"].get("gegenstellen", []):
+        if not gueltiges_gegenstellen_muster(muster):
+            errors.append(f"{pid}.zugang.vpn.gegenstellen: {muster!r} ist kein gültiges Host-Muster "
+                          "(exakter Host oder '*.domain', siehe vectors/gegenstellen.json)")
 
     fragen = vocabulary["fragen"]
     errors += _offen_errors(pid, "zugang.vpn.port_protokoll", profile["zugang"]["vpn"]["port_protokoll"], fragen)
