@@ -20,7 +20,10 @@ class PartnerProfilTest {
               "partner": "luox",
               "name": "luox energy",
               "fassung": "2026-06-02",
-              "zugang": { "art": "vpn_modbus_server" },
+              "zugang": {
+                "art": "vpn_modbus_server",
+                "vpn": { "art": "openvpn", "paket": "zip_mit_passwort", "gegenstellen": ["*.luox-energy.de"] }
+              },
               "register": [ { "tabelle": "input", "adresse": 0 } ],
               "regeln": { "lebenszeichen_frist_s": 900 },
               "vertrag": {
@@ -50,5 +53,17 @@ class PartnerProfilTest {
         PartnerProfil p = JSON.readValue("{\"partner\": \"neu\"}", PartnerProfil.class);
         assertThat(p.anzeigename()).isEqualTo("neu");
         assertThat(p.vertrag()).isNull();
+        assertThat(p.vpnGegenstellen()).isEmpty();
+    }
+
+    /** {@code zugang.vpn.gegenstellen} wird gelesen - aber nie serialisiert (WRITE_ONLY): keine Katalog-
+     * oder Statusantwort trägt die Schranke nach außen. */
+    @Test
+    void gegenstellenWerdenGelesenAberNieNachAussenSerialisiert() throws Exception {
+        PartnerProfil p = JSON.readValue(LUOX_PROFIL, PartnerProfil.class);
+        assertThat(p.vpnGegenstellen()).containsExactly("*.luox-energy.de");
+        String raus = JSON.writeValueAsString(p);
+        assertThat(raus).doesNotContain("gegenstellen").doesNotContain("zugang");
+        assertThat(raus).contains("\"partner\":\"luox\"");
     }
 }

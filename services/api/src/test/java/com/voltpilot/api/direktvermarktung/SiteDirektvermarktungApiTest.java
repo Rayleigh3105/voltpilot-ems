@@ -66,8 +66,16 @@ class SiteDirektvermarktungApiTest {
 
     private static final PartnerProfil LUOX = new PartnerProfil("luox", "luox energy", "2026-06-02",
             new PartnerProfil.Vertrag("https://direktvermarktung.luox-energy.de/erloesrechner?spid=voltpilot",
-                    "spid=voltpilot", "erloesrechner_mit_abschluss"));
-    private static final PartnerProfil ANDERER = new PartnerProfil("anderer", "Anderer Partner", "2026-01-01", null);
+                    "spid=voltpilot", "erloesrechner_mit_abschluss"), null);
+    /** Wie {@code LUOX}, aber mit Gegenstellen-Schranke ({@code zugang.vpn.gegenstellen}) im Profil. */
+    private static final PartnerProfil LUOX_MIT_GEGENSTELLEN = new PartnerProfil(LUOX.partner(), LUOX.name(),
+            LUOX.fassung(), LUOX.vertrag(),
+            new PartnerProfil.Zugang(new PartnerProfil.Vpn(List.of("*.luox-energy.de"))));
+    private static final PartnerProfil LUOX_MIT_FREMDER_GEGENSTELLE = new PartnerProfil(LUOX.partner(), LUOX.name(),
+            LUOX.fassung(), LUOX.vertrag(),
+            new PartnerProfil.Zugang(new PartnerProfil.Vpn(List.of("vpn.anderer.de"))));
+    private static final PartnerProfil ANDERER = new PartnerProfil("anderer", "Anderer Partner", "2026-01-01", null,
+            null);
 
     @Container
     static final TestDatenbank POSTGRES = new TestDatenbank();
@@ -310,6 +318,51 @@ class SiteDirektvermarktungApiTest {
         assertThat(res.body().path("grund").asText()).isEqualTo("passwort_falsch");
         assertThat(root.queryForObject("SELECT count(*) FROM direktvermarktung_zugang WHERE site_id = ?",
                 Integer.class, w.site())).isZero();
+    }
+
+    /**
+     * Die Gegenstellen-Schranke des Partnerprofils ({@code zugang.vpn.gegenstellen}): das Fixture-Paket
+     * nennt {@code vpn.luox-energy.de} als Gegenstelle - mit passendem Muster geht der Upload durch, mit
+     * fremdem Muster ist die Datei "keine Zugangsdatei" (derselbe stille Satz wie jede andere Ablehnung,
+     * er nennt nie, welche Gegenstelle erwartet war).
+     */
+    @Test
+    void zugangHochladenMitPassenderGegenstelleGehtDurchMitFremderNicht() throws Exception {
+        // Die plattformweite Fingerabdruck-Eindeutigkeit sieht auch die Uploads der ANDEREN Tests dieser
+        // Klasse (ein Zertifikat-Fixture, eine Datenbank) - für den positiven Fall muss die Tafel leer sein.
+        root.update("DELETE FROM direktvermarktung_zugang");
+        when(katalog.finde("luox")).thenReturn(LUOX_MIT_GEGENSTELLEN);
+        Welt w = welt();
+        als(w, post(w.basis() + "/waehlen").content("{\"partner\":\"luox\"}").contentType(MediaType.APPLICATION_JSON));
+        als(w, post(w.basis() + "/zustimmen").content("{\"textfassung\":\"x\"}").contentType(MediaType.APPLICATION_JSON));
+        byte[] zip = baueZip("geheim123", Map.of("ABC.ovpn", OVPN_GUELTIG));
+        Antwort res = als(w, zugangUpload(w, zip, "ABC.zip", "geheim123"));
+        assertThat(res.status()).as(res.body().toString()).isEqualTo(200);
+
+        when(katalog.finde("luox")).thenReturn(LUOX_MIT_FREMDER_GEGENSTELLE);
+        Welt fremd = welt();
+        als(fremd, post(fremd.basis() + "/waehlen").content("{\"partner\":\"luox\"}")
+                .contentType(MediaType.APPLICATION_JSON));
+        als(fremd, post(fremd.basis() + "/zustimmen").content("{\"textfassung\":\"x\"}")
+                .contentType(MediaType.APPLICATION_JSON));
+        Antwort abgelehnt = als(fremd, zugangUpload(fremd, zip, "ABC.zip", "geheim123"));
+        assertThat(abgelehnt.status()).isEqualTo(409);
+        assertThat(abgelehnt.body().path("grund").asText()).isEqualTo("keine_zugangsdatei");
+        assertThat(abgelehnt.body().toString()).doesNotContain("vpn.anderer.de");
+        assertThat(root.queryForObject("SELECT count(*) FROM direktvermarktung_zugang WHERE site_id = ?",
+                Integer.class, fremd.site())).isZero();
+    }
+
+    /** Der Katalog der Status-Antwort trägt die Gegenstellen-Schranke NICHT nach außen (WRITE_ONLY). */
+    @Test
+    void katalogAntwortNenntKeineGegenstellen() throws Exception {
+        when(katalog.finde("luox")).thenReturn(LUOX_MIT_GEGENSTELLEN);
+        when(katalog.alle()).thenReturn(List.of(LUOX_MIT_GEGENSTELLEN));
+        Welt w = welt();
+        Antwort res = als(w, get(w.basis()));
+        assertThat(res.status()).isEqualTo(200);
+        assertThat(res.body().toString()).doesNotContain("gegenstellen").doesNotContain("*.luox-energy.de");
+        assertThat(res.body().path("katalog").get(0).path("partner").asText()).isEqualTo("luox");
     }
 
     /**

@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
 from package_edge_runtime import EDGE, output, runtime_view  # noqa: E402
-from profilelib import PROFILE_SCHEMA, VOCABULARY, load_json, load_profiles  # noqa: E402
+from profilelib import PROFILE_SCHEMA, VOCABULARY, gueltiges_gegenstellen_muster, load_json, load_profiles  # noqa: E402
 from validate import validate_catalog, validate_profile  # noqa: E402
 
 SCHEMA = load_json(PROFILE_SCHEMA)
@@ -146,6 +146,51 @@ class InvariantTest(unittest.TestCase):
         self.p["register"][0]["band"] = [0, 100]
         errors = check(self.p)
         self.assertTrue(errors, errors)
+
+
+class GegenstellenTest(unittest.TestCase):
+    """zugang.vpn.gegenstellen: Muster-Gültigkeit und Abgleich-Semantik stehen als gemeinsame Vektoren
+    in vectors/gegenstellen.json - der Java-Zwilling (ZugangsdateiOeffner) liest dieselbe Datei."""
+
+    VECTORS = load_json(ROOT / "vectors" / "gegenstellen.json")
+
+    def setUp(self):
+        self.p = copy.deepcopy(BY_ID["luox"])
+
+    def test_muster_vektoren(self):
+        for fall in self.VECTORS["muster"]:
+            self.assertEqual(gueltiges_gegenstellen_muster(fall["muster"]), fall["gueltig"],
+                             f"muster {fall['muster']!r}")
+
+    def test_luox_bleibt_ohne_liste_f1_offen(self):
+        self.assertNotIn("gegenstellen", BY_ID["luox"]["zugang"]["vpn"])
+
+    def test_gueltige_liste_wird_angenommen(self):
+        self.p["zugang"]["vpn"]["gegenstellen"] = ["vpn.luox-energy.de", "*.luox-energy.de", "203.0.113.10"]
+        self.assertEqual(check(self.p), [])
+
+    def test_ungueltiges_muster_wird_abgelehnt(self):
+        self.p["zugang"]["vpn"]["gegenstellen"] = ["*luox-energy.de"]
+        self.assertRejected(self.p, "kein gültiges Host-Muster")
+
+    def test_schema_lehnt_grossschreibung_und_fremdzeichen_ab(self):
+        for falsch in ["VPN.Luox-Energy.de", "vpn.luox-energy.de/pfad", ""]:
+            clone = copy.deepcopy(self.p)
+            clone["zugang"]["vpn"]["gegenstellen"] = [falsch]
+            self.assertTrue(check(clone), f"muster {falsch!r} hätte das Schema ablehnen müssen")
+
+    def test_gegenstellen_aenderung_laesst_die_box_sicht_bytegleich(self):
+        # Die Schranke ist Sache des Cloud-Uploads - die gepackte Box-Sicht (profiles.json)
+        # trägt weiterhin keine VPN-Felder.
+        profiles = copy.deepcopy(list(BY_ID.values()))
+        before = runtime_view(profiles)
+        for p in profiles:
+            p["zugang"]["vpn"]["gegenstellen"] = ["vpn.luox-energy.de"]
+        self.assertEqual(runtime_view(profiles), before)
+
+    def assertRejected(self, profile, fragment):
+        errors = check(profile)
+        self.assertTrue(any(fragment in e for e in errors), errors)
 
 
 if __name__ == "__main__":
