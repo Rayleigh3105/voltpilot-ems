@@ -55,7 +55,7 @@ describe('Folgen-Karte (T6b, A11)', () => {
       expect(k.bleibt.filter((s) => ding.test(s)), String(ding)).toHaveLength(1);
     }
     expect(k.bleibt).toEqual([
-      'Die VoltPilot-Box bleibt mit der Anlage verbunden — nichts wird neu eingerichtet.',
+      'Die VoltPilot-Box bleibt mit der Anlage verbunden. Nichts wird neu eingerichtet.',
       'Die Datenwege bleiben gleich: Messwerte kommen weiter auf demselben Weg an.',
       'Die Freigaben zum Steuern bleiben, wie sie sind.',
       'Das Betriebsmodell und Ihre Regeln bleiben, wie sie sind.',
@@ -99,13 +99,13 @@ describe('Folgen-Karte (T6b, A11)', () => {
     const ohne = folgenKarte(a11({ bleibt: ['topics', 'freigaben', 'betriebsmodell', 'fahrplaene', 'messstellen'], boxen: 0, netzanschluss: null }));
     expect(ohne.bleibt.join(' ')).not.toMatch(/VoltPilot-Box|Ladepark|Netzanschluss/);
     expect(folgenKarte(a11({ boxen: 2 })).bleibt[0]).toBe(
-      'Die 2 VoltPilot-Boxen bleiben mit der Anlage verbunden — nichts wird neu eingerichtet.',
+      'Die 2 VoltPilot-Boxen bleiben mit der Anlage verbunden. Nichts wird neu eingerichtet.',
     );
   });
 
   it('die Teilnahme an „Steuern & Optimieren“ bleibt — und sagt, wo sie geführt wird', () => {
     expect(folgenKarte(a11({ steuern: { funktion: 'steuern', zustand: 'aktiv', standort: ST1 } })).bleibt.at(-1)).toBe(
-      'Die Teilnahme an „Steuern & Optimieren“ bleibt, wie sie ist — geführt wird sie weiter bei Werk Ahrenberg (ST-1).',
+      'Die Teilnahme an „Steuern & Optimieren“ bleibt, wie sie ist. Geführt wird sie weiter bei Werk Ahrenberg (ST-1).',
     );
     expect(folgenKarte(a11({ steuern: { funktion: 'steuern', zustand: 'aktiv', standort: ST3 } })).bleibt.at(-1)).toBe(
       'Die Teilnahme an „Steuern & Optimieren“ bleibt, wie sie ist.',

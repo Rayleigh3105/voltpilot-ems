@@ -32,22 +32,23 @@ for (const px of [375, 1440] as const) {
     await bild(page, `zuordnung-korrigieren-standort-${px}.png`);
 
     await einstieg.click();
-    const dialog = page.getByRole('dialog', { name: 'Anlage zuordnen' });
-    await expect(dialog).toContainText('Die Anlage gehört seit ihrem ersten Tag zu einem anderen Standort? Hier ändern Sie das rückwirkend. Steuerung und Messwerte bleiben unberührt.');
-    // Schritt 2c: „Seit wann?" steht auf „Schon immer" - kein sichtbares Datum (Regel 5), der
-    // erste Anlagentag (15.10.2026) gilt dahinter.
-    await expect(dialog.getByRole('radio', { name: 'Schon immer (war falsch)' })).toBeChecked();
-    await expect(dialog.getByRole('combobox', { name: 'Gültig ab *' })).toHaveCount(0);
+    const dialog = page.getByRole('dialog', { name: 'Gehört zu' });
+    // Schritt 2c (Captain-Korrektur zu PR 2041): erst die volle Liste der Standorte, dann „Seit wann?".
     await bild(page, `zuordnung-korrigieren-dialog-${px}.png`);
+    await dialog.getByRole('radio', { name: /Werk Lindach \(ST-2\)/ }).click();
+    await dialog.getByRole('button', { name: 'Weiter' }).click();
 
-    await dialog.getByRole('combobox', { name: 'Neuer Standort *' }).click();
-    await page.getByRole('option', { name: /Werk Lindach \(ST-2\)/ }).click();
-    const folgen = dialog.getByTestId('umzug-folgen');
+    // „Seit wann?" steht auf „Schon immer" - kein sichtbares Datum (Regel 5), der erste
+    // Anlagentag (15.10.2026) gilt dahinter.
+    await expect(dialog.getByRole('radio', { name: 'Schon immer (war falsch)' })).toBeChecked();
+    await expect(dialog.getByRole('combobox', { name: 'Gültig ab' })).toHaveCount(0);
+    const folgen = dialog.getByTestId('umzug-folgen-kurz');
     await expect(folgen).toContainText('Rückwirkend (36 Tage)');
-    await expect(folgen).toContainText('Die Teilnahme an „Steuern & Optimieren“ bleibt, wie sie ist');
     await bild(page, `zuordnung-korrigieren-folgen-${px}.png`);
+    await dialog.getByRole('button', { name: 'Alle Folgen' }).click();
+    await expect(dialog.getByTestId('umzug-folgen')).toContainText('Die Teilnahme an „Steuern & Optimieren“ bleibt, wie sie ist');
 
-    await dialog.getByRole('button', { name: 'Zuordnen' }).click();
+    await dialog.getByRole('button', { name: 'Speichern' }).click();
     await expect(page.getByText('Zuordnung gespeichert')).toBeVisible();
     const angebot = page.getByTestId('standort-archiv-angebot');
     await expect(angebot).toContainText('Werk Irrtum ist jetzt leer');
@@ -74,11 +75,12 @@ for (const px of [375, 1440] as const) {
     await bild(page, `zuordnung-korrigieren-anlagen-dialog-${px}.png`);
 
     await aendern.click();
-    const normal = page.getByRole('dialog', { name: 'Anlage zuordnen' });
+    const normal = page.getByRole('dialog', { name: 'Gehört zu' });
+    await normal.getByRole('radio', { name: /Werk Lindach \(ST-2\)/ }).click();
+    await normal.getByRole('button', { name: 'Weiter' }).click();
+    await expect(normal.getByText('Seit wann gehört Werk Lindach zu Werk Lindach?')).toBeVisible();
     await expect(normal.getByRole('radio', { name: 'Ab einem Tag' })).toBeChecked();
-    await expect(normal.getByRole('combobox', { name: 'Gültig ab *' })).toContainText('20.11.2026');
-    await expect(normal).toContainText('Die Anlage gehört ab dem gewählten Tag zu einem anderen Standort.');
-    await expect(normal).not.toContainText('seit ihrem ersten Tag');
+    await expect(normal.getByRole('combobox', { name: 'Gültig ab' })).toContainText('20.11.2026');
     await bild(page, `zuordnung-korrigieren-normaler-umzug-${px}.png`);
 
     await page.goto('/e2e/help.html#/hilfe/standort-zuordnung-korrigieren');

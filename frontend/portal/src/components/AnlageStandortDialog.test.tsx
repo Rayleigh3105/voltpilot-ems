@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { ApiError, type AnlageUmzug, type BerichteBetroffen, type StandorteAmStichtag } from '../api';
 import { api } from '../apiVoll';
 import { standortDerAnlage } from '../anlageStandort';
-import { FOLGEN_WAEHLEN, KORREKTUR_VORSPANN, SEIT_WANN_SCHON_IMMER } from '../anlageUmziehen';
+import { SEIT_WANN_SCHON_IMMER } from '../anlageUmziehen';
 import { ahrenbergHeute, ahrenbergUnternehmen, FIXTURE_IDS, werkAhrenberg } from '../test/standorteFixtures';
 import { AnlageStandortDialog } from './AnlageStandortDialog';
 import { AnlageStandortZeile } from './AnlageStandortZeile';
@@ -12,9 +12,11 @@ import { rechteSeed } from '../test/rollenFixtures';
 import { ortsbaumAhrenberg } from '../test/ortsbaumFixtures';
 
 /**
- * UEMS AP-02 IP-11 — Dialog T6b „Anlage zuordnen“ und sein Einstieg an der Zeile „Standort“
- * (T6a). Halle 2 (AN-2) zieht von Werk Ahrenberg (ST-1) nach Werk Ahrenberg Nord (ST-3); die
- * Folgen kommen aus der Vorschau des Servers, der Dialog setzt sie nur in Sätze.
+ * UEMS AP-02 IP-11 — Dialog „Gehört zu" (Schritt 2c, vormals T6b „Anlage zuordnen") und sein
+ * Einstieg an der Zeile „Standort" (T6a). Halle 2 (AN-2) zieht von Werk Ahrenberg (ST-1) nach
+ * Werk Ahrenberg Nord (ST-3); die Folgen kommen aus der Vorschau des Servers, der Dialog setzt
+ * sie nur in Sätze. Zwei Schritte wie im Prototyp: erst die Liste der Standorte („Weiter"), dann
+ * „Seit wann?" mit den kurzen Folgen und „Speichern".
  */
 
 const NORD = '5a1d0000-0000-4000-8000-000000000003';
@@ -71,17 +73,26 @@ function oeffne(onClose = vi.fn(), onGespeichert = vi.fn()) {
   return { onClose, onGespeichert };
 }
 
+/** Schritt 1: Werk Ahrenberg Nord in der vollen Liste anklicken (kein Dropdown mehr). */
 function waehleNord() {
-  fireEvent.click(screen.getByRole('combobox', { name: 'Neuer Standort *' }));
-  fireEvent.click(screen.getByRole('option', { name: /Werk Ahrenberg Nord \(ST-3\)/ }));
+  fireEvent.click(screen.getByRole('radio', { name: /Werk Ahrenberg Nord \(ST-3\)/ }));
+}
+
+function weiter() {
+  fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+}
+
+function waehleNordUndWeiter() {
+  waehleNord();
+  weiter();
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Dialog „Anlage zuordnen“ (T6b)', () => {
-  it('Korrektur (Seit wann? Schon immer): kein Datum, der verbindliche Satz steht im bestehenden Dialog', () => {
+describe('Dialog „Gehört zu" (Schritt 2c, vormals T6b „Anlage zuordnen")', () => {
+  it('Korrektur (Seit wann? Schon immer): kein Datum', () => {
     render(
       <AnlageStandortDialog
         open
@@ -94,40 +105,58 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
         onGespeichert={vi.fn()}
       />,
     );
+    waehleNordUndWeiter();
     expect(screen.getByRole('radio', { name: SEIT_WANN_SCHON_IMMER })).toBeChecked();
-    expect(screen.queryByRole('combobox', { name: 'Gültig ab *' })).toBeNull();
-    expect(screen.getByText(KORREKTUR_VORSPANN)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Gültig ab' })).toBeNull();
   });
 
   it('Seit wann? wechselt zwischen „Ab einem Tag" (mit Datum) und „Schon immer" (ohne) — und zurück', () => {
     oeffne();
-    expect(screen.getByRole('combobox', { name: 'Gültig ab *' })).toBeInTheDocument();
+    waehleNordUndWeiter();
+    expect(screen.getByRole('combobox', { name: 'Gültig ab' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: SEIT_WANN_SCHON_IMMER }));
-    expect(screen.queryByRole('combobox', { name: 'Gültig ab *' })).toBeNull();
-    expect(screen.getByText(KORREKTUR_VORSPANN)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Gültig ab' })).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: 'Ab einem Tag' }));
-    expect(screen.getByRole('combobox', { name: 'Gültig ab *' })).toHaveTextContent('20.02.2027');
+    expect(screen.getByRole('combobox', { name: 'Gültig ab' })).toHaveTextContent('20.02.2027');
   });
 
-  it('normaler Umzug bleibt auf heute und behält seinen bisherigen Einleitungssatz', () => {
+  it('normaler Umzug bleibt auf heute und fragt „Seit wann gehört … zu …?"', () => {
     oeffne();
-    expect(screen.getByRole('combobox', { name: 'Gültig ab *' })).toHaveTextContent('20.02.2027');
-    expect(screen.getByText(/Die Anlage gehört ab dem gewählten Tag zu einem anderen Standort/)).toBeInTheDocument();
-    expect(screen.queryByText(/seit ihrem ersten Tag/)).toBeNull();
+    waehleNordUndWeiter();
+    expect(screen.getByRole('combobox', { name: 'Gültig ab' })).toHaveTextContent('20.02.2027');
+    expect(screen.getByText('Seit wann gehört Werk Ahrenberg – Halle 2 zu Werk Ahrenberg Nord?')).toBeInTheDocument();
   });
 
-  it('T6: die Folgen-Karte nennt, was sich ändert, die vier Dinge, die bleiben, und dass nichts gesendet wird', async () => {
+  it('zurück aus „Seit wann?" führt wieder zur Liste, die Wahl bleibt erhalten', () => {
+    oeffne();
+    waehleNordUndWeiter();
+    fireEvent.click(screen.getByRole('button', { name: 'Zurück zur Liste' }));
+    expect(screen.getByText('Zu welchem Standort gehört Werk Ahrenberg – Halle 2?')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Werk Ahrenberg Nord \(ST-3\)/ })).toBeChecked();
+  });
+
+  it('die Liste nennt oben den heutigen Standort und zeigt „Neuer Standort" am Fuß', () => {
+    oeffne();
+    expect(screen.getByText('Zu welchem Standort gehört Werk Ahrenberg – Halle 2?')).toBeInTheDocument();
+    expect(screen.getByText('Heute: Werk Ahrenberg.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Neuer Standort' })).toBeInTheDocument();
+  });
+
+  it('T6: „Alle Folgen" zeigt, was sich ändert, die vier Dinge, die bleiben, und dass nichts gesendet wird', async () => {
     const vorschau = vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
     oeffne();
-    expect(screen.getByText('Anlage zuordnen')).toBeInTheDocument();
-    expect(screen.getByText(FOLGEN_WAEHLEN)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Gehört zu' })).toBeInTheDocument();
     expect(vorschau).not.toHaveBeenCalled();
 
-    waehleNord();
-    const karte = await screen.findByTestId('umzug-folgen');
+    waehleNordUndWeiter();
+    const kurz = await screen.findByTestId('umzug-folgen-kurz');
     expect(vorschau).toHaveBeenCalledWith(FIXTURE_IDS.an2, NORD, '2027-02-20', false);
+    expect(within(kurz).getByText('Ab 20.02.2027 gehört die Anlage zu Werk Ahrenberg Nord (ST-3).')).toBeInTheDocument();
+    expect(within(kurz).getByText('Es wird kein Befehl an die Anlage gesendet.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alle Folgen' }));
+    const karte = screen.getByTestId('umzug-folgen');
     expect(within(karte).getByRole('heading', { name: 'Das ändert sich' })).toBeInTheDocument();
-    expect(within(karte).getByText('Ab 20.02.2027 gehört die Anlage zu Werk Ahrenberg Nord (ST-3).')).toBeInTheDocument();
     expect(within(karte).getByText('Bis 19.02.2027 gehört sie weiter zu Werk Ahrenberg (ST-1).')).toBeInTheDocument();
 
     const bleibt = within(karte).getByRole('heading', { name: 'Das bleibt, wie es ist' }).parentElement!;
@@ -136,19 +165,20 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
     }
     expect(within(bleibt).getByText('Messstellen bleiben an ihrem Ort.')).toBeInTheDocument();
     expect(within(bleibt).getByText('Die Anlage bleibt an ihrem Netzanschluss NA-2.')).toBeInTheDocument();
-    expect(within(karte).getByText('Es wird kein Befehl an die Anlage gesendet.')).toBeInTheDocument();
   });
 
-  it('speichert mit Begründung, zeigt die Zuordnungen des Servers und meldet sich mit „Fertig“', async () => {
+  it('speichert mit Begründung (unter „Details"), zeigt die Zuordnungen des Servers und meldet sich mit „Fertig“', async () => {
     vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
     const put = vi.spyOn(api, 'anlageStandortSetzen').mockResolvedValue(
       umzug({ begruendung: 'Halle 2 gehört ab jetzt zu Nord.', protokoll: [{ id: 7, objektArt: 'anlage', objektId: FIXTURE_IDS.an2 }] }),
     );
     const { onGespeichert } = oeffne();
-    waehleNord();
-    await screen.findByTestId('umzug-folgen');
+    waehleNordUndWeiter();
+    await screen.findByTestId('umzug-folgen-kurz');
+    expect(screen.queryByLabelText('Begründung (freiwillig)')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     fireEvent.change(screen.getByLabelText('Begründung (freiwillig)'), { target: { value: '  Halle 2 gehört ab jetzt zu Nord. ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
 
     expect(await screen.findByText('Zuordnung gespeichert')).toBeInTheDocument();
     expect(put).toHaveBeenCalledWith(FIXTURE_IDS.an2, {
@@ -171,11 +201,11 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
     const vorschau = vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug({ gueltigAb: '2026-10-01' }));
     const put = vi.spyOn(api, 'anlageStandortSetzen').mockResolvedValue(umzug({ gueltigAb: '2026-10-01' }));
     oeffne();
+    waehleNordUndWeiter();
     fireEvent.click(screen.getByRole('radio', { name: SEIT_WANN_SCHON_IMMER }));
-    waehleNord();
-    await screen.findByTestId('umzug-folgen');
+    await screen.findByTestId('umzug-folgen-kurz');
     expect(vorschau).toHaveBeenCalledWith(FIXTURE_IDS.an2, NORD, '2026-10-01', true);
-    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
     expect(await screen.findByText('Zuordnung gespeichert')).toBeInTheDocument();
     expect(put).toHaveBeenCalledWith(FIXTURE_IDS.an2, { standortId: NORD, gueltigAb: '2026-10-01', korrektur: true });
   });
@@ -186,9 +216,9 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
       new ApiError(409, satz, { code: 'gleicher_tag', message: satz, feld: 'gueltigAb' }),
     );
     oeffne();
-    waehleNord();
+    waehleNordUndWeiter();
     expect(await screen.findByText(satz)).toBeInTheDocument();
-    expect(screen.queryByTestId('umzug-folgen')).toBeNull();
+    expect(screen.queryByTestId('umzug-folgen-kurz')).toBeNull();
   });
 
   it('lehnt der Eintrag ab, bleibt der Dialog offen und der Satz steht am Standort', async () => {
@@ -198,9 +228,9 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
       new ApiError(400, satz, { code: 'ziel_ist_bisheriger_eltern', message: satz, feld: 'standortId' }),
     );
     oeffne();
-    waehleNord();
-    await screen.findByTestId('umzug-folgen');
-    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    waehleNordUndWeiter();
+    await screen.findByTestId('umzug-folgen-kurz');
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
     expect(await screen.findByText(satz)).toBeInTheDocument();
     expect(screen.queryByText('Zuordnung gespeichert')).toBeNull();
   });
@@ -209,7 +239,7 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
     const vorschau = vi.spyOn(api, 'anlageStandortVorschau');
     const put = vi.spyOn(api, 'anlageStandortSetzen');
     const { onClose } = oeffne();
-    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     expect(screen.getByText('Bitte wählen Sie den Standort, zu dem die Anlage gehören soll.')).toBeInTheDocument();
     expect(vorschau).not.toHaveBeenCalled();
     expect(put).not.toHaveBeenCalled();
@@ -236,7 +266,6 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
         onStandorteNeuLaden={neuLaden}
       />,
     );
-    fireEvent.click(screen.getByRole('combobox', { name: 'Neuer Standort *' }));
     fireEvent.click(screen.getByRole('button', { name: 'Neuer Standort' }));
     const standortDialog = await screen.findByRole('dialog', { name: 'Standort anlegen' });
     fireEvent.change(within(standortDialog).getByLabelText('Name *'), { target: { value: 'Neues Lager' } });
@@ -260,9 +289,9 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
     }));
     render(<AnlageStandortDialog open anlageId={FIXTURE_IDS.an2} anlageName={HALLE_2} standorte={mitNord()}
       anfangsSeitWann="schon_immer" gueltigAbVorgabe="2026-10-01" onClose={vi.fn()} onGespeichert={vi.fn()} />);
-    waehleNord();
-    await screen.findByTestId('umzug-folgen');
-    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    waehleNordUndWeiter();
+    await screen.findByTestId('umzug-folgen-kurz');
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
     const angebot = await screen.findByTestId('standort-archiv-angebot');
     expect(angebot).toHaveTextContent('ist jetzt leer');
     expect(within(angebot).getByRole('button', { name: 'Standort archivieren' })).toBeInTheDocument();
@@ -276,9 +305,9 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
     }));
     render(<AnlageStandortDialog open anlageId={FIXTURE_IDS.an2} anlageName={HALLE_2} standorte={mitNord()}
       anfangsSeitWann="schon_immer" gueltigAbVorgabe="2026-10-01" onClose={vi.fn()} onGespeichert={vi.fn()} />);
-    waehleNord();
-    await screen.findByTestId('umzug-folgen');
-    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    waehleNordUndWeiter();
+    await screen.findByTestId('umzug-folgen-kurz');
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(api.standortOrte).toHaveBeenCalledWith(ST1.id));
     expect(screen.queryByTestId('standort-archiv-angebot')).toBeNull();
   });
@@ -301,8 +330,8 @@ describe('„Freigegebene Berichte: …“ in der Folgen-Karte (AP-12 IP-9)', ()
     const karte = await (async () => {
       await new Promise<void>((fertig) => setTimeout(fertig, 250));
       expect(betroffen).not.toHaveBeenCalled();
-      waehleNord();
-      return screen.findByTestId('umzug-folgen');
+      waehleNordUndWeiter();
+      return screen.findByTestId('umzug-folgen-kurz');
     })();
     expect(await within(karte).findByTestId('berichte-folgen')).toHaveTextContent('Freigegebene Berichte: keine betroffen');
     expect(betroffen).toHaveBeenCalledTimes(1);
@@ -320,7 +349,7 @@ describe('„Freigegebene Berichte: …“ in der Folgen-Karte (AP-12 IP-9)', ()
       }),
     );
     oeffne();
-    waehleNord();
+    waehleNordUndWeiter();
     expect(await screen.findByTestId('berichte-folgen')).toHaveTextContent(
       'Freigegebene Berichte: BR-2026-0001 Nr. 2, BR-2026-0002 Nr. 1 bekommen den Vermerk „Revision nötig“',
     );
@@ -334,8 +363,8 @@ describe('„Freigegebene Berichte: …“ in der Folgen-Karte (AP-12 IP-9)', ()
       else betroffen.mockRejectedValue(new ApiError(403, 'Dafür ist Ihr Konto nicht freigeschaltet.', {}));
       const fehler = vi.spyOn(console, 'error');
       oeffne();
-      waehleNord();
-      const karte = await screen.findByTestId('umzug-folgen');
+      waehleNordUndWeiter();
+      const karte = await screen.findByTestId('umzug-folgen-kurz');
       await waitFor(() => expect(betroffen).toHaveBeenCalled());
       await act(() => new Promise<void>((fertig) => setTimeout(fertig, 0)));
       expect(within(karte).queryByTestId('berichte-folgen')).toBeNull();
@@ -345,7 +374,7 @@ describe('„Freigegebene Berichte: …“ in der Folgen-Karte (AP-12 IP-9)', ()
   }
 });
 
-describe('Zeile „Standort“ in „Meine Anlage“ (T6a → T6b)', () => {
+describe('Zeile „Standort“ in „Meine Anlage“ (T6a → Schritt 2c)', () => {
   function zeile(antwort: StandorteAmStichtag, onGeaendert = vi.fn()) {
     const a = standortDerAnlage(antwort, FIXTURE_IDS.an2)!;
     render(
@@ -367,10 +396,10 @@ describe('Zeile „Standort“ in „Meine Anlage“ (T6a → T6b)', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: `Ändern: ${HALLE_2}` }));
-    expect(screen.getByText('Anlage zuordnen')).toBeInTheDocument();
-    waehleNord();
-    await screen.findByTestId('umzug-folgen');
-    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    expect(screen.getByRole('heading', { name: 'Gehört zu' })).toBeInTheDocument();
+    waehleNordUndWeiter();
+    await screen.findByTestId('umzug-folgen-kurz');
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Fertig' }));
     expect(onGeaendert).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByText('Zuordnung gespeichert')).toBeNull());

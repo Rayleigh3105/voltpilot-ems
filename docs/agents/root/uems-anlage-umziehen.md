@@ -55,15 +55,25 @@ eine Aussage über Zugehörigkeit, kein Eingriff in den Betrieb: geschrieben wer
 7. **Schritt 2c (vp-standort-konzept §6.3/§6.5, B2/B4):** „Anderem Standort zuordnen“ und „Zuordnung
    korrigieren“ sind EIN Knopf „Ändern“ hinter „Gehört zu: {Standort} ({Kurzzeichen}) · {n} Anlagen“ geworden
    (`gehoertZuText`, `anlageStandort.ts`) — nur ab ZWEI Standorten gezeigt (`mehrereStandorte`,
-   `anlageOrtBerichtigen.ts`); mit nur einem gibt es nichts umzuhängen. „Seit wann?“ (`UmzugForm.seitWann`,
-   `SeitWann`) ersetzt den früheren äußeren `modus`-Schalter: „Ab einem Tag“ zeigt das Datum, „Schon immer
-   (war falsch)“ blendet es aus (Regel 5) und setzt intern den ersten Anlagentag (`gueltigAbVorgabe`, jetzt
-   PFLICHT-Prop). Der geführte Einstieg „Zuordnung korrigieren“ (Portfolio-Übersicht,
-   `EbenenCockpit.tsx`) bleibt eigenständig, startet aber nur noch mit `anfangsSeitWann="schon_immer"`
-   vorbelegt — umschaltbar im selben Dialog.
-   **B4 behoben:** `VpPicker` trägt `createLabel="Neuer Standort"`/`onCreate` - öffnet denselben
-   `StandortDialog` wie am Standort-Kopf (IP-6, `standort: null`), wählt die neue ID direkt und ruft
-   `onStandorteNeuLaden` (liest die Zielliste neu), ohne den Dialog zu schließen.
+   `anlageOrtBerichtigen.ts`); mit nur einem gibt es nichts umzuhängen. Er öffnet das Blatt „Gehört zu“
+   (`GEHOERT_ZU_TITEL`) in ZWEI Schritten (`AnlageStandortDialog`'s `schritt`-State, Captain-Korrektur zum
+   ersten Entwurf - der war noch ein einseitiges Formular):
+   1. „Zu welchem Standort gehört {Anlage}?“ (`zuWelchemStandortFrage`) - die VOLLE Liste aller Standorte
+      als Karten (`.vp-au-opt`, Muster wie `.vp-sa-karte` in `SteuerartDialog.css`; kein Dropdown, kein
+      Blatt-im-Blatt), der heutige trägt „Heute zugeordnet“; am Fuß „Neuer Standort“ - derselbe
+      `StandortDialog` wie am Standort-Kopf (IP-6, B4 behoben), wählt die neue ID direkt und ruft
+      `onStandorteNeuLaden`. Knopf „Weiter“ validiert nur den Standort (`pruefeStandort`).
+   2. „Seit wann gehört {Anlage} zu {Ziel}?“ (`seitWannFrage`) - „Ab einem Tag“ (Datum darunter, vorbelegt
+      mit heute) oder „Schon immer (war falsch)“ (`SeitWann`, Regel 5: kein sichtbares Datum, intern der
+      erste Anlagentag, `gueltigAbVorgabe`, PFLICHT-Prop). Darunter drei kurze Sätze aus der
+      Vorschau (`kurzeFolgen`: erster und letzter Satz von `FolgenKarte.aendert` plus `befehl`) statt der
+      vollen Karte; „Alle Folgen“ klappt sie auf (`FolgenKarteAnsicht`, unveränderte Zwei-Teile-Form),
+      „Details“ zeigt erst dort die Begründung. Ein `icon`-Pfeil im Modal-Kopf (`vp-au-zurueck`) führt
+      zurück zu Schritt 1, die Wahl bleibt erhalten. Knopf „Speichern“ (vormals „Zuordnen“).
+   Ein Server-Fehler am Feld `standortId` (z. B. `ziel_ist_bisheriger_eltern`) hat auf Schritt 2 kein
+   eigenes Feld mehr - er steht allgemein, nicht an einem gerade unsichtbaren Feld. Der geführte Einstieg
+   „Zuordnung korrigieren“ (Portfolio-Übersicht, `EbenenCockpit.tsx`) bleibt eigenständig, startet aber
+   wie jeder andere Einstieg auf Schritt 1 und trägt nur `anfangsSeitWann="schon_immer"` für Schritt 2 vor.
 8. **Zeile „Standort“:** endet die heutige Zuordnung, liest die Zeile `GET /standorte?stichtag=<Ende+1>` und
    sagt „bis 28.02.2027 · ab 01.03.2027: Werk Ahrenberg Nord (ST-3)“ — ohne Ende kein zweiter Aufruf.
 9. **Rechte:** `anlage.zuordnen`, mit „gültig ab“ vor heute zusätzlich `aenderung.rueckwirkend` — Kommentar,
