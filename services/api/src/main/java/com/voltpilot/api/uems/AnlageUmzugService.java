@@ -30,7 +30,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Eine bestehende Anlage einem Standort zuordnen oder umziehen — mit „gültig ab" (UEMS AP-02
- * IP-11, Mockup T6, Abnahmefall A11).
+ * IP-11, Mockup T6, Abnahmefall A11). {@code korrektur = true} (B2 „Zuordnung korrigieren")
+ * ersetzt das Intervall, das AM gewählten „gültig ab" BEGINNT, statt ein neues daneben
+ * anzulegen: das ersetzte Intervall wird aufgehoben (lesbar, Vortags-Falle „gleicher Tag"
+ * entfällt), das neue erbt seinen eigenen Beginn und sein Ende — dieselbe Unterscheidung wie
+ * bei Ort und Stellung einer Messstelle ({@code MessstelleZuordnungService}).
  *
  * <h2>Die Kernzusage: kein Regelkreis ändert sich</h2>
  *
@@ -103,8 +107,8 @@ public class AnlageUmzugService {
 
     /** {@code GET …/standort/vorschau}: was der Eintrag bewirken würde — schreibt nichts. */
     @Transactional(readOnly = true)
-    public AnlageUmzugDto.Umzug vorschau(UUID siteId, UUID standortId, LocalDate gueltigAb) {
-        Plan p = planen(siteId, standortId, gueltigAb);
+    public AnlageUmzugDto.Umzug vorschau(UUID siteId, UUID standortId, LocalDate gueltigAb, boolean korrektur) {
+        Plan p = planen(siteId, standortId, gueltigAb, korrektur);
         List<AnlageUmzugDto.Zuordnung> danach = p.ergebnis().intervalle().stream()
                 .map(i -> new AnlageUmzugDto.Zuordnung(ref(p.baum(), i.eltern()), i.ab(), i.bis(),
                         i.zustand().name().toLowerCase(Locale.ROOT)))
@@ -116,15 +120,20 @@ public class AnlageUmzugService {
     @Transactional
     public AnlageUmzugDto.Umzug umziehen(UUID siteId, AnlageUmzugDto.Anfrage a, ProtokollAkteur wer) {
         String begruendung = begruendung(a.begruendung());
+        boolean korrektur = Boolean.TRUE.equals(a.korrektur());
         // Derselbe Riegel wie die Funktionen und die Bestandsübernahme: zwei Umzüge derselben
         // Anlage urteilen nie auf demselben Stand.
         unternehmen.sperren();
-        Plan p = planen(siteId, a.standortId(), a.gueltigAb());
+        Plan p = planen(siteId, a.standortId(), a.gueltigAb(), korrektur);
         StandortRepository.Standort ziel = p.ziel();
         AnlageStandortRepository.Zuordnung laufend = p.laufend();
 
-        // Erst beenden, dann eintragen — sonst lehnt der Exklusions-Constraint ab.
-        if (laufend != null) {
+        // Erst beenden/aufheben, dann eintragen — sonst lehnt der Exklusions-Constraint ab. Eine
+        // Korrektur hebt das ersetzte Intervall auf (B2, es bleibt an SEINEM eigenen Beginn
+        // lesbar); ein Umzug beendet das laufende am Vortag des neuen „gültig ab".
+        if (p.vorgang() == Vorgang.KORREKTUR) {
+            zuordnungen.aufheben(laufend.id(), p.jetzt());
+        } else if (laufend != null) {
             zuordnungen.beenden(laufend.id(), p.ab().minusDays(1));
         }
         zuordnungen.zuordnen(p.tenant(), siteId, ziel.id(), p.ab(), p.neu().bis(), wer.sub());
@@ -184,9 +193,9 @@ public class AnlageUmzugService {
     private record Plan(UUID tenant, UUID siteId, String anlageName, StandortService.Baum baum,
             StandortRepository.Standort ziel, StandortRepository.Standort bisher,
             AnlageStandortRepository.Zuordnung laufend, EintragErgebnis ergebnis, IntervallMitZustand neu,
-            boolean ersteZuordnung, LocalDate ab, LocalDate heute, ZoneId zone, Instant jetzt) {}
+            boolean ersteZuordnung, LocalDate ab, LocalDate heute, ZoneId zone, Instant jetzt, Vorgang vorgang) {}
 
-    private Plan planen(UUID siteId, UUID standortId, LocalDate gueltigAb) {
+    private Plan planen(UUID siteId, UUID standortId, LocalDate gueltigAb, boolean korrektur) {
         UUID tenant = TenantContext.get();
         if (tenant == null) {
             throw OrtAbgelehnt.nichtGefunden("Kein Kundenbereich gewählt.");
@@ -211,8 +220,9 @@ public class AnlageUmzugService {
         Instant jetzt = uhr.instant();
         LocalDate heute = jetzt.atZone(zone).toLocalDate();
         LocalDate ab = gueltigAb == null ? heute : gueltigAb;
+        Vorgang vorgang = korrektur ? Vorgang.KORREKTUR : Vorgang.VERSCHIEBEN;
         EintragErgebnis e = OrtsbaumAbleitung.eintrag(b.baum(),
-                new EintragAntrag(anlage, Vorgang.VERSCHIEBEN, ab, ziel.kurzzeichen(), heute));
+                new EintragAntrag(anlage, vorgang, ab, ziel.kurzzeichen(), heute));
         if (!e.erlaubt()) {
             throw abgelehnt(e);
         }
@@ -230,7 +240,7 @@ public class AnlageUmzugService {
         }
         StandortRepository.Standort bisher = laufend == null ? null : standort(b, laufend.standortId());
         return new Plan(tenant, siteId, namen.get(0), b, ziel, bisher, laufend, e, neu,
-                vorhandeneZuordnungen.isEmpty(), ab, heute, zone, jetzt);
+                vorhandeneZuordnungen.isEmpty(), ab, heute, zone, jetzt, vorgang);
     }
 
     /** Die Gründe des Vertrags mit seinem Satz; das Feld sagt dem Dialog, wohin der Satz gehört. */
@@ -239,11 +249,12 @@ public class AnlageUmzugService {
             case VOR_DEM_ERSTEN_INTERVALL -> OrtAbgelehnt.Grund.VOR_DEM_ERSTEN_INTERVALL;
             case OBJEKT_ARCHIVIERT -> OrtAbgelehnt.Grund.OBJEKT_ARCHIVIERT;
             case GLEICHER_TAG -> OrtAbgelehnt.Grund.GLEICHER_TAG;
+            case KEIN_BEGINN_AN_DEM_TAG -> OrtAbgelehnt.Grund.KEIN_BEGINN_AN_DEM_TAG;
             case ZIEL_IST_BISHERIGER_ELTERN -> OrtAbgelehnt.Grund.ZIEL_IST_BISHERIGER_ELTERN;
             case ZIEL_GAB_ES_NOCH_NICHT -> OrtAbgelehnt.Grund.ZIEL_GAB_ES_NOCH_NICHT;
             case ZIEL_ARCHIVIERT -> OrtAbgelehnt.Grund.ZIEL_ARCHIVIERT;
-            // Das Ziel ist immer ein Standort, und VERSCHIEBEN ist keine Korrektur.
-            case ZIEL_ART_UNZULAESSIG, KEIN_BEGINN_AN_DEM_TAG ->
+            // Das Ziel ist immer ein Standort.
+            case ZIEL_ART_UNZULAESSIG ->
                     throw new IllegalStateException("beim Zuordnen einer Anlage unmöglich: " + e.grund());
         };
         String feld = switch (g) {

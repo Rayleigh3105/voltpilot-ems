@@ -137,7 +137,7 @@ export function AnlageStandortDialog({
     setVorschau({ stand: 'pruefen' });
     const warten = setTimeout(() => {
       api
-        .anlageStandortVorschau(anlageId, standortId, gueltigAb)
+        .anlageStandortVorschau(anlageId, standortId, gueltigAb, modus === 'korrektur')
         .then((umzug) => {
           if (aktiv) setVorschau({ stand: 'da', umzug });
         })
@@ -154,7 +154,7 @@ export function AnlageStandortDialog({
       aktiv = false;
       clearTimeout(warten);
     };
-  }, [anlageId, form.standortId, form.gueltigAb]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anlageId, form.standortId, form.gueltigAb, modus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setze<K extends keyof UmzugForm>(feld: K, wert: UmzugForm[K]) {
     setForm((f) => ({ ...f, [feld]: wert }));
@@ -171,7 +171,7 @@ export function AnlageStandortDialog({
     if (busy) return;
     setVersucht(true);
     setAllgemein(null);
-    const anfrage = umzugAnfrage(form);
+    const anfrage = umzugAnfrage(form, modus === 'korrektur');
     if (!anfrage) {
       fokus(pruefung.standortId ? 'standortId' : pruefung.gueltigAb ? 'gueltigAb' : 'begruendung');
       return;

@@ -143,6 +143,7 @@ class OrtVerschiebenApiTest {
     @MockitoBean VerbundAnteilePublisher verbundAnteilePublisher;
     @MockitoBean SprungprobePublisher sprungprobePublisher;
     @MockitoBean com.voltpilot.api.geraetesuche.GeraetesuchePublisher geraetesuchePublisher;
+    @MockitoBean com.voltpilot.api.direktvermarktung.DirektvermarktungPublisher direktvermarktungPublisher;
 
     @LocalServerPort
     int port;
@@ -209,7 +210,7 @@ class OrtVerschiebenApiTest {
         // Gezählt, nicht vermutet: kein Sender hat irgendetwas bekommen …
         Map<String, Integer> aufrufe = new LinkedHashMap<>();
         sender().forEach((name, mock) -> aufrufe.put(name, Mockito.mockingDetails(mock).getInvocations().size()));
-        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach dem Verschieben").hasSize(15)
+        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach dem Verschieben").hasSize(16)
                 .allSatisfy((name, n) -> assertThat(n).as(name).isZero());
         // … und außer der Zuordnung und dem Protokoll ändert sich keine Zeile: Anlage, Anlagen-Zuordnung, Box,
         // Netzanschluss und seine Bindung, Messstellen mit Ort und Stellung, Bereiche mit ihren Zuordnungen.
@@ -624,6 +625,7 @@ class OrtVerschiebenApiTest {
         m.put("VerbundAnteilePublisher", verbundAnteilePublisher);
         m.put("SprungprobePublisher", sprungprobePublisher);
         m.put("GeraetesuchePublisher", geraetesuchePublisher);
+        m.put("DirektvermarktungPublisher", direktvermarktungPublisher);
         return m;
     }
 

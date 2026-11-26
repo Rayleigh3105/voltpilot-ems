@@ -45,8 +45,9 @@ public class AnlageStandortController {
     @GetMapping("/vorschau")
     public AnlageUmzugDto.Umzug vorschau(@PathVariable UUID siteId,
             @RequestParam(required = false) String standortId,
-            @RequestParam(required = false) String gueltigAb) {
-        return umzug.vorschau(siteId, uuid(standortId), tag(gueltigAb));
+            @RequestParam(required = false) String gueltigAb,
+            @RequestParam(required = false) Boolean korrektur) {
+        return umzug.vorschau(siteId, uuid(standortId), tag(gueltigAb), Boolean.TRUE.equals(korrektur));
     }
 
     // Rechte: `anlage.zuordnen`; mit „gültig ab" vor heute zusätzlich `aenderung.rueckwirkend`.
