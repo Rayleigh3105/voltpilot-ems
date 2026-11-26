@@ -311,20 +311,41 @@ describe('direktvermarktungKennzahl (§7.7, EIGENE Kennzahl - keine fünfte Kach
     const dv = direktvermarktungKennzahl([]);
     expect(dv.zahl).toBe(0);
     expect(dv.ton).toBe('ok');
-    expect(dv.wort).toBe('Alle verbunden ✓');
+    // "Alle verbunden" wäre bei null Anlagen eine leere Behauptung.
+    expect(dv.wort).toBe('Keine getrennt ✓');
     expect(dv.kontext).toBe('0 Anlagen · 0 verbunden');
+  });
+
+  it('sind alle verbunden, sagt es nur das Wort - der Kontext wiederholt "N verbunden" nicht', () => {
+    // Die Seite zeigt `${kontext} · ${wort}` nebeneinander; vorher stand dort
+    // "1 Anlage · 1 verbunden · Alle verbunden ✓" - dieselbe Aussage zweimal.
+    const dv = direktvermarktungKennzahl([dvZeile()]);
+    expect(dv.wort).toBe('Alle verbunden ✓');
+    expect(dv.kontext).toBe('1 Anlage');
+    expect(`${dv.kontext} · ${dv.wort}`.match(/verbunden/g)).toHaveLength(1);
+  });
+
+  it('getrennt niemand, aber nicht alle verbunden (frisch eingerichtet): ehrliche Zählung statt "Alle verbunden"', () => {
+    const dv = direktvermarktungKennzahl([
+      dvZeile(), dvZeile({ siteId: 's2', zustand: 'wartet_auf_zugang' }), dvZeile({ siteId: 's3', zustand: 'verbindet' }),
+    ]);
+    expect(dv.zahl).toBe(0);
+    expect(dv.ton).toBe('ok');
+    expect(dv.wort).toBe('Keine getrennt ✓');
+    expect(dv.kontext).toBe('3 Anlagen · 1 verbunden');
   });
 
   it('EZ-8-Abgleich: nennt, wie viele Anlagen zusätzlich das Anlagensteuerung-Feld tragen', () => {
     const dv = direktvermarktungKennzahl([
       dvZeile({ ez8Direktvermarkter: 'Stadtwerke Nord' }), dvZeile({ siteId: 's2' }),
     ]);
-    expect(dv.kontext).toBe('2 Anlagen · 2 verbunden · 1 auch über die Anlagensteuerung');
+    expect(dv.kontext).toBe('2 Anlagen · 1 auch über die Anlagensteuerung');
+    expect(dv.wort).toBe('Alle verbunden ✓');
   });
 
   it('EZ-8-Abgleich: ohne eine einzige Anlage mit dem Feld bleibt der Kontext wie bisher', () => {
-    const dv = direktvermarktungKennzahl([dvZeile()]);
-    expect(dv.kontext).toBe('1 Anlage · 1 verbunden');
+    const dv = direktvermarktungKennzahl([dvZeile(), dvZeile({ siteId: 's2', zustand: 'gestoert' })]);
+    expect(dv.kontext).toBe('2 Anlagen · 1 verbunden');
   });
 });
 
