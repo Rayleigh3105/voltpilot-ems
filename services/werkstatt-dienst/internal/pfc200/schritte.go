@@ -677,13 +677,20 @@ func (l *Lauf) zugaengeSetzen(ctx context.Context, _ *lauf.Kontext) (protokoll.B
 	for i, u := range benutzer {
 		// config_linux_user lehnt user=root grundsaetzlich ab (WAGO-Quelltext
 		// config_linux_user.c/shadow_functions.c, FW22 und FW24+ gleich: exit 2,
-		// ohne jede Ausgabe). root hat durch den Lauf-Schluessel oben schon eine
-		// Shell, darum setzt usermod den Hash direkt.
-		befehl := Werkzeuge + "/config_linux_user user=" + u.name + " hash=" + shellWort(hashes[i])
-		if u.name == "root" {
-			befehl = "usermod -p " + shellWort(hashes[i]) + " root"
-		}
-		if _, err := l.fuehre(ctx, befehl, ""); err != nil {
+		// ohne jede Ausgabe). Fuer admin und user nimmt es bei hash= nicht den
+		// bloßen Hash, sondern die restlichen Shadow-Felder dahinter
+		// (hash:lstchg:min:max:warn:inactive:expire:flag, siehe get_user_hash
+		// --shadow-get-info und die Hilfe des Werkzeugs: "password hash and
+		// additional infos in /etc/shadow format"); ein bloßer Hash laesst
+		// sgetspent() an der unvollstaendigen Zeile scheitern, ebenfalls ohne
+		// Ausgabe, mit SYSTEM_CALL_ERROR=7 (ct_error_handling.h bzw.
+		// ctutil/error_codes.h, FW22 und FW24+ gleich). Die modulare Variante
+		// (FW24+, Kconfig CT_CONFIG_LINUX_USER) kennt außerdem "user" gar
+		// nicht als gültigen Benutzer (shadow_functions.c: IsValidUser nur
+		// admin/visualisation). usermod setzt den Hash für alle drei Konten
+		// gleich und robust, so wie root es schon tut (PTXCONF_SHADOW_USERMOD
+		// ist auf FW22 wie FW24 eingeschaltet).
+		if _, err := l.fuehre(ctx, "usermod -p "+shellWort(hashes[i])+" "+u.name, ""); err != nil {
 			return b, fmt.Errorf("Passwort von %s setzen: %w", u.name, err)
 		}
 	}

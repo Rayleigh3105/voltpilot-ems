@@ -131,6 +131,23 @@ public class ComponentTemplateRepository {
      */
     public Optional<ComponentTemplateDto> findNewestByBrandModel(Collection<String> kinds,
             String brand, String model) {
+        return findNewestByBrandModel(kinds, brand, model, null);
+    }
+
+    /**
+     * Wie {@link #findNewestByBrandModel(Collection, String, String)}, mit der gemeldeten
+     * Übertragungsart als zweiter Schlüssel.
+     *
+     * <p>Seit PR #2004 kann MARKE + MODELL allein nicht mehr eindeutig sein: derselbe
+     * Deye-Wechselrichter hat seither je eine Vorlage für Solarman V5 und für Modbus TCP am
+     * Datenlogger - beide ohne {@code superseded_by}, beide „aktuell". Ohne die Übertragungsart
+     * dazuzunehmen wäre JEDER gemeldete Deye wieder {@code UNKNOWN_DEVICE} (die Bestands-Übernahme
+     * kann dann gar keinen Deye mehr automatisch übernehmen). Die Übertragungsart entscheidet nur,
+     * wenn Marke + Modell MEHRERE Treffer ergeben; bei genau einem Treffer bleibt das Verhalten
+     * unverändert (auch ohne gemeldete Übertragungsart).
+     */
+    public Optional<ComponentTemplateDto> findNewestByBrandModel(Collection<String> kinds,
+            String brand, String model, String communication) {
         if (brand == null || brand.isBlank()) {
             return Optional.empty();
         }
@@ -146,7 +163,17 @@ public class ComponentTemplateRepository {
                     }
                 },
                 ComponentTemplateRepository::map);
-        return hits.size() == 1 ? Optional.of(hits.get(0)) : Optional.empty();
+        if (hits.size() == 1) {
+            return Optional.of(hits.get(0));
+        }
+        if (hits.size() > 1 && communication != null && !communication.isBlank()) {
+            List<ComponentTemplateDto> byCommunication =
+                    hits.stream().filter(h -> communication.equals(h.communication())).toList();
+            if (byCommunication.size() == 1) {
+                return Optional.of(byCommunication.get(0));
+            }
+        }
+        return Optional.empty();
     }
 
     /** Die neueste Fassung EINER Vorlage, sofern ihre Herkunft ausgeliefert wird. */

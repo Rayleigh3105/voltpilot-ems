@@ -14,6 +14,17 @@ case "$u" in admin | user) ;; *) falsch "Invalid user ($u)" ;; esac
 if hat new-password "$@" || hat confirm-password "$@"; then
   falsch "die Attrappe nimmt kein Passwort als Argument, nur hash="
 fi
-printf '%s' "$h" | grep -Eq '^\$6\$[./0-9A-Za-z]{1,16}\$[./0-9A-Za-z]{86}$' || falsch "Invalid hash"
-setze "benutzer/$u.hash" "$h"
+hashfeld="${h%%:*}"
+printf '%s' "$hashfeld" | grep -Eq '^\$6\$[./0-9A-Za-z]{1,16}\$[./0-9A-Za-z]{86}$' || falsch "Invalid hash"
+# Das echte Werkzeug baut "user:$hash" und gibt die Zeile an sgetspent()
+# (FillUserDataFromHash); das verlangt die vollstaendige Shadow-Zeile hinter
+# dem Nutzernamen (hash:lstchg:min:max:warn:inactive:expire:flag, siehe
+# get_user_hash --shadow-get-info und die Hilfe des Werkzeugs: "password hash
+# and additional infos in /etc/shadow format"). Fehlen die Felder nach dem
+# Hash ganz (kein ":" in hash=), scheitert sgetspent() an der unvollstaendigen
+# Zeile und das Werkzeug endet mit SYSTEM_CALL_ERROR=7, ebenfalls ohne jede
+# Ausgabe (ct_error_handling.h bzw. ctutil/error_codes.h, FW22 und FW24+
+# gleich).
+case "$h" in *:*) ;; *) exit 7 ;; esac
+setze "benutzer/$u.hash" "$hashfeld"
 merke "user=$u hash=gesetzt"
