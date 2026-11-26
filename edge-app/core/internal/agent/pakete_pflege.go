@@ -44,6 +44,7 @@ import (
 	"sync"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otapakete"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otatarget"
@@ -166,8 +167,16 @@ func (a *Agent) paketePflegeEinmal(release string) error {
 	if err != nil {
 		return nil
 	}
-	m, err := otaverify.ParseManifest(env.Manifest)
-	if err != nil || m.Release != release || m.Pakete == nil {
+	// Die Signaturkette WIRD HIER SELBST geprueft, genau wie der OTA-Pfad
+	// (otaVerifyTarget): die Ablage der Zuweisung (onUpdateTarget) prueft nur
+	// Form und Identitaet, und seit dem Urteil des Pruefers kann eine neue
+	// retained Zuweisung die Datei ersetzt haben. pakete.sha256 haengt sonst
+	// an der MQTT-ACL statt am Release-Schluessel.
+	m, err := a.paketePflegeVerifiziere(env, release)
+	if err != nil {
+		return err
+	}
+	if m == nil || m.Pakete == nil {
 		return nil
 	}
 	apk := a.paketePflege.apk
@@ -263,6 +272,48 @@ func (a *Agent) paketePflegeEinmal(release string) error {
 	slog.Info("Pakete-Pflege: Pakete aus dem geprueften Release-Anhang installiert",
 		"release", release, "pakete", strings.Join(namen, ", "))
 	return nil
+}
+
+// paketePflegeVerifiziere prueft die Signaturkette der Zuweisung gegen die
+// eingebackene Wurzel und das TOFU-abgelegte Trust-Set - dieselben Eingaben
+// wie otaVerifyTarget. Nur ein Manifest mit Urteil OK, das GENAU die laufende
+// Fassung beschreibt, kommt zurueck; (nil, nil) heisst "nichts zu tun"
+// (anderes Release im Umschlag), ein Fehler heisst "ungueltig oder nicht
+// pruefbar - nichts laden, nichts installieren, spaeter erneut".
+func (a *Agent) paketePflegeVerifiziere(env *otatarget.Envelope, release string) (*otaverify.Manifest, error) {
+	roots := a.otaRoots
+	if roots == nil {
+		var err error
+		if roots, err = otaverify.BakedRoots(); err != nil {
+			return nil, errors.New("der eingebackene Vertrauensanker ist unlesbar")
+		}
+	}
+	dir := a.otaDir()
+	in := otaverify.Input{
+		Roots:          roots,
+		TrustSet:       readFileOrNil(dir, otaTrustSetFile),
+		TrustSetSig:    readFileOrNil(dir, otaTrustSetFile+otaSigSuffix),
+		Manifest:       env.Manifest,
+		ManifestSig:    env.Signature,
+		Backend:        cloud.UpdateBackend(a.boxArt()),
+		RunningVersion: Version,
+		Now:            time.Now(),
+	}
+	if cur := a.otaReadCurrent(dir); cur != nil {
+		seq := cur.ReleaseSeq
+		in.CurrentSeq = &seq
+	}
+	res := otaverify.Verify(in)
+	if res.Outcome != otaverify.OutcomeOK {
+		// Ruhig, aber nie still: ohne gueltige Kette wird kein Byte geladen.
+		slog.Warn("Pakete-Pflege: Zuweisung nicht als echt belegt - nichts installiert",
+			"urteil", string(res.Outcome), "grund", res.Reason)
+		return nil, errors.New("die Zuweisung traegt kein gueltig signiertes Manifest")
+	}
+	if res.Manifest == nil || res.Manifest.Release != release {
+		return nil, nil // eine andere Fassung - der Update-Pfad ist zustaendig
+	}
+	return res.Manifest, nil
 }
 
 // paketInstalliert sagt, ob apk list --installed genau dieses Paket in dieser

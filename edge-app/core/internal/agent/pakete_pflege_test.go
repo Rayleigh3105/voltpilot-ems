@@ -210,6 +210,39 @@ func TestPaketePflegeNimmtBeiFehlschlagZurueck(t *testing.T) {
 	}
 }
 
+// Die Kette haengt am Schluessel, nie an der MQTT-ACL: Eine Zuweisung mit
+// lesbarem Manifest fuer GENAU die laufende Fassung, aber fremder Signatur
+// (gleiche key_id, anderer Schluessel), liegt nach onUpdateTarget im Store -
+// die Pflege prueft selbst und laedt und installiert NICHTS.
+func TestPaketePflegeFalschSigniertesManifestInstalliertNichts(t *testing.T) {
+	b := newPaketeBox(t, "mipsel_24kc")
+	fremd := otaNewKey(t, "rel-2026-a")
+	b.a.onUpdateTarget(b.envelope(t, b.manifest, &fremd))
+	// Direkt angestossen (im Betrieb schuetzt davor schon das Urteil des
+	// Pruefers; hier zaehlt, dass die Pflege SELBST nicht darauf vertraut).
+	b.a.paketePflegeAnstossen(b.manifest.Release)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		b.a.paketePflege.mu.Lock()
+		busy := b.a.paketePflege.busy
+		retry := b.a.paketePflege.retryAt
+		b.a.paketePflege.mu.Unlock()
+		if !busy && !retry.IsZero() {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Pflege endet nicht")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if b.abrufe.Load() != 0 {
+		t.Fatal("der Anhang wurde trotz ungueltiger Signatur geladen")
+	}
+	if len(b.apk.adds) != 0 || b.a.paketePflege.erledigt != "" {
+		t.Fatalf("installiert trotz ungueltiger Signatur: adds %v, erledigt %q", b.apk.adds, b.a.paketePflege.erledigt)
+	}
+}
+
 func TestPaketePflegeFalscheLieferungWirdVerworfen(t *testing.T) {
 	b := newPaketeBox(t, "mipsel_24kc")
 	b.bundle = append(b.bundle[:len(b.bundle)-1], b.bundle[len(b.bundle)-1]^1)
