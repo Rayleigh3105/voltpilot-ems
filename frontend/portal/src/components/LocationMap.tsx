@@ -2,30 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { Input } from '../../designsystem/components/forms/Input';
 import { type OrtTreffer } from '../api';
 import { api } from '../apiVoll';
 import { fmtCoords } from '../format';
-import {
-  coordFieldValue,
-  DACH_CENTER,
-  DACH_ZOOM,
-  parseCoordInput,
-  PIN_ZOOM,
-  roundCoord,
-  syncFromFields,
-} from './geo';
+import { DACH_CENTER, DACH_ZOOM, PIN_ZOOM, roundCoord } from './geo';
+import { KoordinatenManuellFelder } from './KoordinatenManuellFelder';
 
 /** Hausgenau - so nah, dass der Pin aufs Dach gezogen werden kann. */
 const HAUS_ZOOM = 18;
-
-/** Does a manual field string already represent this (rounded) coordinate? */
-function fieldMatches(str: string, num: number | null): boolean {
-  const parsed = parseCoordInput(str);
-  if (num == null) return parsed == null; // both empty
-  if (parsed == null || Number.isNaN(parsed)) return false;
-  return roundCoord(parsed) === num;
-}
 
 /**
  * The site location input IS a map with a draggable pin (captain: "Mach einfach
@@ -49,9 +33,12 @@ export function LocationMap({
   lon,
   onChange,
   readonly = false,
+  kompakt = false,
   fokus = 0,
   ortAufloesen = false,
   onOrtAufgeloest,
+  pflichtPunkt = false,
+  manuellAusblenden = false,
 }: {
   lat: number | null;
   lon: number | null;
@@ -69,6 +56,13 @@ export function LocationMap({
    */
   readonly?: boolean;
   /**
+   * vp-standort-konzept E3: die winzige Karte (58×44 px) in der Standort-Zeile — nur die Kachel,
+   * ohne Koordinaten-Zeile und ohne Attributions-Kontrolle (die liegt unleserlich in der Ecke; das
+   * Blatt dahinter, das ein Tipp öffnet, zeigt die volle, attributierte Karte). Immer mit
+   * {@code readonly}.
+   */
+  kompakt?: boolean;
+  /**
    * Task vp-anlage-adresse-ux: ein Klick oder gezogener Pin löst sich zusätzlich in eine lesbare
    * Adresse auf (`GET /api/v1/orte/rueckwaerts`), wenn erreichbar - sonst bleibt nur der Punkt
    * stehen, ehrlich ohne Adresstext. Default aus, damit die anderen Verwender dieser gemeinsamen
@@ -77,6 +71,20 @@ export function LocationMap({
   ortAufloesen?: boolean;
   /** Die aufgelöste Adresse - NIE ihren Punkt übernehmen, der Pin bleibt exakt, wo er gesetzt wurde. */
   onOrtAufgeloest?: (treffer: OrtTreffer) => void;
+  /**
+   * vp-standort-konzept §6.1 (Regel 5: nie ohne Punkt speichern): in der Zeile „Standort" gehören
+   * Adresse und Punkt untrennbar zusammen - „Entfernen" hätte hier keine Wirkung (der Wirt lehnt
+   * einen leeren Punkt ab) und bliebe ein totes Bedienelement. Blendet nur den Knopf aus, die
+   * Koordinaten-Zeile und „Koordinaten manuell bearbeiten" bleiben.
+   */
+  pflichtPunkt?: boolean;
+  /**
+   * vp-standort-konzept §6.1 (captain-Korrektur): im Blatt „Ort berichtigen" steht „Koordinaten
+   * manuell bearbeiten" unter „Details", nicht mehr direkt unter der Karte - diese Karte blendet
+   * dann ihre eigene Kopie aus, der Wirt rendert {@link KoordinatenManuellFelder} selbst, wo er sie
+   * haben will. Für alle anderen Verwender unverändert (Default aus).
+   */
+  manuellAusblenden?: boolean;
 }) {
   const mapEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -84,18 +92,6 @@ export function LocationMap({
   // Latest onChange without re-binding leaflet handlers every render.
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-
-  const [manualOpen, setManualOpen] = useState(false);
-  const [latStr, setLatStr] = useState(coordFieldValue(lat));
-  const [lonStr, setLonStr] = useState(coordFieldValue(lon));
-  const [latError, setLatError] = useState<string | null>(null);
-  const [lonError, setLonError] = useState<string | null>(null);
-  // Latest field text without adding it to the sync effect's deps (which would
-  // reformat the field on every keystroke).
-  const latStrRef = useRef(latStr);
-  latStrRef.current = latStr;
-  const lonStrRef = useRef(lonStr);
-  lonStrRef.current = lonStr;
 
   const hasPin = lat != null && lon != null;
 
@@ -142,7 +138,7 @@ export function LocationMap({
       center: hasPin ? [lat as number, lon as number] : DACH_CENTER,
       zoom: hasPin ? PIN_ZOOM : DACH_ZOOM,
       scrollWheelZoom: false,
-      attributionControl: true,
+      attributionControl: !kompakt,
       ...(readonly
         ? { dragging: false, doubleClickZoom: false, zoomControl: false, keyboard: false }
         : {}),
@@ -187,15 +183,27 @@ export function LocationMap({
 
     const pos = L.latLng(lat, lon);
     if (!markerRef.current) {
-      const icon = L.divIcon({
-        className: 'vp-map-pin-icon',
-        html:
-          '<svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">' +
-          '<path d="M12 2C7.86 2 4.5 5.36 4.5 9.5c0 5.13 6.2 11.4 6.86 12.06a.9.9 0 0 0 1.28 0C13.3 20.9 19.5 14.63 19.5 9.5 19.5 5.36 16.14 2 12 2z"/>' +
-          '<circle cx="12" cy="9.5" r="2.8" fill="#fff"/></svg>',
-        iconSize: [34, 34],
-        iconAnchor: [17, 32],
-      });
+      // Kompakt (58×44 px, E3): die normale Pin-Spitze zeigt auf den Punkt und ragt mit ihrem
+      // Körper nach oben aus der Kachel - in 44 px Höhe sieht das wie "am oberen Rand klebend"
+      // aus (captain). Dort reicht ein kleiner, am Mittelpunkt verankerter Punkt.
+      const icon = kompakt
+        ? L.divIcon({
+            className: 'vp-map-pin-icon',
+            html:
+              '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+              '<circle cx="12" cy="12" r="9" fill="currentColor" stroke="#fff" stroke-width="2.5"/></svg>',
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+          })
+        : L.divIcon({
+            className: 'vp-map-pin-icon',
+            html:
+              '<svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">' +
+              '<path d="M12 2C7.86 2 4.5 5.36 4.5 9.5c0 5.13 6.2 11.4 6.86 12.06a.9.9 0 0 0 1.28 0C13.3 20.9 19.5 14.63 19.5 9.5 19.5 5.36 16.14 2 12 2z"/>' +
+              '<circle cx="12" cy="9.5" r="2.8" fill="#fff"/></svg>',
+            iconSize: [34, 34],
+            iconAnchor: [17, 32],
+          });
       const marker = L.marker(pos, { icon, draggable: !readonly, keyboard: false }).addTo(map);
       if (!readonly) {
         marker.on('dragend', () => {
@@ -228,44 +236,10 @@ export function LocationMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fokus]);
 
-  // Keep the manual fields in step with external changes (pin drag, search,
-  // clear). We only rewrite a field when its text no longer represents the
-  // incoming coordinate, so the value the user is actively typing is never
-  // reformatted under the cursor - and there is no stale suppression flag to get
-  // stuck when a manual edit resolves to the same coordinate (a no-op onChange).
-  useEffect(() => {
-    if (!fieldMatches(latStrRef.current, lat)) {
-      setLatStr(coordFieldValue(lat));
-      setLatError(null);
-    }
-    if (!fieldMatches(lonStrRef.current, lon)) {
-      setLonStr(coordFieldValue(lon));
-      setLonError(null);
-    }
-  }, [lat, lon]);
-
-  function editField(which: 'lat' | 'lon', value: string) {
-    const nextLat = which === 'lat' ? value : latStr;
-    const nextLon = which === 'lon' ? value : lonStr;
-    if (which === 'lat') setLatStr(value);
-    else setLonStr(value);
-    const sync = syncFromFields(nextLat, nextLon);
-    setLatError(sync.latError);
-    setLonError(sync.lonError);
-    if (sync.ok) {
-      // Nullable-safe: a half-filled pair must not round null into 0. The sync
-      // effect leaves the field text the user is typing untouched (fieldMatches).
-      onChangeRef.current(
-        sync.lat == null ? null : roundCoord(sync.lat),
-        sync.lon == null ? null : roundCoord(sync.lon),
-      );
-    }
-  }
-
   const coordLine = fmtCoords(lat, lon);
 
   return (
-    <div className="vp-map-field">
+    <div className={kompakt ? 'vp-map-field vp-map-field-kompakt' : 'vp-map-field'}>
       <div className="vp-map" ref={mapEl} role="application" aria-label="Standortkarte">
         {!hasPin && !readonly && (
           <div className="vp-map-hint" aria-hidden="true">
@@ -274,29 +248,31 @@ export function LocationMap({
           </div>
         )}
       </div>
-      <div className="vp-map-coords">
-        <Icon name="map-pin" size={15} />
-        {coordLine ? (
-          <span>{coordLine}</span>
-        ) : (
-          <span className="vp-muted">Noch kein Standort gesetzt (optional)</span>
-        )}
-        {hasPin && !readonly && (
-          <button
-            type="button"
-            className="vp-linklike"
-            onClick={() => {
-              aufloesungRunde.current++;
-              setAufloesung({ laedt: false, text: null, ausfall: false });
-              onChange(null, null);
-            }}
-            style={{ marginLeft: 'auto' }}
-          >
-            Entfernen
-          </button>
-        )}
-      </div>
-      {ortAufloesen && hasPin && (aufloesung.laedt || aufloesung.text || aufloesung.ausfall) && (
+      {!kompakt && (
+        <div className="vp-map-coords">
+          <Icon name="map-pin" size={15} />
+          {coordLine ? (
+            <span>{coordLine}</span>
+          ) : (
+            <span className="vp-muted">Noch kein Standort gesetzt (optional)</span>
+          )}
+          {hasPin && !readonly && !pflichtPunkt && (
+            <button
+              type="button"
+              className="vp-linklike"
+              onClick={() => {
+                aufloesungRunde.current++;
+                setAufloesung({ laedt: false, text: null, ausfall: false });
+                onChange(null, null);
+              }}
+              style={{ marginLeft: 'auto' }}
+            >
+              Entfernen
+            </button>
+          )}
+        </div>
+      )}
+      {!kompakt && ortAufloesen && hasPin && (aufloesung.laedt || aufloesung.text || aufloesung.ausfall) && (
         <p className="vp-map-aufloesung" aria-live="polite">
           {aufloesung.laedt && <span className="vp-muted">Adresse zu diesem Punkt wird ermittelt …</span>}
           {!aufloesung.laedt && aufloesung.text && <span>{aufloesung.text}</span>}
@@ -305,36 +281,8 @@ export function LocationMap({
           )}
         </p>
       )}
-      {!readonly && (
-        <button
-          type="button"
-          className="vp-linklike vp-map-manual-toggle"
-          aria-expanded={manualOpen}
-          onClick={() => setManualOpen((o) => !o)}
-        >
-          <Icon name={manualOpen ? 'chevron-down' : 'chevron-right'} size={14} />
-          Koordinaten manuell bearbeiten
-        </button>
-      )}
-      {!readonly && manualOpen && (
-        <div className="vp-map-manual">
-          <Input
-            label="Breitengrad"
-            placeholder="z. B. 52,52"
-            inputMode="decimal"
-            value={latStr}
-            error={latError}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => editField('lat', e.target.value)}
-          />
-          <Input
-            label="Längengrad"
-            placeholder="z. B. 13,405"
-            inputMode="decimal"
-            value={lonStr}
-            error={lonError}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => editField('lon', e.target.value)}
-          />
-        </div>
+      {!readonly && !manuellAusblenden && (
+        <KoordinatenManuellFelder lat={lat} lon={lon} onChange={onChange} />
       )}
     </div>
   );

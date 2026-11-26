@@ -9,6 +9,7 @@ import {
   type RegisterEinheitHinweis,
   type Site,
   type SiteAsset,
+  type StandortAmStichtag,
   type SupplyPrice,
 } from '../api';
 import { api } from '../apiVoll';
@@ -346,6 +347,29 @@ function verguetungStand(over: Partial<Einspeiseverguetung> = {}): Einspeiseverg
   };
 }
 
+/** Der Standort einer Anlage (Anlage-Flow a1: jede Anlage hat seit jeher einen) - vollständig. */
+function standortFixture(siteId: string, siteName: string, over: Partial<StandortAmStichtag> = {}): StandortAmStichtag {
+  return {
+    id: 'st-1',
+    kurzzeichen: 'ST-1',
+    name: siteName,
+    adresse: { strasse: 'Lindenweg 54', plz: '91710', ort: 'Treuchtlingen', land: 'DE' },
+    zeitzone: 'Europe/Berlin',
+    zustand: 'aktiv',
+    esFehlt: [],
+    bestand: 'vorhanden',
+    bestandText: null,
+    anlagen: [{ id: siteId, name: siteName, gueltigAb: '2026-01-01', gueltigBis: null }],
+    anlagenZahl: 1,
+    gebaeudeZahl: 0,
+    bereichZahl: 0,
+    flaecheM2: null,
+    flaecheQuelle: null,
+    lage: { breitengrad: 48.95, laengengrad: 10.92 },
+    ...over,
+  };
+}
+
 /** Rendert die ganze Einstellungs-Seite einer gewöhnlichen PV+Speicher-Anlage. */
 async function renderEinstellungen(
   over: Partial<Site> = {},
@@ -361,6 +385,8 @@ async function renderEinstellungen(
     moeglicherweiseFehlendeEinheit: false, gemessenePeakKw: null, summeKwp: null, messwerteViertelstunden: 0,
   },
   einheitGeraetOver: EinheitGeraet = { zuordnungen: [], freieGeraete: [] },
+  /** `null`: kein Standort-Objekt für diese Anlage (Randfall - sonst immer die volle Fixture). */
+  standortOver: Partial<StandortAmStichtag> | null = {},
 ) {
   const s: Site = { ...eegSite, ...over };
   const assets = vi
@@ -386,6 +412,16 @@ async function renderEinstellungen(
     plan == null
       ? vi.spyOn(api, 'schedule').mockRejectedValue(new Error('kein Plan'))
       : vi.spyOn(api, 'schedule').mockResolvedValue(plan as never);
+  const standorte = vi.spyOn(api, 'standorte').mockResolvedValue(
+    standortOver === null
+      ? { stichtag: '2026-01-01', standorte: [], nichtGezeigt: [], nochNichtZugeordnet: null }
+      : {
+          stichtag: '2026-01-01',
+          standorte: [standortFixture(s.id, s.name, standortOver)],
+          nichtGezeigt: [],
+          nochNichtZugeordnet: null,
+        },
+  );
   const onSiteSaved = vi.fn();
   const view = render(
     <TechnikSection
@@ -414,7 +450,7 @@ async function renderEinstellungen(
       ),
     verguetungAbruf,
     restore: () =>
-      [assets, registerEinheiten, registerHinweis, einheitGeraet, preview, supply, schedule, verguetungAbruf, chargingConfig].forEach((m) =>
+      [assets, registerEinheiten, registerHinweis, einheitGeraet, preview, supply, schedule, verguetungAbruf, chargingConfig, standorte].forEach((m) =>
         m.mockRestore(),
       ),
   };
@@ -446,9 +482,8 @@ describe('Einstellungen · die kurze Liste (E5)', () => {
     expect(zeile('Einspeisegrenze')).toHaveTextContent('30,0');
     expect(zeile('Stromtarif')).toHaveTextContent('Fest: 32,5 ct/kWh');
     expect(zeile('Kapazität')).toHaveTextContent('10,0');
-    // Ohne Koordinaten sagt die Zeile, was fehlt - und warum es zählt. Das
-    // Feld heißt weiter „Standort" (Glossar, E9: B).
-    expect(zeile('Standort')).toHaveTextContent('Ohne Standort auf der Karte gibt es keine Wettervorhersage.');
+    // vp-standort-konzept §6.2: eine Zeile mit Adresse statt Kurzzeichen/„seit".
+    expect(zeile('Standort')).toHaveTextContent('Lindenweg 54, Treuchtlingen');
     restore();
   });
 
@@ -515,8 +550,7 @@ describe('Einstellungen · die kurze Liste (E5)', () => {
     const b = await blatt('Name');
     expect(b).toHaveAccessibleName('Name');
     expect(within(b).getByLabelText('Name')).toHaveValue('Hof Sonnenfeld');
-    // Keine Karte, keine Einspeisegrenze, keine Veräußerungsform im Namens-Blatt.
-    expect(within(b).queryByText('Standort auf der Karte')).toBeNull();
+    // Keine Einspeisegrenze, keine Veräußerungsform im Namens-Blatt.
     expect(within(b).queryByLabelText(/Maximale Einspeiseleistung/)).toBeNull();
     expect(within(b).queryByText(/Wie wird Ihr Strom vergütet/)).toBeNull();
     fireEvent.change(within(b).getByLabelText('Name'), { target: { value: 'Hof Neu' } });
@@ -548,7 +582,7 @@ describe('Einstellungen · die kurze Liste (E5)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const ort = await blatt('Standort');
     expect(ort).toHaveAccessibleName('Standort');
-    expect(within(ort).getByText('Standort auf der Karte')).toBeInTheDocument();
+    expect(within(ort).getByLabelText('Adresse')).toHaveValue('Lindenweg 54, 91710 Treuchtlingen');
     expect(within(ort).queryByLabelText(/Maximale Einspeiseleistung/)).toBeNull();
     restore();
   });

@@ -85,15 +85,23 @@ function useDanach(a: AnlageStandort): AnlageStandort | null {
  *
  * ⚠ Nur rendern, wenn es ein Objekt gibt; die Koordinaten-Zeile darunter heißt
  * dann „Standort auf der Karte“ (W4, `koordinatenLabel`).
+ *
+ * `nurVerweise` (vp-standort-konzept §6.5: ein vollständiger Standort zeigt sein Objekt über die
+ * neue Zeile „Standort" (`AnlageOrtZeile`), bis Schritt 2c „Gehört zu" dafür eine eigene Fläche
+ * bekommt) — nur die beiden Verweise „Anderem Standort zuordnen"/„Zuordnung korrigieren" bleiben
+ * erreichbar, als Fragment ohne eigene Hülle: `AnlageOrtBlatt` reicht sie unter „Details" weiter,
+ * kein zweites Objekt, keine eigene Zeile.
  */
 export function AnlageStandortZeile({
   anlageStandort,
   antwort,
   onGeaendert,
+  nurVerweise = false,
 }: {
   anlageStandort: AnlageStandort;
   antwort: StandorteAmStichtag;
   onGeaendert: () => void;
+  nurVerweise?: boolean;
 }) {
   const [dialog, setDialog] = useState<{ unternehmen: Unternehmen | null } | null>(null);
   const [umzug, setUmzug] = useState(false);
@@ -126,6 +134,54 @@ export function AnlageStandortZeile({
     });
   }
 
+  const verweise = (
+    <>
+      <Recht aktion="anlage.zuordnen"><button
+        ref={umzugAusloeser}
+        type="button"
+        className="vp-as-verweis"
+        aria-label={`${KNOPF_ANDEREM_STANDORT}: ${zuordnung.name}`}
+        onClick={() => setUmzug(true)}
+      >
+        {KNOPF_ANDEREM_STANDORT}
+      </button></Recht>
+      <Recht aktion="anlage.zuordnen"><button
+        ref={korrekturAusloeser}
+        type="button"
+        className="vp-as-verweis"
+        aria-label={`${KNOPF_ZUORDNUNG_KORRIGIEREN}: ${zuordnung.name}`}
+        onClick={() => setKorrektur(true)}
+      >
+        {KNOPF_ZUORDNUNG_KORRIGIEREN}
+      </button></Recht>
+    </>
+  );
+
+  const umzugDialog = (umzug || korrektur) && (
+    <AnlageStandortDialog
+      open
+      anlageId={zuordnung.id}
+      anlageName={zuordnung.name}
+      standorte={antwort}
+      modus={korrektur ? 'korrektur' : 'umzug'}
+      gueltigAbVorgabe={korrektur ? zuordnung.gueltigAb : undefined}
+      onClose={schliesseUmzug}
+      onGespeichert={() => {
+        schliesseUmzug();
+        onGeaendert();
+      }}
+    />
+  );
+
+  if (nurVerweise) {
+    return (
+      <>
+        {verweise}
+        {umzugDialog}
+      </>
+    );
+  }
+
   return (
     <div className="vp-kv-row">
       <dt className="vp-kv-k">{STANDORT_OBJEKT_LABEL}</dt>
@@ -145,24 +201,7 @@ export function AnlageStandortZeile({
             {KNOPF_ADRESSE_NACHTRAGEN}
           </button></Recht>
         )}
-        <Recht aktion="anlage.zuordnen"><button
-          ref={umzugAusloeser}
-          type="button"
-          className="vp-as-verweis"
-          aria-label={`${KNOPF_ANDEREM_STANDORT}: ${zuordnung.name}`}
-          onClick={() => setUmzug(true)}
-        >
-          {KNOPF_ANDEREM_STANDORT}
-        </button></Recht>
-        <Recht aktion="anlage.zuordnen"><button
-          ref={korrekturAusloeser}
-          type="button"
-          className="vp-as-verweis"
-          aria-label={`${KNOPF_ZUORDNUNG_KORRIGIEREN}: ${zuordnung.name}`}
-          onClick={() => setKorrektur(true)}
-        >
-          {KNOPF_ZUORDNUNG_KORRIGIEREN}
-        </button></Recht>
+        {verweise}
         {dialog && (
           <StandortDialog
             open
@@ -177,21 +216,7 @@ export function AnlageStandortZeile({
             }}
           />
         )}
-        {(umzug || korrektur) && (
-          <AnlageStandortDialog
-            open
-            anlageId={zuordnung.id}
-            anlageName={zuordnung.name}
-            standorte={antwort}
-            modus={korrektur ? 'korrektur' : 'umzug'}
-            gueltigAbVorgabe={korrektur ? zuordnung.gueltigAb : undefined}
-            onClose={schliesseUmzug}
-            onGespeichert={() => {
-              schliesseUmzug();
-              onGeaendert();
-            }}
-          />
-        )}
+        {umzugDialog}
       </dd>
     </div>
   );

@@ -10,9 +10,10 @@ import { ahrenbergHeute, ahrenbergUnternehmen, bestandEineAnlage, werkLindach } 
  * - T7 „Fläche ändern“: Halle 2, am 15.01.2027 eingetragen 3 400 m² ab 01.01.2027 —
  *   die Folgen vor dem Speichern, danach der Verlauf mit „rückwirkend (14 Tage)“.
  *   Bühne: die echte Liste „Standorte“ (`standorte.html`), Weg über „Halle 2 bearbeiten“.
- * - T6a „Meine Anlage“: Halle 2 mit Standort ST-1 (beide Zeilen), Halle 1 mit dem
- *   automatisch angelegten Standort ohne Adresse, ein Kunde ohne Standort-Objekt.
- *   Bühne: die echte `TechnikSection` (`meine-anlage.html`).
+ * - T6a „Meine Anlage”: Halle 2 mit vollständigem Standort ST-1 (vp-standort-konzept §6.1: EINE
+ *   Zeile „Standort”), Halle 1 mit dem automatisch angelegten Standort ohne Adresse (beide Zeilen,
+ *   unverändert), ein Kunde ohne Standort-Objekt. Bühne: die echte `TechnikSection`
+ *   (`meine-anlage.html`).
  *
  * Mit `FLAECHE_BILDER=<Ordner>` legt der Lauf je Fall Bilder und `messung-*.json` ab;
  * `ANSICHT_VARIANTE=<x>` hängt `-<x>` an jeden Namen (Vergleichsvariante der Vorschau).
@@ -210,12 +211,12 @@ const OHNE: StandorteAmStichtag = {
 };
 
 const KARTEN: Record<string, { standorte: () => StandorteAmStichtag; labels: string[] | null }> = {
-  ahrenberg: { standorte: ahrenbergHeute, labels: ['Name', 'Standort', 'Standort auf der Karte'] },
+  ahrenberg: { standorte: ahrenbergHeute, labels: ['Name', 'Standort'] },
   entwurf: { standorte: bestandEineAnlage, labels: ['Name', 'Standort', 'Standort auf der Karte'] },
   ohne: { standorte: () => OHNE, labels: ['Name', 'Standort'] },
 };
 
-test.describe('T6a · Meine Anlage mit beiden Standort-Zeilen (AP-02 IP-8, W4)', () => {
+test.describe('T6a · Meine Anlage und die Zeile(n) „Standort" (AP-02 IP-8, W4, vp-standort-konzept §6.1)', () => {
   for (const [fall, k] of Object.entries(KARTEN)) {
     for (const breite of BREITEN) {
       test(`${fall} — ${breite} px`, async ({ page }) => {
@@ -232,7 +233,10 @@ test.describe('T6a · Meine Anlage mit beiden Standort-Zeilen (AP-02 IP-8, W4)',
         await expect(karte).toBeVisible();
         const aufklappen = karte.locator('button[aria-expanded="false"]');
         if (await aufklappen.count()) await aufklappen.first().click();
-        if (fall !== 'ohne') await expect(karte.getByText('(ST-1)', { exact: false })).toBeVisible();
+        // Die vollständige Adresse (ahrenberg, §6.1) zeigt die Adresse statt des Kurzzeichens;
+        // nur der Entwurf (unvollständig, altes `AnlageStandortZeile`) nennt es weiter in Klammern.
+        if (fall === 'entwurf') await expect(karte.getByText('(ST-1)', { exact: false })).toBeVisible();
+        else if (fall === 'ahrenberg') await expect(karte.getByText('Gewerbering 7, Ahrenberg')).toBeVisible();
         else await page.waitForLoadState('networkidle');
         // Seit den kurzen Einstellungen (main 41ed67c26) ist „Meine Anlage“ eine Liste: das Wort steht in `.vp-einst-lab > b`,
         // die UEMS-Standort-Zeile (AP-02 IP-8) behält ihr `dt` — beide in Dokument-Reihenfolge.

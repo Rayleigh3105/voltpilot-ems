@@ -1,0 +1,6 @@
+/* Captain-Korrektur: dieselbe Zeilen-Form wie die Nachbarn (`.vp-einst-zeile` aus
+   AnlageTechnik.tsx/Einstellungen.css) - hier wird nur die Symbol-Kachel durch die
+   58×44-px-Karte ersetzt; Grid-Spalten, Höhe und Abstand kommen unverändert von dort. */
+.vp-ort-zeile-karte {
+  pointer-events: none;
+}
