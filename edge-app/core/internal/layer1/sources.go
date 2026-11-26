@@ -8,6 +8,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/aiswei"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goeapi"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kacohttp"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 )
@@ -23,8 +24,10 @@ const TopicSourcesConfig = sources.TopicConfig
 // KOSTAL PIKO over its Web-API (kostal_dxs), a generic Modbus TCP device
 // with a register profile (modbus_tcp), a Fronius over its Solar API, a KACO
 // over its App-Schnittstelle or its NH3 register map and a Deye behind its
-// Solarman logger - every transport the flow's source executor reads. Every
-// other transport is named in the log, never silently skipped - and
+// Solarman logger - every transport the flow's source executor reads. A
+// transport the CORE reads itself (inverter.IsCoreOwned: a Shelly relay, an
+// Ebyte I/O module) has no plan here: the agent polls it, as on the Docker box.
+// Every other transport is named in the log, never silently skipped - and
 // ReadsAsSource tells the core the same before it applies a portal plan.
 type sourcePlan struct {
 	ID   string
@@ -70,7 +73,22 @@ type sourceNote struct {
 //
 // It judges the transport and the role only; a connection the plan cannot use
 // (no IP, a bad unit id) is the plan's own, per-device refusal.
+//
+// "This box" is the whole program, not Layer 1 alone: a transport the core
+// reads itself (inverter.IsCoreOwned - the Shelly relay executor and the Ebyte
+// I/O module own their whole socket, source poll included, on every box type)
+// is read as a consumer. Leaving it out rejected every Shelly heating rod on
+// Edge Light with „unbekannte Kommunikation "shelly_http"“, so the box reported
+// no source set:0,1,2 and the cloud's first binding had nothing to bind (Anlage
+// „Zuhause“, 26.11.2026). It publishes a switch state and a load (or I/O
+// states), never a PV or grid value, so it is refused in those roles.
 func ReadsAsSource(comm, role string) string {
+	if inverter.IsCoreOwned(comm) {
+		if role != sources.RoleConsumer {
+			return coreOwnedRoleRefusal(comm)
+		}
+		return ""
+	}
 	switch comm {
 	case goeapi.Family, CommHuaweiModbus, CommKacoSerial, CommSunSpecTCP, CommFroniusSunSpec, CommFroniusSolarAPI,
 		CommKacoHTTP, CommKacoModbus, CommSolarmanV5, CommDeyeModbusTCP:
@@ -89,6 +107,15 @@ func ReadsAsSource(comm, role string) string {
 		return ""
 	}
 	return "unbekannte Kommunikation \"" + comm + "\""
+}
+
+// coreOwnedRoleRefusal is ReadsAsSource's reason for a core-read transport in a
+// role it delivers no value for.
+func coreOwnedRoleRefusal(comm string) string {
+	if comm == inverter.CommEbyteModbusTCP {
+		return "ein I/O-Modul liefert nur Ein- und Ausgangszustände, keinen PV- oder Netzwert (als Verbraucher anlegen)"
+	}
+	return "ein Schaltausgang liefert nur seinen Schaltzustand und Verbrauch, keinen PV- oder Netzwert (als Verbraucher anlegen)"
 }
 
 // parseSourcesConfig is vp-sources-config (structural validation) followed by
@@ -160,6 +187,14 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 		}
 		if why := ReadsAsSource(comm, role); why != "" {
 			notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+			continue
+		}
+		// The core publishes no core-read source on this topic
+		// (sources.BusConfig); should one arrive anyway, the agent reads it -
+		// named, not warned, and never a second reader on its socket.
+		if inverter.IsCoreOwned(comm) {
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): " + comm +
+				", liest der Kern selbst - keine Selbstverdrahtung"})
 			continue
 		}
 		ip = strings.TrimSpace(ip)

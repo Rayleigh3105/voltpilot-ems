@@ -37,8 +37,8 @@
 //     whole push.
 //
 //     The same skip-and-report holds for an additional source whose TRANSPORT
-//     the box's own source reader does not wire in that role (Options.
-//     SourceReads, Edge Light only): it would be applied and then never read,
+//     the box does not read in that role (Options.SourceReads, the Go core of
+//     Edge Light and Edge Industrie): it would be applied and then never read,
 //     and the portal would wait for its first value forever. It too has no
 //     place in this box's read path; the rest of the push is applied.
 //
@@ -371,8 +371,9 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 // Options are what the box running Derive knows about itself.
 type Options struct {
 	// SourceReads answers, for an additional source (not the inverter, not a
-	// plant controller), whether THIS box's reader wires the transport in that
-	// role: "" = yes, else the German reason. A source it refuses is skipped and
+	// plant controller), whether THIS box reads the transport in that role -
+	// its source reader or the core's own executors (inverter.IsCoreOwned):
+	// "" = yes, else the German reason. A source it refuses is skipped and
 	// reported (Plan.Rejected) like a device without a role - the box does not
 	// read it, and saying so beats "wartet auf die ersten Daten" forever (the
 	// KOSTAL PIKO at Schramm, 07.11.2026). nil = no such check: on the Docker box
