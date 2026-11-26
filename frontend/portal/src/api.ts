@@ -253,6 +253,8 @@ export type SupplyPriceUpdate = Partial<{
   vertriebsaufschlagCt: number | null;
   ustPct: number | null;
   komponentenStand: string | null;
+  /** Ab wann das geänderte Preisblatt gilt (vp-tarif-ab-tag): `JJJJ-MM-TT` bis heute, `beginn`; fehlt = heute. */
+  gueltigAb: string;
 }>;
 
 /**
@@ -342,6 +344,11 @@ export interface CreateSiteInput {
    * (the netzladenErlaubt pattern).
    */
   maxFeedInKw?: number | null;
+  /**
+   * Ab wann ein GEÄNDERTER Tarif gilt (vp-tarif-ab-tag): `JJJJ-MM-TT` (heute oder
+   * davor) oder `beginn`; fehlt = heute. Ein unveränderter Tarif zeichnet nichts auf.
+   */
+  tarifGueltigAb?: string;
 }
 
 /**

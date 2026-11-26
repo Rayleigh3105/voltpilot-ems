@@ -30,8 +30,9 @@ import org.springframework.stereotype.Repository;
  * ({@link SlotEconomics#importPriceCtSql} - flat tariff / spot + Aufschlag /
  * {@code (spot + Preisblatt-Komponenten) × (1+USt)}; a site without any price
  * data stays at bare spot, byte-identical to before). Like the earnings
- * engine, every slot is valued at the CURRENTLY maintained tariff - there is
- * no price-sheet history (documented v1 simplification).
+ * engine, every slot is valued at the tariff and Preisblatt VALID AT THE SLOT
+ * (its Preisfassung, vp-tarif-ab-tag) - a change from a day never revalues
+ * the energy before it.
  */
 @Repository
 public class HistoryRepository {
@@ -53,12 +54,12 @@ public class HistoryRepository {
     private static final String PRICE_JOIN =
             "LEFT JOIN price_slot p ON p.slot = b.bucket ";
 
-    /** The site + supply-price-sheet join the import valuation needs (fixed
-     * {@code s}/{@code ssp} aliases, the importPriceCtSql contract; the site
+    /** The site + the bucket's Preisfassung the import valuation needs (fixed
+     * {@code s}/{@code pf} aliases, the importPriceCtSql contract; the site
      * id binds a parameter). */
     private static final String SITE_TARIFF_JOIN =
             "JOIN site s ON s.id = ? "
-                    + "LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id ";
+                    + SlotEconomics.preisFassungJoinSql("s.id", "b.bucket");
 
     private final JdbcTemplate jdbc;
 
@@ -203,7 +204,7 @@ public class HistoryRepository {
     public TariffContext tariffContext(UUID siteId) {
         List<TariffContext> rows = jdbc.query(
                 "SELECT s.tarif_art, " + tarifPricedExpr + " AS tarif_priced "
-                        + "FROM site s LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id "
+                        + "FROM site s " + SlotEconomics.heutigePreisFassungJoinSql("s.id")
                         + "WHERE s.id = ?",
                 (rs, i) -> new TariffContext(rs.getString("tarif_art"),
                         rs.getBoolean("tarif_priced")),

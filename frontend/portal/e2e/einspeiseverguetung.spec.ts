@@ -16,6 +16,8 @@ import type { Einspeiseverguetung, StandorteAmStichtag } from '../src/api';
 
 const BILDER = process.env.VERGUETUNG_BILDER;
 const BREITEN = [375, 1440] as const;
+/** „Ab wann?“ ist mit dem heutigen Tag der Anlage vorbelegt (vp-tarif-ab-tag). */
+const HEUTE = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
 
 const json = (body: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -152,7 +154,7 @@ test.describe('Einspeisevergütung unter Strom & Geld', () => {
       await ohneUeberlauf(page, breite, 'eeg-eigener-satz');
       await blatt.getByRole('button', { name: 'Speichern' }).click();
       await expect(blatt).toBeHidden();
-      expect(gesendet).toEqual([{ satzCtKwh: 12.5 }]);
+      expect(gesendet).toEqual([{ satzCtKwh: 12.5, gueltigAb: HEUTE }]);
       await expect(zeile).toContainText('12,50');
       await expect(zeile).toContainText('von Ihnen angegeben');
       await expect(zeile).toContainText('Ab dem nächsten Fahrplan gilt Ihr Satz');
@@ -160,7 +162,7 @@ test.describe('Einspeisevergütung unter Strom & Geld', () => {
 
       await zeile.getByRole('button', { name: 'Rückgängig' }).click();
       await expect(zeile).toContainText('7,94');
-      expect(gesendet).toEqual([{ satzCtKwh: 12.5 }, { satzCtKwh: null }]);
+      expect(gesendet).toEqual([{ satzCtKwh: 12.5, gueltigAb: HEUTE }, { satzCtKwh: null, gueltigAb: HEUTE }]);
     });
 
     test(`ohne Datum: „Ohne Angabe" und die Pflichtfrage zu § 51a - ${breite} px`, async ({ page }) => {
@@ -187,7 +189,7 @@ test.describe('Einspeisevergütung unter Strom & Geld', () => {
       await frage.getByRole('radio', { name: /am 25\.02\.2025 oder später/ }).check();
       await blatt.getByRole('button', { name: 'Speichern' }).click();
       await expect(blatt).toBeHidden();
-      expect(gesendet).toEqual([{ satzCtKwh: 6, inbetriebnahmeAbSolarspitzengesetz: true }]);
+      expect(gesendet).toEqual([{ satzCtKwh: 6, inbetriebnahmeAbSolarspitzengesetz: true, gueltigAb: HEUTE }]);
       await expect(zeile).toContainText('6,00');
       await expect(zeile).toContainText('von Ihnen angegeben');
     });

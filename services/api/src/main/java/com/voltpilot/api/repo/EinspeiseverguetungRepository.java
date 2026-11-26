@@ -50,6 +50,7 @@ public class EinspeiseverguetungRepository {
                         + " s.anzulegender_wert_ct_kwh, pv.commissioned_on, pv.pv_capacity_kwp, "
                         + SlotEconomics.exportVerguetungQuelleSql() + " AS quelle "
                         + "FROM site s "
+                        + SlotEconomics.heutigePreisFassungJoinSql("s.id")
                         + "LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND pv.is_primary "
                         + "WHERE s.id = ?",
                 (rs, i) -> new Grundlage(

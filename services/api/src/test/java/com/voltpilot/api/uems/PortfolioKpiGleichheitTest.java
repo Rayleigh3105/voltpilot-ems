@@ -244,7 +244,7 @@ class PortfolioKpiGleichheitTest {
             boolean monat = "monat".equals(s.abrechnungLeistung());
             PortfolioKpiRepository.Spitze sp = (monat ? spMonat : spJahr).get(s.id());
             roh.add(new PortfolioKpiService.AnlageKpiRoh(s.name(), jetztM.kwh(), jetztM.vollstaendig(), vorM.kwh(),
-                    PortfolioKpiService.arbeitspreis(s), sp != null ? sp.kw() : null, vereinbartAlt(s.id(), heute),
+                    PortfolioKpiService.arbeitspreis(s), PortfolioKpiService.arbeitspreis(s), sp != null ? sp.kw() : null, vereinbartAlt(s.id(), heute),
                     sp != null ? sp.zeitpunkt() : null, monat ? f.monatLabel() : f.jahrLabel()));
         }
         PortfolioKpiDto.Periode periode = new PortfolioKpiDto.Periode(

@@ -67,8 +67,8 @@ class EarningsStammdatenJeAnlageGleichheitTest {
                     + " AND mv.month = date_trunc('month', r.bucket AT TIME ZONE 'Europe/Berlin')::date ";
     private static final String SELBSTVERBRAUCH_KWH =
             "GREATEST(r.load_kwh - r.grid_import_kwh, 0)";
-    private static final String SUPPLY_PRICE_JOIN =
-            "LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id ";
+    /** vp-tarif-ab-tag: die Preisfassung der Viertelstunde (vorher das Preisblatt von heute). */
+    private static final String SUPPLY_PRICE_JOIN = SlotEconomics.preisFassungJoinSql("s.id", "r.bucket");
     private static final String PV_ASSET_JOIN =
             "LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND pv.is_primary ";
     private static final String BATTERY_ASSET_JOIN =
@@ -229,6 +229,12 @@ class EarningsStammdatenJeAnlageGleichheitTest {
             exec(c, "INSERT INTO monthly_market_value (technology, month, value_ct_kwh, provisional) "
                     + "VALUES ('solar', DATE '2026-10-01', 7.1, false), ('solar', DATE '2026-11-01', 6.2, true) "
                     + "ON CONFLICT DO NOTHING");
+            // vp-tarif-ab-tag: Preisfassungen wechseln mitten im Fenster - Tarif, Preisblatt und
+            // angegebene Vergütung je ab einem anderen Tag; beide Formen müssen je Viertelstunde dieselbe nehmen.
+            abTag(c, "2026-11-02", "UPDATE site SET tarif_param_ct_kwh = 19.5 WHERE id = ?", A1);
+            abTag(c, "2026-11-03", "UPDATE site_supply_price SET netzentgelt_arbeitspreis_ct = 9.4 WHERE site_id = ?", A2);
+            abTag(c, "2026-11-04", "UPDATE site SET einspeiseverguetung_ct_kwh = 6.1 WHERE id = ?", A4);
+            abTag(c, "2026-11-05", "UPDATE site SET tarif_art = 'fest', tarif_param_ct_kwh = 29.0 WHERE id = ?", A1);
             for (Instant t = BEGINN.minusSeconds(3600); t.isBefore(NOV.plusSeconds(TAGE * 86400L)); t = t.plusSeconds(900)) {
                 if (!t.isBefore(LUECKE_VON) && t.isBefore(LUECKE_BIS)) {
                     continue;
@@ -398,6 +404,18 @@ class EarningsStammdatenJeAnlageGleichheitTest {
             ps.execute();
         }
         return ds;
+    }
+
+    /** Eine Änderung „ab Tag“ in EINER Transaktion, wie die Schreibwege sie machen. */
+    private static void abTag(Connection c, String tag, String sql, Object... args) throws Exception {
+        c.setAutoCommit(false);
+        try {
+            exec(c, "SELECT set_config('app.preis_gueltig_ab', ?, true)", tag);
+            exec(c, sql, args);
+            c.commit();
+        } finally {
+            c.setAutoCommit(true);
+        }
     }
 
     private static void exec(Connection c, String sql, Object... args) throws Exception {
