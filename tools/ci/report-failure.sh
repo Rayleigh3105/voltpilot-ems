@@ -1,19 +1,43 @@
 #!/usr/bin/env bash
 # report-failure.sh <job-titel> <log-datei> [weitere log-dateien ...]
 #
-# Macht einen roten Lauf ohne Browser lesbar: haengt die letzten ~200 Zeilen
-# jeder angegebenen Log-Datei als Kommentar an eine feste, idempotent
-# gefundene-oder-angelegte Forgejo-Issue (Titel ${REPORT_FAILURE_ISSUE_TITLE:-
-# "CI: automatische Fehlermeldungen"}). Die Forgejo-API dieser Version hat
-# keine Log-Route (actions/{jobs,runs}/logs antworten 404); dieser Weg braucht
-# darum nur die vorhandenen Secrets FORGEJO_USERNAME/FORGEJO_PASSWORD (Basic
-# gegen die REST-API, wie schon fuer die Registry) - kein neues Geheimnis.
+# Macht einen roten Lauf ohne Browser lesbar: haengt die ersten Fehlerzeilen
+# UND die letzten ~200 Zeilen jeder angegebenen Log-Datei als Kommentar an
+# eine feste, idempotent gefundene-oder-angelegte Forgejo-Issue (Titel
+# ${REPORT_FAILURE_ISSUE_TITLE:-"CI: automatische Fehlermeldungen"}). Die
+# Forgejo-API dieser Version hat keine Log-Route (actions/{jobs,runs}/logs
+# antworten 404); dieser Weg braucht darum nur die vorhandenen Secrets
+# FORGEJO_USERNAME/FORGEJO_PASSWORD (Basic gegen die REST-API, wie schon fuer
+# die Registry) - kein neues Geheimnis.
+#
+# Die letzten 200 Zeilen allein reichen oft nicht: ein Teardown nach einem
+# roten Build (Hikari/Postgres-Verbindungsabbau, Spring-Context-Shutdown)
+# haengt oft NACH der eigentlichen Fehlermeldung noch Rauschen an, das die
+# echte Ursache aus dem Tail-Fenster drueckt (beobachtet in Lauf 661:
+# "password authentication failed" beim Pool-Abbau, nicht die Ursache
+# selbst). Darum sucht report_failure_first_error_excerpt zusaetzlich die
+# erste Zeile, die wie eine echte Testfehlermeldung aussieht (Maven
+# "<<< FAILURE!"/"<<< ERROR!"/"Tests run: N, Failures|Errors: >0", pytest
+# "FAILED "/"ERROR "/"=== FAILURES ===") und haengt ab dort einen Ausschnitt
+# an - vor dem unveraenderten Tail der letzten 200 Zeilen.
 #
 # Absichtlich klein und ohne Workflow-Bezug, damit der nightly-Lauf denselben
 # Weg spaeter ohne Aenderung hier mitbenutzen kann. Fehlende Log-Dateien
 # werden stillschweigend ausgelassen (ein fruehgescheiterter Schritt laesst
 # spaetere Schritte nie laufen, ihre Log-Datei existiert dann nicht).
 set -euo pipefail
+
+# report_failure_first_error_excerpt <log-datei> - gibt bis zu 200 Zeilen ab
+# der ersten erkennbaren Testfehlermeldung aus, leer wenn keine gefunden
+# wird (dann bleibt nur der Tail uebrig, wie vorher).
+report_failure_first_error_excerpt() {
+	local log="$1" line
+	line="$(grep -n -m1 -E \
+		'<<< FAILURE!|<<< ERROR!|Tests run: [0-9]+, Failures: [1-9]|Tests run: [0-9]+, Errors: [1-9]|^\[ERROR\]|^FAILED |^ERROR |^=+ FAILURES =+' \
+		"$log" 2>/dev/null | head -n1 | cut -d: -f1 || true)"
+	[ -n "$line" ] || return 0
+	tail -n "+$line" "$log" | head -n 200
+}
 
 if [ "$#" -lt 2 ]; then
 	echo "Verwendung: $0 <job-titel> <log-datei> [weitere log-dateien ...]" >&2
@@ -65,7 +89,7 @@ report_failure_urlencode() {
 # ihre Nummer aus.
 report_failure_create_issue() {
 	local api="$1" auth="$2" titel="$3" body
-	body="Sammelt automatische Berichte roter CI-Laeufe (letzte ~200 Zeilen je gescheitertem Schritt), damit sie ohne Browser-Login ueber die Forgejo-API lesbar sind. Siehe tools/ci/report-failure.sh."
+	body="Sammelt automatische Berichte roter CI-Laeufe (erste Fehlerzeilen und letzte ~200 Zeilen je gescheitertem Schritt), damit sie ohne Browser-Login ueber die Forgejo-API lesbar sind. Siehe tools/ci/report-failure.sh."
 	curl -fsS -X POST -H "Authorization: $auth" -H "Content-Type: application/json" \
 		"$api/issues" \
 		-d "$(python3 -c 'import json, sys; print(json.dumps({"title": sys.argv[1], "body": sys.argv[2]}))' "$titel" "$body")" |
@@ -85,6 +109,12 @@ fi
 	printf '\n'
 	for log in "$@"; do
 		if [ -f "$log" ]; then
+			excerpt="$(report_failure_first_error_excerpt "$log")"
+			if [ -n "$excerpt" ]; then
+				printf '<details><summary>%s (erste Fehlerzeilen)</summary>\n\n```\n' "$(basename "$log")"
+				printf '%s' "$excerpt"
+				printf '\n```\n\n</details>\n\n'
+			fi
 			printf '<details><summary>%s (letzte 200 Zeilen)</summary>\n\n```\n' "$(basename "$log")"
 			tail -n 200 "$log"
 			printf '\n```\n\n</details>\n\n'

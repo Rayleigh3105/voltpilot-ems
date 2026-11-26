@@ -138,8 +138,8 @@ public class ComponentAdoptionService {
     public Outcome adoptIfComplete(UUID siteId) {
         ComponentAdoption.Plan plan = ComponentAdoption.decide(
                 entityRepo.componentAuthority(siteId), observed.forSite(siteId),
-                (brand, model) -> templates.findNewestByBrandModel(
-                        BuiltinComponentTemplates.PUBLIC_KINDS, brand, model));
+                (brand, model, communication) -> templates.findNewestByBrandModel(
+                        BuiltinComponentTemplates.PUBLIC_KINDS, brand, model, communication));
         if (!plan.adoptable()) {
             return new Outcome(plan.verdict(), plan.reason(), 0);
         }
