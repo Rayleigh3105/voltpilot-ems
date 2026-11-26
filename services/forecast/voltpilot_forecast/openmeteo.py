@@ -132,6 +132,11 @@ class OpenMeteoConfig:
     #: forecast only needs ~3, the rest feeds the separate hourly week-ahead
     #: outlook (forecast_collect.weekly_outlook_timestamps).
     forecast_days: int = 7
+    #: Open-Meteo's `past_days` (0-92): hours BEFORE "now" the same `/v1/forecast`
+    #: call also returns, in the SAME response shape - no separate archive API.
+    #: 0 (default) omits the parameter; only the "Ort berichtigen" weather
+    #: catch-up (vp-standort-konzept §6.6, B3) sets it to 28.
+    past_days: int = 0
 
 
 def _to_float(value) -> float | None:
@@ -227,6 +232,8 @@ class OpenMeteoWeatherSource:
             "forecast_days": str(self._config.forecast_days),
             "timezone": "UTC",
         }
+        if self._config.past_days > 0:
+            params["past_days"] = str(self._config.past_days)
         url = f"{self._config.base_url.rstrip('/')}/v1/forecast"
         log_ctx = {"site_id": site_id, "lat": params["latitude"], "lon": params["longitude"]}
         logger.info("openmeteo.fetch.start", extra={"context": log_ctx})

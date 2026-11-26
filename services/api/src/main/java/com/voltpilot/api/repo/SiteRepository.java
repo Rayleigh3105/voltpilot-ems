@@ -103,6 +103,17 @@ public class SiteRepository {
         return jdbc.update("DELETE FROM site WHERE id = ?", siteId) > 0;
     }
 
+    /**
+     * „Ort berichtigen" (vp-standort-konzept §6.6): schreibt NUR Lage und Gebotszone — ein
+     * schmaler Schreibweg neben {@link #update}, der nicht Name, Tarif oder die anderen
+     * Stammdaten einer Anlage mitschleppen muss. Ohne eigene Zeile (RLS blendet eine fremde
+     * Anlage aus) {@code false}.
+     */
+    public boolean lageUndGebotszoneSetzen(UUID siteId, BigDecimal breite, BigDecimal laenge, String biddingZone) {
+        return jdbc.update("UPDATE site SET latitude = ?, longitude = ?, bidding_zone = ? WHERE id = ?",
+                breite, laenge, biddingZone, siteId) > 0;
+    }
+
     static SiteDto mapSite(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         return new SiteDto(
                 rs.getObject("id", UUID.class),

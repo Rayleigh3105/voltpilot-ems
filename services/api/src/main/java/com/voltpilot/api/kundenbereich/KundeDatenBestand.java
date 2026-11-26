@@ -166,7 +166,11 @@ public final class KundeDatenBestand {
         }
         String zyklus = "Von Zyklen erzeugt und laufend ersetzt (Wetter/Prognose/Planung) - kein Verlust";
         for (String t : List.of("forecast", "forecast_model_state", "forecast_weekly", "weather_forecast",
-                "schedule", "site_plan_run", "entity_plan_slot", "plan_zustellung")) {
+                "schedule", "site_plan_run", "entity_plan_slot", "plan_zustellung",
+                // Outbox "Wetter nachholen" nach einer Ort-Berichtigung (vp-standort-konzept §6.6) -
+                // derselbe Grund wie weather_forecast selbst: eine Arbeitszeile des Wetter-Zyklus, kein
+                // Inhalt des Kunden.
+                "ort_wetter_nachholung")) {
             m.put(t, zyklus);
         }
         String ueberwachungConfig = "Überwachungs-/Zustell-Einstellung (ab Werk vom Läufer gesät); Alarme stehen "

@@ -31,6 +31,7 @@ from voltpilot_forecast.openmeteo import (
 )
 from voltpilot_forecast.pgdsn import dsn_from_env
 from voltpilot_forecast.runtime import ServeRuntime, serve_health
+from voltpilot_forecast import wetter_nachholung
 from voltpilot_forecast.weather_repository import (
     TimescaleWeatherForecastRepository,
     WeatherForecastRepository,
@@ -170,19 +171,32 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_nachholung(env: dict[str, str], dsn: str, repository: WeatherForecastRepository) -> None:
+    """Drains the "Ort berichtigen" weather catch-up outbox (B3) - best-effort,
+    inside the same cycle as the regular collect so no second process is needed."""
+    try:
+        erledigt = wetter_nachholung.process_pending(dsn, wetter_nachholung.build_source(env), repository)
+        if erledigt:
+            print(f"voltpilot-weather: nachholung erledigt={erledigt}")
+    except Exception as exc:  # a stuck outbox must not sink the regular collect cycle
+        logger.warning("wetter_nachholung.cycle_failed", extra={"context": {"error": str(exc)}})
+
+
 def _run_cycle(env: dict[str, str], source, persist: bool) -> None:
     dsn = dsn_from_env(env)
     sites = load_sites_with_coordinates(dsn)
-    if not sites:
-        logger.warning("weather.no_sites", extra={"context": {}})
-        return
     repository = (
         TimescaleWeatherForecastRepository(__import__("psycopg").connect(dsn))
         if persist
         else None
     )
     try:
-        collect_once(source, sites, repository, _now_utc())
+        if not sites:
+            logger.warning("weather.no_sites", extra={"context": {}})
+        else:
+            collect_once(source, sites, repository, _now_utc())
+        if repository is not None:
+            _run_nachholung(env, dsn, repository)
     finally:
         if repository is not None:
             repository._conn.close()

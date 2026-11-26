@@ -125,6 +125,20 @@ def test_source_builds_keyless_request():
     assert len(fc) == 5
 
 
+def test_past_days_omitted_by_default():
+    http = _FakeHttp(response=HttpResponse(200, _fixture()))
+    source = OpenMeteoWeatherSource(http_client=http)
+    source.fetch(BERLIN, TENANT, SITE, RUN_AT)
+    assert "past_days" not in http.calls[0]["params"]
+
+
+def test_past_days_sent_for_the_ort_berichtigen_catch_up():
+    http = _FakeHttp(response=HttpResponse(200, _fixture()))
+    source = OpenMeteoWeatherSource(OpenMeteoConfig(past_days=28), http_client=http)
+    source.fetch(BERLIN, TENANT, SITE, RUN_AT)
+    assert http.calls[0]["params"]["past_days"] == "28"
+
+
 def test_source_non_200_raises():
     http = _FakeHttp(response=HttpResponse(429, "rate limited"))
     source = OpenMeteoWeatherSource(http_client=http)
@@ -285,6 +299,21 @@ def test_collect_once_stores_all_sites():
     latest = repo.latest(SITE)
     assert latest is not None and len(latest) == 5
     assert latest.tenant_id == TENANT
+
+
+def test_delete_for_site_removes_only_that_sites_rows():
+    http = _FakeHttp(response=HttpResponse(200, _fixture()))
+    source = OpenMeteoWeatherSource(http_client=http)
+    repo = InMemoryWeatherForecastRepository()
+    other = "00000000-0000-0000-0000-000000000099"
+    collect_once(source, [SiteRow(tenant_id=TENANT, site_id=SITE, location=BERLIN)], repo, RUN_AT)
+    collect_once(source, [SiteRow(tenant_id=TENANT, site_id=other, location=BERLIN)], repo, RUN_AT)
+
+    removed = repo.delete_for_site(SITE)
+
+    assert removed == 5
+    assert repo.latest(SITE) is None
+    assert repo.latest(other) is not None
 
 
 def test_collect_once_skips_failing_site_without_crashing():

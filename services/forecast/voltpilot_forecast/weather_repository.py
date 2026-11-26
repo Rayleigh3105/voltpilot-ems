@@ -37,6 +37,17 @@ class WeatherForecastRepository(ABC):
         """Return the most recently issued forecast for ``site_id``."""
         raise NotImplementedError
 
+    @abstractmethod
+    def delete_for_site(self, site_id: str) -> int:
+        """Discard every stored row for ``site_id``; return rows removed.
+
+        Used only for the "Ort berichtigen" weather catch-up (vp-standort-konzept
+        §6.6, B3): a correction moving a site more than 2 km invalidates every
+        row learned at the OLD point, so it is discarded before the catch-up
+        fetch backfills the new point.
+        """
+        raise NotImplementedError
+
 
 class InMemoryWeatherForecastRepository(WeatherForecastRepository):
     """Non-durable reference implementation keyed by site_id (latest run wins)."""
@@ -60,6 +71,12 @@ class InMemoryWeatherForecastRepository(WeatherForecastRepository):
 
     def latest(self, site_id: str) -> WeatherForecast | None:
         return self._store.get(site_id)
+
+    def delete_for_site(self, site_id: str) -> int:
+        removed = len(self.rows)
+        self.rows = [r for r in self.rows if r[0] != site_id]
+        self._store.pop(site_id, None)
+        return removed - len(self.rows)
 
 
 _UPSERT_SQL = """
@@ -130,6 +147,13 @@ class TimescaleWeatherForecastRepository(WeatherForecastRepository):
             cur.executemany(_UPSERT_SQL, rows)
         self._conn.commit()
         return len(rows)
+
+    def delete_for_site(self, site_id: str) -> int:
+        with self._conn.cursor() as cur:
+            cur.execute("DELETE FROM weather_forecast WHERE site_id = %s", (site_id,))
+            removed = cur.rowcount
+        self._conn.commit()
+        return removed
 
     def latest(self, site_id: str) -> WeatherForecast | None:
         with self._conn.cursor() as cur:
