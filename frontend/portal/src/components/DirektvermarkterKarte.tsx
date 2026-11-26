@@ -98,7 +98,7 @@ export function DirektvermarkterKarte({ siteId }: { siteId: string | null }) {
         {kv('Abfragen je Minute', akte.abfragenJeMinute != null ? String(akte.abfragenJeMinute) : null)}
         {kv('Letzte Schreibung', akte.letzteSchreibungAm && zeitpunkt(akte.letzteSchreibungAm, jetzt))}
         {kv('Lebenszeichen', akte.lebenszeichenAm ? `${zeitpunkt(akte.lebenszeichenAm, jetzt)} · Frist 15 Min.` : 'unbekannt')}
-        {/* EZ-8-Abgleich (Firstmate-Entscheid): das ältere, hardwaregestützte Feld der Anlagensteuerung -
+        {/* EZ-8-Abgleich: das ältere, hardwaregestützte Feld der Anlagensteuerung -
             kein Datenbezug, keine Sperre, nur Sichtbarkeit fuer den Support, wenn beides gesetzt ist. */}
         {kv('EZ-8-Direktvermarkter (Anlagensteuerung)', akte.ez8Direktvermarkter)}
       </dl>

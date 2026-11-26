@@ -216,11 +216,12 @@ export function direktvermarktungKennzahl(zeilen: readonly AdminDirektvermarktun
   const gesamt = zeilen.length;
   const verbunden = zeilen.filter((z) => z.zustand === 'verbunden').length;
   const getrennt = zeilen.filter((z) => z.zustand === 'gestoert').length;
-  // EZ-8-Abgleich (Firstmate-Entscheid): wie viele Anlagen ZUSAETZLICH das aeltere, hardwaregestuetzte
-  // Feld der Anlagensteuerung tragen - kein Datenbezug, keine Sperre, nur Sichtbarkeit fuer den Support.
+  // EZ-8-Abgleich: wie viele Anlagen ZUSAETZLICH das aeltere, hardwaregestuetzte Feld der
+  // Anlagensteuerung tragen - kein Datenbezug, keine Sperre, nur Sichtbarkeit fuer den Support. Klartext
+  // statt des internen Konzept-Codes "EZ-8", den der Support nicht kennt.
   const mitEz8 = zeilen.filter((z) => z.ez8Direktvermarkter != null).length;
   const teile = [`${gesamt} ${gesamt === 1 ? 'Anlage' : 'Anlagen'}`, `${verbunden} verbunden`,
-    mitEz8 > 0 ? `${mitEz8} mit EZ-8` : null].filter(Boolean);
+    mitEz8 > 0 ? `${mitEz8} auch über die Anlagensteuerung` : null].filter(Boolean);
   return {
     id: 'direktvermarktung-kennzahl',
     icon: 'zap',

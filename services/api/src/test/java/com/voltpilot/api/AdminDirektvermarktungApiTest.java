@@ -158,7 +158,7 @@ class AdminDirektvermarktungApiTest {
     }
 
     /**
-     * EZ-8-Abgleich (Firstmate-Entscheid, kein Datenbezug, keine Sperre): die Plattform-Liste und die
+     * EZ-8-Abgleich (kein Datenbezug, keine Sperre): die Plattform-Liste und die
      * Geräteakte nennen zusätzlich den Namen des älteren, hardwaregestützten Felds der
      * Anlagensteuerung, wenn die Anlage eines trägt - rein gelesen, kein Schreibzugriff, das EZ-8-Feld
      * selbst bleibt unverändert.

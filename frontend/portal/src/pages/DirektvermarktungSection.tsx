@@ -127,7 +127,7 @@ function EinrichtenModal({ site, status, onClose, onFertig }: {
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const gewaehlt = status.partner ?? status.katalog.find((p) => p.partner === partner) ?? null;
-  // EZ-8-Abgleich (Firstmate-Entscheid, kein Datenbezug, keine Sperre): das ältere, hardwaregestützte
+  // EZ-8-Abgleich (kein Datenbezug, keine Sperre): das ältere, hardwaregestützte
   // Feld der Anlagensteuerung ist eine ANDERE, von VoltPilot nicht verwaltete Beziehung - nur eine
   // ruhige Zeile im Wählen-Schritt, solange die Anlage eines trägt.
   const [ez8Name, setEz8Name] = useState<string | null>(null);

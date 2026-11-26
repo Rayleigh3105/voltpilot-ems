@@ -141,7 +141,7 @@ test.describe('Direktvermarktung: Lagen im Alltag (Konzept §7.6), gesät', () =
 });
 
 /**
- * EZ-8-Abgleich (Firstmate-Entscheid, kein Datenbezug, keine Sperre): der Wählen-Schritt nennt ruhig den
+ * EZ-8-Abgleich (kein Datenbezug, keine Sperre): der Wählen-Schritt nennt ruhig den
  * Namen eines älteren, hardwaregestützten Direktvermarkter-Felds der Anlagensteuerung, wenn die Anlage
  * eines trägt (`GET .../netz-vermarktung`) - blockiert nichts, das Feld selbst bleibt unverändert.
  */

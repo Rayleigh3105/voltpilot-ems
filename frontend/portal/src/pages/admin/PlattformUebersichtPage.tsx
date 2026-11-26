@@ -277,7 +277,7 @@ export function PlattformUebersichtPage({
               kein Mandant der Plattform einen Anschluss hat (keine leere Zeile für alle anderen). */}
           {direktvermarktung.length > 0 && (
             <Card padding="md" radius="lg" data-testid="ueb-direktvermarktung">
-              <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <Icon name="zap" size={16} />
                 <strong>{DIREKTVERMARKTUNG}</strong>
                 <span className="vp-cell-sub">{direktvermarktungAnzeige.kontext} · {direktvermarktungAnzeige.wort}</span>

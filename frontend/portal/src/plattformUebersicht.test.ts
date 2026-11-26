@@ -319,7 +319,7 @@ describe('direktvermarktungKennzahl (§7.7, EIGENE Kennzahl - keine fünfte Kach
     const dv = direktvermarktungKennzahl([
       dvZeile({ ez8Direktvermarkter: 'Stadtwerke Nord' }), dvZeile({ siteId: 's2' }),
     ]);
-    expect(dv.kontext).toBe('2 Anlagen · 2 verbunden · 1 mit EZ-8');
+    expect(dv.kontext).toBe('2 Anlagen · 2 verbunden · 1 auch über die Anlagensteuerung');
   });
 
   it('EZ-8-Abgleich: ohne eine einzige Anlage mit dem Feld bleibt der Kontext wie bisher', () => {
