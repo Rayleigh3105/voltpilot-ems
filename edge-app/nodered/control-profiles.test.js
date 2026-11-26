@@ -330,6 +330,16 @@ test('Huawei SUN2000: Profil huawei = heutiger Plan von huaweiControl, Schreiben
   assert.equal(p.adapter.ausfuehrbar, false);
 
   assertWrites('rueckgabe', f.rueckgabe, C.controlRelease(HUAWEI_SEL, {}).planned);
+
+  // Rückgabe und E_decken mit den eigenen Werten des Geräts (Feldmessung
+  // 25.11.2026: 7000/3300 W) - nie 0/0, das wäre Halten.
+  const ausgang = { 47075: 7000, 47077: 3300, 47086: 2 };
+  assert.deepEqual(C.controlRelease(HUAWEI_SEL, { huaweiAusgang: ausgang }).planned.map((w) => [w.addr, w.value]),
+    [[47075, 7000], [47077, 3300], [47086, 2]]);
+  assert.ok(C.controlRelease(HUAWEI_SEL, {}).planned.every((w) => w.value === null),
+    'ohne eigene Werte nichts zurückzuschreiben, nie 0');
+  assert.equal(C.controlRoute(HUAWEI_SEL, setpoint(-3), { huaweiAusgang: ausgang }).planned
+    .find((w) => w.addr === C.HUAWEI_CONTROL_REG.MAX_DISCHARGE_POWER_W).value, 3300);
   assert.equal(C.HUAWEI_CONTROL_REG.FORCE_MODE_DURATION, p.absichten.N.schreibfolge[3].wert,
     '47246 = 0 (Dauer-Modus) in Profil und Adapter identisch');
 });

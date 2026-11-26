@@ -353,6 +353,13 @@
       "art": "feld",
       "stand": "Abruf 24.09.2026",
       "ort": "https://support.enphase.com/s/question/0D5Ps00001WffbBKAR/homeowner-local-api-for-battery-control-settings"
+    },
+    {
+      "id": "huawei_feld_m1",
+      "titel": "Feldmessung SUN2000-3KTL-M1 + LUNA2000 über den Wartungstunnel (vp-huawei-pruefstand, Go-Fensterpfad)",
+      "art": "eigen",
+      "stand": "26.11.2026",
+      "ort": "edge-app/nodered/huawei/MESSBERICHT-2026-11.md"
     }
   ]
 }

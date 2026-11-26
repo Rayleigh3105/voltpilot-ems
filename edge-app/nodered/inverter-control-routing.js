@@ -407,7 +407,7 @@ function controlRoute(selection, setpoint, opts = {}) {
       return kostalControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw });
     }
     if (comm === COMM_HUAWEI_MODBUS) {
-      return huaweiControl({ conn, ip, family, certified, controlEnabled, kw, setpoint });
+      return huaweiControl({ conn, ip, family, certified, controlEnabled, kw, setpoint, ausgang: opts.huaweiAusgang });
     }
     return vendorEmsControl({ conn, ip, family, certified, controlEnabled });
   }
@@ -659,7 +659,16 @@ const HUAWEI_FORCE_DURATION_MIN = 1;
 const HUAWEI_DEFAULT_PORT = 502;
 const HUAWEI_NOT_CERTIFIED_REASON = 'Steuerung für dieses Modell noch nicht freigegeben (Prüfstand ausstehend)';
 
-function huaweiControl({ conn, ip, family, certified, controlEnabled, kw, setpoint }) {
+// huaweiAusgangswert - the device's own value of a window register as read
+// before the first write (opts.huaweiAusgang, { 47075: W, 47077: W, 47086: n }),
+// null when unknown. The Go window path of Edge Light / Edge Industrie
+// (core/internal/steuerplan/huawei.go) stores and uses exactly these values.
+function huaweiAusgangswert(ausgang, addr) {
+  const v = ausgang && Number(ausgang[addr]);
+  return Number.isInteger(v) && v >= 0 ? v : null;
+}
+
+function huaweiControl({ conn, ip, family, certified, controlEnabled, kw, setpoint, ausgang }) {
   const port = Number(conn.port) > 0 ? Number(conn.port) : HUAWEI_DEFAULT_PORT;
   const unitId = Number.isInteger(conn.unit_id) && conn.unit_id >= 0 ? Number(conn.unit_id) : 0;
   const invert = conn.invert_control_sign === true;
@@ -695,9 +704,14 @@ function huaweiControl({ conn, ip, family, certified, controlEnabled, kw, setpoi
     // Absicht E_decken (nur Verbrauch decken, nicht laden): Laden gesperrt
     // (47075 = 0), Entladen bleibt dem Eigenverbrauchsregler des Geräts
     // überlassen - kein erzwungener Export (siehe Kopfkommentar zu Absicht A).
+    // 47077 geht dafür auf den eigenen Wert des Geräts zurück: nach Halten
+    // oder Laden stünde sonst 47077 = 0 und der Speicher dürfte gar nicht
+    // entladen (Feldmessung 25.11.2026, Messbericht huawei/MESSBERICHT-2026-11.md).
+    const ownDischarge = huaweiAusgangswert(ausgang, HUAWEI_CONTROL_REG.MAX_DISCHARGE_POWER_W);
     planned = [
       { role: 'work_mode', fc: 6, addr: HUAWEI_CONTROL_REG.WORK_MODE, value: HUAWEI_CONTROL_REG.WORK_MODE_SELF_CONSUMPTION, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
       { role: 'max_charge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_CHARGE_POWER_W, value: 0, count: 2, encode: { kind: 'watts_u32_be', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
+      { role: 'max_discharge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_DISCHARGE_POWER_W, value: ownDischarge, value_from: 'ausgangswert', count: 2, encode: { kind: 'watts_u32_be', kw: ownDischarge === null ? null : ownDischarge / 1000 }, dwell_s: 0, min_change: 0, bench_pending: true },
     ];
   } else {
     // Absicht H (Halten): beide Fenstergrenzen auf 0 - weder laden noch entladen.
@@ -719,16 +733,22 @@ function huaweiControl({ conn, ip, family, certified, controlEnabled, kw, setpoi
   };
 }
 
-// huaweiReleasePlan - die Rücknahme: beide Fenstergrenzen auf 0 (Absicht H) UND
-// der erzwungene Sollwert auf Stopp (47100 = 0) - für den Fall, dass ein
-// vorangegangenes Netzladen (Absicht N) noch im laufenden Dauer-Modus-Fenster
-// steht. Der eigene, flüchtige Totmann (47083) ist der Failsafe letzter
-// Instanz; diese Folge ist die EXPLIZITE Rücknahme, bevor er abläuft.
-function huaweiReleasePlan() {
+// huaweiReleasePlan - die Rückgabe: jedes Fensterregister auf den EIGENEN Wert
+// des Geräts, gelesen vor dem ersten Schreiben (opts.huaweiAusgang), Grenzen
+// zuerst. Bis 25.11.2026 schrieb diese Folge 47075 = 47077 = 0 - das ist
+// Halten und sperrt den Speicher, bis jemand die Grenzen wieder setzt (am
+// Feldgerät gemessen: 7000/3300 W ab Werk bzw. Installateur). Ohne bekannte
+// eigene Werte gibt es nichts zurückzuschreiben (value null). Der erzwungene
+// Sollwert (47100, Absicht N) ist nicht freigegeben und gehört nicht hierher:
+// wer ihn je freigibt, ergänzt dessen Stopp (47100 = 0).
+function huaweiReleasePlan(ausgang) {
+  const own = (addr) => huaweiAusgangswert(ausgang, addr);
+  const charge = own(HUAWEI_CONTROL_REG.MAX_CHARGE_POWER_W);
+  const discharge = own(HUAWEI_CONTROL_REG.MAX_DISCHARGE_POWER_W);
   return [
-    { role: 'force_direction', fc: 6, addr: HUAWEI_CONTROL_REG.FORCE_DIRECTION, value: 0, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
-    { role: 'max_charge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_CHARGE_POWER_W, value: 0, count: 2, encode: { kind: 'watts_u32_be', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
-    { role: 'max_discharge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_DISCHARGE_POWER_W, value: 0, count: 2, encode: { kind: 'watts_u32_be', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'max_charge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_CHARGE_POWER_W, value: charge, value_from: 'ausgangswert', count: 2, encode: { kind: 'watts_u32_be', kw: charge === null ? null : charge / 1000 }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'max_discharge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_DISCHARGE_POWER_W, value: discharge, value_from: 'ausgangswert', count: 2, encode: { kind: 'watts_u32_be', kw: discharge === null ? null : discharge / 1000 }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'work_mode', fc: 6, addr: HUAWEI_CONTROL_REG.WORK_MODE, value: own(HUAWEI_CONTROL_REG.WORK_MODE), value_from: 'ausgangswert', encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
   ];
 }
 
@@ -919,17 +939,17 @@ function controlRelease(selection, opts = {}) {
   }
 
   if (tier === CONTROL_TIER.VENDOR_EMS && comm === COMM_HUAWEI_MODBUS) {
-    // ⚠ DIE RUECKNAHME IST HIER EIN TEIL DES FAILSAFE, NICHT DER GANZE: der
-    // Dauer-Modus-Totmann (47083, Minuten) laeuft ohnehin ab, sobald wir
-    // aufhoeren zu schreiben - diese Folge raeumt zusaetzlich SOFORT auf
-    // (Fenster auf 0/0, erzwungener Sollwert auf Stopp), falls ein Netzladen
-    // noch im laufenden Fenster steht.
+    // Die Rückgabe schreibt die eigenen Werte des Geräts zurück (47075,
+    // 47077, 47086 aus opts.huaweiAusgang) - nie 0/0, das wäre Halten. Der
+    // Totmann des Zwangsladens (47083, am Feldgerät gemessen: 1 min -> nach
+    // ~60-67 s zurück auf 47100 = 0) betrifft nur Absicht N, die nicht
+    // freigegeben ist.
     const port = Number(conn.port) > 0 ? Number(conn.port) : HUAWEI_DEFAULT_PORT;
     const unitId = Number.isInteger(conn.unit_id) && conn.unit_id >= 0 ? Number(conn.unit_id) : 0;
     return {
       adapter: 'huawei_modbus', family, tier, certified, controlEnabled, calibration, mode: 'release',
       target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
-      writes: [], readbacks: [], planned: huaweiReleasePlan(),
+      writes: [], readbacks: [], planned: huaweiReleasePlan(opts.huaweiAusgang),
       reason: 'Huawei SUN2000: Steuerung nicht freigegeben',
     };
   }

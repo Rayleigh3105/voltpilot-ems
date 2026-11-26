@@ -117,6 +117,7 @@ func (r *Runtime) runSteuern(ctx context.Context) {
 			r.steuerAusfuehren(ctx, plan, steuerplan.Obj{"source": "crash_recovery"}, nil, "", !mitSerial)
 		}
 	}
+	r.huaweiAbsturz(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -135,6 +136,10 @@ func (r *Runtime) runSteuern(ctx context.Context) {
 
 // steuerTakt is one tick of the plan node and the executor.
 func (r *Runtime) steuerTakt(ctx context.Context, sel, sp steuerplan.Obj) {
+	if sel != nil && sel["communication"] == CommHuaweiModbus {
+		r.steuerTaktHuawei(ctx, sel, sp)
+		return
+	}
 	// A Deye over its stick's Modbus TCP is planned as the Deye it is: the
 	// planner names the Deye by its Solarman word (the same registers, tiers,
 	// releases and certifications); the transport is the executor's.
@@ -353,6 +358,9 @@ type steuerDatei struct {
 	Snapshot steuerplan.Obj            `json:"snapshot"`
 	Pfad     map[string]steuerplan.Obj `json:"pfad"`
 	Budget   map[string]any            `json:"budget"`
+	// Huawei holds the device's own values per Huawei (written before the
+	// first write, dropped after a handback that read back).
+	Huawei map[string]steuerplan.Obj `json:"huawei,omitempty"`
 }
 
 func (r *Runtime) steuerLaden() {
@@ -379,17 +387,28 @@ func (r *Runtime) steuerLaden() {
 	for k, v := range d.Budget {
 		a.Budget[k] = v
 	}
+	for k, v := range d.Huawei {
+		a.Huawei[k] = v
+	}
 }
 
 // steuerSpeichern writes the durable records atomically - only when a tick
 // changed them (a snapshot per ToU session, a path decision, a plan change of
 // the day budget), so the flash of a small box is spared.
 func (r *Runtime) steuerSpeichern() {
+	if err := r.steuerSpeichernErr(); err != nil {
+		r.log.Warn("Steuer-Ablage nicht geschrieben", "datei", r.opts.SteuerAblage, "err", err)
+	}
+}
+
+// steuerSpeichernErr writes the durable records and says whether they landed
+// (the Huawei Ausgang must, before the first write).
+func (r *Runtime) steuerSpeichernErr() error {
 	if r.opts.SteuerAblage == "" {
-		return
+		return nil
 	}
 	a := r.st.ablage
-	raw, err := json.Marshal(steuerDatei{Snapshot: a.Snapshot, Pfad: a.Pfad, Budget: a.Budget})
+	raw, err := json.Marshal(steuerDatei{Snapshot: a.Snapshot, Pfad: a.Pfad, Budget: a.Budget, Huawei: a.Huawei})
 	if err == nil {
 		tmp := r.opts.SteuerAblage + ".neu"
 		if err = os.MkdirAll(filepath.Dir(tmp), 0o700); err == nil {
@@ -398,9 +417,7 @@ func (r *Runtime) steuerSpeichern() {
 			}
 		}
 	}
-	if err != nil {
-		r.log.Warn("Steuer-Ablage nicht geschrieben", "datei", r.opts.SteuerAblage, "err", err)
-	}
+	return err
 }
 
 // steuerAusfuehrenModbus runs the generic executor over the device's lane (one
