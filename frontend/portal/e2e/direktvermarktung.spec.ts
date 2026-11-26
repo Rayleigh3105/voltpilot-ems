@@ -139,3 +139,43 @@ test.describe('Direktvermarktung: Lagen im Alltag (Konzept §7.6), gesät', () =
     }
   }
 });
+
+/**
+ * EZ-8-Abgleich (Firstmate-Entscheid, kein Datenbezug, keine Sperre): der Wählen-Schritt nennt ruhig den
+ * Namen eines älteren, hardwaregestützten Direktvermarkter-Felds der Anlagensteuerung, wenn die Anlage
+ * eines trägt (`GET .../netz-vermarktung`) - blockiert nichts, das Feld selbst bleibt unverändert.
+ */
+test.describe('Direktvermarktung: EZ-8-Abgleich im Wählen-Schritt', () => {
+  for (const breite of BREITEN) {
+    test(`nennt den älteren Direktvermarkter, blockiert nichts, ${breite}px`, async ({ page }) => {
+      await page.setViewportSize({ width: breite, height: breite < 500 ? 844 : 960 });
+      await grundrauschen(page);
+      await page.route(`**/api/v1/sites/${SITE_ID}/direktvermarktung`, (r) => r.fulfill(json(leer())));
+      await page.route(`**/api/v1/sites/${SITE_ID}/netz-vermarktung`, (r) => r.fulfill(json({
+        site_id: SITE_ID, netzbetreiber: 'Stadtwerke Nord', direktvermarkter: 'Stadtwerke Nord',
+        direktvermarkter_kanal: 'relais_ma', einspeisemanagement: null, einspeisemanagement_prozent: null,
+        namen_aus_bild: null, hinweise: [], revision: 1,
+      })));
+      await page.goto('/e2e/direktvermarktung.html');
+      await page.getByRole('button', { name: 'Direktvermarkter wählen' }).click();
+      await expect(page.getByText('Wer vermarktet Ihren Strom?')).toBeVisible();
+      await expect(page.getByText(/bereits einen Direktvermarkter \(Stadtwerke Nord\)/)).toBeVisible();
+      // Ruhig heißt: der Weg bleibt frei, nichts sperrt den Wechsel.
+      await expect(page.getByRole('button', { name: /Weiter mit/ })).toBeEnabled();
+      await keinUeberlauf(page);
+    });
+  }
+
+  test('ohne ein solches Feld steht im Wählen-Schritt keine Zeile dazu', async ({ page }) => {
+    await grundrauschen(page);
+    await page.route(`**/api/v1/sites/${SITE_ID}/direktvermarktung`, (r) => r.fulfill(json(leer())));
+    await page.route(`**/api/v1/sites/${SITE_ID}/netz-vermarktung`, (r) => r.fulfill(json({
+      site_id: SITE_ID, netzbetreiber: null, direktvermarkter: null, direktvermarkter_kanal: 'keiner',
+      einspeisemanagement: null, einspeisemanagement_prozent: null, namen_aus_bild: null, hinweise: [], revision: 1,
+    })));
+    await page.goto('/e2e/direktvermarktung.html');
+    await page.getByRole('button', { name: 'Direktvermarkter wählen' }).click();
+    await expect(page.getByText('Wer vermarktet Ihren Strom?')).toBeVisible();
+    await expect(page.getByText(/bereits einen Direktvermarkter/)).toHaveCount(0);
+  });
+});

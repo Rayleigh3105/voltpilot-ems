@@ -49,7 +49,7 @@ function dvZeile(over: Partial<AdminDirektvermarktungZeile> = {}): AdminDirektve
     siteId: 's1', siteName: 'Anlage A', tenantId: 't1', tenantName: 'Kunde A', partner: 'luox',
     zustand: 'verbunden', startdatum: null, ende: null, aktualisiertAm: ago(10_000),
     letzteAbfrageAm: ago(10_000), lebenszeichenAm: ago(10_000), zugangGueltigBis: null,
-    leadDeviceRef: 'VP-BOX-0001',
+    leadDeviceRef: 'VP-BOX-0001', ez8Direktvermarkter: null,
     ...over,
   };
 }
@@ -313,6 +313,18 @@ describe('direktvermarktungKennzahl (§7.7, EIGENE Kennzahl - keine fünfte Kach
     expect(dv.ton).toBe('ok');
     expect(dv.wort).toBe('Alle verbunden ✓');
     expect(dv.kontext).toBe('0 Anlagen · 0 verbunden');
+  });
+
+  it('EZ-8-Abgleich: nennt, wie viele Anlagen zusätzlich das Anlagensteuerung-Feld tragen', () => {
+    const dv = direktvermarktungKennzahl([
+      dvZeile({ ez8Direktvermarkter: 'Stadtwerke Nord' }), dvZeile({ siteId: 's2' }),
+    ]);
+    expect(dv.kontext).toBe('2 Anlagen · 2 verbunden · 1 mit EZ-8');
+  });
+
+  it('EZ-8-Abgleich: ohne eine einzige Anlage mit dem Feld bleibt der Kontext wie bisher', () => {
+    const dv = direktvermarktungKennzahl([dvZeile()]);
+    expect(dv.kontext).toBe('1 Anlage · 1 verbunden');
   });
 });
 

@@ -27,11 +27,16 @@ public class AdminDirektvermarktungRepository {
      * Übersicht, "Braucht dich"). {@code zugangGueltigBis} ist der der AKTUELLEN Zugangsdatei (noch
      * nicht zurückgezogen, jüngste zuerst) - ohne Zustellung (eigener Auftrag) bleibt die Spalte leer.
      * {@code leadDeviceRef} ist die Kennung der Leitbox der Anlage (für die Geräteakte-Route der
-     * "Braucht dich"-Zeile) - {@code null}, solange die Anlage keine trägt.
+     * "Braucht dich"-Zeile) - {@code null}, solange die Anlage keine trägt. {@code ez8Direktvermarkter}
+     * ist der NAME des älteren, hardwaregestützten Felds der Anlagensteuerung
+     * ({@code anlage_netz_vermarktung.direktvermarkter}, EZ-8) - eine andere, von VoltPilot nicht
+     * verwaltete Beziehung; {@code null} ohne ein solches Feld oder ohne Kanal (Abgleich, kein
+     * Datenbezug, keine Sperre).
      */
     public record Zeile(UUID siteId, String siteName, UUID tenantId, String tenantName, String partner,
             String zustand, LocalDate startdatum, LocalDate ende, Instant aktualisiertAm,
-            Instant letzteAbfrageAm, Instant lebenszeichenAm, Instant zugangGueltigBis, String leadDeviceRef) {}
+            Instant letzteAbfrageAm, Instant lebenszeichenAm, Instant zugangGueltigBis, String leadDeviceRef,
+            String ez8Direktvermarkter) {}
 
     /**
      * Die Geräteakte › Verbindung-Sicht EINER Anlage (§7.7): der aktuelle Anschluss, sein Herzschlag
@@ -43,7 +48,7 @@ public class AdminDirektvermarktungRepository {
             Instant handshakeAm, String gegenstelle, Double abfragenJeMinute, Instant letzteSchreibungAm,
             Instant lebenszeichenAm, Integer vorgabePct, Integer einspeisungW, Integer erzeugungW,
             Integer netzbetreiberPct, Integer referenzW, String zugangHochgeladenVon, Instant zugangGueltigBis,
-            String zugangFingerabdruck, Instant zugangZurueckgezogenAm) {}
+            String zugangFingerabdruck, Instant zugangZurueckgezogenAm, String ez8Direktvermarkter) {}
 
     /** Eine Ereignis-Zeile des Protokolls, plattformweit lesbar (append-only, nie geändert). */
     public record ProtokollZeile(long id, String ereignis, String von, String rolle, Instant am) {}
@@ -60,12 +65,16 @@ public class AdminDirektvermarktungRepository {
                 SELECT dv.site_id, s.name AS site_name, dv.tenant_id, t.name AS tenant_name, dv.partner,
                        dv.zustand, dv.startdatum, dv.ende, dv.aktualisiert_am,
                        dvs.letzte_abfrage_am, dvs.lebenszeichen_am, dvz.gueltig_bis AS zugang_gueltig_bis,
-                       lead.external_ref AS lead_device_ref
+                       lead.external_ref AS lead_device_ref,
+                       CASE WHEN nv.direktvermarkter_kanal IS NOT NULL AND nv.direktvermarkter_kanal <> 'keiner'
+                                 AND nullif(btrim(nv.direktvermarkter), '') IS NOT NULL
+                            THEN nv.direktvermarkter END AS ez8_direktvermarkter
                 FROM direktvermarktung dv
                 JOIN site s ON s.id = dv.site_id
                 JOIN tenant t ON t.id = dv.tenant_id
                 LEFT JOIN direktvermarktung_stand dvs ON dvs.site_id = dv.site_id
                 LEFT JOIN device lead ON lead.id = s.lead_device_id
+                LEFT JOIN anlage_netz_vermarktung nv ON nv.site_id = dv.site_id
                 LEFT JOIN LATERAL (
                     SELECT z.gueltig_bis FROM direktvermarktung_zugang z
                     WHERE z.direktvermarktung_id = dv.id AND z.zurueckgezogen_am IS NULL
@@ -85,9 +94,13 @@ public class AdminDirektvermarktungRepository {
                        dvs.letzte_schreibung_am, dvs.lebenszeichen_am, dvs.vorgabe_pct, dvs.einspeisung_w,
                        dvs.erzeugung_w, dvs.netzbetreiber_pct, dvs.referenz_w,
                        dvz.hochgeladen_von AS zugang_hochgeladen_von, dvz.gueltig_bis AS zugang_gueltig_bis,
-                       dvz.fingerabdruck AS zugang_fingerabdruck, dvz.zurueckgezogen_am AS zugang_zurueckgezogen_am
+                       dvz.fingerabdruck AS zugang_fingerabdruck, dvz.zurueckgezogen_am AS zugang_zurueckgezogen_am,
+                       CASE WHEN nv.direktvermarkter_kanal IS NOT NULL AND nv.direktvermarkter_kanal <> 'keiner'
+                                 AND nullif(btrim(nv.direktvermarkter), '') IS NOT NULL
+                            THEN nv.direktvermarkter END AS ez8_direktvermarkter
                 FROM direktvermarktung dv
                 LEFT JOIN direktvermarktung_stand dvs ON dvs.site_id = dv.site_id
+                LEFT JOIN anlage_netz_vermarktung nv ON nv.site_id = dv.site_id
                 LEFT JOIN LATERAL (
                     SELECT z.* FROM direktvermarktung_zugang z WHERE z.direktvermarktung_id = dv.id
                     ORDER BY z.hochgeladen_am DESC LIMIT 1
@@ -114,7 +127,8 @@ public class AdminDirektvermarktungRepository {
                 rs.getObject("tenant_id", UUID.class), rs.getString("tenant_name"), rs.getString("partner"),
                 rs.getString("zustand"), startdatum == null ? null : startdatum.toLocalDate(),
                 ende == null ? null : ende.toLocalDate(), ts(rs, "aktualisiert_am"), ts(rs, "letzte_abfrage_am"),
-                ts(rs, "lebenszeichen_am"), ts(rs, "zugang_gueltig_bis"), rs.getString("lead_device_ref"));
+                ts(rs, "lebenszeichen_am"), ts(rs, "zugang_gueltig_bis"), rs.getString("lead_device_ref"),
+                rs.getString("ez8_direktvermarkter"));
     }
 
     private static SiteDetail mapDetail(ResultSet rs, int i) throws SQLException {
@@ -133,7 +147,8 @@ public class AdminDirektvermarktungRepository {
                 (Integer) rs.getObject("einspeisung_w"), (Integer) rs.getObject("erzeugung_w"),
                 (Integer) rs.getObject("netzbetreiber_pct"), (Integer) rs.getObject("referenz_w"),
                 rs.getString("zugang_hochgeladen_von"), ts(rs, "zugang_gueltig_bis"),
-                rs.getString("zugang_fingerabdruck"), ts(rs, "zugang_zurueckgezogen_am"));
+                rs.getString("zugang_fingerabdruck"), ts(rs, "zugang_zurueckgezogen_am"),
+                rs.getString("ez8_direktvermarkter"));
     }
 
     private static Instant ts(ResultSet rs, String spalte) throws SQLException {

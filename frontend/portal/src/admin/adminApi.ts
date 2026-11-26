@@ -492,6 +492,8 @@ export interface AdminDirektvermarktungZeile {
   lebenszeichenAm: string | null;
   zugangGueltigBis: string | null;
   leadDeviceRef: string | null;
+  /** Abgleich mit dem älteren, hardwaregestützten Feld der Anlagensteuerung (EZ-8) - kein Datenbezug, keine Sperre. */
+  ez8Direktvermarkter: string | null;
 }
 
 /** Geräteakte › Verbindung, Block „Direktvermarkter" - nie Chiffrat/Nonce/Passwort (§7.7 „Nie sichtbar"). */
@@ -519,6 +521,8 @@ export interface AdminDirektvermarktungDetail {
   zugangGueltigBis: string | null;
   zugangFingerabdruck: string | null;
   zugangZurueckgezogenAm: string | null;
+  /** Abgleich mit dem älteren, hardwaregestützten Feld der Anlagensteuerung (EZ-8) - kein Datenbezug, keine Sperre. */
+  ez8Direktvermarkter: string | null;
 }
 
 export interface AdminDirektvermarktungProtokollZeile {
