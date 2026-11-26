@@ -46,7 +46,7 @@ export function AnlageOrtZeile({
 
   return (
     <li>
-      <Recht aktion="anlage.verwalten">
+      <Recht aktion="anlage.ort_berichtigen">
         <button
           ref={ausloeser}
           type="button"

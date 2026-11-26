@@ -284,6 +284,24 @@
       "anmerkung": "AP-02 nennt Kundenadministrator und Energiemanager."
     },
     {
+      "kennung": "anlage.ort_berichtigen",
+      "gruppe": "struktur",
+      "kundenwort": "Adresse und Kartenpunkt einer Anlage berichtigen",
+      "herkunft": "Standort v1 §7 (vp-standort-konzept, E2 = A)",
+      "nachtrag": "Standort v1 §7",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
+      },
+      "anmerkung": "Bearbeiter wie bei standort.verwalten nicht enthalten (Captain-Entscheid E2); „Gehört zu“ ändern bleibt separat anlage.zuordnen."
+    },
+    {
       "kennung": "gebaeude.pflegen",
       "gruppe": "struktur",
       "kundenwort": "Gebäude und Bereiche pflegen (anlegen, bearbeiten, verschieben, Fläche, archivieren)",
@@ -2562,6 +2580,24 @@
           "wo": "services/api/src/main/java/com/voltpilot/api/steuerlogik/SteuerlogikBausteine.java, db/migration/V20261115200000__steuerlogik_baustein.sql"
         }
       ]
+    },
+    {
+      "abschnitt": "Standort v1 §7",
+      "titel": "Recht „Ort berichtigen“ (Adresse und Kartenpunkt einer Anlage)",
+      "konzept": "vp-standort-konzept — report.md §7, E2 = A vom 26.11.2026",
+      "handlungen": [
+        {
+          "handlung": "Adresse und Kartenpunkt einer Anlage berichtigen (nie ein Datum, keine Zuordnung)",
+          "wer": "Kundenadministrator, Energiemanager, Unterstützer (ab Einrichten), VoltPilot-Betrieb",
+          "recht": "`@Recht(\"anlage.ort_berichtigen\")`",
+          "kennungen": [
+            "anlage.ort_berichtigen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "E2 = A: Bearbeiter bekommt das Recht nicht (wie standort.verwalten). „Gehört zu“ ändern bleibt separat anlage.zuordnen, nur Kundenadministrator."
+        }
+      ],
+      "regeln": []
     }
   ]
 }

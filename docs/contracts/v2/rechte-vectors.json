@@ -18079,6 +18079,229 @@
         "umfang_noetig": null,
         "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
       }
+    },
+    {
+      "name": "standort-v1-ines-ort-berichtigen-darf",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Standort v1 §7 E2: Ines Kaltenbach (Energiemanager) berichtigt Adresse und Kartenpunkt von Halle 2 unternehmensweit - dasselbe Recht wie der Kundenadministrator.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "anlage.ort_berichtigen",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-2",
+            "zuordnungen": [
+              {
+                "standort": "ST-1",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2026-11-26T10:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "standort-v1-brunner-ort-berichtigen-einrichten-darf",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Standort v1 §7 E2: Unterstützer ab Umfang „Einrichten“ berichtigen Adresse und Kartenpunkt - befristet, mit Banner und Protokoll wie jede Unterstützung.",
+      "annahme": "Brunner hat für diesen Fall nur Umfang „Einrichten“ statt seines sonstigen „Einrichten und Bedienen“ (die Referenzdatei kennt nur Letzteres) - „ab Einrichten“ schließt beides ein.",
+      "input": {
+        "benutzer": {
+          "kennung": "TB",
+          "name": "Thomas Brunner",
+          "konto": "partner",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "einrichten",
+              "art": "installateur",
+              "gueltig_ab": "2026-11-24T09:40:00+01:00",
+              "gueltig_bis": "2026-12-15",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "anlage.ort_berichtigen",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-2",
+            "zuordnungen": [
+              {
+                "standort": "ST-1",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2026-12-01T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "unterstuetzer",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "standort-v1-peter-ort-berichtigen-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Standort v1 §7 E2: Bearbeiter bekommt das Recht „Ort berichtigen“ nicht, wie heute bei standort.verwalten - 403 recht_fehlt, kleinste berechtigte Rolle ist Energiemanager.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "anlage.ort_berichtigen",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-3",
+            "zuordnungen": [
+              {
+                "standort": "ST-2",
+                "gueltig_ab": "2026-10-15",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2026-10-20T10:15:00+02:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-2",
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
     }
   ]
 }

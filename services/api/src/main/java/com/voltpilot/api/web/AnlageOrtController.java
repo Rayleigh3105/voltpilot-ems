@@ -18,9 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
  * Kartenpunkt einer Anlage statt drei getrennter — {@link AnlageOrtService}. Nie ein Datum
  * (eine Korrektur, kein Umzug); die Zuordnung „Gehört zu" bleibt {@code AnlageStandortController}.
  *
- * <p>Rechte: vorläufig {@code anlage.verwalten} (wie bisher der Karten-Block in {@code PUT
- * /sites/{id}}) — das eigene Recht „Ort berichtigen" (E2) kommt mit der Rechte-Stufe des
- * Konzepts (vp-standort-bau Schritt 2d).
+ * <p>Rechte: {@code anlage.ort_berichtigen} (E2 = A, vp-standort-konzept §7) - Kundenadministrator
+ * und Energiemanager unternehmensweit, Unterstützer ab Umfang „Einrichten" (befristet, Banner und
+ * Protokoll wie jede Unterstützung), VoltPilot-Betrieb. Bearbeiter bekommt das Recht nicht (wie
+ * {@code standort.verwalten}); „Gehört zu" ändern bleibt separat {@code anlage.zuordnen}.
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/ort")
@@ -35,7 +36,7 @@ public class AnlageOrtController {
     }
 
     @PutMapping
-    @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
+    @Recht(value = "anlage.ort_berichtigen", ziel = RechtZiel.ANLAGE)
     public AnlageOrtDto.Ergebnis berichtigen(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         AnlageOrtDto.Anfrage a = anfrage.lies(body, AnlageOrtDto.Anfrage.class, false);
