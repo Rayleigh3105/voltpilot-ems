@@ -84,7 +84,7 @@ export const startArticles: HelpArticle[] = [
         'Adresse: die Adresse wählen, den Pin bei Bedarf aufs Dach ziehen und den Namen prüfen.',
         'Box: die Kennung Ihrer VoltPilot-Box eintragen. Das Feld ergänzt „edge-“ und prüft jedes Zeichen. Ist die Box noch nicht da, verbinden Sie sie später im Aufbau.',
         'Anlage: bestätigen, was die Box gefunden hat, und die Leistung der Solarmodule ergänzen. Ohne Box tragen Sie Solar und Speicher als Zahlen ein. Mit der MaStR-Nummer holen Sie die Werte aus dem Register.',
-      ], note: 'Was die Box meldet, ist noch nicht übernommen - erst „Stimmt so“ übernimmt es. Ob ein Gerät danach misst, zeigt das Cockpit an seinen Werten.' },
+      ], note: 'Was die Box meldet, ist noch nicht übernommen - erst „Weiter“ übernimmt es. Ob ein Gerät danach misst, zeigt das Cockpit an seinen Werten.' },
       { id: 'unterbrechen', title: 'Wenn etwas dazwischenkommt', paragraphs: [
         "Ihre Eingaben bleiben in diesem Browser-Tab erhalten: nach dem Neuladen oder einer neuen Anmeldung geht es am selben Schritt weiter. Eine verlorene Antwort legt nichts doppelt an. „Später einrichten“ oder das Schließen des Dialogs verwirft den Entwurf; was schon gespeichert ist, bleibt.",
       ] },

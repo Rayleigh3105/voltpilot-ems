@@ -341,8 +341,8 @@ for (const breite of BREITEN) {
       }),
     ]);
 
-    // Kein Fertig-Bildschirm (D7): „Stimmt so“ führt ohne Umweg zu den Messstellen.
-    await dialog.getByRole('button', { name: 'Stimmt so', exact: true }).click();
+    // Kein Fertig-Bildschirm (D7): „Weiter“ führt ohne Umweg zu den Messstellen (seit #1811 „Weiter“, nicht mehr „Stimmt so“).
+    await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
     await expect(page.getByTestId('gemeldet')).toHaveText(`${NEU} → ${MESSSTELLEN_LINDACH}`);
     expect(new URL(page.url()).hash).toBe(MESSSTELLEN_LINDACH);
   });
