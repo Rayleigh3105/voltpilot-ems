@@ -8,7 +8,7 @@ export { kwpText, pvLage, type PvLage } from './pvLage';
 /**
  * Schritt 3 des Anlege-Flusses: „Was gehört zu Ihrer Anlage?“ (Anlage-Flow a1, Paket 2) - die reine Hälfte.
  *
- * Bestätigen ist leichter als Abtippen: was die Box meldet, steht als Liste da und wird mit „Stimmt so“
+ * Bestätigen ist leichter als Abtippen: was die Box meldet, steht als Liste da und wird mit „Weiter“
  * übernommen (vorher fragte die Übernahme im Einrichtungspfad Modulleistung und MaStR-Nummer leer, auch
  * wenn beides schon in den Anlagen-Daten stand - F17). Die MaStR-Nummer ist ein Link „Aus dem Register
  * holen“ statt eines eigenen Schritts (R4). Ohne Box reichen zwei Zahlen für die Prognose.
