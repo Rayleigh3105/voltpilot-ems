@@ -145,6 +145,13 @@ export function reconcileProducerPv(
   const orphans = orphanedEntityIds(pins);
   const pinByEntity = livePinByEntity(pins);
   const sourceById = producingSourcesById(sources);
+  // The frozen-value distrust below (migration leftover from the composite
+  // publisher onto a hybrid) only applies on a site that HAS a hybrid. A
+  // plant of plain producer entities has no composite number to leak from -
+  // there a stale member is just a producer that stopped reporting, and its
+  // last value stays exactly that until someone else (`flussBilanz`'s
+  // `zaehltNicht`) decides it is too old to count.
+  const hasHybrid = [...entityById.values()].some(isHybrid);
 
   const members: FlowMember[] = pvNode.members.map((m) => ({ ...m }));
   let changed = false;
@@ -166,7 +173,7 @@ export function reconcileProducerPv(
     // healthy. A stale producer can be the last value from the former
     // producer-only publisher, while its pinned `/sources` measurement is
     // already live again. Do not keep that frozen value in either row.
-    if (m.value_kw != null && e?.health === 'ok') return;
+    if (m.value_kw != null && (e?.health === 'ok' || !hasHybrid)) return;
     if (!e || !isProducer(e)) return;
     const src = sourceById.get(pinByEntity.get(m.entity_id) ?? '');
     if (!src) {
