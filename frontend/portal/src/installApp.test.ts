@@ -5,6 +5,7 @@ import {
   installSnapshot,
   installState,
   installView,
+  isAndroidChromium,
   isIos,
   isStandalone,
   lastInstallOutcome,
@@ -80,32 +81,33 @@ function promptEvent(outcome: 'accepted' | 'dismissed' | 'throws' = 'accepted') 
 
 beforeEach(() => resetInstallApp());
 
-describe('installState: vier Situationen, vier Antworten', () => {
+/** Die Fakten mit allem auf „nein", außer dem, was ein Fall explizit setzt. */
+function facts(partial: Partial<Parameters<typeof installState>[0]> = {}) {
+  return { promptReady: false, standalone: false, ios: false, androidChromium: false, ...partial };
+}
+
+describe('installState: fünf Situationen, fünf Antworten', () => {
   it('läuft die App schon, gibt es NIE eine Anleitung - auch nicht neben einem Angebot', () => {
-    expect(
-      installState({ promptReady: true, standalone: true, ios: true }),
-    ).toBe('installiert');
-    expect(
-      installState({ promptReady: false, standalone: true, ios: false }),
-    ).toBe('installiert');
+    expect(installState(facts({ promptReady: true, standalone: true, ios: true }))).toBe(
+      'installiert',
+    );
+    expect(installState(facts({ standalone: true }))).toBe('installiert');
   });
 
   it('ein eingefangenes Angebot des Browsers ist der Knopf', () => {
-    expect(installState({ promptReady: true, standalone: false, ios: false })).toBe(
-      'installierbar',
-    );
+    expect(installState(facts({ promptReady: true }))).toBe('installierbar');
   });
 
   it('auf dem iPhone gibt es keinen Dialog, also die Anleitung', () => {
-    expect(installState({ promptReady: false, standalone: false, ios: true })).toBe(
-      'ios-anleitung',
-    );
+    expect(installState(facts({ ios: true }))).toBe('ios-anleitung');
   });
 
-  it('ohne Beleg wird nichts versprochen', () => {
-    expect(installState({ promptReady: false, standalone: false, ios: false })).toBe(
-      'nicht-verfuegbar',
-    );
+  it('Chrome/Chromium auf Android bekommt den Menü-Weg, nie die Falschbehauptung', () => {
+    expect(installState(facts({ androidChromium: true }))).toBe('android-anleitung');
+  });
+
+  it('ohne Beleg und ohne Android-Chromium wird nichts versprochen', () => {
+    expect(installState(facts())).toBe('nicht-verfuegbar');
   });
 });
 
@@ -154,10 +156,64 @@ describe('isIos', () => {
   });
 });
 
+describe('isAndroidChromium', () => {
+  it('erkennt Chrome, Edge, Samsung Internet und Opera auf Android', () => {
+    expect(
+      isAndroidChromium(fakeEnv({ ua: 'Mozilla/5.0 (Linux; Android 14) Chrome/151' })),
+    ).toBe(true);
+    expect(
+      isAndroidChromium(
+        fakeEnv({ ua: 'Mozilla/5.0 (Linux; Android 13) Chrome/120.0 EdgA/120.0' }),
+      ),
+    ).toBe(true);
+    expect(
+      isAndroidChromium(
+        fakeEnv({
+          ua: 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 SamsungBrowser/21.0 Chrome/110.0',
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('hält einen Android-Browser ohne Chromium-Unterbau auseinander - er bekommt die alte Anleitung zu Recht', () => {
+    expect(
+      isAndroidChromium(
+        fakeEnv({ ua: 'Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/118.0 Firefox/118.0' }),
+      ),
+    ).toBe(false);
+  });
+
+  it('hält Chrome auf dem Rechner und das iPhone auseinander', () => {
+    expect(
+      isAndroidChromium(fakeEnv({ ua: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/151' })),
+    ).toBe(false);
+    expect(
+      isAndroidChromium(fakeEnv({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari' })),
+    ).toBe(false);
+  });
+
+  it('eine eingebettete Ansicht (In-App-Browser) hat kein Menü - dort bleibt die alte Anleitung richtig', () => {
+    expect(
+      isAndroidChromium(
+        fakeEnv({
+          ua: 'Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36',
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isAndroidChromium(
+        fakeEnv({
+          ua: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0 Instagram 300.0.0.0',
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('installView: Kundencopy, kein Fachwort', () => {
-  const all = (['installiert', 'installierbar', 'ios-anleitung', 'nicht-verfuegbar'] as const).map(
-    (s) => installView(s),
-  );
+  const all = (
+    ['installiert', 'installierbar', 'ios-anleitung', 'android-anleitung', 'nicht-verfuegbar'] as const
+  ).map((s) => installView(s));
 
   it('sagt „App" und nie PWA/Manifest/Service Worker', () => {
     const text = all
@@ -171,6 +227,7 @@ describe('installView: Kundencopy, kein Fachwort', () => {
     expect(installView('installierbar').action).toBe('App installieren');
     expect(installView('installiert').action).toBeNull();
     expect(installView('ios-anleitung').action).toBeNull();
+    expect(installView('android-anleitung').action).toBeNull();
     expect(installView('nicht-verfuegbar').action).toBeNull();
   });
 
@@ -188,13 +245,20 @@ describe('installView: Kundencopy, kein Fachwort', () => {
     expect(v.steps[1]).toMatch(/Home-Bildschirm/);
   });
 
-  it('nennt ohne Angebot den GRUND und den Weg, nie nur Leere', () => {
+  it('nennt ohne Angebot und ohne Android-Chromium den GRUND und den Weg, nie nur Leere', () => {
     const v = installView('nicht-verfuegbar');
     expect(v.text).toMatch(/bietet das Einrichten hier nicht an/);
     expect(v.hint).toMatch(/Chrome|Safari/);
   });
 
-  it('nach einem Abbruch steht dort der ANDERE Grund - kein fünfter Zustand', () => {
+  it('nennt auf Chrome/Chromium ohne Angebot den Browser-Menü-Weg, NIE die Behauptung "bietet es nicht an"', () => {
+    const v = installView('android-anleitung');
+    expect(v.text).not.toMatch(/bietet das Einrichten hier nicht an/);
+    expect(v.steps).toHaveLength(2);
+    expect(v.steps[1]).toMatch(/App installieren|Startbildschirm/);
+  });
+
+  it('nach einem Abbruch steht dort der ANDERE Grund - kein eigener Zustand', () => {
     const v = installView('nicht-verfuegbar', 'abgelehnt');
     expect(v.state).toBe('nicht-verfuegbar');
     expect(v.text).toMatch(/abgebrochen/);
