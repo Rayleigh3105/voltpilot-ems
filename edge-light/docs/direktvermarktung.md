@@ -47,6 +47,20 @@ Belegt PS-D3, PS-D4, PS-D16, PS-D17 sowie PS-D5/D7/D8 und die Stoerfaelle aus §
 PS-D9 (Speicher laedt zuerst) haengt an einem geregelten Wechselrichter und ist als Go-Test belegt (`guards/exportcascade`-Tests, `agent/direktvermarktung_test.go`); die Probe zeigt, dass die Partner-Grenze den Einspeisewaechter erreicht.
 PS-D2/PS-D19 am echten Geraet (Labor-Mango, 24-h-Lauf) bleiben offen bis zur Hardware-Runde.
 
+## Stufe 5: Wie OpenVPN auf die Box kommt (E5=A, PS-D10)
+
+Nie aus dem Internet auf der Box.
+Die Pakete (openvpn-mbedtls samt Abhaengigkeiten) sind in `edge-light/openwrt/pakete.json` mit Fassung, Pruefsumme und Quelle gepinnt - sie gehoeren zu GENAU dem OpenWrt-Abbild der Werkstatt (`WerkstattOpenWrt.MANGO`; wer das Abbild hebt, hebt die Pins im selben PR).
+`edge-light/scripts/pakete-paket.py` laedt sie von den gepinnten Quellen, verwendet nur Dateien mit exakter Pruefsumme und packt sie deterministisch als Release-Anhang `edge-light-pakete.tar.gz` (`pakete/INHALT` plus die `.apk`-Dateien); `vp-ota manifest --pakete` traegt dessen Pruefsumme signiert ins Manifest (Feld `pakete`, additiv - ein aelterer Stand ignoriert es und laesst nur die Pakete weg).
+
+Drei Wege, alle nur aus der bestaetigten Datei (`apk add --no-network --allow-untrusted`: OpenWrt signiert nur den Paket-Index, nie die einzelne `.apk`-Datei - lokal kann apk nichts selbst pruefen; die Echtheit traegt wie beim Programm allein die sha256-Kette aus dem signierten Manifest):
+
+1. **Werkstatt** (neue Mangos): `install.sh` bekommt `VP_PAKETE`, haelt den Anhang hier und auf dem Geraet gegen `pakete.sha256` aus dem Manifest und installiert. Die Pruefung `direktvermarktung_bereit` (Vektor `docs/contracts/werkstatt-pruefungen.json`) belegt Paket samt Fassung, Startskript `vp-vermarkter`, Verwalter ohne Profil, Tunnel aus.
+2. **Fernlauf** (Feldboxen ohne Zuordnung): derselbe `install.sh`-Weg durch den Wartungstunnel.
+3. **Feld-Update** (zugeordnete Boxen): die Pakete-Pflege des Programms (`agent/pakete_pflege.go`) sieht am LAUFENDEN, bestaetigten Release das Manifest-Feld, laedt den Anhang aus dem Portal (`/api/v1/edge/light-pakete/<sha256>`), prueft ihn gegen die signierte Pruefsumme und die `INHALT`-Liste (`internal/otapakete`) und installiert nur Fehlendes; schlaegt die Installation fehl, nimmt sie neu Hinzugekommenes zurueck und versucht es spaeter erneut. Ein Anhang fuer eine fremde apk-Architektur (etwa die amd64-Probe) installiert nichts.
+
+Beweis ohne Hardware: `services/werkstatt-dienst/test/box-probe.sh` (echte x86_64-Pakete, offline installiert, Pruefung bereit) und die Go-Tests von `otapakete` und `pakete_pflege`.
+
 ## PS-D2: Flash und RAM von OpenVPN
 
 Gewaehlt: `openvpn-mbedtls` (wie Konzept §4), OpenWrt 25.12.5, Ziel `ramips/mt76x8` (`mipsel_24kc`), Stand 25.11.2026 aus dem offiziellen Paket-Feed:

@@ -255,8 +255,11 @@ fi
 # Internet auf die Box: VP_PAKETE ist der Release-Anhang
 # edge-light-pakete.tar.gz, dessen Pruefsumme im signierten Manifest steht
 # (pakete.sha256). Sie wird hier UND auf dem Geraet gegengehalten; installiert
-# wird nur aus der bestaetigten Datei (apk add --no-network). apk prueft die
-# OpenWrt-Signatur jeder Paketdatei zusaetzlich selbst.
+# wird nur aus der bestaetigten Datei (apk add --no-network --allow-untrusted:
+# OpenWrt signiert nur den Paket-INDEX, nicht die einzelne .apk-Datei - eine
+# lokale Datei kann apk darum nie selbst pruefen. Die Echtheit traegt wie beim
+# Programm die sha256-Kette: Pins aus edge-light/openwrt/pakete.json beim Bau,
+# pakete.sha256 im signierten Manifest bei der Lieferung, INHALT je Datei).
 PSUM=""
 if [ -n "$MANIFEST" ]; then
   PSUM="$(awk '
@@ -281,7 +284,7 @@ if [ -n "${VP_PAKETE:-}" ]; then
   box_ssh "$TARGET" "[ \"\$(sha256sum /tmp/vp-pakete/pakete.tar.gz | cut -d' ' -f1)\" = '$PSUM' ] || { echo 'FEHLER: Pruefsumme des Paket-Anhangs stimmt auf dem Geraet nicht' >&2; rm -rf /tmp/vp-pakete; exit 1; }"
   # INHALT noch einmal je Datei gegenhalten (sha256sum -c), dann installieren.
   # shellcheck disable=SC2029
-  box_ssh "$TARGET" "cd /tmp/vp-pakete && tar xzf pakete.tar.gz && cd pakete && grep -E '^[0-9a-f]{64}  ' INHALT | sha256sum -c - >/dev/null && apk add --no-network ./*.apk && cd / && rm -rf /tmp/vp-pakete"
+  box_ssh "$TARGET" "cd /tmp/vp-pakete && tar xzf pakete.tar.gz && cd pakete && grep -E '^[0-9a-f]{64}  ' INHALT | sha256sum -c - >/dev/null && apk add --no-network --allow-untrusted ./*.apk && cd / && rm -rf /tmp/vp-pakete"
   # shellcheck disable=SC2029
   box_ssh "$TARGET" "command -v openvpn >/dev/null" || { echo "FEHLER: openvpn fehlt nach der Installation" >&2; exit 1; }
   echo "    Pakete installiert (Pruefsumme auf dem Geraet bestaetigt, apk ohne Netz)"

@@ -45,8 +45,9 @@ eine Freigabe, beginnt ihr Lauf von selbst. Jeder Schritt endet mit einem Beleg;
 | `internet` | befristet: Standardweg und DNS über die Brücke (192.168.1.2) | Standardweg, `https://downloads.openwrt.org` erreichbar (PS-12) |
 | `passwort` | zufällig (20 Zeichen wie das Portal), erst verschlüsselt für den age-Schlüssel „Box-Passwörter“ (WI-6 A), dann über die Standardeingabe gesetzt | „ohne Passwort abgewiesen“, `passwort_age` |
 | `notfall` | der Notfall-Schlüssel als einziger dauerhafter Schlüssel | eine Zeile, Fingerabdruck |
-| `programm` | `install.sh` aus dem Skriptstand, Neustart von `vp-edge-light` | „Pruefsumme auf dem Geraet bestaetigt“, `/health` mit Referenz (Prüfzeichen gültig) und der Fassung der Freigabe |
+| `programm` | `install.sh` aus dem Skriptstand (mit `VP_PAKETE`, dem gegen das signierte Manifest geprüften Paket-Anhang), Neustart von `vp-edge-light` | „Pruefsumme auf dem Geraet bestaetigt“, „Pakete installiert“, `/health` mit Referenz (Prüfzeichen gültig) und der Fassung der Freigabe |
 | `einrichtung_wlan` | `wireless.radio0.country=DE` setzen, `apk add relayd`, solange die Brücke noch Internet gibt (S1, Konzept `vp-edge-light-wlan`) | Land DE, Paket relayd auf der Box |
+| `direktvermarktung` | Prüfung `direktvermarktung_bereit` (Stufe 5, PS-D10): OpenVPN-Pakete aus dem Anhang installiert, Startskript `vp-vermarkter` eingeschaltet, der Verwalter im Programm meldet `ohne_profil`, kein Tunnel, keine Zone, keine Konfiguration von früher; eine Fassung ohne Anhang: übersprungen mit Grund | Paket samt Fassung, Lage, „Tunnel aus“ |
 | `tunnel_schluessel` | `service-tunnel.sh … key` | öffentlicher Schlüssel, Referenz |
 | `tunnel_adresse` (ohne API) | **wartet auf dich**: Schlüssel im Portal hinterlegen, Adresse eintragen | die Adresse |
 | `einloesen` (mit API, statt `tunnel_adresse`) | Einmal-Code holen, die Box löst ihn mit `werkstatt-anmelden` selbst ein (Code über die Standardeingabe): Geräteschlüssel festgehalten (D2), Tunnel-Schlüssel hinterlegt, Adresse zugeteilt, Probe-Fenster offen | Freigabe, Adresse, Probe-Fenster, sha256 des Geräteschlüssels; der Code nie |
@@ -77,6 +78,7 @@ baut sie, dazu `sha256sums`). Mit der API nennt das Portal die Prüfsummen aus d
 |---|---|---|---|
 | `vp-edge-light-linux-<bauart>` | das Programm, wie `edge-light/dist/` (`mipsle` für die Mango) | `programm_sha256` | `artifacts[]` (`binary`, `linux/<bauart>`, `sha256`) |
 | `edge-light-openwrt.tar.gz` | `edge-light/openwrt/` als `openwrt/…` (`install.sh`, `service-tunnel.sh`, `files/`) | `skripte_sha256` | `skripte.sha256` |
+| `edge-light-pakete.tar.gz` | die OpenWrt-Pakete des Direktvermarkter-Anschlusses (Stufe 5, PS-D10; Pins `edge-light/openwrt/pakete.json`, Bau `pakete-paket.py`) | - (bewusst nicht gepinnt) | `pakete.sha256` - die einzige Quelle; der Dienst lädt den Anhang erst nach der Signaturprüfung des Manifests und reicht ihn als `VP_PAKETE` an `install.sh` |
 
 ## Ein Lauf am WAGO PFC200 (Edge Industrie)
 
@@ -94,7 +96,8 @@ Paket `internal/pfc200`, die Texte für Menschen an einer Stelle in `internal/pf
 | `zugaenge` | ein Schlüssel nur für diesen Lauf; drei Zufallspasswörter für `root`, `admin`, `user`: erst verschlüsselt, dann als Hash gesetzt; Anmeldung mit Passwort aus | jedes Werkspasswort an SSH abgewiesen, das Gerät meldet „nicht mehr ab Werk“, `passwort_age` |
 | `notfall` | der Notfall-Schlüssel als einziger dauerhafter (daneben bis zum Ende der Lauf-Schlüssel) | Fingerabdruck |
 | `grundprogramm` | trägt die Freigabe kein Grundprogramm (`grundprogramm_sha256` leer - heute immer, solange keine Fassung eines trägt): übersprungen, kein Handgriff, nichts am Gerät geändert. Sonst nur Firmware 04.xx oder neuer (sonst Fall `pfc_firmware_alt`); die Boot-Applikation des Basisprojekts aus der Freigabe nach `/home/codesys/PlcLogic/Application` auspacken (liegt dort schon eine fremde, Fall `pfc_grundprogramm_fremd` statt sie zu überschreiben), die CODESYS-Laufzeit mit `/etc/init.d/runtime stop`/`start` neu starten (belegt: WAGO/pfc-firmware-sdk-G2, Tag FW24-V04.02.13; kein `restart`), Prozess und ihren Modbus-Server auf Port 503 prüfen (keine Koppelprobe) | Übersprungen-Beleg, oder: Prüfsumme, Firmware, Stand vorher, dass CODESYS läuft |
-| `programm` | `install.sh` des Release-Stands, Dienst starten | Prüfsumme auf dem Gerät bestätigt, `/health` mit Referenz und Fassung, update-bereit |
+| `programm` | `install.sh` des Release-Stands (legt seit Stufe 5 auch den Helfer `vp-vermarkter` samt rc-Link), Dienst starten | Prüfsumme auf dem Gerät bestätigt, `/health` mit Referenz und Fassung, update-bereit |
+| `direktvermarktung` | Prüfung `direktvermarktung_bereit` (Stufe 5): Firmware-OpenVPN mit Fassung, Helfer `vp-vermarkter` eingerichtet und startet mit dem Gerät, sein `status`: kein Zugang, Tunnel aus, keine Umleitung; trägt der Skriptstand den Helfer nicht (vor Stufe 5): übersprungen mit Grund | OpenVPN-Fassung, Helfer-Stand |
 | `tunnel_schluessel`, `einloesen`, `tunnel` | wie bei der Mango, mit `wartung.sh` und dem Programm `vp-wartung` | Handshake, Port 2222 lauscht an keiner Netzbuchse, Abholer mit gültiger Antwort |
 | `netze` | Buchsen trennen: X1 Kundennetz per DHCP, X2 Anlagennetz (`VP_WERKSTATT_LAN_NETZ`); Firewall ein; Start nur vom internen Speicher | Netze je Buchse; am Kundennetz kein Dienst des Geräts offen, am Anlagennetz nur `ssh`, `https`, `codesysr`; dazu Web-App 8484 und OCPP 8887; Weiterleitung aus; Modbus 502 von außen zu |
 | `neustart` | Neustart, danach unter der Adresse des Anlagennetzes | derselbe Host-Schlüssel, dieselbe Referenz, Dienste laufen, Tunnel frisch, Schalter auf RUN |

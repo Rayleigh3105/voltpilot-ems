@@ -23,8 +23,11 @@ import hashlib
 import io
 import json
 import os
+import ssl
+import subprocess
 import sys
 import tarfile
+import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -40,8 +43,17 @@ def lade(eintrag: dict, quelle_dir: str | None) -> bytes:
     if not url.startswith("https://"):
         print(f"FEHLER: Quelle von {datei} ist nicht https: {url}", file=sys.stderr)
         raise SystemExit(1)
-    with urllib.request.urlopen(url, timeout=120) as r:  # noqa: S310 - https erzwungen
-        return r.read()
+    try:
+        with urllib.request.urlopen(url, timeout=120) as r:  # noqa: S310 - https erzwungen
+            return r.read()
+    except urllib.error.URLError as e:
+        # Ein Python ohne Wurzelzertifikate (python.org-Build auf macOS) kann
+        # https nicht pruefen; curl nutzt den System-Speicher. Die Pruefsumme
+        # unten gilt unabhaengig vom Transport.
+        if not isinstance(getattr(e, "reason", None), ssl.SSLError):
+            raise
+        return subprocess.run(["curl", "-fsSL", "--max-time", "120", url],
+                              check=True, stdout=subprocess.PIPE).stdout
 
 
 def main() -> int:

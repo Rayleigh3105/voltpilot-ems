@@ -161,6 +161,9 @@ class OtaRolloutApiTest {
      */
     private static final byte[] LIGHT_GZ = lightGz();
     private static final String LIGHT_GZ_SHA = sha256Hex(LIGHT_GZ);
+    /** Der Paket-Anhang edge-light-pakete.tar.gz (Direktvermarktung Stufe 5), klein aber echt gzip. */
+    private static final byte[] PAKETE_TGZ = paketeTgz();
+    private static final String PAKETE_SHA = sha256Hex(PAKETE_TGZ);
 
     /** Ein Edge-Light-Manifest in der Form, die {@code vp-ota manifest --binary} erzeugt. */
     private static final String LIGHT_MANIFEST = """
@@ -186,9 +189,26 @@ class OtaRolloutApiTest {
               "compat": {
                 "backends": ["light"]
               },
-              "signing_key_id": "rel-2026-a"
+              "signing_key_id": "rel-2026-a",
+              "pakete": {
+                "name": "edge-light-pakete.tar.gz",
+                "sha256": "%s",
+                "size": %d
+              }
             }
-            """.formatted(LIGHT_GZ_SHA, LIGHT_GZ.length);
+            """.formatted(LIGHT_GZ_SHA, LIGHT_GZ.length, PAKETE_SHA, PAKETE_TGZ.length);
+
+    private static byte[] paketeTgz() {
+        byte[] roh = new byte[40_000];
+        new java.util.Random(4712).nextBytes(roh);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.GZIPOutputStream gz = new java.util.zip.GZIPOutputStream(out)) {
+            gz.write(roh);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+        return out.toByteArray();
+    }
 
     private static byte[] lightGz() {
         byte[] roh = new byte[1_300_000];
@@ -587,6 +607,31 @@ class OtaRolloutApiTest {
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(rest.getForEntity(url("/api/v1/edge/light-programm/nicht-hex"), byte[].class)
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // ── Der Paket-Anhang (Direktvermarktung Stufe 5, PS-D10): dasselbe
+        // Teil-Protokoll, Prüfsumme und Größe aus dem signierten Manifest. ──
+        assertThat(rest.getForEntity(url("/api/v1/edge/light-pakete/" + PAKETE_SHA), byte[].class)
+                .getStatusCode()).as("vor dem Hochladen gibt es nichts").isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(putPaketeTeil(admin, "edge-2026.10.0", 0, new byte[] {1}).getStatusCode())
+                .as("ein Docker-Release hat keinen Paket-Anhang").isEqualTo(HttpStatus.CONFLICT);
+        byte[] paketeFalsch = PAKETE_TGZ.clone();
+        paketeFalsch[paketeFalsch.length - 1] ^= 1;
+        ResponseEntity<Map<String, Object>> paketeVerworfen = putPaketeTeil(admin, "edge-light-2026.10.1", 0,
+                paketeFalsch);
+        assertThat(paketeVerworfen.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) paketeVerworfen.getBody().get("message")).contains("Pruefsumme");
+        ResponseEntity<Map<String, Object>> paketeFertig = putPaketeTeil(admin, "edge-light-2026.10.1", 0,
+                PAKETE_TGZ);
+        assertThat(paketeFertig.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(paketeFertig.getBody()).containsEntry("fertig", true);
+        // Ein wiederholter Lauf ändert nichts; offen abrufbar, Byte für Byte.
+        assertThat(putPaketeTeil(admin, "edge-light-2026.10.1", 0, new byte[] {9}).getBody())
+                .containsEntry("fertig", true);
+        ResponseEntity<byte[]> paketeAbruf = rest.getForEntity(url("/api/v1/edge/light-pakete/" + PAKETE_SHA),
+                byte[].class);
+        assertThat(paketeAbruf.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(paketeAbruf.getHeaders().getContentType().toString()).isEqualTo("application/gzip");
+        assertThat(paketeAbruf.getBody()).isEqualTo(PAKETE_TGZ);
 
         // ── Passende Zuweisungen gehen durch ──────────────────────────────
         assertThat(post("/api/v1/admin/rollouts", admin,
@@ -1159,14 +1204,17 @@ class OtaRolloutApiTest {
             seq = rs.getLong(1);
         }
         String version = "edge-industrie-2026.11.1";
-        registerRelease(admin, version, seq, LIGHT_MANIFEST.replace("edge-light-2026.10.1", version)
+        // Den Paket-Anhang trägt nur ein Edge-Light-Release (Stufe 5): für die
+        // Industrie-Ableitung fliegt das Feld heraus.
+        String ohnePakete = LIGHT_MANIFEST.replaceAll(",\\s*\"pakete\": \\{[^}]*\\}", "");
+        registerRelease(admin, version, seq, ohnePakete.replace("edge-light-2026.10.1", version)
                 .replace("\"release_seq\": 41", "\"release_seq\": " + seq)
                 .replace("\"vp-edge-light\"", "\"vp-edge-industrie\"").replace("linux/mipsle", "linux/arm")
                 .replace("[\"light\"]", "[\"industrie\"]"), SIGNATURE);
         // Ein Edge-Industrie-Release mit Backend light hat nicht die Form des Vertrags.
         ResponseEntity<Map<String, Object>> falsch = post("/api/v1/admin/edge-releases", admin, Map.of(
                 "version", "edge-industrie-2026.11.2", "releaseSeq", seq + 1, "signature", SIGNATURE,
-                "manifest", LIGHT_MANIFEST.replace("edge-light-2026.10.1", "edge-industrie-2026.11.2")
+                "manifest", ohnePakete.replace("edge-light-2026.10.1", "edge-industrie-2026.11.2")
                         .replace("\"release_seq\": 41", "\"release_seq\": " + (seq + 1))));
         assertThat(falsch.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat((String) falsch.getBody().get("message")).contains("Edge-Industrie-Manifest");
@@ -1537,6 +1585,13 @@ class OtaRolloutApiTest {
         HttpHeaders h = bearer(token);
         h.setContentType(MediaType.APPLICATION_OCTET_STREAM);
         return rest.exchange(url("/api/v1/admin/edge-releases/" + version + "/programme/" + arch + "?ab=" + ab),
+                HttpMethod.PUT, new HttpEntity<>(teil, h), new ParameterizedTypeReference<>() {});
+    }
+
+    private ResponseEntity<Map<String, Object>> putPaketeTeil(String token, String version, long ab, byte[] teil) {
+        HttpHeaders h = bearer(token);
+        h.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        return rest.exchange(url("/api/v1/admin/edge-releases/" + version + "/pakete?ab=" + ab),
                 HttpMethod.PUT, new HttpEntity<>(teil, h), new ParameterizedTypeReference<>() {});
     }
 

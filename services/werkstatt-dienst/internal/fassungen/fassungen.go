@@ -12,6 +12,10 @@
 //	vp-edge-light-linux-<bauart>   das Programm (wie edge-light/dist/)
 //	edge-light-openwrt.tar.gz      edge-light/openwrt/ als openwrt/… (install.sh,
 //	                               service-tunnel.sh, files/)
+//	edge-light-pakete.tar.gz       die OpenWrt-Pakete des Direktvermarkter-
+//	                               Anschlusses (Stufe 5, PS-D10); Prüfsumme
+//	                               NICHT aus der Freigabe, sondern aus dem
+//	                               signierten Manifest (Stand.PaketeSha256)
 //
 // Release-Anhänge einer Edge-Industrie-Fassung (WAGO PFC200) unter
 // edge_industrie.quelle:

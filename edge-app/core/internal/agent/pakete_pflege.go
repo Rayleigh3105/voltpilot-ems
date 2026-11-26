@@ -11,8 +11,12 @@ package agent
 // Pakete auf der Box, laedt die Pflege den Anhang aus dem Portal
 // (/api/v1/edge/light-pakete/<sha256>), prueft ihn gegen genau diese
 // Pruefsumme, prueft die INHALT-Liste (otapakete.Lies) und installiert mit
-// apk add --no-network aus den bestaetigten Dateien. Eine Lieferung, die
-// nicht passt, wird verworfen; schlaegt die Installation fehl, nimmt die
+// apk add --no-network --allow-untrusted aus den bestaetigten Dateien
+// (OpenWrt signiert nur den Paket-Index, nie die einzelne .apk-Datei - eine
+// lokale Datei kann apk nicht selbst pruefen; die Echtheit traegt wie beim
+// Programm allein die sha256-Kette aus dem signierten Manifest). Eine
+// Lieferung, die nicht passt, wird verworfen; schlaegt die Installation fehl,
+// nimmt die
 // Pflege neu hinzugekommene Pakete wieder zurueck (Ruecknahme auf den
 // vorherigen Stand) und versucht es spaeter erneut.
 //
@@ -55,8 +59,7 @@ const (
 )
 
 // apkWerkzeug sind die vier apk-Handgriffe der Pflege - als Naht, damit Tests
-// ohne OpenWrt laufen (das echte apk prueft die OpenWrt-Signatur jeder
-// Paketdatei zusaetzlich selbst).
+// ohne OpenWrt laufen.
 type apkWerkzeug interface {
 	Arch(ctx context.Context) (string, error)
 	// Installierte nennt die installierten Pakete (apk list --installed),
@@ -100,7 +103,10 @@ func (a echtesApk) Installierte(ctx context.Context) (string, error) {
 }
 
 func (a echtesApk) Add(ctx context.Context, dateien []string) error {
-	_, err := a.lauf(ctx, append([]string{"add", "--no-network"}, dateien...)...)
+	// --allow-untrusted: OpenWrt signiert nur den Paket-Index, nie die
+	// einzelne .apk-Datei - die Echtheit der Dateien ist hier schon gegen die
+	// sha256-Kette des signierten Manifests bewiesen (otapakete.Lies).
+	_, err := a.lauf(ctx, append([]string{"add", "--no-network", "--allow-untrusted"}, dateien...)...)
 	return err
 }
 
