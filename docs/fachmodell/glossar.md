@@ -261,6 +261,11 @@ Drei ruhige Stellen im Cockpit zeigen das ohne Fehlerton, solange der Anschluss 
 ⚠ Nicht zu verwechseln mit dem älteren Feld der Anlagensteuerung (Erzeugerkette EZ-8): dessen Signal „Direktvermarkter stoppt“/„Direktvermarkter ruft ab“ ist ein HARDWARE-Signal (WAGO-Modbus) einer angeschlossenen Anlagensteuerung, unabhängig von diesem Partner-Anschluss. Beide Wörter stehen in derselben Kopf-Badge-Zeile; der Wortlaut bleibt bewusst verschieden („Direktvermarktung · {Partner}“ vs. „Direktvermarkter stoppt/ruft ab“), eine Zusammenführung ist nicht entschieden.
 Kundenwörter: `DIREKTVERMARKTUNG` (PORTAL/glossar.ts); Ableitung `PORTAL/direktvermarktung.ts`, Chips `PORTAL/pages/AnlagenPage.tsx`, Erlöszeile `PORTAL/cockpitWidgets.ts`.
 
+**Lagen des Anschlusses und Einrichtungsweg (Konzept vp-direktvermarktung-konzept §5.4/§7.5/§7.6).**
+Die Statuszeile des Anschlusses ist EIN Vokabular, gleich ob sie auf der eigenen Seite, am Anlagenkopf oder in der Geräteakte steht: „Nicht verbunden“ · „Einrichtung mit {Partner}“ · „Verbindung wird aufgebaut“ · „Verbunden · {Partner} fragt noch nicht ab“ · „Getrennt seit {Zeit} · Box online“ · „Verbunden mit {Partner} · frei“ · „Verbunden · {Partner} begrenzt auf {Prozent} %“ · „Verbunden mit {Partner}“ · „Endet am {Datum}“. Eine echte Störung (Tunnel unten) ist die einzige Lage mit Warnfarbe; das ruhige Begrenzen einer Vorgabe ist Vertrag, kein Fehler, und bleibt grün bzw. bernstein ohne Warnzeichen.
+Der Einrichtungsweg zeigt fünf Stationen als Fortschritt: „Gewählt“ · „Zugestimmt“ · „Zugang“ · „Verbunden“ · „luox prüft“; das Zustimmen nennt drei Zeilen, was der Partner darf: „Sehen, was Ihre Anlage einspeist“, „Die Einspeisung begrenzen“, „Nichts sonst, nie ins Heimnetz“.
+Kundenwörter: `FORTSCHRITT_STATIONEN`, `ZUSTIMMUNG_ZEILEN`, `ZUSTIMMUNG_TEXTFASSUNG_1` (PORTAL/direktvermarktung.ts, Funktion `anzeige` für die Statuszeilen); Wächter `PORTAL/direktvermarktung.test.ts`.
+
 ## Box (Edge)
 
 *Sicht: Erfassung*
