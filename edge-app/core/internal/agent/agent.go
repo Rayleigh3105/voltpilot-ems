@@ -739,6 +739,20 @@ type Agent struct {
 	// by literal.
 	statusKickCh   chan struct{}
 	statusKickOnce sync.Once
+	// priorityKickCh asks the status heartbeat for an early beat that ignores
+	// statusKickMinGap - only for the ONE confirmation markPriorityConfirm
+	// announced (consumer_override_now.go). Lazily made like statusKickCh.
+	priorityKickCh   chan struct{}
+	priorityKickOnce sync.Once
+	// priorityConfirmMu guards the one-shot per-entity flag that marks a
+	// readback as the confirmation of a manual override (consumer_override_now.go).
+	priorityConfirmMu      sync.Mutex
+	priorityConfirmPending map[string]bool
+	// consumerKickCh wakes consumerControlLoop ahead of its tick when a
+	// manual override just got admitted (consumer_override_now.go). Lazily
+	// made like statusKickCh.
+	consumerKickCh   chan struct{}
+	consumerKickOnce sync.Once
 	// reconcileNow nudges the identity-reconcile loop to re-check ahead of its
 	// tick (e.g. right after a cloud disconnect, which is how a broker rejects
 	// a device whose identity has drifted).
@@ -1715,7 +1729,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 	a.done.Add(1)
 	go func() {
 		defer a.done.Done()
-		statusHeartbeatLoop(linkCtx, statusHeartbeatEvery, statusKickMinGap, a.statusKick(), func() bool {
+		statusHeartbeatLoop(linkCtx, statusHeartbeatEvery, statusKickMinGap, a.statusKick(), a.priorityStatusKick(), func() bool {
 			if !link.Connected() {
 				return false
 			}

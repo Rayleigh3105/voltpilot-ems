@@ -52,7 +52,9 @@ func runHeartbeatLoop(t *testing.T, every, gap time.Duration, kick chan struct{}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		statusHeartbeatLoop(ctx, every, gap, kick, r.publish)
+		// No test here exercises the priority (minGap-exempt) channel; give it
+		// one nobody ever sends on.
+		statusHeartbeatLoop(ctx, every, gap, kick, make(chan struct{}), r.publish)
 	}()
 	t.Cleanup(func() { cancel(); <-done })
 }
