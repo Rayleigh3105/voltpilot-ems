@@ -32,6 +32,14 @@
   line-height: 1.5;
 }
 
+/* Die echten Symbole (Teilen, Menü) VOR dem Satz, der sie benennt - nicht danach, damit das
+   Auge erst das Symbol sucht und dann den Satz als Bestätigung liest, wie auf dem Gerät selbst. */
+.vp-installapp-step-icon {
+  vertical-align: -3px;
+  margin-right: 4px;
+  color: var(--vp-text-muted, #6c757d);
+}
+
 .vp-installapp-hint {
   margin: 0;
   min-width: 0;

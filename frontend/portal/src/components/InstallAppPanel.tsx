@@ -1,8 +1,10 @@
 import { useSyncExternalStore } from 'react';
 
 import { Button } from '../../designsystem/components/core/Button';
+import { Icon } from '../../designsystem/components/core/Icon';
 import { useIsPhone } from '../useIsPhone';
 import {
+  installIosContext,
   installSnapshot,
   installView,
   lastInstallOutcome,
@@ -34,7 +36,10 @@ export function InstallAppPanel() {
   const isPhone = useIsPhone();
   const state = useSyncExternalStore(subscribeInstallApp, installSnapshot);
   const outcome = useSyncExternalStore(subscribeInstallApp, lastInstallOutcome);
-  const view = installView(state, outcome);
+  // `navigator.userAgent` ändert sich nie innerhalb einer Sitzung - ein reiner Aufruf ohne
+  // eigenen Speicher genügt, anders als `state`/`outcome` braucht es kein `useSyncExternalStore`.
+  const ios = installIosContext() ?? undefined;
+  const view = installView(state, outcome, ios);
 
   return (
     <div className={`vp-installapp is-${view.state}`}>
@@ -42,7 +47,12 @@ export function InstallAppPanel() {
       {view.steps.length > 0 && (
         <ol className="vp-installapp-steps">
           {view.steps.map((s) => (
-            <li key={s}>{s}</li>
+            <li key={s.text}>
+              {s.icons.map((icon, i) => (
+                <Icon key={i} name={icon} size={16} className="vp-installapp-step-icon" />
+              ))}
+              {s.text}
+            </li>
           ))}
         </ol>
       )}

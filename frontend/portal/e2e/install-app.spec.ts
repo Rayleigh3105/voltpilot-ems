@@ -25,6 +25,12 @@ async function oeffnen(page: Page, query = '') {
   await page.evaluate(() => document.fonts.ready);
 }
 
+async function mitUserAgent(page: Page, ua: string) {
+  await page.addInitScript((wert) => {
+    Object.defineProperty(window.navigator, 'userAgent', { value: wert, configurable: true });
+  }, ua);
+}
+
 const WRONG_CLAIM = /bietet das Einrichten hier nicht an/;
 
 test('Android/Chrome ohne Angebot: Menü-Weg statt der falschen Behauptung (der Captain-Fall)', async ({ page }, testInfo) => {
@@ -80,16 +86,50 @@ test('iPhone/Safari: die Teilen-Anleitung, nie ein versprochener Dialog', async 
 
 test('ein wirklich fremder Browser (Firefox/Android) behält zu Recht die alte Warnung', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-chromium');
-  await page.addInitScript(() => {
-    Object.defineProperty(window.navigator, 'userAgent', {
-      value: 'Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/118.0 Firefox/118.0',
-      configurable: true,
-    });
-  });
+  await mitUserAgent(page, 'Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/118.0 Firefox/118.0');
   await oeffnen(page);
   await expect(page.getByText(WRONG_CLAIM)).toBeVisible();
   await expect(page.getByText(/Chrome \(Android\) oder Safari \(iPhone\)/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'App installieren' })).toHaveCount(0);
 
   await page.screenshot({ path: 'e2e/shots/install-app-fremder-browser.png' });
+});
+
+test('iPad/Safari: Teilen sitzt oben am Bildschirm - eine einzige, eindeutige Lage', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-webkit');
+  // Echtes iPadOS-13+-Verhalten: meldet sich als „Macintosh", unterscheidbar nur über
+  // Berührungspunkte (`isIPad`/`isIos` in `installApp.ts`) - dieselbe UA-Form wie ein iPad.
+  await mitUserAgent(page, 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Version/17.5 Safari/605.1.15');
+  await page.addInitScript(() => {
+    Object.defineProperty(window.navigator, 'maxTouchPoints', { value: 5, configurable: true });
+    Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true });
+  });
+  await oeffnen(page);
+
+  await expect(page.getByText(WRONG_CLAIM)).toHaveCount(0);
+  const schritte = page.locator('.vp-installapp-steps li');
+  await expect(schritte.nth(0)).toContainText(/oben im Bildschirm/);
+  await expect(page.getByText(/wie eine App statt nur als Lesezeichen/)).toBeVisible();
+
+  await page.screenshot({ path: 'e2e/shots/install-app-ipad-anleitung.png' });
+});
+
+test('Chrome auf iPhone: Teilen sitzt oben an der Adressleiste, nicht unten in einer Browser-Leiste', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-webkit');
+  // Reales Chrome-iOS-UA (CriOS) - Apple zwingt es auf WebKit, aber mit eigener Oberfläche.
+  await mitUserAgent(
+    page,
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/125.0.6422.80 Mobile/15E148 Safari/604.1',
+  );
+  await oeffnen(page);
+
+  await expect(page.getByText(WRONG_CLAIM)).toHaveCount(0);
+  const schritte = page.locator('.vp-installapp-steps li');
+  await expect(schritte.nth(0)).toContainText(/Adressleiste/);
+  // Der iOS-26-Schalter ist eine Safari-eigene Fläche - in Chrome gibt es ihn nicht.
+  await expect(page.getByText(/wie eine App statt nur als Lesezeichen/)).toHaveCount(0);
+
+  await page.screenshot({ path: 'e2e/shots/install-app-chrome-ios-anleitung.png' });
 });
