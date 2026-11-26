@@ -290,13 +290,17 @@ func (a *Agent) paketePflegeVerifiziere(env *otatarget.Envelope, release string)
 	}
 	dir := a.otaDir()
 	in := otaverify.Input{
-		Roots:          roots,
-		TrustSet:       readFileOrNil(dir, otaTrustSetFile),
-		TrustSetSig:    readFileOrNil(dir, otaTrustSetFile+otaSigSuffix),
-		Manifest:       env.Manifest,
-		ManifestSig:    env.Signature,
-		Backend:        cloud.UpdateBackend(a.boxArt()),
-		RunningVersion: Version,
+		Roots:       roots,
+		TrustSet:    readFileOrNil(dir, otaTrustSetFile),
+		TrustSetSig: readFileOrNil(dir, otaTrustSetFile+otaSigSuffix),
+		Manifest:    env.Manifest,
+		ManifestSig: env.Signature,
+		Backend:     cloud.UpdateBackend(a.boxArt()),
+		// Die Pflege wurde fuer diese bereits als laufend bestaetigte Fassung
+		// angestossen. Sie darf nicht erst im Hintergrund die globale
+		// Build-Stempelung lesen: Tests duerfen diese nach dem OTA-Schritt
+		// wiederherstellen, waehrend die Pflege noch laeuft.
+		RunningVersion: release,
 		Now:            time.Now(),
 	}
 	if cur := a.otaReadCurrent(dir); cur != nil {
