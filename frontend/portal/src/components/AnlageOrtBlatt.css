@@ -1,0 +1,47 @@
+.vp-ob {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+.vp-ob-gilt-fuer-alle {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted);
+}
+.vp-ob-uebernahme {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+}
+.vp-ob-details-knopf {
+  display: inline-flex;
+  align-self: flex-start;
+}
+.vp-ob-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-1);
+  margin: 0;
+  padding: var(--vp-space-2) var(--vp-space-3);
+  background: var(--vp-bg-light);
+  border-radius: var(--vp-radius-md);
+}
+.vp-ob-details div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+}
+.vp-ob-details dt {
+  color: var(--vp-text-muted);
+}
+.vp-ob-details dd {
+  margin: 0;
+  font-weight: 600;
+}
+.vp-ob-ergebnis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+.vp-ob-ergebnis p {
+  margin: 0;
+}

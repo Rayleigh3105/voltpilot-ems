@@ -5795,6 +5795,30 @@ export interface AnlageUmzug {
   protokoll: { id: number; objektArt: 'anlage' | 'standort'; objektId: string }[];
 }
 
+// ---- vp-standort-konzept §6.1: "Ort berichtigen" (Adresse + Kartenpunkt in einem Zug)
+
+/**
+ * Rumpf von `PUT /api/v1/sites/{id}/ort`. Die Adresse setzt den Pin — der Client schickt immer
+ * den fertigen Punkt mit, nie nur die Adresse; der Server sucht nie selbst nach einer Adresse.
+ */
+export interface AnlageOrtAnfrage {
+  adresse: StandortAdresse;
+  lage: StandortLage;
+}
+
+/**
+ * @property boxZugestellt die Steuerlogik-Bündel der Anlage wurden mit dem neuen Sonnenbezug neu
+ *   gebaut und zugestellt
+ * @property wetterNachholungAngestossen der neue Punkt lag mehr als 2 km vom alten entfernt — das
+ *   gespeicherte Wetter der Anlage wird verworfen und neu angefordert
+ */
+export interface AnlageOrtErgebnis {
+  site: Site;
+  standort: StandortAmStichtag;
+  boxZugestellt: boolean;
+  wetterNachholungAngestossen: boolean;
+}
+
 /**
  * Ein Standort zum Stichtag. Zeitgültig sind `bestand`, `anlagen`, die Zahlen
  * und die Fläche; Name, Adresse, Zeitzone, Zustand und `esFehlt` stehen wie

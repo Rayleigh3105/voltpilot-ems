@@ -49,9 +49,11 @@ export function LocationMap({
   lon,
   onChange,
   readonly = false,
+  kompakt = false,
   fokus = 0,
   ortAufloesen = false,
   onOrtAufgeloest,
+  pflichtPunkt = false,
 }: {
   lat: number | null;
   lon: number | null;
@@ -69,6 +71,13 @@ export function LocationMap({
    */
   readonly?: boolean;
   /**
+   * vp-standort-konzept E3: die winzige Karte (58×44 px) in der Standort-Zeile — nur die Kachel,
+   * ohne Koordinaten-Zeile und ohne Attributions-Kontrolle (die liegt unleserlich in der Ecke; das
+   * Blatt dahinter, das ein Tipp öffnet, zeigt die volle, attributierte Karte). Immer mit
+   * {@code readonly}.
+   */
+  kompakt?: boolean;
+  /**
    * Task vp-anlage-adresse-ux: ein Klick oder gezogener Pin löst sich zusätzlich in eine lesbare
    * Adresse auf (`GET /api/v1/orte/rueckwaerts`), wenn erreichbar - sonst bleibt nur der Punkt
    * stehen, ehrlich ohne Adresstext. Default aus, damit die anderen Verwender dieser gemeinsamen
@@ -77,6 +86,13 @@ export function LocationMap({
   ortAufloesen?: boolean;
   /** Die aufgelöste Adresse - NIE ihren Punkt übernehmen, der Pin bleibt exakt, wo er gesetzt wurde. */
   onOrtAufgeloest?: (treffer: OrtTreffer) => void;
+  /**
+   * vp-standort-konzept §6.1 (Regel 5: nie ohne Punkt speichern): in der Zeile „Standort" gehören
+   * Adresse und Punkt untrennbar zusammen - „Entfernen" hätte hier keine Wirkung (der Wirt lehnt
+   * einen leeren Punkt ab) und bliebe ein totes Bedienelement. Blendet nur den Knopf aus, die
+   * Koordinaten-Zeile und „Koordinaten manuell bearbeiten" bleiben.
+   */
+  pflichtPunkt?: boolean;
 }) {
   const mapEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -142,7 +158,7 @@ export function LocationMap({
       center: hasPin ? [lat as number, lon as number] : DACH_CENTER,
       zoom: hasPin ? PIN_ZOOM : DACH_ZOOM,
       scrollWheelZoom: false,
-      attributionControl: true,
+      attributionControl: !kompakt,
       ...(readonly
         ? { dragging: false, doubleClickZoom: false, zoomControl: false, keyboard: false }
         : {}),
@@ -265,7 +281,7 @@ export function LocationMap({
   const coordLine = fmtCoords(lat, lon);
 
   return (
-    <div className="vp-map-field">
+    <div className={kompakt ? 'vp-map-field vp-map-field-kompakt' : 'vp-map-field'}>
       <div className="vp-map" ref={mapEl} role="application" aria-label="Standortkarte">
         {!hasPin && !readonly && (
           <div className="vp-map-hint" aria-hidden="true">
@@ -274,29 +290,31 @@ export function LocationMap({
           </div>
         )}
       </div>
-      <div className="vp-map-coords">
-        <Icon name="map-pin" size={15} />
-        {coordLine ? (
-          <span>{coordLine}</span>
-        ) : (
-          <span className="vp-muted">Noch kein Standort gesetzt (optional)</span>
-        )}
-        {hasPin && !readonly && (
-          <button
-            type="button"
-            className="vp-linklike"
-            onClick={() => {
-              aufloesungRunde.current++;
-              setAufloesung({ laedt: false, text: null, ausfall: false });
-              onChange(null, null);
-            }}
-            style={{ marginLeft: 'auto' }}
-          >
-            Entfernen
-          </button>
-        )}
-      </div>
-      {ortAufloesen && hasPin && (aufloesung.laedt || aufloesung.text || aufloesung.ausfall) && (
+      {!kompakt && (
+        <div className="vp-map-coords">
+          <Icon name="map-pin" size={15} />
+          {coordLine ? (
+            <span>{coordLine}</span>
+          ) : (
+            <span className="vp-muted">Noch kein Standort gesetzt (optional)</span>
+          )}
+          {hasPin && !readonly && !pflichtPunkt && (
+            <button
+              type="button"
+              className="vp-linklike"
+              onClick={() => {
+                aufloesungRunde.current++;
+                setAufloesung({ laedt: false, text: null, ausfall: false });
+                onChange(null, null);
+              }}
+              style={{ marginLeft: 'auto' }}
+            >
+              Entfernen
+            </button>
+          )}
+        </div>
+      )}
+      {!kompakt && ortAufloesen && hasPin && (aufloesung.laedt || aufloesung.text || aufloesung.ausfall) && (
         <p className="vp-map-aufloesung" aria-live="polite">
           {aufloesung.laedt && <span className="vp-muted">Adresse zu diesem Punkt wird ermittelt …</span>}
           {!aufloesung.laedt && aufloesung.text && <span>{aufloesung.text}</span>}

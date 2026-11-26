@@ -45,6 +45,7 @@ import {
 import { anlageRoute, hashForRoute } from '../nav';
 import { LocationMap } from '../components/LocationMap';
 import { AnlageStandortZeile, useAnlageStandort } from '../components/AnlageStandortZeile';
+import { AnlageOrtZeile } from '../components/AnlageOrtZeile';
 import { koordinatenLabel } from '../anlageStandort';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { EinspeiseverguetungBlatt } from '../components/EinspeiseverguetungBlatt';
@@ -583,28 +584,54 @@ export function TechnikSection({
             recht="grenze.eintragen"
             onClick={() => setAnschlussgrenzeOffen(true)}
           />
-          {/* UEMS AP-02 IP-8: das Standort-OBJEKT über den Koordinaten - nur, wenn die Anlage eines hat. */}
+          {/* vp-standort-konzept §6.1 (B1/B3/B6, E3): ein vollständiger Standort (Adresse UND Lage)
+              bekommt EINE Zeile mit Adresse und kleiner Karte statt des Standort-Objekts und der
+              getrennten Zeile "Standort auf der Karte" - B1 nennt das ausdrücklich den Fall einer
+              VOLLSTÄNDIGEN, nur falschen Adresse. Ein Entwurf (es fehlt noch etwas, z. B. gerade
+              erst automatisch angelegt) bleibt beim bestehenden "Adresse nachtragen". */}
           {anlageStandort && standortAntwort && (
             <li className="vp-einst-standort">
               <dl className="vp-kv">
-                <AnlageStandortZeile
-                  anlageStandort={anlageStandort}
-                  antwort={standortAntwort}
-                  onGeaendert={standortNeuLaden}
-                />
+                {anlageStandort.standort.esFehlt.length === 0 ? (
+                  <AnlageOrtZeile
+                    siteId={site.id}
+                    standort={anlageStandort.standort}
+                    antwort={standortAntwort}
+                    onGeaendert={(ergebnis) => {
+                      standortNeuLaden();
+                      onSiteSaved(ergebnis.site);
+                    }}
+                    verweise={
+                      <AnlageStandortZeile
+                        anlageStandort={anlageStandort}
+                        antwort={standortAntwort}
+                        onGeaendert={standortNeuLaden}
+                        nurVerweise
+                      />
+                    }
+                  />
+                ) : (
+                  <AnlageStandortZeile
+                    anlageStandort={anlageStandort}
+                    antwort={standortAntwort}
+                    onGeaendert={standortNeuLaden}
+                  />
+                )}
               </dl>
             </li>
           )}
-          <Zeile
-            icon="map-pin"
-            kat="navy"
-            label={koordinatenLabel(anlageStandort)}
-            wert={coords ? `${coords} · ${zoneLabel(site.biddingZone)}` : 'noch nicht hinterlegt'}
-            sub={coords ? null : 'Ohne Standort auf der Karte gibt es keine Wettervorhersage.'}
-            warn={!coords}
-            recht="anlage.verwalten"
-            onClick={() => oeffne({ art: 'stammdaten', nur: 'standort' })}
-          />
+          {!(anlageStandort && anlageStandort.standort.esFehlt.length === 0) && (
+            <Zeile
+              icon="map-pin"
+              kat="navy"
+              label={koordinatenLabel(anlageStandort)}
+              wert={coords ? `${coords} · ${zoneLabel(site.biddingZone)}` : 'noch nicht hinterlegt'}
+              sub={coords ? null : 'Ohne Standort auf der Karte gibt es keine Wettervorhersage.'}
+              warn={!coords}
+              recht="anlage.verwalten"
+              onClick={() => oeffne({ art: 'stammdaten', nur: 'standort' })}
+            />
+          )}
         </Gruppe>
 
         {/* ---------- Strom & Geld ---------- */}
@@ -1775,14 +1802,16 @@ const STAMMDATEN_TITEL: Record<StammdatenFeld, string> = {
 };
 
 /**
- * Das Formular der Grunddaten: Name, Gebotszone, Veräußerungsform, Standort auf
- * der Karte und die Einspeisegrenze. Es trägt die WHOLE site unverändert mit
- * (`buildSitePayload`, Voll-Repräsentation), damit ein fokussierter Save nie ein
- * Feld blankt, das eine andere Zeile besitzt.
+ * Das Formular der Grunddaten: Name, Veräußerungsform und die Einspeisegrenze - dazu, nur ohne
+ * vollständigen Standort (vp-standort-konzept: die Zeile „Standort" mit `AnlageOrtZeile`/
+ * `AnlageOrtBlatt` übernimmt Gebotszone und Kartenpunkt sonst, B6: die Gebotszone folgt dem Land,
+ * niemand trägt sie von Hand ein), die alte Gebotszone+Karte als Rückfall. Es trägt die WHOLE
+ * site unverändert mit (`buildSitePayload`, Voll-Repräsentation), damit ein fokussierter Save nie
+ * ein Feld blankt, das eine andere Zeile besitzt.
  *
- * Mit `nur` zeigt es genau das Feld der Zeile, die es geöffnet hat (Standort =
- * Karte und Gebotszone) - wer den Namen ändert, sieht nicht die Karte und zwei
- * Absätze zur Einspeisung. Gespeichert wird trotzdem die ganze Anlage.
+ * Mit `nur` zeigt es genau das Feld der Zeile, die es geöffnet hat (Standort = Karte und
+ * Gebotszone) - wer den Namen ändert, sieht nicht die Karte und zwei Absätze zur Einspeisung.
+ * Gespeichert wird trotzdem die ganze Anlage.
  */
 export function StammdatenEditForm({
   site,

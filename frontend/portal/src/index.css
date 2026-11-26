@@ -2518,6 +2518,16 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-family: var(--vp-font-body);
   background: var(--vp-paleblue-start);
 }
+/* vp-standort-konzept E3: die Zeile "Standort" trägt eine 58×44-px-Vorschau statt der großen Karte. */
+.vp-map-field-kompakt {
+  gap: 0;
+}
+.vp-map-field-kompakt .vp-map {
+  width: 58px;
+  height: 44px;
+  border-radius: var(--vp-radius-sm);
+  pointer-events: none;
+}
 .vp-map-hint {
   position: absolute;
   left: 50%;

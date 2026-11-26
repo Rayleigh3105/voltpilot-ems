@@ -39,6 +39,7 @@ function stand(over: Partial<Einspeiseverguetung> = {}): Einspeiseverguetung {
     eegEndeAm: '2045-12-31',
     ohneVerguetungBeiNegativpreis: true,
     anzulegenderWertCtKwh: null,
+    einheiten: [],
     ...over,
   };
 }
@@ -198,14 +199,13 @@ test.describe('Einspeisevergütung unter Strom & Geld', () => {
       );
       await oeffne(page, breite);
       const zeile = page.locator('#technik-verguetung');
+      // Seit #1719 (keine Blätter nur zum Lesen): der Grund steht an der Zeile, kein Modal.
       await expect(zeile).toContainText('Börsenpreis + Marktprämie');
-      await zeile.getByRole('button').click();
-      const blatt = page.getByRole('dialog', { name: 'Einspeisevergütung' });
-      await expect(blatt.getByText(/Marktprämie aus Ihrem anzulegenden Wert/)).toContainText('8,11');
-      await expect(blatt.getByRole('radio')).toHaveCount(0);
-      await ohneUeberlauf(page, breite, 'dv-blatt');
-      await blatt.getByRole('button', { name: 'Verstanden' }).click();
-      await expect(blatt).toBeHidden();
+      await expect(zeile).toContainText('Direktvermarktung - kein fester Satz');
+      await expect(zeile).toContainText('Marktprämie aus Ihrem anzulegenden Wert (8,11 ct/kWh)');
+      await expect(zeile.getByRole('button')).toHaveCount(0);
+      await zeile.scrollIntoViewIfNeeded();
+      await ohneUeberlauf(page, breite, 'dv-zeile');
       expect(gesendet).toEqual([]);
     });
   }

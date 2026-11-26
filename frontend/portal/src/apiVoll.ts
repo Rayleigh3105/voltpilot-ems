@@ -3,6 +3,7 @@ import {
 } from './api';
 import type {
   Ablesung, AblesungAntwort, Abweichung, AbweichungEintragNeu, AbweichungErgebnis, AbweichungListe, AbweichungNeu,
+  AnlageOrtAnfrage, AnlageOrtErgebnis,
   AnlageUmzug, AnlageUmzugAnfrage, AnlagensteuerungVerlauf, AnlagensteuerungWerte, Auffaelligkeit, Koppelbild,
   AuffaelligkeitAntwort, AuffaelligkeitListe, AuffaelligkeitenAlle, BerechneteMessstelleAnlegen, Bericht,
   BerichtAnlegen, BerichtAnstoss, BerichtDetail, BerichtEntwurf, BerichtStand, BerichtStrukturAnlass,
@@ -1873,6 +1874,16 @@ const weitere = {
   /** Ordnet die Anlage ab `gueltigAb` einem Standort zu; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
   anlageStandortSetzen: (siteId: string, body: AnlageUmzugAnfrage) =>
     request<AnlageUmzug>(`/api/v1/sites/${encodeURIComponent(siteId)}/standort`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * "Ort berichtigen" (vp-standort-konzept §6.1): Adresse und Kartenpunkt der Anlage in einem Zug —
+   * nie ein Datum. Eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`.
+   */
+  anlageOrtBerichtigen: (siteId: string, body: AnlageOrtAnfrage) =>
+    request<AnlageOrtErgebnis>(`/api/v1/sites/${encodeURIComponent(siteId)}/ort`, {
       method: 'PUT',
       body: JSON.stringify(body),
     }),

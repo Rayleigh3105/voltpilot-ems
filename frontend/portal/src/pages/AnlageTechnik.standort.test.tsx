@@ -139,20 +139,21 @@ describe('Meine Anlage ohne Standort-Objekt — byte-identisch (AP-02 IP-8)', ()
   }
 });
 
-describe('Meine Anlage mit Standort-Objekt — beide Zeilen benannt (AP-02 IP-8, T6a, W4)', () => {
-  it('„Standort“ (das Objekt) und darunter „Standort auf der Karte“ (die Koordinaten)', async () => {
+describe('Meine Anlage mit vollständigem Standort — EINE Zeile (vp-standort-konzept §6.1/§6.2, B1/B3/B6, E3)', () => {
+  it('„Standort“ zeigt Standortname und Adresse in einem Zug - keine zweite Koordinaten-Zeile mehr', async () => {
     const halle2: Site = { ...hof, id: FIXTURE_IDS.an2, name: 'Werk Ahrenberg – Halle 2' };
     await karte(halle2, async () => ahrenbergHeute());
     const el = document.getElementById('technik-anlage')!;
-    // Seit der kurzen Liste (E5): jede Zeile ein Eintrag; das Objekt steht als eigene Zeile
-    // direkt über den Koordinaten, die dann „Standort auf der Karte“ heißen.
+    // Seit der kurzen Liste (E5): jede Zeile ein Eintrag; die vollständige Adresse (Werk
+    // Ahrenberg hat eine Adresse UND eine Lage) ersetzt das Objekt und die Koordinaten-Zeile
+    // durch GENAU eine Zeile (B3: kein Auseinanderlaufen zwischen Objekt und Kartenpunkt mehr).
     const labels = [...el.querySelectorAll('.vp-einst-liste > li')].map(
       (li) => li.querySelector('.vp-einst-lab > b, dt')?.textContent,
     );
-    expect(labels.slice(-2)).toEqual(['Standort', 'Standort auf der Karte']);
-    const objekt = el.querySelector('.vp-einst-standort') as HTMLElement;
-    expect(within(objekt).getByText('Werk Ahrenberg (ST-1)')).toBeInTheDocument();
-    expect(within(objekt).getByText('Gewerbering 7, Ahrenberg · seit 01.10.2026')).toBeInTheDocument();
+    expect(labels.filter((l) => l === 'Standort')).toHaveLength(1);
+    expect(labels).not.toContain('Standort auf der Karte');
+    // §6.2: bei mehreren Standorten (hier: Ahrenberg + Lindach) steht zuerst der Standortname.
+    expect(within(el).getByText('Werk Ahrenberg · Gewerbering 7, Ahrenberg')).toBeInTheDocument();
     expect(within(el).queryByRole('button', { name: /Adresse nachtragen/ })).toBeNull();
   });
 
