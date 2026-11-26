@@ -68,7 +68,7 @@ async function keinUeberlauf(page: Page) {
 
 test.describe('Direktvermarktung: der Kunde kommt allein durch (PS-D18)', () => {
   for (const breite of BREITEN) {
-    test(`Nicht verbunden -> wählen -> zustimmen (wartet auf die Datei), ${breite}px`, async ({ page }) => {
+    test(`Nicht verbunden -> wählen -> zustimmen -> Zugangsdatei hochladen, ${breite}px`, async ({ page }) => {
       await page.setViewportSize({ width: breite, height: breite < 500 ? 844 : 960 });
       await grundrauschen(page);
       let stand: DirektvermarktungStatus = leer();
@@ -84,6 +84,10 @@ test.describe('Direktvermarktung: der Kunde kommt allein durch (PS-D18)', () => 
       await page.route(`**/api/v1/sites/${SITE_ID}/direktvermarktung/zustimmen`, (r) => {
         stand = mitEintrag('wartet_auf_zugang');
         return r.fulfill(json(stand));
+      });
+      await page.route(`**/api/v1/sites/${SITE_ID}/direktvermarktung/zugang`, (r) => {
+        stand = mitEintrag('verbindet', null, null);
+        return r.fulfill(json({ name: 'ABC_1234567', gueltigBis: '2027-11-26T00:00:00Z', fingerabdruck: 'ab:cd:ef' }));
       });
 
       await page.goto('/e2e/direktvermarktung.html');
@@ -107,9 +111,19 @@ test.describe('Direktvermarktung: der Kunde kommt allein durch (PS-D18)', () => 
       await page.getByRole('checkbox').check();
       await page.getByRole('button', { name: 'Zustimmen' }).click();
 
-      // Zurück auf der Seite: wartet auf die Zugangsdatei.
+      // Zurück auf der Seite: die Zugangsdatei fehlt noch (§5.7).
       await expect(page.getByRole('heading', { name: 'Zugangsdatei hochladen' })).toBeVisible();
       await expect(page.getByText(/hat sie per E-Mail geschickt/)).toBeVisible();
+      await keinUeberlauf(page);
+
+      // Datei wählen, Passwort eintragen, hochladen - derselbe Flug ohne Box-Herzschlag, deshalb
+      // "Stand unbekannt" danach (kein erfundenes "verbunden" ohne ein erstes Lebenszeichen).
+      await page.getByLabel('Zugangsdatei (.zip)').setInputFiles({
+        name: 'ABC_1234567.zip', mimeType: 'application/zip', buffer: Buffer.from('fiktiver-zip-inhalt'),
+      });
+      await page.getByLabel('Passwort').fill('geheim123');
+      await page.getByRole('button', { name: /Datei hochladen/ }).click();
+      await expect(page.getByText('Stand unbekannt')).toBeVisible();
       await keinUeberlauf(page);
     });
   }

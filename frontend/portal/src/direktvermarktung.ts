@@ -75,6 +75,22 @@ export interface DirektvermarktungStatus {
   darf: boolean;
 }
 
+/** Antwort von POST .../direktvermarktung/zugang (§5.7 "Routen") - nie Chiffrat, Nonce oder Passwort. */
+export interface DirektvermarktungZugangErgebnis {
+  name: string | null;
+  gueltigBis: string | null;
+  fingerabdruck: string;
+}
+
+/** Die fünf Fehlerarten des Uploads (§5.7), Wortlaut der Seite je `grund` (ablehnungGrund). */
+export const ZUGANG_FEHLER_SATZ: Record<string, string> = {
+  passwort_falsch: 'Das Passwort passt nicht. Bitte noch einmal.',
+  keine_zugangsdatei: 'Das ist keine Zugangsdatei von luox. Bitte die .zip aus der E-Mail wählen.',
+  beschaedigt: 'Diese Datei ist beschädigt. Bitte neu aus der E-Mail speichern.',
+  abgelaufen: 'Diese Zugangsdatei ist schon abgelaufen.',
+  schon_in_verwendung: 'Diese Zugangsdatei wird schon verwendet.',
+};
+
 /** Die feine Lage einmal verbunden (§5.4 "Lagen des Anschlusses") - abgeleitet, nie gespeichert. */
 export type DirektvermarktungLage =
   | 'baut_auf'

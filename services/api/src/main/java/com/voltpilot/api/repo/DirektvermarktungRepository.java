@@ -237,6 +237,21 @@ public class DirektvermarktungRepository {
         return r.isEmpty() ? null : r.get(0);
     }
 
+    /**
+     * Legt die verschlüsselte Zeile an (Konzept §5.7 "Die Zugangsdatei") - Chiffrat und Nonce kommen
+     * fertig aus {@link com.voltpilot.api.direktvermarktung.AesGcmPartnerzugangSpeicher#verschluessele};
+     * diese Methode erzeugt nie selbst ein Chiffrat.
+     */
+    public void zugangAnlegen(UUID zugangId, UUID tenantId, UUID siteId, UUID direktvermarktungId,
+            byte[] chiffrat, byte[] nonce, String fingerabdruck, Instant gueltigBis, String hochgeladenVon,
+            Instant jetzt) {
+        jdbc.update("INSERT INTO direktvermarktung_zugang (id, tenant_id, site_id, direktvermarktung_id, "
+                + "chiffrat, nonce, fingerabdruck, gueltig_bis, hochgeladen_am, hochgeladen_von) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                zugangId, tenantId, siteId, direktvermarktungId, chiffrat, nonce, fingerabdruck,
+                gueltigBis == null ? null : Timestamp.from(gueltigBis), Timestamp.from(jetzt), hochgeladenVon);
+    }
+
     /** Setzt {@code zugestellt_am} einmal; {@code false}, wenn es schon stand (idempotente Quittung). */
     public boolean zugangZugestellt(UUID zugangId, Instant jetzt) {
         return jdbc.update("UPDATE direktvermarktung_zugang SET zugestellt_am = ? "

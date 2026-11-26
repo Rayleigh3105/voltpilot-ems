@@ -4,8 +4,8 @@
  * Rückweg „‹ Einstellungen". Eine Seite für alles (Regel 1, §7.2): Einrichten, Alltag, Störung und Ende wohnen
  * hier, mit demselben Verbindungsbild.
  *
- * Stufe 3 ohne Zustellung: die Zugangsdatei (ZIP+Passwort) ist ein eigener, sicherheitskritischer Auftrag - diese
- * Seite zeigt den Schritt „Zugangsdatei hochladen" darum als den nächsten, noch nicht freigeschalteten Schritt.
+ * Die Zugangsdatei (ZIP+Passwort, §5.7) öffnet die API nur im Speicher und legt sie verschlüsselt ab
+ * (eigener PR); der Schritt „Zugangsdatei hochladen" ruft `direktvermarktungZugangHochladen`.
  * Ohne Box-Herzschlag bleiben die operativen Lagen (verbunden/begrenzt/gestört) im echten Betrieb unerreichbar;
  * die Bühne (E2E, gemockte Antworten) beweist trotzdem jeden Bildschirm.
  */
@@ -14,6 +14,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
+import { Input } from '../../designsystem/components/forms/Input';
 import { VpDatePicker } from '../components/VpDatePicker';
 import { ApiError, type Site } from '../api';
 import { ablehnungGrund } from '../api';
@@ -25,6 +26,7 @@ import {
   FORTSCHRITT_STATIONEN,
   verbindungsbild,
   wohinDerStromGeht,
+  ZUGANG_FEHLER_SATZ,
   ZUSTIMMUNG_TEXTFASSUNG_1,
   ZUSTIMMUNG_ZEILEN,
   type DirektvermarktungPartner,
@@ -282,6 +284,64 @@ function EinrichtenModal({ site, status, onClose, onFertig }: {
   );
 }
 
+/**
+ * Bildschirme 7-10 "Zugangsdatei hochladen" (§5.7): ZIP + Passwort, derselbe Fehler-Wortlaut wie die API
+ * (`ZUGANG_FEHLER_SATZ`, Grund aus `ablehnungGrund`). Ein Fehler bleibt im Formular stehen - Datei und
+ * Passwort sind absichtlich NICHT zurückgesetzt, ein zweiter Versuch (z. B. nach "Passwort passt nicht")
+ * muss nicht neu wählen.
+ */
+function ZugangsdateiForm({ site, partnerName, onHochgeladen }: {
+  site: Site;
+  partnerName: string | null;
+  onHochgeladen: (status: DirektvermarktungStatus) => void;
+}) {
+  const [datei, setDatei] = useState<File | null>(null);
+  const [passwort, setPasswort] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+
+  const hochladen = async () => {
+    if (!datei) {
+      setFehler('Bitte die .zip aus der E-Mail wählen.');
+      return;
+    }
+    if (!passwort) {
+      setFehler('Bitte das Passwort aus der zweiten Nachricht eingeben.');
+      return;
+    }
+    setBusy(true);
+    setFehler(null);
+    try {
+      await api.direktvermarktungZugangHochladen(site.id, datei, passwort);
+      onHochgeladen(await api.direktvermarktung(site.id));
+    } catch (e) {
+      const grund = ablehnungGrund(e);
+      setFehler((grund && ZUGANG_FEHLER_SATZ[grund])
+        ?? (e instanceof ApiError ? e.message : 'Das hat leider nicht geklappt. Bitte erneut versuchen.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p>Nächster Schritt · Sie</p>
+      <h3>Zugangsdatei hochladen</h3>
+      <p>{partnerName ?? 'Ihr Direktvermarkter'} hat sie per E-Mail geschickt.</p>
+      <Input type="file" label="Zugangsdatei (.zip)" accept=".zip,application/zip"
+        onChange={(ev) => setDatei(ev.target.files?.[0] ?? null)} />
+      {datei && <p className="vp-dv-fussnotiz">{datei.name}</p>}
+      <Input type="password" label="Passwort" autoComplete="off"
+        hint="Aus der zweiten Nachricht."
+        value={passwort} onChange={(ev) => setPasswort(ev.target.value)} />
+      {fehler && <p className="vp-alert vp-alert-info">{fehler}</p>}
+      <Button onClick={() => void hochladen()} disabled={busy}>
+        {busy ? 'Einen Moment …' : <><Icon name="upload" size={16} /> Datei hochladen</>}
+      </Button>
+    </>
+  );
+}
+
 /** Das Blatt "Beenden" (§7.6, Bildschirm 27): Monatsende vorgewählt, zwei Folgen, oder stattdessen wechseln. */
 function BeendenModal({ site, status, onClose, onFertig }: {
   site: Site;
@@ -448,15 +508,7 @@ export function DirektvermarktungSection({ site }: { site: Site }) {
             </>
           )}
           {zustand === 'wartet_auf_zugang' && (
-            <>
-              <p>Nächster Schritt · Sie</p>
-              <h3>Zugangsdatei hochladen</h3>
-              <p>{partnerName ?? partnerKuerzel} hat sie per E-Mail geschickt.</p>
-              <Button disabled title="Kommt mit der nächsten Veröffentlichung">
-                <Icon name="upload" size={16} /> Datei hochladen
-              </Button>
-              <p className="vp-dv-fussnotiz">Diese Datei prüft das Portal in Kürze an dieser Stelle.</p>
-            </>
+            <ZugangsdateiForm site={site} partnerName={partnerName ?? partnerKuerzel} onHochgeladen={setStatus} />
           )}
         </Card>
       )}

@@ -1,6 +1,7 @@
 package com.voltpilot.api.web.dto;
 
 import com.voltpilot.api.direktvermarktung.DirektvermarktungService.Status;
+import com.voltpilot.api.direktvermarktung.DirektvermarktungService.ZugangErgebnis;
 import com.voltpilot.api.direktvermarktung.PartnerProfil;
 import com.voltpilot.api.repo.DirektvermarktungRepository.Eintrag;
 import com.voltpilot.api.repo.DirektvermarktungRepository.ProtokollZeile;
@@ -56,6 +57,14 @@ public record DirektvermarktungDto(EintragDto aktuell, EintragDto geplant, Partn
 
         public static ProtokollZeileDto von(ProtokollZeile z) {
             return new ProtokollZeileDto(z.id(), z.ereignis(), z.von(), z.rolle(), z.am());
+        }
+    }
+
+    /** Antwort des Uploads (§5.7 "Routen"): Name, Gültigkeit, Fingerabdruck - nie Chiffrat, Nonce, Passwort. */
+    public record ZugangErgebnisDto(String name, Instant gueltigBis, String fingerabdruck) {
+
+        public static ZugangErgebnisDto von(ZugangErgebnis e) {
+            return new ZugangErgebnisDto(e.name(), e.gueltigBis(), e.fingerabdruck());
         }
     }
 

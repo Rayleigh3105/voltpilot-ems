@@ -1,9 +1,12 @@
 package com.voltpilot.api.direktvermarktung;
 
+import static com.voltpilot.api.direktvermarktung.ZugangsdateiTestfixturen.OVPN_GUELTIG;
+import static com.voltpilot.api.direktvermarktung.ZugangsdateiTestfixturen.baueZip;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
@@ -28,6 +31,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -83,6 +87,8 @@ class SiteDirektvermarktungApiTest {
                 () -> "http://127.0.0.1:9/realms/voltpilot");
         registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
                 () -> "http://127.0.0.1:9/realms/voltpilot/protocol/openid-connect/certs");
+        registry.add("voltpilot.direktvermarktung.partnerzugang-schluessel",
+                ZugangsdateiTestfixturen::testSchluesselBase64);
     }
 
     @Autowired MockMvc mvc;
@@ -260,6 +266,86 @@ class SiteDirektvermarktungApiTest {
         assertThat(res.body().path("stand").path("abfragenJeMinute").asDouble()).isEqualTo(4.25);
     }
 
+    /**
+     * §5.7 "Die Zugangsdatei": ZIP + Passwort gegen die echte Route, echte Verschlüsselung
+     * (Testschlüssel aus {@link ZugangsdateiTestfixturen#testSchluesselBase64()}), echte Datenbank - nie
+     * Chiffrat, Nonce oder Passwort in der Antwort; der erste Upload setzt den Zustand auf "verbindet".
+     */
+    @Test
+    void zugangHochladenLegtDieVerschluesselteZeileAnUndSetztVerbindet() throws Exception {
+        when(katalog.finde("luox")).thenReturn(LUOX);
+        Welt w = welt();
+        als(w, post(w.basis() + "/waehlen").content("{\"partner\":\"luox\"}").contentType(MediaType.APPLICATION_JSON));
+        als(w, post(w.basis() + "/zustimmen").content("{\"textfassung\":\"luox darf sehen und begrenzen.\"}")
+                .contentType(MediaType.APPLICATION_JSON));
+
+        byte[] zip = baueZip("geheim123", Map.of("ABC_1234567.ovpn", OVPN_GUELTIG));
+        Antwort res = als(w, zugangUpload(w, zip, "ABC_1234567.zip", "geheim123"));
+        assertThat(res.status()).as(res.body().toString()).isEqualTo(200);
+        assertThat(res.body().path("name").asText()).isEqualTo("ABC_1234567");
+        assertThat(res.body().path("fingerabdruck").asText()).matches("^[0-9a-f]{2}(:[0-9a-f]{2}){31}$");
+        assertThat(res.body().toString()).doesNotContainIgnoringCase("chiffrat").doesNotContainIgnoringCase("nonce")
+                .doesNotContain("geheim123");
+
+        assertThat(root.queryForObject("SELECT zustand FROM direktvermarktung WHERE site_id = ?", String.class,
+                w.site())).isEqualTo("verbindet");
+        Map<String, Object> zeile = root.queryForMap(
+                "SELECT hochgeladen_von, gueltig_bis FROM direktvermarktung_zugang WHERE site_id = ?", w.site());
+        assertThat(zeile.get("hochgeladen_von")).isEqualTo(w.sub());
+        assertThat(zeile.get("gueltig_bis")).isNotNull();
+        assertThat(root.queryForList("SELECT ereignis FROM direktvermarktung_protokoll WHERE site_id = ? "
+                + "ORDER BY am, id", String.class, w.site())).contains("zugang_hochgeladen");
+    }
+
+    @Test
+    void zugangHochladenMitFalschemPasswortLehntAbOhneDasPasswortZuNennen() throws Exception {
+        when(katalog.finde("luox")).thenReturn(LUOX);
+        Welt w = welt();
+        als(w, post(w.basis() + "/waehlen").content("{\"partner\":\"luox\"}").contentType(MediaType.APPLICATION_JSON));
+        als(w, post(w.basis() + "/zustimmen").content("{\"textfassung\":\"x\"}").contentType(MediaType.APPLICATION_JSON));
+
+        byte[] zip = baueZip("geheim123", Map.of("ABC.ovpn", OVPN_GUELTIG));
+        Antwort res = als(w, zugangUpload(w, zip, "ABC.zip", "falsch"));
+        assertThat(res.status()).isEqualTo(409);
+        assertThat(res.body().path("grund").asText()).isEqualTo("passwort_falsch");
+        assertThat(root.queryForObject("SELECT count(*) FROM direktvermarktung_zugang WHERE site_id = ?",
+                Integer.class, w.site())).isZero();
+    }
+
+    /**
+     * Die plattformweite Eindeutigkeit (Migration V20261125140000, {@link FingerabdruckEindeutigkeit}):
+     * dasselbe Zertifikat über eine ANDERE Anlage (anderer Mandant) hochgeladen ist "schon_in_verwendung" -
+     * der Satz nennt nie, wo es schon steht.
+     */
+    @Test
+    void zweiteAnlageMitDemselbenZertifikatIstSchonInVerwendung() throws Exception {
+        when(katalog.finde("luox")).thenReturn(LUOX);
+        Welt erste = welt();
+        als(erste, post(erste.basis() + "/waehlen").content("{\"partner\":\"luox\"}")
+                .contentType(MediaType.APPLICATION_JSON));
+        als(erste, post(erste.basis() + "/zustimmen").content("{\"textfassung\":\"x\"}")
+                .contentType(MediaType.APPLICATION_JSON));
+        byte[] zip = baueZip("geheim123", Map.of("ABC.ovpn", OVPN_GUELTIG));
+        als(erste, zugangUpload(erste, zip, "ABC.zip", "geheim123"));
+
+        Welt zweite = welt();
+        als(zweite, post(zweite.basis() + "/waehlen").content("{\"partner\":\"luox\"}")
+                .contentType(MediaType.APPLICATION_JSON));
+        als(zweite, post(zweite.basis() + "/zustimmen").content("{\"textfassung\":\"x\"}")
+                .contentType(MediaType.APPLICATION_JSON));
+        Antwort res = als(zweite, zugangUpload(zweite, zip, "ABC.zip", "geheim123"));
+        assertThat(res.status()).as(res.body().toString()).isEqualTo(409);
+        assertThat(res.body().path("grund").asText()).isEqualTo("schon_in_verwendung");
+        assertThat(res.body().path("message").asText()).doesNotContain(erste.site().toString());
+    }
+
+    private static org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder zugangUpload(
+            Welt w, byte[] zip, String dateiname, String passwort) {
+        return multipart(w.basis() + "/zugang")
+                .file(new MockMultipartFile("datei", dateiname, "application/zip", zip))
+                .file(new MockMultipartFile("passwort", "", "text/plain", passwort.getBytes(StandardCharsets.UTF_8)));
+    }
+
     // --- Welt ----------------------------------------------------------------------------------------------------
 
     private Welt welt() {
@@ -274,13 +360,26 @@ class SiteDirektvermarktungApiTest {
     }
 
     private Antwort als(Welt w, MockHttpServletRequestBuilder r) throws Exception {
+        return antwort(mvc.perform(r.with(authentifizierung(w))).andReturn());
+    }
+
+    /** Multipart-Anfragen (Upload) teilen keinen Supertyp mit {@link MockHttpServletRequestBuilder}. */
+    private Antwort als(Welt w, org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder r)
+            throws Exception {
+        return antwort(mvc.perform(r.with(authentifizierung(w))).andReturn());
+    }
+
+    private static org.springframework.test.web.servlet.request.RequestPostProcessor authentifizierung(Welt w) {
         Map<String, Object> c = new HashMap<>();
         c.put("sub", w.sub());
         c.put("preferred_username", w.sub());
         c.put("realm_access", Map.of("roles", List.of()));
         c.put("tenant_id", w.mandant().toString());
         Jwt jwt = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), c);
-        MvcResult res = mvc.perform(r.with(authentication(new KeycloakRealmRoleConverter().convert(jwt)))).andReturn();
+        return authentication(new KeycloakRealmRoleConverter().convert(jwt));
+    }
+
+    private static Antwort antwort(MvcResult res) throws Exception {
         String text = res.getResponse().getContentAsString(StandardCharsets.UTF_8);
         return new Antwort(res.getResponse().getStatus(), text.isEmpty() ? NullNode.getInstance() : MAPPER.readTree(text));
     }

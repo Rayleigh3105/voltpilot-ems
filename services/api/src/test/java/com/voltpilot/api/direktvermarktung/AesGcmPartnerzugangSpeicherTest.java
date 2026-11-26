@@ -24,8 +24,8 @@ import org.junit.jupiter.api.Test;
  * Die Ablageform aus {@link PartnerzugangSpeicher}, von BEIDEN Richtungen derselben Klasse bewiesen:
  * AES-256-GCM mit Schlüssel aus der Umgebung (Base64, 32 Byte), Nonce 12 Byte, und die AAD-Bindung an
  * Mandant, Anlage und Zugangs-Zeile - ein in eine andere Zeile kopiertes Chiffrat entschlüsselt nicht.
- * Die Zugangsdatei-Übernahme (gehaltener Auftrag) nutzt genau {@code verschluessele}; dieser Test ist
- * ihr Vertrag.
+ * Die Zugangsdatei-Übernahme ({@link DirektvermarktungService#zugangHochladen}) nutzt genau
+ * {@code verschluessele}; dieser Test ist ihr Vertrag.
  */
 class AesGcmPartnerzugangSpeicherTest {
 

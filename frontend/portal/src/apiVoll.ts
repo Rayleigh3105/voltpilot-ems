@@ -74,7 +74,7 @@ import type {
 } from './api';
 import { freshToken } from './auth';
 import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
-import type { DirektvermarktungStatus } from './direktvermarktung';
+import type { DirektvermarktungStatus, DirektvermarktungZugangErgebnis } from './direktvermarktung';
 import type { BezugsbasisVergleich, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { BezugsgroesseLesart } from './bezugsgroesse';
 import type {
@@ -665,6 +665,16 @@ const weitere = {
     request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung/neu-verbinden`, {
       method: 'POST',
     }),
+  /** Bildschirme 7-10 "Zugangsdatei hochladen" (§5.7); der Browser setzt die Multipart-Grenze. */
+  direktvermarktungZugangHochladen: (siteId: string, datei: File, passwort: string) => {
+    const body = new FormData();
+    body.append('datei', datei);
+    body.append('passwort', passwort);
+    return request<DirektvermarktungZugangErgebnis>(`/api/v1/sites/${siteId}/direktvermarktung/zugang`, {
+      method: 'POST',
+      body,
+    });
+  },
   /** 409 while the site still has devices (remove them first). */
   deleteSite: (siteId: string) =>
     request<void>(`/api/v1/sites/${siteId}`, { method: 'DELETE' }),
