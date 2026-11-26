@@ -25,6 +25,8 @@ const geraeteAkte = vi.fn(() => Promise.resolve({
   externalRef: '', lebensabschnitt: 'kunde', lebensabschnittSeit: null,
   kopf: null, software: null, verbindung: null, einrichtung: null,
 }));
+const direktvermarktungAkte = vi.fn();
+const direktvermarktungProtokoll = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -47,6 +49,8 @@ vi.mock('../../admin/adminApi', () => ({
     geraeteAkte: (...a: unknown[]) => geraeteAkte(...a),
     geraeteFernlauf: (...a: unknown[]) => geraeteFernlauf(...a),
     geraeteFernlaufAufspielen: (...a: unknown[]) => geraeteFernlaufAufspielen(...a),
+    direktvermarktungAkte: (...a: unknown[]) => direktvermarktungAkte(...a),
+    direktvermarktungProtokoll: (...a: unknown[]) => direktvermarktungProtokoll(...a),
   },
 }));
 
@@ -98,6 +102,8 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
     controlCandidates.mockResolvedValue([]);
     componentFleet.mockResolvedValue([]);
     fleet.mockResolvedValue({ sites: [fleetSite()], releases: [] });
+    direktvermarktungAkte.mockRejectedValue(new ApiError(404, 'kein Anschluss für diese Anlage'));
+    direktvermarktungProtokoll.mockResolvedValue([]);
   });
 
   it('zeigt den Kopf-Zustand einer verbundenen Box und die fünf Reiter (Scheibe S3: „Anlage" dazu)', async () => {
@@ -148,6 +154,48 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
     expect(await screen.findByTestId('fw-karte')).toBeInTheDocument();
     expect(await screen.findByText(/kein Tunnel-Schlüssel hinterlegt/)).toBeInTheDocument();
     expect(fernwartungBox).toHaveBeenCalledWith('edge-a1');
+  });
+
+  it('Reiter Verbindung: eine Anlage ohne jeden Direktvermarktung-Anschluss zeigt keine leere Karte', async () => {
+    edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [connectedRow] });
+    geraeteAkte.mockResolvedValue({
+      externalRef: 'edge-a1', lebensabschnitt: 'kunde', lebensabschnittSeit: null,
+      kopf: { deviceId: 'd1', name: 'edge-a1', siteId: 's1', siteName: 'Pilsting', tenantId: 't1', tenantName: 'Kunde A',
+        herzschlagAm: null, messwertAm: null, lastSeenAt: null, ausgebautAm: null },
+      software: null, verbindung: null, einrichtung: null,
+    });
+    render(<GeraeteAktePage boxRef="edge-a1" reiter="verbindung" />);
+    expect(await screen.findByTestId('fw-karte')).toBeInTheDocument();
+    expect(direktvermarktungAkte).toHaveBeenCalledWith('s1');
+    expect(screen.queryByTestId('akte-direktvermarkter')).toBeNull();
+  });
+
+  it('Reiter Verbindung: eine Anlage MIT Direktvermarktung-Anschluss zeigt die Karte, nie Chiffrat/Nonce', async () => {
+    edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [connectedRow] });
+    geraeteAkte.mockResolvedValue({
+      externalRef: 'edge-a1', lebensabschnitt: 'kunde', lebensabschnittSeit: null,
+      kopf: { deviceId: 'd1', name: 'edge-a1', siteId: 's1', siteName: 'Pilsting', tenantId: 't1', tenantName: 'Kunde A',
+        herzschlagAm: null, messwertAm: null, lastSeenAt: null, ausgebautAm: null },
+      software: null, verbindung: null, einrichtung: null,
+    });
+    direktvermarktungAkte.mockResolvedValue({
+      siteId: 's1', tenantId: 't1', partner: 'luox', zustand: 'verbunden', zustimmungAm: null,
+      startdatum: null, ende: null, aktualisiertAm: new Date().toISOString(), tunnelObenSeit: null,
+      handshakeAm: null, gegenstelle: '10.44.0.1', abfragenJeMinute: 4, letzteSchreibungAm: null,
+      lebenszeichenAm: new Date().toISOString(), vorgabePct: 100, einspeisungW: 12000, erzeugungW: 14000,
+      netzbetreiberPct: 100, referenzW: 85000, zugangHochgeladenVon: 'kunde@example.test',
+      zugangGueltigBis: new Date(Date.now() + 10 * 86400000).toISOString(), zugangFingerabdruck: 'ab:cd:ef',
+      zugangZurueckgezogenAm: null,
+    });
+    direktvermarktungProtokoll.mockResolvedValue([
+      { id: 1, ereignis: 'zugestimmt', von: 'kunde@example.test', rolle: 'kundenadministrator', am: new Date().toISOString() },
+    ]);
+    render(<GeraeteAktePage boxRef="edge-a1" reiter="verbindung" />);
+    const karte = await screen.findByTestId('akte-direktvermarkter');
+    expect(karte).toHaveTextContent('luox');
+    expect(karte).toHaveTextContent('ab:cd:ef');
+    expect(karte).toHaveTextContent('Zugestimmt');
+    expect(karte.textContent).not.toMatch(/chiffrat|nonce/i);
   });
 
   it('eine noch nicht verbundene Box zeigt das ehrlich, statt eine leere Seite', async () => {

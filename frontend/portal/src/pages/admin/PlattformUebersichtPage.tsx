@@ -5,6 +5,7 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import {
   adminApi,
   type AdminBrauchtDichErledigt,
+  type AdminDirektvermarktungZeile,
   type AdminPlattformDienste,
   type PendingEnrollment,
 } from '../../admin/adminApi';
@@ -21,6 +22,7 @@ import type { WerkstattDienst } from '../../werkstattBank';
 import { relAge } from '../../adminFleet';
 import {
   brauchtDichMitErledigt,
+  direktvermarktungKennzahl,
   uebersichtAuffaellig,
   uebersichtBrauchtDich,
   uebersichtDienste,
@@ -81,6 +83,7 @@ export function PlattformUebersichtPage({
   const [werkstatt, setWerkstatt] = useState<WerkstattDienst | null>(null);
   const [pending, setPending] = useState<PendingEnrollment[]>([]);
   const [plattformDienste, setPlattformDienste] = useState<AdminPlattformDienste | null>(null);
+  const [direktvermarktung, setDirektvermarktung] = useState<AdminDirektvermarktungZeile[]>([]);
   const [erledigt, setErledigt] = useState<AdminBrauchtDichErledigt[]>([]);
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -97,7 +100,7 @@ export function PlattformUebersichtPage({
   const loadLauf = useRef(0);
   const load = useCallback(async () => {
     const lauf = ++loadLauf.current;
-    const [fleetR, edgeR, fwR, fwBoxenR, wsR, pendR, diensteR, erledigtR] = await Promise.allSettled([
+    const [fleetR, edgeR, fwR, fwBoxenR, wsR, pendR, diensteR, erledigtR, dvR] = await Promise.allSettled([
       fleetApi.fleet(),
       adminApi.edgeUpdates(),
       adminApi.fernwartung(),
@@ -106,6 +109,7 @@ export function PlattformUebersichtPage({
       adminApi.listPendingEnrollments(),
       adminApi.plattformDienste(),
       adminApi.brauchtDichErledigt(),
+      adminApi.direktvermarktungListe(),
     ]);
     if (loadLauf.current !== lauf) return;
     // Ein Fehlschlag ist keine Datenlage (§5.2/`liveness.ts`): ein Block, den
@@ -127,6 +131,7 @@ export function PlattformUebersichtPage({
     if (pendR.status === 'fulfilled') setPending(pendR.value);
     if (diensteR.status === 'fulfilled') setPlattformDienste(diensteR.value);
     if (erledigtR.status === 'fulfilled') setErledigt(erledigtR.value.erledigt);
+    if (dvR.status === 'fulfilled') setDirektvermarktung(dvR.value);
     if (fleetR.status === 'fulfilled') {
       setLoadError(null);
       setFetchedAt(Date.now());
@@ -152,9 +157,11 @@ export function PlattformUebersichtPage({
       : null),
     [sites, releases, edgeLines, edgeKpi, edgeRollouts, jetzt],
   );
+  // Eigene Kennzahl (§7.7), KEINE fünfte Kachel - siehe direktvermarktungKennzahl.
+  const direktvermarktungAnzeige = useMemo(() => direktvermarktungKennzahl(direktvermarktung), [direktvermarktung]);
   const brauchtDichAlle = useMemo(
-    () => uebersichtBrauchtDich({ edgeFleet, fernwartungBoxen, werkstatt, pending }, jetzt),
-    [edgeFleet, fernwartungBoxen, werkstatt, pending, jetzt],
+    () => uebersichtBrauchtDich({ edgeFleet, fernwartungBoxen, werkstatt, pending, direktvermarktung }, jetzt),
+    [edgeFleet, fernwartungBoxen, werkstatt, pending, direktvermarktung, jetzt],
   );
   const { aktiv: brauchtDich, erledigt: brauchtDichErledigt } = useMemo(
     () => brauchtDichMitErledigt(brauchtDichAlle, erledigt),
@@ -263,6 +270,19 @@ export function PlattformUebersichtPage({
           </div>
 
           <FlottenKarte bild={flotte} onOpen={openRoute} />
+
+          {/* Direktvermarktung (§7.7): eigene Kennzahl, unterhalb der ersten Bildschirmzeile
+              (keine fünfte Kachel, siehe direktvermarktungKennzahl) - und unsichtbar, solange
+              kein Mandant der Plattform einen Anschluss hat (keine leere Zeile für alle anderen). */}
+          {direktvermarktung.length > 0 && (
+            <Card padding="md" radius="lg" data-testid="ueb-direktvermarktung">
+              <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="zap" size={16} />
+                <strong>Direktvermarktung</strong>
+                <span className="vp-cell-sub">{direktvermarktungAnzeige.kontext} · {direktvermarktungAnzeige.wort}</span>
+              </p>
+            </Card>
+          )}
 
           <ReiterZeilen onNavigate={onNavigate} fernwartung={fernwartung} werkstatt={werkstatt} software={kacheln.find((k) => k.id === 'software') ?? null} />
         </>

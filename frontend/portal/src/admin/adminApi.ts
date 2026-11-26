@@ -477,6 +477,58 @@ export interface AdminGeraeteAkte {
   } | null;
 }
 
+/** Eine Zeile der Plattform-Liste (Konzept vp-direktvermarktung-konzept d2 §7.7). */
+export interface AdminDirektvermarktungZeile {
+  siteId: string;
+  siteName: string;
+  tenantId: string;
+  tenantName: string;
+  partner: string;
+  zustand: string;
+  startdatum: string | null;
+  ende: string | null;
+  aktualisiertAm: string;
+  letzteAbfrageAm: string | null;
+  lebenszeichenAm: string | null;
+  zugangGueltigBis: string | null;
+  leadDeviceRef: string | null;
+}
+
+/** Geräteakte › Verbindung, Block „Direktvermarkter" - nie Chiffrat/Nonce/Passwort (§7.7 „Nie sichtbar"). */
+export interface AdminDirektvermarktungDetail {
+  siteId: string;
+  tenantId: string;
+  partner: string;
+  zustand: string;
+  zustimmungAm: string | null;
+  startdatum: string | null;
+  ende: string | null;
+  aktualisiertAm: string;
+  tunnelObenSeit: string | null;
+  handshakeAm: string | null;
+  gegenstelle: string | null;
+  abfragenJeMinute: number | null;
+  letzteSchreibungAm: string | null;
+  lebenszeichenAm: string | null;
+  vorgabePct: number | null;
+  einspeisungW: number | null;
+  erzeugungW: number | null;
+  netzbetreiberPct: number | null;
+  referenzW: number | null;
+  zugangHochgeladenVon: string | null;
+  zugangGueltigBis: string | null;
+  zugangFingerabdruck: string | null;
+  zugangZurueckgezogenAm: string | null;
+}
+
+export interface AdminDirektvermarktungProtokollZeile {
+  id: number;
+  ereignis: string;
+  von: string | null;
+  rolle: string | null;
+  am: string;
+}
+
 /** „Vom Kunden lösen" (L1, Konzept vp-plattform-admin-box-benutzer-konzept): Feldnamen wie Box verbinden E2. */
 export interface BoxLoesenBefund {
   loesbar: boolean;
@@ -867,6 +919,20 @@ export const adminApi = {
     request<FernwartungBox>(`/api/v1/admin/fernwartung/boxen/${encodeURIComponent(ref)}/entsperren`, {
       method: 'POST',
     }),
+
+  // ── Direktvermarktung (Konzept vp-direktvermarktung-konzept d2 §7.7) ──────
+
+  /** Plattform-Liste: jede Anlage mit einem nicht beendeten Anschluss. */
+  direktvermarktungListe: () => request<AdminDirektvermarktungZeile[]>('/api/v1/admin/direktvermarktung'),
+
+  /** Geräteakte › Verbindung. 404 = diese Anlage hat nie einen Anschluss gehabt. */
+  direktvermarktungAkte: (siteId: string) =>
+    request<AdminDirektvermarktungDetail>(`/api/v1/admin/direktvermarktung/${encodeURIComponent(siteId)}`),
+
+  direktvermarktungProtokoll: (siteId: string) =>
+    request<AdminDirektvermarktungProtokollZeile[]>(
+      `/api/v1/admin/direktvermarktung/${encodeURIComponent(siteId)}/protokoll`,
+    ),
 
   fernwartungTechniker: () => request<FernwartungTechniker[]>('/api/v1/admin/fernwartung/techniker'),
 
