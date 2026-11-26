@@ -32,7 +32,7 @@ import {
 } from '../heizstab';
 import { testErgebnis } from '../komponentenAssistent';
 import { anlageRoute, geraetSeiteHash, hashForRoute, komponenteHash } from '../nav';
-import { LIVE_POLL_MS } from '../pollCadence';
+import { LIVE_POLL_MS, SCHNELL_POLL_MS } from '../pollCadence';
 import { quelleChip, type SiteVerbraucher } from '../verbraucherZone';
 import { Recht } from './Recht';
 import './Heizstab.css';
@@ -622,10 +622,19 @@ export function HeizstabKarteGeladen({ siteId, entityId, gesperrt = null, sonst 
     });
     return () => { aktiv = false; };
   }, [siteId, entityId, key]);
+  // vp-schalten-sofort: solange eine Phase auf ihre Bestätigung wartet
+  // (dieselbe Bedingung wie die Karte selbst für "gesendet, noch nicht
+  // bestätigt" unten anwendet), fragt die Hülle im schnellen statt im
+  // üblichen Live-Takt nach - sonst säße eine schon vorliegende Bestätigung
+  // der Box bis zu LIVE_POLL_MS unbemerkt in der Antwort.
+  const wunsch = handWunsch(daten?.override, jetzt);
+  const wartetSchaltung = phasenZeilen(daten?.komponente?.connection, daten?.status?.stufe, wunsch)
+    .some((z) => z.wunsch !== null && z.wunsch !== z.an);
   useEffect(() => {
-    const t = window.setInterval(() => setKey((k) => k + 1), LIVE_POLL_MS);
+    const takt = wartetSchaltung ? SCHNELL_POLL_MS : LIVE_POLL_MS;
+    const t = window.setInterval(() => setKey((k) => k + 1), takt);
     return () => window.clearInterval(t);
-  }, []);
+  }, [wartetSchaltung]);
 
   if (!daten) return <p className="vp-hz-unter" role="status">Lade die Steuerung des Heizstabs …</p>;
   const kanaele = Array.isArray(daten.komponente?.connection?.channels)

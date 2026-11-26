@@ -133,8 +133,9 @@ import {
 import { heuteKanal } from '../geraetHeute';
 import { verlaufHash } from '../verlauf';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { wartetAufBestaetigung } from '../consumers/pendingPoll';
 // LIVE: die Geräteseite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
-import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
+import { LIST_POLL_MS, LIVE_POLL_MS, SCHNELL_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
 import { AnlegenFlowLazy as AnlegenFlow } from '../components/AnlegenFlowLazy';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -914,6 +915,16 @@ function GeraetSeiteKern({
     }
     return () => { active = false; };
   }, [site.id, brauchtSpeicher, brauchtVerbraucher, reloadKey]);
+
+  // vp-schalten-sofort: ohne eigenen Takt stand diese Rückmeldung bis zum
+  // nächsten reloadKey (ein Klick auf dieser Seite) still. Solange ein
+  // Handeingriff auf seine Bestätigung wartet, fragt sie im schnellen statt
+  // im üblichen Live-Takt nach; GATTUNGS-GETAKTET wie oben.
+  const wartetSchaltung = brauchtVerbraucher && wartetAufBestaetigung(overrides, consumerStatus);
+  useFreshnessPoll(() => {
+    consumersApi.overrides(site.id).then(setOverrides, () => {});
+    consumersApi.status(site.id).then(setConsumerStatus, () => {});
+  }, wartetSchaltung ? SCHNELL_POLL_MS : LIVE_POLL_MS, brauchtVerbraucher);
 
   /**
    * Die Erfüllung DIESES Verbrauchers. Eigener Effekt, weil sie an der
