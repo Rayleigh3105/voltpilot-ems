@@ -154,7 +154,9 @@ func (a *Agent) onEntityDesired(topic string, payload []byte) {
 
 // onEntityReadback records the per-entity register-level readback verdict
 // (v1 payload shape per entity - localbus.go). Feeds the heartbeat's
-// per-entity all_match.
+// per-entity all_match and, when that moves the consumers block's visible
+// fingerprint, asks for an early heartbeat right away instead of waiting for
+// the next statusHeartbeatEvery tick (consumer_status_kick.go).
 func (a *Agent) onEntityReadback(topic string, payload []byte) {
 	id := entities.IDFromTopic(topic, "readback")
 	if id == "" {
@@ -172,6 +174,7 @@ func (a *Agent) onEntityReadback(topic string, payload []byte) {
 	}
 	a.entReadback[id] = m.AllMatch
 	a.arbMu.Unlock()
+	a.noteConsumerReadback()
 }
 
 // arbitrationLoop drives the plan executors and the arbiter's expiry/reclamp
