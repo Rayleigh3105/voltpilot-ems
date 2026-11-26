@@ -67,6 +67,9 @@ export const SUB_CHUNK = {
   modell: () => import('./pages/AufbauSection'),
   geraet: () => import('./pages/GeraetSeiteSection'),
   box: () => import('./pages/BoxSeiteSection'),
+  // Direktvermarktung (Konzept vp-direktvermarktung-konzept d2): eine Ebene unter „Anlage" wie die Box-Seite
+  // (OHNE_BEREICHS_REITER), eigener Rückweg „‹ Einstellungen".
+  direktvermarktung: () => import('./pages/DirektvermarktungSection'),
   ladevorgaenge: () => import('./pages/LadevorgaengeSection'),
   lastspitzen: () => import('./pages/LastspitzenSection'),
   steuerung: () => import('./pages/SteuerungSection'),

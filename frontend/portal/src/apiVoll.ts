@@ -74,6 +74,7 @@ import type {
 } from './api';
 import { freshToken } from './auth';
 import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
+import type { DirektvermarktungStatus } from './direktvermarktung';
 import type { BezugsbasisVergleich, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { BezugsgroesseLesart } from './bezugsgroesse';
 import type {
@@ -626,6 +627,44 @@ const weitere = {
       body: JSON.stringify(
         inbetriebnahmeAbSolarspitzengesetz == null ? { satzCtKwh } : { satzCtKwh, inbetriebnahmeAbSolarspitzengesetz },
       ),
+    }),
+  /** Der Partnerkatalog der Direktvermarktung (E6 = A), mandantenlos. */
+  direktvermarkterKatalog: () => request<{ partner: string; name: string; vertragLink: string | null }[]>(
+      '/api/v1/direktvermarkter'),
+  /** Die Karte „Direktvermarktung" (Einstellungen › Strom & Geld, Seite `#/anlage/{id}/direktvermarktung`). */
+  direktvermarktung: (siteId: string) =>
+    request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung`),
+  direktvermarktungVerlauf: (siteId: string, grenze = 200) =>
+    request<DirektvermarktungStatus['verlaufKurz']>(
+        `/api/v1/sites/${siteId}/direktvermarktung/verlauf?grenze=${grenze}`),
+  direktvermarktungWaehlen: (siteId: string, partner: string) =>
+    request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung/waehlen`, {
+      method: 'POST',
+      body: JSON.stringify({ partner }),
+    }),
+  direktvermarktungZustimmen: (siteId: string, textfassung: string) =>
+    request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung/zustimmen`, {
+      method: 'POST',
+      body: JSON.stringify({ textfassung }),
+    }),
+  direktvermarktungStartdatum: (siteId: string, startdatum: string | null) =>
+    request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung/startdatum`, {
+      method: 'PUT',
+      body: JSON.stringify({ startdatum }),
+    }),
+  direktvermarktungBeenden: (siteId: string, ende: string) =>
+    request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung/beenden`, {
+      method: 'POST',
+      body: JSON.stringify({ ende }),
+    }),
+  direktvermarktungWechseln: (siteId: string, partner: string, stichtag: string) =>
+    request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung/wechseln`, {
+      method: 'POST',
+      body: JSON.stringify({ partner, stichtag }),
+    }),
+  direktvermarktungNeuVerbinden: (siteId: string) =>
+    request<DirektvermarktungStatus>(`/api/v1/sites/${siteId}/direktvermarktung/neu-verbinden`, {
+      method: 'POST',
     }),
   /** 409 while the site still has devices (remove them first). */
   deleteSite: (siteId: string) =>

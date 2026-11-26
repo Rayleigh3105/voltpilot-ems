@@ -29,6 +29,7 @@ export const KUNDE_DATENART_LABEL: Record<string, string> = {
   berichte: 'Berichte',
   nachweise: 'Nachweise des Energiemanagements',
   uems_struktur: 'aufgebaute Energiemanagement-Struktur',
+  direktvermarktung: 'den Anschluss an einen Direktvermarkter',
 };
 
 export function kundeDatenListe(daten: string[]): string {

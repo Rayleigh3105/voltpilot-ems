@@ -10,6 +10,7 @@ import java.util.Optional;
 import com.voltpilot.api.web.dto.ComponentActivationStatusDto;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ public class ComponentActivationOutboxService {
     private final JdbcTemplate admin;
     private final JdbcTemplate jdbc;
     private final EntityRegistryService registry;
+    private final boolean enabled;
 
     /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
     private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
@@ -30,10 +32,12 @@ public class ComponentActivationOutboxService {
     }
 
     public ComponentActivationOutboxService(@Qualifier("adminJdbcTemplate") JdbcTemplate admin,
-            JdbcTemplate jdbc, EntityRegistryService registry) {
+            JdbcTemplate jdbc, EntityRegistryService registry,
+            @Value("${voltpilot.components.activation.enabled:true}") boolean enabled) {
         this.admin = admin;
         this.jdbc = jdbc;
         this.registry = registry;
+        this.enabled = enabled;
     }
 
     public void enqueue(UUID tenantId, UUID siteId, UUID entityId, int revision, String operation) {
@@ -53,8 +57,19 @@ public class ComponentActivationOutboxService {
                 .stream().findFirst();
     }
 
+    /**
+     * ⚠ {@code enabled} ist der Not-Aus, nie ein Guertel-und-Hosentraeger: Springs
+     * {@code @EnableScheduling} ist GLOBAL (jede andere Scheduling-Konfiguration schaltet es ein),
+     * das 2-Sekunden-Intervall liefe im Testlauf also ohnehin mit - und schrieb dort unbemerkt an
+     * Nachbar-Zeilen weiter, waehrend ein Testcontainers-Löschzug lief (vp-direktvermarktung-konzept:
+     * {@code LoeschzugKatalogApiTest} wurde instabil, sobald vier weitere Katalog-Tabellen die
+     * Lösch-Pruefung spuerbar verlangsamten). Vorgabe AN, im Testlauf AUS (surefire).
+     */
     @Scheduled(fixedDelayString = "${voltpilot.components.activation.interval-ms:2000}")
     public void retryPending() {
+        if (!enabled) {
+            return;
+        }
         admin.query("SELECT id, tenant_id, site_id FROM component_activation_outbox "
                         + "WHERE status = 'pending' AND NOT (tenant_id = ANY (?::uuid[])) ORDER BY created_at LIMIT 20",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> process(

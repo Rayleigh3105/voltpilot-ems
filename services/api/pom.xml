@@ -283,6 +283,17 @@
                     <include>bohrlehre.3mf</include>
                 </includes>
             </resource>
+            <!-- Direktvermarktung (E6 = A, "Partnerkatalog als Daten"): catalog/direktvermarkter/profiles/*.json
+                 ist die eine von Hand gepflegte Wahrheit (PR #1999, catalog/direktvermarkter/README.md "Aufbau");
+                 die GEPACKTE Sicht unter edge-app/core/internal/direktvermarkter/ ist nur für den Go-Kern der
+                 Box, die Cloud liest das Profil selbst. -->
+            <resource>
+                <directory>${project.basedir}/../../catalog/direktvermarkter/profiles</directory>
+                <targetPath>direktvermarkter</targetPath>
+                <includes>
+                    <include>*.json</include>
+                </includes>
+            </resource>
         </resources>
         <!-- Load the canonical dev realm (single source of truth) onto the test
              classpath so the Keycloak Testcontainer imports the same realm the
@@ -380,6 +391,14 @@
                              (application.yml). Wer ihn prueft, ruft
                              WagoAnschlussNachtragLaeufer.lauf() selbst. -->
                         <voltpilot.components.wago-anschluss-nachtrag.enabled>false</voltpilot.components.wago-anschluss-nachtrag.enabled>
+                        <!-- Der 2-Sekunden-Takt der nachhaltigen Komponenten-Aktivierung
+                             (ComponentActivationOutboxService.retryPending): im Testlauf aus, in
+                             PRODUKTION an (application.yml, matchIfMissing). Ungeschuetzt schrieb er
+                             waehrend eines laufenden Testcontainers-Loeschzugs unbemerkt an einer
+                             Nachbar-Zeile weiter (LoeschzugKatalogApiTest wurde instabil, sobald vier
+                             weitere Katalog-Tabellen die Pruefung spuerbar verlangsamten). Wer ihn
+                             prueft, ruft retryPending() selbst. -->
+                        <voltpilot.components.activation.enabled>false</voltpilot.components.activation.enabled>
                         <!-- Der Erneuerungs-Takt der Handeingriffe (Steuerung
                              Stufe 4, B6) ist in PRODUKTION an (application.yml,
                              matchIfMissing) - im Testlauf aus, aus demselben

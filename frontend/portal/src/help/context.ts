@@ -7,6 +7,9 @@ export const HELP_FOR_SUB: Record<AnlagenSub, HelpArticleId> = {
   prognose: 'prognosen', prognosemodelle: 'prognosen', technik: 'einstellungen', modell: 'anlagenmodell',
   steuerung: 'geraete-steuern', laden: 'ladepark', regeln: 'regeln', lastspitzen: 'lastspitzen', ladevorgaenge: 'ladevorgaenge',
   befehle: 'geraete', geraet: 'geraete', box: 'geraete', energiebilanz: 'messwerte', logik: 'regeln',
+  // Noch kein eigener Artikel (Direktvermarktung, Konzept vp-direktvermarktung-konzept d2) - sie wohnt unter
+  // Einstellungen › Strom & Geld, bis es einen gibt.
+  direktvermarktung: 'einstellungen',
 };
 
 export function helpForRoute(route: Route): HelpArticleId | null {

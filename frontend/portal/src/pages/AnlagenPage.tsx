@@ -206,6 +206,9 @@ const GeraetSeiteSection = lazy(() =>
 const BoxSeiteSection = lazy(() =>
   SUB_CHUNK.box().then((m) => ({ default: m.BoxSeiteSection })),
 );
+const DirektvermarktungSection = lazy(() =>
+  SUB_CHUNK.direktvermarktung().then((m) => ({ default: m.DirektvermarktungSection })),
+);
 /** Die Bausteine, die im Kachelraster unter der Bühne stehen. */
 const RASTER_BAUSTEINE = new Set<string>(['geld', 'strompreis', 'fahrplan', 'laden', 'kacheln']);
 /** Führt der Fluss, steht „Unterm Strich“ als Zeile über die volle Breite, nicht im Raster (E2 = A). */
@@ -737,7 +740,7 @@ function AnlagenSubPage({
   // Brotkrume `Anlage › Komponenten › {Gerät}` in ihrem eigenen Kopf. Der Knopf
   // hier stünde darüber als ZWEITER Rückweg auf denselben Weg (Stufe 0, §2.1,
   // Captain-Entscheid D1a); `tabsFor` schweigt aus demselben Grund.
-  const eigenerRueckweg = sub === 'geraet' || sub === 'box' || sub === 'logik';
+  const eigenerRueckweg = sub === 'geraet' || sub === 'box' || sub === 'logik' || sub === 'direktvermarktung';
   return (
     <>
       {!eigenerRueckweg && (
@@ -828,6 +831,7 @@ function AnlagenSubPage({
             }}
           />
         )}
+        {sub === 'direktvermarktung' && <DirektvermarktungSection site={site} />}
         {sub === 'geraet' && geraet && (
           <GeraetSeiteSection
             site={site}

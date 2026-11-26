@@ -35,7 +35,7 @@ class ComponentActivationOutboxBindingTest {
     private final JdbcTemplate admin = mock(JdbcTemplate.class);
     private final EntityRegistryService registry = mock(EntityRegistryService.class);
     private final ComponentActivationOutboxService outbox =
-            new ComponentActivationOutboxService(admin, mock(JdbcTemplate.class), registry);
+            new ComponentActivationOutboxService(admin, mock(JdbcTemplate.class), registry, true);
 
     private void onePendingRow() throws Exception {
         ResultSet rs = mock(ResultSet.class);

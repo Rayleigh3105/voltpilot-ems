@@ -44,6 +44,14 @@ vi.mock('leaflet', () => {
   return { default: L };
 });
 
+// Die Zeile „Direktvermarktung" (Strom & Geld) lädt ihren Stand beim Rendern jeder TechnikSection, egal welches
+// Verhalten ein einzelner Test prüft - ein nicht gemockter echter Fetch würde in jsdom scheitern und nach dem
+// Assert noch ein `act()`-Warnung auslösen. Ein stiller, nie beobachteter Stand genügt jedem anderen Test.
+vi.spyOn(api, 'direktvermarktung').mockResolvedValue({
+  aktuell: null, geplant: null, partner: null, geplanterPartner: null, stand: null, verlaufKurz: [], katalog: [],
+  darf: true,
+});
+
 const eegSite: Site = {
   id: 's-1',
   name: 'Hof Sonnenfeld',

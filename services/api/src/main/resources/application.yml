@@ -635,6 +635,11 @@ voltpilot:
       enabled: ${VOLTPILOT_COMPONENTS_ADOPTION_ENABLED:true}
       reconcile-enabled: ${VOLTPILOT_COMPONENTS_ADOPTION_RECONCILE_ENABLED:true}
       interval-ms: ${VOLTPILOT_COMPONENTS_ADOPTION_INTERVAL_MS:300000}
+    # Der 2-Sekunden-Takt der nachhaltigen Komponenten-Aktivierung (ComponentActivationOutboxService):
+    # dieselbe @Scheduled-Falle wie die Bestandsuebernahme darueber - im Testlauf aus (surefire),
+    # in PRODUKTION an (matchIfMissing). `enqueue`/`status` bleiben unabhaengig davon immer erreichbar.
+    activation:
+      enabled: ${VOLTPILOT_COMPONENTS_ACTIVATION_ENABLED:true}
     # Konzept „Ein Gerät, ein Eintrag“ (GE-6): beim Start bekommt jeder WAGO-Controller
     # ohne Anschluss den Anschluss, den die Komponenten seiner Karten schon tragen
     # (WagoAnschlussNachtragLaeufer, kein Takt) - nie über eine Adresse. Idempotent,
