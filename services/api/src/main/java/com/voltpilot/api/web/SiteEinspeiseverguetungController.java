@@ -1,5 +1,7 @@
 package com.voltpilot.api.web;
 
+import org.springframework.transaction.annotation.Transactional;
+import com.voltpilot.api.repo.PreisfassungRepository;
 import com.voltpilot.api.optimizer.EegRates;
 import com.voltpilot.api.optimizer.EinspeiseverguetungStand;
 import com.voltpilot.api.optimizer.OptimizerProperties;
@@ -55,13 +57,15 @@ public class SiteEinspeiseverguetungController {
 
     private final EinspeiseverguetungRepository repo;
     private final RegisterEinheitRepository einheiten;
+    private final PreisfassungRepository preisfassungen;
     private final Geltungsbereich geltungsbereich;
     private final EegRates eegRates;
 
     public SiteEinspeiseverguetungController(EinspeiseverguetungRepository repo,
-            RegisterEinheitRepository einheiten, Geltungsbereich geltungsbereich,
-            OptimizerProperties optimizer) {
+            RegisterEinheitRepository einheiten, PreisfassungRepository preisfassungen,
+            Geltungsbereich geltungsbereich, OptimizerProperties optimizer) {
         this.repo = repo;
+        this.preisfassungen = preisfassungen;
         this.einheiten = einheiten;
         this.geltungsbereich = geltungsbereich;
         // Derselbe Satzplan wie Optimierer und Erlöse (OPTIMIZER_EEG_RATES_JSON).
@@ -79,7 +83,8 @@ public class SiteEinspeiseverguetungController {
      * 100; ein deutsches Komma ist erlaubt), {@code {"satzCtKwh": null}} setzt
      * auf die Herleitung zurück. Ein Feld, das fehlt, ist ein Fehler - nie ein
      * stilles Zurücksetzen. Bei Direktvermarktung gibt es keinen festen Satz:
-     * setzen ist dann 409, zurücksetzen geht immer.
+     * setzen ist dann 409, zurücksetzen geht immer. {@code "gueltigAb"} sagt,
+     * ab welchem Tag die Angabe gilt ({@link PreisGueltigAb}; fehlt = heute).
      *
      * <p>§ 51a EEG (keine Vergütung bei negativem Börsenpreis) hängt am
      * Inbetriebnahmedatum. Fehlt es (keine MaStR-Verknüpfung), verlangt die
@@ -90,6 +95,7 @@ public class SiteEinspeiseverguetungController {
      */
     @PutMapping
     @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
+    @Transactional
     public EinspeiseverguetungDto put(@PathVariable UUID siteId,
             @RequestBody(required = false) Map<String, Object> body) {
         geltungsbereich.requireSite(siteId);
@@ -114,6 +120,9 @@ public class SiteEinspeiseverguetungController {
                 abSolarspitzengesetz = abSolarspitzengesetz(body.get("inbetriebnahmeAbSolarspitzengesetz"));
             }
         }
+        // Ab wann (vp-tarif-ab-tag): die Datenbank zeichnet die geänderte Angabe ab
+        // diesem Tag als Preisfassung auf; die Einspeisung davor behält ihren Satz.
+        preisfassungen.abSetzen(PreisGueltigAb.pruefen(body.get("gueltigAb")));
         if (!repo.setAngegeben(siteId, satz, abSolarspitzengesetz)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }

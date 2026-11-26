@@ -45,6 +45,7 @@ class PortfolioKpiServiceKpisTest {
     @Mock private PortfolioKpiRepository spitzen;
     @Mock private MessstelleRegisterService messstellen;
     @Mock private KennzahlAuswertungService auswertung;
+    @Mock private com.voltpilot.api.repo.PreisfassungRepository preisfassungen;
 
     @InjectMocks private PortfolioKpiService service;
 

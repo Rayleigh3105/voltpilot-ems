@@ -72,8 +72,11 @@ final class Bestandsschutz {
      * jedem Benutzer mit E-Mail eine bestätigte E-Mail-Zustellung an, bevor die Glocke je einen Alarm
      * zustellen kann. Ohne diese Ausnahme bräche jeder ältere Bestandsschutz-Test, der bis zum
      * neuesten Stand migriert, an einer "neue Tabelle mit Inhalt" - der Bestand selbst bleibt unberührt.
+     * Ebenso {@code anlage_preisfassung} (V20261126223000, vp-tarif-ab-tag): sie legt jeder Anlage ihre
+     * Gründungsfassung mit den HEUTIGEN Preisen an und zeichnet danach per Trigger jede Preisänderung
+     * auf - ihr Inhalt folgt {@code site} und {@code site_supply_price}, die selbst gemessen bleiben.
      */
-    static final List<String> VOREINSTELLUNGS_BACKFILL = List.of("zustellweg");
+    static final List<String> VOREINSTELLUNGS_BACKFILL = List.of("zustellweg", "anlage_preisfassung");
 
     /**
      * Eine Zeile {@code t} als Text: die Spalten mit Wert als jsonb-Objekt (Schlüssel sortiert,

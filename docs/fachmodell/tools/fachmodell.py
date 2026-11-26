@@ -760,17 +760,6 @@ VERFEINERUNGEN = {
          'vertauscht. „Bilanz“ steht nie ohne Präfix, „Energiefluss“ bleibt das Bestandsbild der Bühne. Die Wörter: '
          '`frontend/portal/src/glossar.ts` (`UEMS_ENERGIEBILANZ`, `UEMS_NICHT_VERORTET`).'),
     ],
-    'netzanschluss': [
-        ('AP-10 E8 (W9)',
-         'Der Netzanschluss wird ein eigenes OBJEKT am Standort — Kennzeichen (`NA-`, Form wie beim '
-         'Messstellen-Kennzeichen), Name, Marktlokation (elf Ziffern, nie aufgefüllt), Netzbetreiber, '
-         'Anschlussleistung in kVA, vereinbarte Leistung in kW und Messung RLM · SLP — und eine Anlage '
-         'verweist ZEITGÜLTIG auf ihn (Tage; je Tag höchstens einer je Anlage und eine Anlage je '
-         'Anschluss). Preis-, Vergütungs- und Grenzspalten ziehen dabei NICHT mit: sie bleiben an der '
-         'Anlage (`site_supply_price`, `tarif_art`, `max_feed_in_kw` …), bis das Folgepaket '
-         '„Netzanschluss-Preisblatt“ sie zeitgültig übernimmt. Die vereinbarte Leistung wird gezeigt, '
-         'nicht geprüft — die Grenzprüfung ist AP-15. Regeln: `docs/contracts/v2/netzanschluss.md`.'),
-    ],
     'elsystem': [
         ('AP-10 E9',
          'Das elektrische System ist die BILANZGRENZE und im Code die Anlage: je System genau ein '
@@ -848,8 +837,28 @@ VERFEINERUNGEN = {
         ("AP-02 E5", "Die Zuordnung Anlage → Standort ist zeitgültig und wohnt in einer eigenen Beziehung, nicht in einer Spalte an der Anlage. Ein Bestandskunde mit EINER Anlage bekommt den Standort automatisch, ab mehreren Anlagen als Vorschau-Zuordnung."),
         ("AP-06 E3", "Hat eine Anlage mehrere Boxen, ist EINE davon die „führende Box“ — ein gespeicherter, sichtbarer Fakt (Vorgabe: Box des primären Speichers, sonst die einzige; bei zwei Boxen ohne Speicher wählt der Kundenadministrator sie ausdrücklich). Sie bildet die Anlagen-Summe und empfängt den Fahrplan."),
     ],
+    # Eine Liste je Begriff: ein zweiter Schlüssel überschriebe den ersten still (so fehlte AP-10 E8 bis 26.11.2026).
     "netzanschluss": [
         ("AP-01 E10", "Die vereinbarte Leistung des Anschlusses ist der Prüfstein: Grenzen werden gegen ihn plausibilisiert."),
+        ('AP-10 E8 (W9)',
+         'Der Netzanschluss wird ein eigenes OBJEKT am Standort — Kennzeichen (`NA-`, Form wie beim '
+         'Messstellen-Kennzeichen), Name, Marktlokation (elf Ziffern, nie aufgefüllt), Netzbetreiber, '
+         'Anschlussleistung in kVA, vereinbarte Leistung in kW und Messung RLM · SLP — und eine Anlage '
+         'verweist ZEITGÜLTIG auf ihn (Tage; je Tag höchstens einer je Anlage und eine Anlage je '
+         'Anschluss). Preis-, Vergütungs- und Grenzspalten ziehen dabei NICHT mit: sie bleiben an der '
+         'Anlage (`site_supply_price`, `tarif_art`, `max_feed_in_kw` …), bis das Folgepaket '
+         '„Netzanschluss-Preisblatt“ sie zeitgültig übernimmt. Die vereinbarte Leistung wird gezeigt, '
+         'nicht geprüft — die Grenzprüfung ist AP-15. Regeln: `docs/contracts/v2/netzanschluss.md`.'),
+        ('vp-tarif-ab-tag (Voraussetzung Standort-Konzept E1 = B)',
+         'Tarif, Preisblatt und angegebene Einspeisevergütung gelten AB EINEM TAG, noch an der Anlage: '
+         'die Tabelle `anlage_preisfassung` hält ihre Fassungen in der Zeitform des Grenzblatts (Tag in '
+         'Europe/Berlin, Ende am Vortag der nächsten, `aufgehoben_am` statt Überschreiben); jede bewertete '
+         'Viertelstunde liest die Fassung ihres Zeitpunkts (Sicht `anlage_preiszeitraum`). `site` und '
+         '`site_supply_price` bleiben die HEUTIGE Fassung; die Fassungen schreibt nur die Datenbank '
+         '(Trigger), der Tag kommt als „Ab wann?“ aus dem Schreibweg (nie in der Zukunft). Der Netzanschluss '
+         'trägt sie (noch) nicht, weil eine Anlage ohne Netzanschluss-Objekt — jede Privatanlage — sonst '
+         'keinen Tarif hätte; das Paket „Netzanschluss-Preisblatt“ legt sich später wie das Grenzblatt '
+         'darüber. Einstieg: `docs/agents/root/preise-ab-einem-tag.md`.'),
     ],
     "box": [
         ("AP-06 E2", "Die Zuständigkeit hängt an der DATENQUELLE, nicht am Gerät und nicht an der Komponente: alle Geräte hinter einem Erfassungsweg liest dieselbe Box, ein Wechsel nimmt alle mit."),

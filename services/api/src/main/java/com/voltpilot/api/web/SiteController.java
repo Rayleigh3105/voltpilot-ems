@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.repo.PreisfassungRepository;
 import com.voltpilot.api.web.dto.SichtbareListe;
 import com.voltpilot.api.zugriff.TeilansichtDienst;
 
@@ -143,6 +144,7 @@ public class SiteController {
     private final BerichtsBelege berichtsBelege;
     private final AnfrageKennungen anfrageKennungen;
     private final PreisZuleitung preisZuleitung;
+    private final PreisfassungRepository preisfassungen;
 
     public SiteController(
             SiteRepository sites,
@@ -170,8 +172,10 @@ public class SiteController {
             BerichtsBelege berichtsBelege,
             Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht,
             AnfrageKennungen anfrageKennungen,
-            PreisZuleitung preisZuleitung) {
+            PreisZuleitung preisZuleitung,
+            PreisfassungRepository preisfassungen) {
         this.sites = sites;
+        this.preisfassungen = preisfassungen;
         this.anfrageKennungen = anfrageKennungen;
         this.preisZuleitung = preisZuleitung;
         this.teilansicht = teilansicht;
@@ -307,11 +311,18 @@ public class SiteController {
      * validation mirrors create. RLS makes a foreign site invisible (404) and
      * pins the row to its tenant, so neither a customer nor an admin using the
      * tenant switcher can ever move a site across tenants.
+     *
+     * <p>A changed tariff applies from {@code tarifGueltigAb} (vp-tarif-ab-tag,
+     * {@link PreisGueltigAb}; absent = today): the database records it as a
+     * Preisfassung in the same transaction, and the energy before that day
+     * keeps its old price. An unchanged tariff records nothing.
      */
     @PutMapping("/{siteId}")
     @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
+    @Transactional
     public SiteDto updateSite(@PathVariable UUID siteId,
             @Valid @RequestBody UpdateSiteRequest request) {
+        preisfassungen.abSetzen(PreisGueltigAb.pruefen(request.tarifGueltigAb()));
         SiteDto updated = sites.update(siteId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
                 request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
