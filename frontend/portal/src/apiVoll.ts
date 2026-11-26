@@ -1863,11 +1863,11 @@ const weitere = {
     }),
 
   /** Die Folgen, bevor eine Anlage einem Standort zugeordnet wird (UEMS AP-02 IP-11) — schreibt nichts. */
-  anlageStandortVorschau: (siteId: string, standortId: string, gueltigAb: string) =>
+  anlageStandortVorschau: (siteId: string, standortId: string, gueltigAb: string, korrektur = false) =>
     request<AnlageUmzug>(
       `/api/v1/sites/${encodeURIComponent(siteId)}/standort/vorschau?standortId=${encodeURIComponent(
         standortId,
-      )}&gueltigAb=${encodeURIComponent(gueltigAb)}`,
+      )}&gueltigAb=${encodeURIComponent(gueltigAb)}${korrektur ? '&korrektur=true' : ''}`,
     ),
 
   /** Ordnet die Anlage ab `gueltigAb` einem Standort zu; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */

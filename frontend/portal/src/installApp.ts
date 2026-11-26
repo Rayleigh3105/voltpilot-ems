@@ -6,7 +6,7 @@
  * und ob es überhaupt etwas zu tun gibt - sie rendert nichts und ruft nichts
  * auf, was ein Gerät verändert.
  *
- * Vier Zustände, weil es vier verschiedene Situationen sind:
+ * Fünf Zustände, weil es fünf verschiedene Situationen sind:
  *  - `installiert`   - läuft bereits als App. Dann gibt es KEINEN Hinweis mehr,
  *                      nur einen ruhigen Satz (nie eine Aufforderung zu etwas,
  *                      das schon geschehen ist).
@@ -14,14 +14,25 @@
  *                      (Chrome/Edge, Android wie Rechner). Ein echter Knopf.
  *  - `ios-anleitung` - iPhone/iPad. Apple bietet KEINEN Dialog an, also ist die
  *                      Zwei-Schritt-Anleitung der einzige ehrliche Weg.
- *  - `nicht-verfuegbar` - dieser Browser sagt nichts an. Dann steht dort der
- *                      GRUND und der Weg, nie ein Knopf, der nichts bewirkt
- *                      (die `applyView`-Regel des Hauses).
+ *  - `android-anleitung` - ein Chrome/Chromium-Browser auf Android, der das
+ *                      Einrichten GRUNDSÄTZLICH kann, es diesem Gerät aber noch
+ *                      nicht angeboten hat (Chrome entscheidet das selbst, u.a.
+ *                      nach bisheriger Nutzung). Es wäre eine falsche Behauptung,
+ *                      "dieser Browser bietet das Einrichten nicht an" zu sagen,
+ *                      wenn der Kunde GENAU in diesem Browser sitzt - darum der
+ *                      Weg über das Browser-Menü statt eines toten Knopfes.
+ *  - `nicht-verfuegbar` - dieser Browser sagt nichts an UND ist keiner, der es
+ *                      grundsätzlich könnte. Dann steht dort der GRUND und der
+ *                      Weg, nie ein Knopf, der nichts bewirkt (die `applyView`-
+ *                      Regel des Hauses).
  *
  * DIE EHRLICHKEITSREGEL dieser Fläche: es wird nichts behauptet, was der
  * Browser nicht gesagt hat. `beforeinstallprompt` ist der EINZIGE Beleg dafür,
  * dass ein Knopf etwas bewirken kann - eine Prüfung „ist das Manifest da?"
- * verspräche eine Einrichtung, die der Browser danach verweigert.
+ * verspräche eine Einrichtung, die der Browser danach verweigert. Dieselbe
+ * Regel gilt umgekehrt für den Text: "dieser Browser bietet es nicht an" ist
+ * nur wahr, wenn es wirklich KEIN Chrome/Chromium auf Android ist - sonst sitzt
+ * der Kunde im selben Satz im Browser, der angeblich nicht geht.
  */
 
 /** Der Zustand der Einrichtung auf DIESEM Gerät. */
@@ -29,6 +40,7 @@ export type InstallState =
   | 'installiert'
   | 'installierbar'
   | 'ios-anleitung'
+  | 'android-anleitung'
   | 'nicht-verfuegbar';
 
 /** Was ein Klick auf „App installieren" ergeben hat. */
@@ -41,6 +53,8 @@ export interface InstallFacts {
   standalone: boolean;
   /** iPhone/iPad - dort gibt es nie einen Einrichten-Dialog. */
   ios: boolean;
+  /** Chrome/Chromium auf Android - kann grundsätzlich einrichten, auch ohne Angebot. */
+  androidChromium: boolean;
 }
 
 /**
@@ -52,6 +66,7 @@ export function installState(facts: InstallFacts): InstallState {
   if (facts.standalone) return 'installiert';
   if (facts.promptReady) return 'installierbar';
   if (facts.ios) return 'ios-anleitung';
+  if (facts.androidChromium) return 'android-anleitung';
   return 'nicht-verfuegbar';
 }
 
@@ -112,6 +127,28 @@ export function isIos(env: InstallEnv): boolean {
   return macish && touch > 1;
 }
 
+/**
+ * Marker eingebetteter Ansichten (In-App-Browser anderer Apps). Deren UA
+ * trägt oft trotzdem "Chrome/", aber sie haben weder ein Browser-Menü noch
+ * eine Adressleiste - der Weg "Menü > App installieren" wäre dort eine
+ * zweite falsche Behauptung.
+ */
+const EINGEBETTETE_ANSICHT = /; ?wv\)|FBAN|FBAV|Instagram|Line\/|MicroMessenger|TikTok/;
+
+/**
+ * Chrome/Chromium auf Android (Chrome, Edge, Samsung Internet, Opera - alle
+ * Chromium-Ableger tragen "Chrome/" in ihrer UA). Diese Browser KÖNNEN
+ * grundsätzlich einrichten, auch wenn sie es diesem Gerät gerade nicht
+ * anbieten - anders als ein wirklich fremder Browser (Firefox, ein
+ * eingebetteter In-App-Browser).
+ */
+export function isAndroidChromium(env: InstallEnv): boolean {
+  const ua = env.navigator?.userAgent ?? '';
+  if (!/Android/.test(ua)) return false;
+  if (!/Chrome\//.test(ua)) return false;
+  return !EINGEBETTETE_ANSICHT.test(ua);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Copy                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -138,8 +175,8 @@ export interface InstallView {
 /**
  * Die Fläche zu einem Zustand.
  *
- * `outcome` ist das Ergebnis des LETZTEN Klicks. Es gibt dafür bewusst keinen
- * fünften Zustand: ein abgebrochener Dialog verbraucht das Angebot des Browsers
+ * `outcome` ist das Ergebnis des LETZTEN Klicks. Es gibt dafür bewusst KEINEN
+ * eigenen Zustand: ein abgebrochener Dialog verbraucht das Angebot des Browsers
  * (er lässt sich kein zweites Mal öffnen), der Zustand ist danach also
  * wahrheitsgemäß `nicht-verfuegbar` - nur der GRUND ist ein anderer, und genau
  * den nennt der Zusatz.
@@ -173,6 +210,18 @@ export function installView(state: InstallState, outcome?: InstallOutcome): Inst
         'Wählen Sie „Zum Home-Bildschirm".',
       ],
       hint: 'Danach startet VoltPilot im Vollbild, ganz ohne Browser-Leiste.',
+    };
+  }
+  if (state === 'android-anleitung') {
+    return {
+      state,
+      text: 'Dieser Browser hat das Einrichten hier noch nicht von sich aus angeboten.',
+      action: null,
+      steps: [
+        'Tippen Sie oben rechts auf das Menü (⋮).',
+        'Wählen Sie „App installieren" oder „Zum Startbildschirm hinzufügen".',
+      ],
+      hint: 'Taucht der Eintrag nicht auf, hilft meist ein Neuladen der Seite.',
     };
   }
   return {
@@ -270,6 +319,7 @@ export function installSnapshot(): InstallState {
     promptReady: deferred != null,
     standalone: installedSeen || isStandalone(env),
     ios: isIos(env),
+    androidChromium: isAndroidChromium(env),
   });
 }
 

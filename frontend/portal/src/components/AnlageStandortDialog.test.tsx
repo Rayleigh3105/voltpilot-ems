@@ -113,7 +113,7 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
 
     waehleNord();
     const karte = await screen.findByTestId('umzug-folgen');
-    expect(vorschau).toHaveBeenCalledWith(FIXTURE_IDS.an2, NORD, '2027-02-20');
+    expect(vorschau).toHaveBeenCalledWith(FIXTURE_IDS.an2, NORD, '2027-02-20', false);
     expect(within(karte).getByRole('heading', { name: 'Das ändert sich' })).toBeInTheDocument();
     expect(within(karte).getByText('Ab 20.02.2027 gehört die Anlage zu Werk Ahrenberg Nord (ST-3).')).toBeInTheDocument();
     expect(within(karte).getByText('Bis 19.02.2027 gehört sie weiter zu Werk Ahrenberg (ST-1).')).toBeInTheDocument();

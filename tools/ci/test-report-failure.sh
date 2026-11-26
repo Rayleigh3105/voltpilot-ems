@@ -116,6 +116,34 @@ out3="$(FORGEJO_USERNAME=vp FORGEJO_PASSWORD=vp \
 eq "laeuft trotz einer fehlenden Datei durch" "report-failure.sh: Bericht an Issue #1 angehaengt (http://127.0.0.1:$PORT/api/v1/repos/$REPO)" "$out3"
 
 echo
+echo "== erste Fehlerzeilen landen vor dem Tail, auch wenn Abbau-Rauschen danach den Tail füllt =="
+{
+	printf 'INFO: Start\n'
+	printf 'EchteKlasseTest.echteMethode:42 Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.1 s <<< FAILURE!\n'
+	printf 'java.lang.AssertionError: erwartet war anders\n'
+	printf '\tat EchteKlasseTest.echteMethode(EchteKlasseTest.java:42)\n'
+	seq 1 250 | sed 's/^/Abbau-Rauschen Zeile /'
+} >"$TMP/teardown.log"
+
+out4="$(FORGEJO_USERNAME=vp FORGEJO_PASSWORD=vp \
+	GITHUB_SERVER_URL="http://127.0.0.1:$PORT" GITHUB_REPOSITORY="$REPO" \
+	GITHUB_SHA=feedface GITHUB_WORKFLOW=Nightly GITHUB_RUN_NUMBER=661 \
+	"$HERE/report-failure.sh" "Test (api-1)" "$TMP/teardown.log")"
+eq "haengt weiter an Issue #1" "report-failure.sh: Bericht an Issue #1 angehaengt (http://127.0.0.1:$PORT/api/v1/repos/$REPO)" "$out4"
+
+kommentare4="$(curl -fsS -H "$AUTH" "http://127.0.0.1:$PORT/api/v1/repos/$REPO/issues/1/comments")"
+body4="$(printf '%s' "$kommentare4" | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1])')"
+
+case "$body4" in
+*"erste Fehlerzeilen"*) ok "hat einen Abschnitt 'erste Fehlerzeilen'" ;;
+*) bad "hat einen Abschnitt 'erste Fehlerzeilen'" "Abschnitt vorhanden" "$body4" ;;
+esac
+case "$body4" in
+*"erwartet war anders"*) ok "die echte Fehlermeldung ist im Bericht, trotz 250 Zeilen Rauschen danach" ;;
+*) bad "die echte Fehlermeldung ist im Bericht" "AssertionError im Bericht" "$body4" ;;
+esac
+
+echo
 echo "== zu wenige Argumente bricht laut ab =="
 fails "ohne Log-Datei" env FORGEJO_USERNAME=vp FORGEJO_PASSWORD=vp "$HERE/report-failure.sh" "Test (Go, Skripte)"
 

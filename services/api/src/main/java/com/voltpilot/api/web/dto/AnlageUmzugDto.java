@@ -15,8 +15,13 @@ public final class AnlageUmzugDto {
 
     private AnlageUmzugDto() {}
 
-    /** Der Rumpf von {@code PUT}; {@code gueltigAb} fehlend = heute in der Zeitzone des Ziels. */
-    public record Anfrage(UUID standortId, LocalDate gueltigAb, String begruendung) {}
+    /**
+     * Der Rumpf von {@code PUT}; {@code gueltigAb} fehlend = heute in der Zeitzone des Ziels.
+     * {@code korrektur}: ersetzt die Zuordnung ab ihrem eigenen Beginn (B2 „Zuordnung korrigieren")
+     * statt ein neues „gültig ab" anzulegen — derselbe Unterschied wie bei Ort und Stellung einer
+     * Messstelle ({@code MessstelleDto.OrtAendern}).
+     */
+    public record Anfrage(UUID standortId, LocalDate gueltigAb, String begruendung, Boolean korrektur) {}
 
     public record StandortRef(UUID id, String kurzzeichen, String name) {}
 

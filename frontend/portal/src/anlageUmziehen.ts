@@ -85,11 +85,20 @@ export function pruefeUmzug(f: UmzugForm): UmzugFehler {
   return fehler;
 }
 
-/** Der Rumpf von `PUT …/standort`; `null`, solange etwas fehlt. Eine leere Begründung wird nicht gesendet. */
-export function umzugAnfrage(f: UmzugForm): AnlageUmzugAnfrage | null {
+/**
+ * Der Rumpf von `PUT …/standort`; `null`, solange etwas fehlt. Eine leere Begründung wird nicht
+ * gesendet. `korrektur` (B2 „Zuordnung korrigieren"): ersetzt die Zuordnung ab ihrem eigenen
+ * Beginn statt ein neues „gültig ab" danebenzulegen — sonst lehnt der Server denselben Tag ab.
+ */
+export function umzugAnfrage(f: UmzugForm, korrektur = false): AnlageUmzugAnfrage | null {
   if (Object.keys(pruefeUmzug(f)).length > 0 || !f.standortId || !f.gueltigAb) return null;
   const begruendung = f.begruendung.trim();
-  return { standortId: f.standortId, gueltigAb: f.gueltigAb, ...(begruendung ? { begruendung } : {}) };
+  return {
+    standortId: f.standortId,
+    gueltigAb: f.gueltigAb,
+    ...(begruendung ? { begruendung } : {}),
+    ...(korrektur ? { korrektur: true } : {}),
+  };
 }
 
 /** Wohin der Satz des Servers gehört (`feld` der Ablehnung); `null`: über die ganze Form. */
