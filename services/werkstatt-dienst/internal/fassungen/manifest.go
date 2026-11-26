@@ -40,12 +40,18 @@ const (
 // Stufe 1. Kein Fehler des Laufs, aber die Box wird nicht update-bereit.
 var ErrNichtSigniert = errors.New("das Release traegt kein signiertes Manifest")
 
-// Stand ist, was die Werkstatt aus dem Manifest braucht.
+// Stand ist, was die Werkstatt aus dem Manifest braucht. PaketeSha256 und
+// PaketeGroesse sind Prüfsumme und Größe des Paket-Anhangs
+// (edge-light-pakete.tar.gz, Direktvermarktung Stufe 5) aus dem signierten
+// Manifest - leer bei einer Fassung ohne Anhang (vor Stufe 5) und beim
+// PFC200 (die Firmware bringt ihr OpenVPN mit).
 type Stand struct {
-	Release     string
-	ReleaseSeq  int64
-	StateSchema int
-	SigniertVon string
+	Release       string
+	ReleaseSeq    int64
+	StateSchema   int
+	SigniertVon   string
+	PaketeSha256  string
+	PaketeGroesse int64
 }
 
 type manifestForm struct {
@@ -66,6 +72,7 @@ type manifestForm struct {
 	// Tunnel-Programm und (optional, auch bei Edge Industrie) die
 	// Bootapplikation des Basisprojekts.
 	Skripte       *beilage `json:"skripte"`
+	Pakete        *beilage `json:"pakete"`
 	Wartung       *beilage `json:"wartung"`
 	Grundprogramm *beilage `json:"grundprogramm"`
 }
@@ -73,6 +80,7 @@ type manifestForm struct {
 type beilage struct {
 	Name   string `json:"name"`
 	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
 }
 
 // PruefeManifest prueft, dass das Manifest genau die Fassung der Freigabe und
@@ -174,7 +182,22 @@ func PruefeManifestFuer(manifest, signatur []byte, fassung, bauart, programmSha 
 		sig.KeyID != m.SigningKeyID {
 		return Stand{}, errors.New("release.json.sig gehoert nicht zu release.json")
 	}
-	return Stand{Release: m.Release, ReleaseSeq: m.ReleaseSeq, StateSchema: m.StateSchema, SigniertVon: sig.KeyID}, nil
+	st := Stand{Release: m.Release, ReleaseSeq: m.ReleaseSeq, StateSchema: m.StateSchema, SigniertVon: sig.KeyID}
+	// Der Paket-Anhang der Direktvermarktung (Stufe 5), nur Edge Light. Eine
+	// Fassung ohne das Feld bleibt gueltig (vor Stufe 5); traegt sie es, muss
+	// es vollstaendig sein - eine halbe Angabe pinnt nichts.
+	if strings.HasPrefix(m.Release, "edge-light-") && m.Pakete != nil {
+		switch {
+		case m.Pakete.Name != PaketeDatei:
+			return Stand{}, fmt.Errorf("release.json nennt fuer den Paket-Anhang die Datei %q statt %s", m.Pakete.Name, PaketeDatei)
+		case len(m.Pakete.SHA256) != 64 || strings.Trim(m.Pakete.SHA256, "0123456789abcdef") != "":
+			return Stand{}, errors.New("release.json: pakete.sha256 muss 64 Zeichen 0-9a-f haben")
+		case m.Pakete.Size <= 0:
+			return Stand{}, errors.New("release.json: pakete.size muss groesser als 0 sein")
+		}
+		st.PaketeSha256, st.PaketeGroesse = m.Pakete.SHA256, m.Pakete.Size
+	}
+	return st, nil
 }
 
 func orKein(s string) string {

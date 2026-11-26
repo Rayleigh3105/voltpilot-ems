@@ -55,13 +55,18 @@ type aufbau struct {
 	abbild []byte
 	// ohneManifest: das Release traegt kein release.json (Stufe 1).
 	ohneManifest bool
+	// ohnePakete: das Manifest nennt keinen Paket-Anhang (vor Stufe 5).
+	ohnePakete bool
 }
 
 func summe(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
-func neu(t *testing.T, abOpenWrt bool) *aufbau {
+func neu(t *testing.T, abOpenWrt bool, einstellungen ...func(*aufbau)) *aufbau {
 	t.Helper()
 	a := &aufbau{log: &bytes.Buffer{}}
+	for _, e := range einstellungen {
+		e(a)
+	}
 	log := logs.Neu(a.log, "json", nil)
 	imager := attrappe.Schluessel(t)
 	a.b = attrappe.NeueBruecke(t, imager.PublicKey())
@@ -93,7 +98,11 @@ func neu(t *testing.T, abOpenWrt bool) *aufbau {
 	_, _ = rand.Read(a.abbild)
 	programm := []byte("\x7fELF vp-edge-light attrappe")
 	skripte := attrappe.SkripteTarGz(t)
-	manifest, _ := attrappe.Manifest("edge-light-2026.11.1", 77, summe(programm))
+	pakete := attrappe.PaketeTarGz(t)
+	manifest, _ := attrappe.ManifestMitPakete("edge-light-2026.11.1", 77, summe(programm), summe(pakete), len(pakete))
+	if a.ohnePakete {
+		manifest, _ = attrappe.Manifest("edge-light-2026.11.1", 77, summe(programm))
+	}
 	// Eine Wegwerf-Wurzel statt der echten (deren privater Schluessel nirgendwo
 	// im Repo steht): der Dienst prueft seit N3 die Signaturkette echt
 	// kryptographisch, bevor er etwas auf die Mango spielt.
@@ -119,6 +128,8 @@ func neu(t *testing.T, abOpenWrt bool) *aufbau {
 			_, _ = w.Write(programm)
 		case "/edge/edge-light-openwrt.tar.gz":
 			_, _ = w.Write(skripte)
+		case "/edge/edge-light-pakete.tar.gz":
+			_, _ = w.Write(pakete)
 		default:
 			http.NotFound(w, r)
 		}
@@ -219,7 +230,7 @@ func TestGanzerLaufAbWerk(t *testing.T) {
 		t.Fatalf("Zustand %s: %+v\n%s", z, l.Stand(), a.log.String())
 	}
 	s := l.Stand()
-	want := "erkennen fassungen openwrt wiedererkennen internet passwort notfall programm einrichtung_wlan tunnel_schluessel tunnel_adresse tunnel lan neustart probe internet_weg uebergabe"
+	want := "erkennen fassungen openwrt wiedererkennen internet passwort notfall programm einrichtung_wlan direktvermarktung tunnel_schluessel tunnel_adresse tunnel lan neustart probe internet_weg uebergabe"
 	if strings.Join(s.Erledigt, " ") != want {
 		t.Fatalf("Schritte %v", s.Erledigt)
 	}
@@ -292,6 +303,13 @@ func TestGanzerLaufAbWerk(t *testing.T) {
 	if wert(t, b["einrichtung_wlan"], "land") != "DE" || wert(t, b["einrichtung_wlan"], "relayd") != "da" {
 		t.Fatalf("Einrichtungs-WLAN der Werkstatt %v", b["einrichtung_wlan"])
 	}
+	// Stufe 5: die Pakete kamen aus dem geprueften Anhang (install.sh,
+	// VP_PAKETE), die Pruefung sieht sie installiert und nichts laufen.
+	if wert(t, b["direktvermarktung"], "ergebnis") != "bereit (ohne Profil, Tunnel aus)" ||
+		wert(t, b["direktvermarktung"], "paket") != "openvpn-mbedtls-2.7.8-r1" ||
+		wert(t, b["direktvermarktung"], "lage") != "ohne_profil" {
+		t.Fatalf("Direktvermarktung %v", b["direktvermarktung"])
+	}
 	if wert(t, b["tunnel_adresse"], "tunnel_adresse") != "10.10.16.5" || !strings.Contains(wert(t, b["tunnel"], "handshake"), "7 seconds ago") {
 		t.Fatalf("Tunnel %v %v", b["tunnel_adresse"], b["tunnel"])
 	}
@@ -326,6 +344,31 @@ func TestGanzerLaufAbWerk(t *testing.T) {
 
 // Bis GL 4.3.29 ist SSH ab Werk offen (PS-1): kein ui.init, die
 // Web-Schnittstelle wird nur gefragt (Beleg Werksfassung).
+// Eine Fassung vor Stufe 5 (Manifest ohne pakete): nichts wird installiert,
+// der Beleg sagt das, der Lauf geht bis zur Übergabe durch - ob die Abnahme
+// das noch annimmt, entscheidet die Übergangsfrist der API.
+func TestDirektvermarktungUebersprungenOhnePaketAnhang(t *testing.T) {
+	a := neu(t, false, func(a *aufbau) { a.ohnePakete = true })
+	l, z := a.fahre(t, mango.AbWerk)
+	if z != lauf.Fertig {
+		t.Fatalf("Zustand %s: %+v\n%s", z, l.Stand(), a.log.String())
+	}
+	b := a.belege(t, l)
+	if e := wert(t, b["direktvermarktung"], "ergebnis"); !strings.Contains(e, "übersprungen") ||
+		!strings.Contains(e, "keinen Paket-Anhang") {
+		t.Fatalf("Direktvermarktung %v", b["direktvermarktung"])
+	}
+	if p := wert(t, b["uebergabe"], "pruefung_direktvermarktung_bereit"); !strings.Contains(p, "übersprungen") {
+		t.Fatalf("Übergabe %q", p)
+	}
+	// Auf der Box ist wirklich nichts installiert worden.
+	for _, befehl := range a.m.Befehle() {
+		if befehl == "vp-attrappe pakete" {
+			t.Fatal("ohne Paket-Anhang darf nichts installiert werden")
+		}
+	}
+}
+
 func TestLaufAbWerkMitOffenemSSH(t *testing.T) {
 	a := neu(t, false)
 	a.m.GL = "4.3.25"

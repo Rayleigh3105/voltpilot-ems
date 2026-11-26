@@ -12,7 +12,8 @@
 #   vp-edge-light-linux-mipsle, -arm64                      die Programme
 #   vp-edge-light-linux-<arch>.gz                           je Programm die gepackte Lieferung (gzip -9 -n)
 #   edge-light-openwrt.tar.gz                               edge-light/openwrt/ als openwrt/…
-#   sha256sums                                              alle fuenf, Format sha256sum
+#   edge-light-pakete.tar.gz                                die gepinnten OpenWrt-Pakete (pakete.json)
+#   sha256sums                                              alle sechs, Format sha256sum
 #
 # Der Skriptstand ist der der Mango (OpenWrt). Den WAGO PFC200 baut seine eigene
 # Linie Edge Industrie (edge-industrie/scripts/release.sh, edge-industrie-JJJJ.MM.N).
@@ -60,11 +61,17 @@ done
 # und Freigabe. Zahlen und Begruendung im Gate-Skript.
 bash "$LIGHT_DIR/scripts/groessen-gate.sh" "$AUS/vp-edge-light-linux-mipsle" "$AUS/vp-edge-light-linux-mipsle.gz"
 python3 "$LIGHT_DIR/scripts/skripte-paket.py" "$AUS/edge-light-openwrt.tar.gz"
+# Der Paket-Anhang (Direktvermarktung Stufe 5, PS-D10): die gepinnten
+# OpenWrt-Pakete aus edge-light/openwrt/pakete.json, geladen von ihren
+# gepinnten Quellen (oder VP_PAKETE_QUELLE_DIR) und nur bei exakter
+# Pruefsumme verwendet. Seine Pruefsumme kommt signiert ins Manifest
+# (vp-ota manifest --pakete); Werkstatt und Feldboxen installieren nur daraus.
+python3 "$LIGHT_DIR/scripts/pakete-paket.py" "$AUS/edge-light-pakete.tar.gz"
 
 summe() { sha256sum "$1" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$1" | awk '{print $1}'; }
 (cd "$AUS" && for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 \
   vp-edge-light-linux-mipsle.gz vp-edge-light-linux-arm64.gz \
-  edge-light-openwrt.tar.gz; do
+  edge-light-openwrt.tar.gz edge-light-pakete.tar.gz; do
   printf '%s  %s\n' "$(summe "$f")" "$f"
 done) >"$AUS/sha256sums"
 

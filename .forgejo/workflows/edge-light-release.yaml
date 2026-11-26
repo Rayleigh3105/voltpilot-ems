@@ -4,11 +4,13 @@ name: Edge-Light-Fassung
 # (eigene Release-Linie, Entscheid E7; N ist ein laufender Zaehler je Monat wie
 # bei edge-JJJJ.MM.N). Der Tag-Lauf prueft Edge Light (edge-light/scripts/test.sh),
 # baut die Programme fuer die Mango (mipsle) und den Raspberry Pi (arm64) mit
-# genau dieser Fassung, packt sie (gzip -9 -n) und den Skriptstand
-# (edge-light/openwrt) und haengt alles samt Pruefsummen an das Forgejo-Release:
+# genau dieser Fassung, packt sie (gzip -9 -n), den Skriptstand
+# (edge-light/openwrt) und den Paket-Anhang (edge-light/openwrt/pakete.json,
+# die OpenWrt-Pakete des Direktvermarkter-Anschlusses von ihren gepinnten
+# Quellen) und haengt alles samt Pruefsummen an das Forgejo-Release:
 #
 #   vp-edge-light-linux-mipsle, vp-edge-light-linux-arm64, die zwei .gz,
-#   edge-light-openwrt.tar.gz, sha256sums
+#   edge-light-openwrt.tar.gz, edge-light-pakete.tar.gz, sha256sums
 #
 # Den WAGO PFC200 (linux/arm) baut seine eigene Linie Edge Industrie
 # (edge-industrie-release.yaml, Tags edge-industrie-JJJJ.MM.N).
@@ -16,8 +18,9 @@ name: Edge-Light-Fassung
 # Davon lebt die Werkstatt (Paket P4 der Werkstatt-Automatik): Der
 # Werkstatt-Dienst laedt die Fassung von hier. Welche Fassung er aufspielt und
 # gegen welche Pruefsummen er prueft, sagt ihm das Portal aus dem SIGNIERTEN
-# Manifest (Programm je Architektur, dazu der Skriptstand, `--skripte`): die
-# Werkstatt nimmt immer die neueste zuweisbare Fassung (docs/werkstatt.md).
+# Manifest (Programm je Architektur, dazu der Skriptstand, `--skripte`, und
+# der Paket-Anhang, `--pakete`): die Werkstatt nimmt immer die neueste
+# zuweisbare Fassung (docs/werkstatt.md).
 #
 # SIGNIERT UND REGISTRIERT (Konzept vp-edge-light-update, K1): Danach erzeugt
 # der Lauf das Manifest (`vp-ota manifest --binary`, Box-Art light, je
@@ -158,7 +161,7 @@ jobs:
             ota_die "Keine Forgejo-Zugangsdaten zum Anhaengen (VP_OTA_FORGEJO_TOKEN oder FORGEJO_USERNAME/FORGEJO_PASSWORD)."
           base="${GITHUB_SERVER_URL:-https://git.tecmaxx.de}"
           rel="$(ota_forgejo_release_id "$base" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$auth")"
-          for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 vp-edge-light-linux-mipsle.gz vp-edge-light-linux-arm64.gz edge-light-openwrt.tar.gz sha256sums; do
+          for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 vp-edge-light-linux-mipsle.gz vp-edge-light-linux-arm64.gz edge-light-openwrt.tar.gz edge-light-pakete.tar.gz sha256sums; do
             ota_forgejo_upload "$base" "$GITHUB_REPOSITORY" "$rel" "$RUNNER_TEMP/fassung/$f" "$auth"
           done
         env:
@@ -246,6 +249,7 @@ jobs:
             --binary "vp-edge-light:linux/mipsle=${RUNNER_TEMP}/fassung/vp-edge-light-linux-mipsle" \
             --binary "vp-edge-light:linux/arm64=${RUNNER_TEMP}/fassung/vp-edge-light-linux-arm64" \
             --skripte "${RUNNER_TEMP}/fassung/edge-light-openwrt.tar.gz" \
+            --pakete "${RUNNER_TEMP}/fassung/edge-light-pakete.tar.gz" \
             --min-from-seq "${MIN_FROM}" \
             --state-schema "${STATE_SCHEMA}" \
             --key-id "${SIGNING_KEY_ID}" \
@@ -308,10 +312,12 @@ jobs:
           FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
           FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
-      # Die gepackten Programme ins Portal (offene Abruf-Route fuer die Boxen,
-      # U-4 A). Erst danach ist das Release zuweisbar: das Portal prueft jede
-      # Lieferung gegen gz_sha256/gz_size aus dem eben registrierten Manifest.
-      - name: Programme ins Portal laden
+      # Die gepackten Programme und der Paket-Anhang ins Portal (offene
+      # Abruf-Routen fuer die Boxen, U-4 A; der Anhang fuer die Pakete-Pflege
+      # der Feldboxen, Direktvermarktung Stufe 5, PS-D10). Erst danach ist das
+      # Release zuweisbar: das Portal prueft jede Lieferung gegen Pruefsumme
+      # und Groesse aus dem eben registrierten Manifest.
+      - name: Programme und Paket-Anhang ins Portal laden
         if: steps.inputs.outputs.ready == 'true'
         run: |
           set -euo pipefail
@@ -321,6 +327,8 @@ jobs:
             ota_light_upload "${PORTAL}" "$token" "${GITHUB_REF_NAME}" "linux/$arch" \
               "${RUNNER_TEMP}/fassung/vp-edge-light-linux-$arch.gz"
           done
+          ota_pakete_upload "${PORTAL}" "$token" "${GITHUB_REF_NAME}" \
+            "${RUNNER_TEMP}/fassung/edge-light-pakete.tar.gz"
         env:
           PORTAL: ${{ steps.inputs.outputs.portal }}
 

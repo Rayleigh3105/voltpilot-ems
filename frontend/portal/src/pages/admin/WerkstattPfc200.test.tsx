@@ -220,7 +220,7 @@ describe('Werkstatt, PFC200: jeder Zustand des Dienstes', () => {
     expect(schritte.querySelector('[data-schritt="netze"]')).toHaveAttribute('data-zustand', 'lauf');
     expect(schritte.querySelector('[data-schritt="sps"]')).toBeNull();
     const jetzt = screen.getByTestId('wsb-jetzt');
-    expect(jetzt).toHaveTextContent('Schritt 12 von 16');
+    expect(jetzt).toHaveTextContent('Schritt 13 von 17');
     expect(jetzt).toHaveTextContent('Netze trennen, Firewall einschalten');
     expect(jetzt).toHaveTextContent('X1 wird das Kundennetz, X2 das Anlagennetz');
     expect(jetzt.textContent).not.toMatch(/meist/);
@@ -307,7 +307,7 @@ describe('Werkstatt, PFC200: jeder Zustand des Dienstes', () => {
   it('Fertig: Schild statt Gehäuse, und wo die drei Zugänge für CODESYS stehen; kein Passwort auf der Seite', async () => {
     werkstattDienst.mockResolvedValue(ausZustand('fertig'));
     const wsb = await waehlePfc200();
-    expect(screen.getByTestId('wsb-fertig')).toHaveTextContent('Alle elf Prüfungen bestanden');
+    expect(screen.getByTestId('wsb-fertig')).toHaveTextContent('Alle zwölf Prüfungen bestanden');
     expect(screen.getByTestId('wsb-ref')).toHaveTextContent('EDGE-K7M2XQ3');
     expect(screen.getByTestId('wsb-qr')).toBeInTheDocument();
     expect(wsb).toHaveTextContent('Schild mit Referenz und QR-Code drucken');
@@ -368,7 +368,7 @@ describe('Werkstatt, PFC200: Übersicht und Seite der Box', () => {
     expect(screen.queryByTestId('ws-freigaben-pfc200')).toBeNull();
   });
 
-  it('Seite der Box: Schild statt Druckdatei, Firmware nur gelesen, zwei Netze, elf Prüfungen des PFC200, drei Zugänge verschlüsselt', async () => {
+  it('Seite der Box: Schild statt Druckdatei, Firmware nur gelesen, zwei Netze, zwölf Prüfungen des PFC200, drei Zugänge verschlüsselt', async () => {
     window.location.hash = `#/werkstatt?box=${BOX}`;
     render(<WerkstattPage />);
     const seite = await screen.findByTestId('ws-detail');
@@ -403,9 +403,9 @@ describe('Werkstatt, PFC200: Übersicht und Seite der Box', () => {
     expect(screen.queryByTestId('ws-zeile-openwrt')).toBeNull();
 
     const protokoll = screen.getByTestId('ws-abnahme-protokoll');
-    expect(within(protokoll).getByTestId('ws-belege-aufklapp')).toHaveTextContent('11 Prüfungen mit Beleg');
+    expect(within(protokoll).getByTestId('ws-belege-aufklapp')).toHaveTextContent('12 Prüfungen mit Beleg');
     const belege = within(protokoll).getByTestId('ws-belege');
-    expect(belege.querySelectorAll('li')).toHaveLength(11);
+    expect(belege.querySelectorAll('li')).toHaveLength(12);
     expect(belege).toHaveTextContent('Buchsen getrennt: X1 Kundennetz, X2 Anlagennetz, keine Weiterleitung');
     expect(belege).toHaveTextContent('Drei eigene Passwörter gesetzt (root, admin, user)');
     expect(belege.textContent).not.toMatch(/kein Beleg|Einrichtungs-WLAN|LAN der Box/);

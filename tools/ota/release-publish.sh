@@ -296,6 +296,38 @@ ota_light_upload() {
 	ota_info "Programm $arch: im Portal ($size Bytes, geprueft)."
 }
 
+# ota_pakete_upload <portal-basis> <token> <version> <datei.tar.gz>
+#
+# Laedt den Paket-Anhang edge-light-pakete.tar.gz eines Edge-Light-Release ins
+# Portal (Direktvermarktung Stufe 5, PS-D10) - dasselbe Teil-Protokoll wie
+# ota_light_upload; Pruefsumme und Groesse kennt das Portal aus dem signierten
+# Manifest (pakete).
+ota_pakete_upload() {
+	local portal="${1%/}" token="$2" version="$3" file="$4"
+	local size ab=0 res code body="" fertig="" part
+	[ -f "$file" ] || ota_die "Paket-Anhang fehlt: $file"
+	size="$(wc -c <"$file" | tr -d ' ')"
+	part="$(mktemp)"
+	while [ "$ab" -lt "$size" ]; do
+		dd if="$file" of="$part" bs="$OTA_LIGHT_TEIL" skip="$((ab / OTA_LIGHT_TEIL))" count=1 2>/dev/null ||
+			{ rm -f "$part"; ota_die "Teil ab $ab nicht lesbar: $file"; }
+		res="$(curl -sS -o - -w '\n%{http_code}' -X PUT \
+			-H "Authorization: Bearer $token" \
+			-H 'Content-Type: application/octet-stream' \
+			--data-binary "@$part" \
+			"$portal/api/v1/admin/edge-releases/$version/pakete?ab=$ab" || true)"
+		code="${res##*$'\n'}"
+		body="${res%$'\n'*}"
+		[ "$code" = "200" ] || { rm -f "$part"; ota_die "Paket-Anhang: Teil ab $ab abgelehnt (HTTP $code): $body"; }
+		fertig="$(printf '%s' "$body" | ota_json_field fertig)"
+		[ "$fertig" = "true" ] && break
+		ab=$((ab + OTA_LIGHT_TEIL))
+	done
+	rm -f "$part"
+	[ "$fertig" = "true" ] || ota_die "Paket-Anhang: nach $size Bytes nicht fertig - Pruefsumme oder Groesse passen nicht zum Manifest: $body"
+	ota_info "Paket-Anhang: im Portal ($size Bytes, geprueft)."
+}
+
 # --- Forgejo (Release-Assets) ------------------------------------------------
 
 # ota_forgejo_auth_header <token> <user> <password> - druckt den Wert fuer den
@@ -631,6 +663,8 @@ release-publish.sh - ein signiertes Edge-Release veroeffentlichen
   next-seq     <portal> <token>                   "<nextSeq> <currentSeq>"
   light-upload <portal> <token> <version> <GOOS/GOARCH> <datei.gz>
                                                   Edge-Light-Programm ins Portal (in Teilen)
+  pakete-upload <portal> <token> <version> <datei.tar.gz>
+                                                  Paket-Anhang edge-light-pakete.tar.gz ins Portal
   token        <token-url> <client-id> <secret>   client_credentials-Token
   next-release <JJJJ.MM>                          naechster freier Tag-Name (Tags auf STDIN)
   aenderungen  <tag> <ausgabe>                    Box-Aenderungen seit dem letzten Tag der Linie
@@ -718,6 +752,7 @@ ota_main() {
 	publish) ota_publish "$@" ;;
 	next-seq) ota_next_seq "$@" ;;
 	light-upload) ota_light_upload "$@" ;;
+	pakete-upload) ota_pakete_upload "$@" ;;
 	token) ota_token "$@" ;;
 	state-schema) ota_state_schema "$@" ;;
 	next-release) ota_next_release "$@" ;;

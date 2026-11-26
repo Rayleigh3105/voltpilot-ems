@@ -386,12 +386,13 @@ public class WerkstattService {
         }
         List<String> leer = liste.stream()
                 .filter(p -> belege.get(p) == null || belege.get(p).isBlank()).toList();
-        // Übergangsfrist (Entscheid des Kapitäns vom 15.11.2026 zu PR #1885): ein Dienst vor
-        // Einrichtungs-WLAN liefert alle Belege außer einrichtung_wlan_bereit; bis zur Frist
-        // geht die Abnahme trotzdem durch (dienstFassungVorEinrichtungWlan kennzeichnet sie).
-        // Nur für die Mango: Die Liste des PFC200 kennt die Prüfung nicht.
-        boolean uebergang = WerkstattRegel.MANGO.equals(geraet)
-                && WerkstattPruefungen.uebergangGilt(leer, fernwartung.jetzt());
+        // Übergangsfristen (Muster des Entscheids vom 15.11.2026 zu PR #1885): ein Dienst vor
+        // Einrichtungs-WLAN bzw. vor der Direktvermarktung (Stufe 5) liefert alle Belege außer
+        // den jüngsten; bis zur jeweiligen Frist geht die Abnahme trotzdem durch (die
+        // Kennzeichnung je Prüfung rechnet das Portal aus pruefungen und belege aus). Welche
+        // Prüfungen das Gerät kennt, bestimmt die Liste oben - einrichtung_wlan_bereit gibt es
+        // nur an der Mango, direktvermarktung_bereit an beiden.
+        boolean uebergang = WerkstattPruefungen.uebergangGiltFuer(leer, fernwartung.jetzt());
         if (!leer.isEmpty() && !uebergang) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Abnahme braucht für jede Prüfung der Werkstatt-Regel einen Beleg. Es fehlt: "

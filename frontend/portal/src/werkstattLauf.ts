@@ -59,6 +59,10 @@ export const SCHRITT_TEXT: Record<string, { titel: string; tut: string }> = {
     titel: 'Einrichtungs-WLAN vorbereiten',
     tut: 'Setzt das Funkmodul auf Land DE und bringt das Paket relayd mit, solange die Werkstatt noch Internet gibt.',
   },
+  direktvermarktung: {
+    titel: 'Direktvermarktung-bereit prüfen',
+    tut: 'Prüft, dass die OpenVPN-Pakete aus dem geprüften Release-Anhang installiert sind und nichts läuft: kein Tunnel, keine Zone, keine Konfiguration von früher.',
+  },
   tunnel_schluessel: { titel: 'Tunnel-Schlüssel erzeugen', tut: 'Die Box erzeugt ihren Schlüssel für den Wartungstunnel.' },
   einloesen: { titel: 'Bei VoltPilot anmelden (Einmal-Code)', tut: 'Die Box löst einen Einmal-Code ein; das Portal hält ihren Geräteschlüssel fest.' },
   tunnel_adresse: { titel: 'Tunnel-Adresse aus dem Portal', tut: 'Wartet auf die Tunnel-Adresse aus dem Portal.' },

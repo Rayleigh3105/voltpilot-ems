@@ -124,6 +124,37 @@ EOF
   -o "$TMP/vp-edge-light-linux-amd64" ./cmd/vp-edge-light)
 # Skriptstand genau wie der Release-Anhang edge-light-openwrt.tar.gz (P4)
 python3 "$REPO/edge-light/scripts/skripte-paket.py" "$TMP/edge-light-openwrt.tar.gz" >/dev/null
+# Paket-Anhang (Direktvermarktung Stufe 5, PS-D10): ECHTE x86_64-Pakete aus dem
+# OpenWrt-Feed, einmal per Docker geholt (nie die Box), dann gepinnt und
+# deterministisch gepackt wie der Release-Lauf (pakete-paket.py mit eigener
+# Pin-Datei fuer diese Architektur). install.sh installiert spaeter auf der Box
+# offline daraus (apk add --no-network), nach Pruefsumme aus dem Manifest.
+PAKQ="$TMP/pakete-quelle"
+mkdir -p "$PAKQ"
+docker rm -f "$P-pakete" >/dev/null 2>&1 || true
+docker create --name "$P-pakete" openwrt/rootfs:x86-64-25.12.5 sh -c \
+  'mkdir -p /var/lock /aus && apk update >/dev/null 2>&1 && cd /aus && apk fetch --recursive openvpn-mbedtls kmod-tun >/dev/null && apk --print-arch > /aus/ARCH' >/dev/null
+docker start -a "$P-pakete" >/dev/null 2>&1
+docker cp "$P-pakete:/aus/." "$PAKQ" >/dev/null
+docker rm "$P-pakete" >/dev/null
+PAK_ARCH=$(cat "$PAKQ/ARCH")
+rm -f "$PAKQ/ARCH"
+python3 - "$PAKQ" "$PAK_ARCH" >"$TMP/pakete-pins.json" <<'PYEOF'
+import hashlib, json, os, sys
+q, arch = sys.argv[1], sys.argv[2]
+pins = []
+for n in sorted(os.listdir(q)):
+    if not n.endswith(".apk"):
+        continue
+    with open(os.path.join(q, n), "rb") as f:
+        daten = f.read()
+    pins.append({"datei": n, "sha256": hashlib.sha256(daten).hexdigest(),
+                 "groesse": len(daten), "quelle": "https://probe.invalid/" + n})
+print(json.dumps({"openwrt": "25.12.5", "arch": arch, "pakete": pins}))
+PYEOF
+VP_PAKETE_QUELLE_DIR="$PAKQ" python3 "$REPO/edge-light/scripts/pakete-paket.py" \
+  "$TMP/edge-light-pakete.tar.gz" "$TMP/pakete-pins.json" >/dev/null
+PAK_SHA=$(shasum -a 256 "$TMP/edge-light-pakete.tar.gz" | cut -d' ' -f1)
 PROG_SHA=$(shasum -a 256 "$TMP/vp-edge-light-linux-amd64" | cut -d' ' -f1)
 SKR_SHA=$(shasum -a 256 "$TMP/edge-light-openwrt.tar.gz" | cut -d' ' -f1)
 # In die Ablage nach Prüfsumme: der Dienst lädt dann nichts aus dem Netz.
@@ -133,7 +164,8 @@ SKR_SHA=$(shasum -a 256 "$TMP/edge-light-openwrt.tar.gz" | cut -d' ' -f1)
 gzip -9 -n -c "$TMP/vp-edge-light-linux-amd64" >"$TMP/vp-edge-light-linux-amd64.gz"
 mkdir -p "$TMP/fassungen/manifest"
 (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota manifest --release "$FASSUNG" --seq 77 --commit 3bf8c038a1b2 \
-  --binary "vp-edge-light:linux/amd64=$TMP/vp-edge-light-linux-amd64" --state-schema 1 --key-id rel-2026-a \
+  --binary "vp-edge-light:linux/amd64=$TMP/vp-edge-light-linux-amd64" \
+  --pakete "$TMP/edge-light-pakete.tar.gz" --state-schema 1 --key-id rel-2026-a \
   --out "$TMP/fassungen/manifest/$FASSUNG.json") >/dev/null
 (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota trust-set --key "$TMP/schluessel/rel-2026-a.pub" \
   --out "$TMP/fassungen/trust-set.json") >/dev/null
@@ -152,7 +184,8 @@ if [ "$FERNLAUF" = 1 ]; then
       -ldflags "-s -w -X git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/agent.Version=$3" -o "$4" ./cmd/vp-edge-light)
     gzip -9 -n -c "$4" >"$4.gz"
     (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota manifest --release "$1" --seq "$2" --commit 3bf8c038a1b2 \
-      --binary "vp-edge-light:linux/amd64=$4" --skripte "$TMP/edge-light-openwrt.tar.gz" --state-schema 1 --key-id rel-2026-a \
+      --binary "vp-edge-light:linux/amd64=$4" --skripte "$TMP/edge-light-openwrt.tar.gz" \
+      --pakete "$TMP/edge-light-pakete.tar.gz" --state-schema 1 --key-id rel-2026-a \
       --out "$TMP/fassungen/manifest/$1.json") >/dev/null
     (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota sign --key "$TMP/schluessel/rel-2026-a.key" \
       --domain release --in "$TMP/fassungen/manifest/$1.json") >/dev/null
@@ -168,6 +201,7 @@ fi
 rm -f "$TMP/vp-edge-light-linux-amd64.gz"
 mv "$TMP/vp-edge-light-linux-amd64" "$TMP/fassungen/$PROG_SHA"
 mv "$TMP/edge-light-openwrt.tar.gz" "$TMP/fassungen/$SKR_SHA"
+mv "$TMP/edge-light-pakete.tar.gz" "$TMP/fassungen/$PAK_SHA"
 
 echo "== Wegwerf-Schlüssel"
 for k in werkbank-status werkbank-weiterleitung werkbank-pflege werkbank-einrichten; do
@@ -458,6 +492,11 @@ case "$(beleg programm update_bereit)" in ja) ok "update-bereit: Vertrauens-Set 
 # kein_funkmodul ist hier richtig: dieses x86-64-Abbild hat kein Funkmodul (PS-14, nur an der echten Mango DE gemessen)
 case "$(beleg einrichtung_wlan land)" in DE | kein_funkmodul) ok "Werkstatt (S1): Land $(beleg einrichtung_wlan land) (kein Funkmodul in dieser Probe, PS-14)" ;; *) nein "einrichtung_wlan land: $(beleg einrichtung_wlan land)" ;; esac
 case "$(beleg einrichtung_wlan relayd)" in da) ok "Werkstatt (S1): Paket relayd auf der Box" ;; *) nein "einrichtung_wlan relayd: $(beleg einrichtung_wlan relayd)" ;; esac
+# Direktvermarktung Stufe 5 (PS-D10 in der Werkstatt): echte Pakete, offline
+# installiert aus dem Anhang, dessen Pruefsumme im signierten Manifest steht.
+case "$(beleg direktvermarktung ergebnis)" in "bereit (ohne Profil, Tunnel aus)") ok "Direktvermarktung-bereit (Stufe 5): $(beleg direktvermarktung paket), Verwalter ohne Profil, Tunnel aus" ;; *) nein "direktvermarktung: $(beleg direktvermarktung ergebnis)" ;; esac
+x box sh -c 'command -v openvpn >/dev/null' && ok "openvpn auf der Box - nur aus dem geprueften Anhang (apk add --no-network)" || nein "openvpn fehlt auf der Box"
+case "$(beleg programm install)" in *"Pakete installiert (Pruefsumme auf dem Geraet bestaetigt, apk ohne Netz)"*) ok "install.sh: Paket-Anhang auf der Box gegen das Manifest bestaetigt" ;; *) nein "install (pakete): $(beleg programm install)" ;; esac
 case "$(beleg fassungen manifest)" in *"Stand 77"*) ok "Manifest der Fassung aus dem Zwischenspeicher: $(beleg fassungen manifest)" ;; *) nein "manifest: $(beleg fassungen manifest)" ;; esac
 x box sh -c '[ -s /etc/vp-edge-light/ota/trust-set.json ] && [ ! -L /etc/vp-edge-light/ota ] && grep -q "\"release_seq\":77" /etc/vp-edge-light/ota/current.json' &&
   ok "auf der Box: Vertrauens-Set und Stand im Flash" || nein "Vertrauens-Set/Stand auf der Box"
@@ -479,9 +518,9 @@ if [ "$API" = 1 ]; then
   [ -n "$(beleg probe box_log_ende)" ] && ok "Box-Log nennt das Ende: $(beleg probe box_log_ende | cut -c1-60)" || nein "Box-Log ohne Ende"
   x server grep -q "fenster geschlossen" /srv/portal.log && ok "Probe-Fenster der Einlösung vom Dienst geschlossen" || nein "Fenster nicht geschlossen"
   docker cp "$P-server:/srv/abnahme.json" "$TMP/abnahme.json" 2>/dev/null || echo '{}' >"$TMP/abnahme.json"
-  [ "$(jq '.belege | length' "$TMP/abnahme.json")" = 10 ] && jq -e '.passwortAge | startswith("-----BEGIN AGE ENCRYPTED FILE-----")' "$TMP/abnahme.json" >/dev/null &&
+  [ "$(jq '.belege | length' "$TMP/abnahme.json")" = 11 ] && jq -e '.passwortAge | startswith("-----BEGIN AGE ENCRYPTED FILE-----")' "$TMP/abnahme.json" >/dev/null &&
     jq -e --arg fp "$FP_T" '.belege.anmeldeprobe | contains($fp)' "$TMP/abnahme.json" >/dev/null &&
-    ok "Abnahme an die API: zehn Belege, Passwort nur mit age, Anmeldeprobe des Dienstes" || nein "Abnahme: $(cat "$TMP/abnahme.json")"
+    ok "Abnahme an die API: elf Belege, Passwort nur mit age, Anmeldeprobe des Dienstes" || nein "Abnahme: $(cat "$TMP/abnahme.json")"
   if docker logs "$P-dienst" 2>&1 | grep -qE 'wk-[a-z2-7]{26}' || grep -qE 'wk-[a-z2-7]{26}' "$TMP/protokoll.json"; then nein "Einmal-Code im Log oder Protokoll des Dienstes"; else ok "Einmal-Code in keinem Log und keinem Beleg"; fi
 fi
 

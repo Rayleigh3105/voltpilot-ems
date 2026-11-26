@@ -128,6 +128,12 @@ class WerkstattFreigabeApiTest {
         // Eine Fassung ohne Skriptstand im Manifest nimmt die Werkstatt nicht.
         WerkstattTestFassung.anlegen(adminJdbc, "edge-light-2026.11.0", SEQ, false, true);
         assertThat(message(send(HttpMethod.GET, DIENST, dienst, null))).contains("Skriptstand");
+        // Eine Fassung ohne Paket-Anhang (vor Stufe 5 der Direktvermarktung) ebenso: OpenVPN
+        // käme sonst nur aus dem Internet auf die Box.
+        WerkstattTestFassung.anlegen(adminJdbc, "edge-light-2026.11.6", SEQ + 6, true, true, false);
+        assertThat(message(send(HttpMethod.GET, DIENST, dienst, null))).contains("Paket-Anhang");
+        adminJdbc.update("DELETE FROM edge_light_programm WHERE release_seq = ?", SEQ + 6);
+        adminJdbc.update("DELETE FROM edge_release WHERE release_seq = ?", SEQ + 6);
         // Die neueste ist noch nicht zuweisbar (Programme fehlen im Portal): Sie wartet, nimmt nicht die vorige.
         WerkstattTestFassung.anlegen(adminJdbc, "edge-light-2026.11.1", SEQ + 1, true, false);
         ResponseEntity<String> wartet = send(HttpMethod.GET, DIENST, dienst, null);

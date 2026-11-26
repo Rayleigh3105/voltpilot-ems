@@ -708,6 +708,11 @@ type Agent struct {
 	ota otaState
 	// otaLight ist der Stand eines Edge-Light-Updates (ota_light.go).
 	otaLight otaLightState
+
+	// Pakete-Pflege (Edge Light, Direktvermarktung Stufe 5, PS-D10): die
+	// OpenWrt-Pakete des Direktvermarkter-Anschlusses aus dem geprueften
+	// Release-Anhang (pakete_pflege.go).
+	paketePflege paketePflegeState
 	// loaderPflege haelt den Loader-Stand im Flash fuer den Herzschlag und
 	// erneuert Loader und Dienst-Init aus den eingebetteten Kopien
 	// (loader_pflege.go, nur Edge Light).

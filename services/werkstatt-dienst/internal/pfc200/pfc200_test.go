@@ -77,6 +77,8 @@ type aufbau struct {
 	log    *bytes.Buffer
 	// ohneManifest: das Release trägt kein release.json.
 	ohneManifest bool
+	// skripteOhneVermarkter: ein Skriptstand vor Stufe 5 (ohne vp-vermarkter).
+	skripteOhneVermarkter bool
 	// manifestStatt ersetzt das Manifest des Release (mit seiner Signatur).
 	manifestStatt, signaturStatt                 []byte
 	manifestOhneTunnel, signaturOhneTunnel       []byte
@@ -85,9 +87,12 @@ type aufbau struct {
 
 func summe(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
-func neu(t *testing.T) *aufbau {
+func neu(t *testing.T, einstellungen ...func(*aufbau)) *aufbau {
 	t.Helper()
 	a := &aufbau{log: &bytes.Buffer{}}
+	for _, e := range einstellungen {
+		e(a)
+	}
 	log := logs.Neu(a.log, "json", nil)
 	imager := attrappe.Schluessel(t)
 	a.b = attrappe.NeueBruecke(t, imager.PublicKey())
@@ -115,6 +120,9 @@ func neu(t *testing.T) *aufbau {
 	programm := []byte("\x7fELF vp-edge-industrie attrappe")
 	tunnel := []byte("\x7fELF vp-wartung attrappe")
 	skripte := attrappe.SkripteTarGzPFC200(t)
+	if a.skripteOhneVermarkter {
+		skripte = attrappe.SkripteTarGzPFC200OhneVermarkter(t)
+	}
 	grundprogramm := attrappe.GrundprogrammTarGzPFC200(t)
 	manifest := attrappe.ManifestPFC200MitGrundprogramm(fassung, 77, summe(programm), "industrie", summe(skripte), summe(tunnel), summe(grundprogramm))
 	wurzel := attrappe.NeueSignierteWurzel(t)
@@ -283,10 +291,19 @@ func TestLaufAbWerk(t *testing.T) {
 		t.Fatalf("Zustand %s im Schritt %s: %s\nBeleg: %v\nAufrufe:\n%s", z, l.Stand().Schritt, l.Stand().Grund, a.belege(t, l)[l.Stand().Schritt], strings.Join(a.p.Aufrufe(), "\n"))
 	}
 	b := a.belege(t, l)
-	for _, s := range []string{"erkennen", "docker", "fassungen", "internet", "zugaenge", "notfall", "programm", "tunnel_schluessel", "tunnel_adresse", "tunnel", "netze", "neustart", "probe", "internet_weg", "uebergabe"} {
+	for _, s := range []string{"erkennen", "docker", "fassungen", "internet", "zugaenge", "notfall", "programm", "direktvermarktung", "tunnel_schluessel", "tunnel_adresse", "tunnel", "netze", "neustart", "probe", "internet_weg", "uebergabe"} {
 		if b[s].Leer() {
 			t.Errorf("Schritt %s ohne Beleg", s)
 		}
+	}
+	// Direktvermarktung-bereit (Stufe 5): Firmware-OpenVPN und Helfer da, nichts läuft.
+	if e := wert(t, b["direktvermarktung"], "ergebnis"); e != "bereit (ohne Zustellung, Tunnel aus)" ||
+		wert(t, b["direktvermarktung"], "openvpn_fassung") != "OpenVPN 2.5.7" ||
+		wert(t, b["direktvermarktung"], "zugang") != "fehlt" {
+		t.Fatalf("Direktvermarktung %v", b["direktvermarktung"])
+	}
+	if p := wert(t, b["uebergabe"], "pruefung_direktvermarktung_bereit"); !strings.Contains(p, "OpenVPN 2.5.7") {
+		t.Fatalf("Übergabe: Prüfung direktvermarktung_bereit %q", p)
 	}
 	// Kein Schritt und keine Prüfung für SPS oder Firmware.
 	for _, s := range l.Stand().Erledigt {
@@ -486,6 +503,28 @@ const antwortEinloesung = `{"schema":"vp-werkstatt-einloesung.v1","edgeRef":"edg
 // Mit API: Die Box löst den Code selbst ein, der Dienst macht die Probe durch
 // den Tunnel und schreibt die Abnahme mit Gerät, Angaben und den drei
 // verschlüsselten Passwörtern.
+// Ein Skriptstand vor Stufe 5 (ohne vp-vermarkter): die Prüfung wird mit
+// Grund übersprungen, am Gerät ändert sich nichts, der Lauf geht durch.
+func TestDirektvermarktungUebersprungenOhneHelferImSkriptstand(t *testing.T) {
+	t.Parallel()
+	a := neu(t, func(a *aufbau) { a.skripteOhneVermarkter = true })
+	l, z := a.fahre(t, pfc200.AbWerk)
+	if z != lauf.Fertig {
+		t.Fatalf("Zustand %s im Schritt %s: %s\n%s", z, l.Stand().Schritt, l.Stand().Grund, a.log.String())
+	}
+	b := a.belege(t, l)
+	if e := wert(t, b["direktvermarktung"], "ergebnis"); !strings.Contains(e, "übersprungen") ||
+		!strings.Contains(e, "vp-vermarkter") {
+		t.Fatalf("Direktvermarktung %v", b["direktvermarktung"])
+	}
+	if p := wert(t, b["uebergabe"], "pruefung_direktvermarktung_bereit"); !strings.Contains(p, "übersprungen") {
+		t.Fatalf("Übergabe: Prüfung direktvermarktung_bereit %q", p)
+	}
+	if a.p.Datei("/etc/init.d/vp-vermarkter") != "" {
+		t.Fatal("ohne Helfer im Skriptstand darf keiner auf dem Gerät liegen")
+	}
+}
+
 func TestLaufMitApiUndProbeUeberDenTunnel(t *testing.T) {
 	t.Parallel()
 	a := neu(t)

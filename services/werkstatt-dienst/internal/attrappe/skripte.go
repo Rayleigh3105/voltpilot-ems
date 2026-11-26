@@ -6,7 +6,9 @@ import (
 	"compress/gzip"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -35,6 +37,14 @@ if [ -n "${VP_LIGHT_MANIFEST:-}" ]; then
 fi
 ssh -i /dev/null "$ziel" 'vp-attrappe install' < "$bin"
 echo "    0.1 MB gepackt, Pruefsumme auf dem Geraet bestaetigt"
+# Wie das echte install.sh (Stufe 5): der Paket-Anhang nur mit Manifest und
+# nur, wenn das Manifest ihn nennt.
+if [ -n "${VP_PAKETE:-}" ]; then
+  [ -r "$VP_PAKETE" ] || { echo "FEHLER: VP_PAKETE nicht lesbar" >&2; exit 1; }
+  [ -n "${VP_LIGHT_MANIFEST:-}" ] && grep -q '"pakete"' "$VP_LIGHT_MANIFEST" || { echo "FEHLER: das Manifest nennt keinen Paket-Anhang" >&2; exit 1; }
+  ssh -i /dev/null "$ziel" 'vp-attrappe pakete' < "$VP_PAKETE"
+  echo "    Pakete installiert (Pruefsumme auf dem Geraet bestaetigt, apk ohne Netz)"
+fi
 `
 
 const tunnelSh = `#!/bin/sh
@@ -79,6 +89,22 @@ func SkripteTarGz(t testing.TB) []byte {
 // zusaetzlich echt kryptographisch ([fassungen.Ablage.PruefeSignatur]) und
 // braucht dafuer [NeueSignierteWurzel].
 func Manifest(fassung string, seq int64, programmSha string) (manifest, signatur []byte) {
+	return manifestMit(fassung, seq, programmSha, "")
+}
+
+// ManifestMitPakete ist [Manifest] mit dem Paket-Anhang der Direktvermarktung
+// (Stufe 5): pakete.sha256 ist die Pruefsumme von edge-light-pakete.tar.gz,
+// size ihre Groesse in Bytes.
+func ManifestMitPakete(fassung string, seq int64, programmSha, paketeSha string, paketeGroesse int) (manifest, signatur []byte) {
+	return manifestMit(fassung, seq, programmSha, `,
+  "pakete": {
+    "name": "edge-light-pakete.tar.gz",
+    "sha256": "`+paketeSha+`",
+    "size": `+strconv.Itoa(paketeGroesse)+`
+  }`)
+}
+
+func manifestMit(fassung string, seq int64, programmSha, zusatz string) (manifest, signatur []byte) {
 	manifest = []byte(`{
   "schema_version": "1.0",
   "release": "` + fassung + `",
@@ -103,11 +129,35 @@ func Manifest(fassung string, seq int64, programmSha string) (manifest, signatur
       "light"
     ]
   },
-  "signing_key_id": "rel-2026-a"
+  "signing_key_id": "rel-2026-a"` + zusatz + `
 }
 `)
 	signatur = []byte(`{"schema_version":"1.0","alg":"ed25519","key_id":"rel-2026-a","domain":"release","signature":"AAAA"}` + "\n")
 	return manifest, signatur
+}
+
+// PaketeTarGz baut einen Paket-Anhang wie edge-light-pakete.tar.gz
+// (pakete-paket.py): INHALT plus eine kleine Attrappen-Paketdatei.
+func PaketeTarGz(t testing.TB) []byte {
+	t.Helper()
+	apk := []byte("attrappe openvpn-mbedtls")
+	sum := sha256.Sum256(apk)
+	inhalt := "openwrt 25.12.5\narch mipsel_24kc\n" + hex.EncodeToString(sum[:]) + "  openvpn-mbedtls-2.7.8-r1.apk\n"
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, f := range []struct {
+		name   string
+		inhalt []byte
+	}{{"pakete/INHALT", []byte(inhalt)}, {"pakete/openvpn-mbedtls-2.7.8-r1.apk", apk}} {
+		if err := tw.WriteHeader(&tar.Header{Name: f.name, Mode: 0o644, Size: int64(len(f.inhalt)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		_, _ = tw.Write(f.inhalt)
+	}
+	_ = tw.Close()
+	_ = gz.Close()
+	return buf.Bytes()
 }
 
 // SignierteWurzel ist eine Wegwerf-Vertrauenskette fuer Tests: eigene Root-

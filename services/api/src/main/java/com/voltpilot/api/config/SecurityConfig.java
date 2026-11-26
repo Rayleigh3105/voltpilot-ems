@@ -128,6 +128,10 @@ public class SecurityConfig {
                 // auf ihr (Manifest gegen die eingebackene Wurzel, Bytes gegen
                 // gz_sha256 aus diesem Manifest). Genau EIN Pfadsegment.
                 .requestMatchers(HttpMethod.GET, "/api/v1/edge/light-programm/*").permitAll()
+                // Der Paket-Anhang (Direktvermarktung Stufe 5): offen wie die
+                // Programme - die Echtheit entsteht auf der Box, die den
+                // Download gegen die Pruefsumme aus ihrem signierten Manifest haelt.
+                .requestMatchers(HttpMethod.GET, "/api/v1/edge/light-pakete/*").permitAll()
                 // Alerting Scheibe 0 (§6.6): der Bestätigungslink aus der E-Mail
                 // hat keine Anmeldung - die Person hat zu diesem Zeitpunkt noch
                 // keinen bestätigten Zustellweg; der einmalige, ablaufende Token

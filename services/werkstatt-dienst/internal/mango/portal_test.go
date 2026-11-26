@@ -86,7 +86,7 @@ func TestLaufMitPortal(t *testing.T) {
 	if z != lauf.Fertig {
 		t.Fatalf("Zustand %s: %+v\n%s", z, l.Stand(), a.log.String())
 	}
-	want := "erkennen fassungen openwrt wiedererkennen internet passwort notfall programm einrichtung_wlan tunnel_schluessel einloesen tunnel lan neustart probe internet_weg uebergabe"
+	want := "erkennen fassungen openwrt wiedererkennen internet passwort notfall programm einrichtung_wlan direktvermarktung tunnel_schluessel einloesen tunnel lan neustart probe internet_weg uebergabe"
 	if got := strings.Join(l.Stand().Erledigt, " "); got != want {
 		t.Fatalf("Schritte %s", got)
 	}

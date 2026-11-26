@@ -169,6 +169,10 @@ export const PRUEFUNGEN = [
     text: 'Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Light',
   },
   { id: 'einrichtung_wlan_bereit', text: 'Einrichtungs-WLAN bereit: Funkmodul auf Land DE, Paket relayd auf der Box' },
+  {
+    id: 'direktvermarktung_bereit',
+    text: 'Direktvermarktung-bereit: OpenVPN-Pakete aus dem geprüften Release-Anhang installiert (mit Version), Startskript vp-vermarkter eingerichtet, der Verwalter im Programm meldet den Anschluss (ohne Profil), Tunnel aus, keine Zone und keine Konfiguration von früher; oder, trägt die Fassung keinen Paket-Anhang (vor Stufe 5), übersprungen',
+  },
 ] as const;
 
 export type PruefungId = (typeof PRUEFUNGEN)[number]['id'];
@@ -190,6 +194,10 @@ export const PRUEFUNGEN_PFC200 = [
   { id: 'neustart', text: 'Neustart-Probe: Tunnel wieder oben, dieselbe Referenz, derselbe Host-Schlüssel, Schalter auf RUN' },
   { id: 'update_bereit', text: 'Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Industrie' },
   { id: 'grundprogramm', text: 'Grundprogramm eingespielt (Prüfsumme gegen das signierte Manifest bestätigt, CODESYS-Laufzeit läuft, ihr Modbus-Server lauscht auf Port 503) oder, trägt die Fassung keines, übersprungen' },
+  {
+    id: 'direktvermarktung_bereit',
+    text: 'Direktvermarktung-bereit: Firmware-OpenVPN vorhanden (mit Version), Helfer vp-vermarkter eingerichtet und startet mit dem Gerät, sein Stand ohne Zustellung: kein Zugang, Tunnel aus, keine Umleitung; oder, fehlt der Helfer im Skriptstand der Fassung (vor Stufe 5), übersprungen',
+  },
 ] as const;
 
 /** Die Prüfliste eines Geräts der Werkstatt (`pfc200`; sonst die Mango). */

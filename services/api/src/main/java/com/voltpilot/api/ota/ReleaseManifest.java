@@ -100,6 +100,8 @@ public final class ReleaseManifest {
     public static final String SKRIPTE_DATEI = "edge-light-openwrt.tar.gz";
     /** Der Name des Skriptstands am Edge-Industrie-Release (Go: {@code otaverify.IndustrieSkripteDatei}). */
     public static final String INDUSTRIE_SKRIPTE_DATEI = "edge-industrie-skripte.tar.gz";
+    /** Der Name des Paket-Anhangs am Edge-Light-Release (Go: {@code otaverify.PaketeDatei}). */
+    public static final String PAKETE_DATEI = "edge-light-pakete.tar.gz";
     /** Der Name des Tunnel-Programms am Edge-Industrie-Release (Go: {@code otaverify.WartungDatei}). */
     public static final String WARTUNG_DATEI = "vp-wartung-linux-arm";
     /** Der Name der Bootapplikation am Edge-Industrie-Release (Go: {@code otaverify.GrundprogrammDatei}). */
@@ -113,6 +115,17 @@ public final class ReleaseManifest {
      * signiert ist.
      */
     public record Skripte(String name, String sha256, long size) {
+    }
+
+    /**
+     * Der Paket-Anhang eines Edge-Light-Release ({@code pakete}, additiv, nur
+     * Edge Light und dort optional): die OpenWrt-Pakete des
+     * Direktvermarkter-Anschlusses (OpenVPN samt Abhängigkeiten). Anders als
+     * {@link #skripte} wendet die BOX ihn an: Werkstatt (install.sh) und
+     * Feld-Update installieren nur aus der Datei, deren Prüfsumme hier
+     * signiert steht - nie aus dem Internet auf der Box.
+     */
+    public record Pakete(String name, String sha256, long size) {
     }
 
     /**
@@ -159,11 +172,12 @@ public final class ReleaseManifest {
     private final List<Artifact> artifacts;
     private final List<Program> programs;
     private final Skripte skripte;
+    private final Pakete pakete;
     private final Wartung wartung;
     private final Grundprogramm grundprogramm;
 
     private ReleaseManifest(String release, long releaseSeq, List<String> backends,
-            List<Artifact> artifacts, List<Program> programs, Skripte skripte, Wartung wartung,
+            List<Artifact> artifacts, List<Program> programs, Skripte skripte, Pakete pakete, Wartung wartung,
             Grundprogramm grundprogramm) {
         this.release = release;
         this.releaseSeq = releaseSeq;
@@ -171,6 +185,7 @@ public final class ReleaseManifest {
         this.artifacts = List.copyOf(artifacts);
         this.programs = List.copyOf(programs);
         this.skripte = skripte;
+        this.pakete = pakete;
         this.wartung = wartung;
         this.grundprogramm = grundprogramm;
     }
@@ -182,6 +197,14 @@ public final class ReleaseManifest {
      */
     public Optional<Skripte> skripte() {
         return Optional.ofNullable(skripte);
+    }
+
+    /**
+     * Der Paket-Anhang, wenn das Manifest einen gültigen trägt (nur Edge Light,
+     * dort optional). Tolerant wie {@link #skripte}.
+     */
+    public Optional<Pakete> pakete() {
+        return Optional.ofNullable(pakete);
     }
 
     /**
@@ -340,10 +363,12 @@ public final class ReleaseManifest {
         List<Artifact> artifacts = readArtifacts(m.get("artifacts"), programs);
         List<String> backends = readBackends(m.get("compat"));
         Skripte skripte = readSkripte(m.get("skripte"), skripteDateiFuer(release));
+        Pakete pakete = release.startsWith(LIGHT_RELEASE_PREFIX) ? readPakete(m.get("pakete")) : null;
         Wartung wartung = release.startsWith(INDUSTRIE_RELEASE_PREFIX) ? readWartung(m.get("wartung")) : null;
         Grundprogramm grundprogramm = release.startsWith(INDUSTRIE_RELEASE_PREFIX)
                 ? readGrundprogramm(m.get("grundprogramm")) : null;
-        return new ReleaseManifest(release, seq, backends, artifacts, programs, skripte, wartung, grundprogramm);
+        return new ReleaseManifest(release, seq, backends, artifacts, programs, skripte, pakete, wartung,
+                grundprogramm);
     }
 
     /**
@@ -361,6 +386,20 @@ public final class ReleaseManifest {
             return null;
         }
         return new Skripte(name, sha, size);
+    }
+
+    /** {@code pakete}, wenn vollständig und gültig; sonst {@code null} (siehe {@link #pakete}). */
+    private static Pakete readPakete(JsonNode n) {
+        if (n == null || !n.isObject()) {
+            return null;
+        }
+        String name = n.path("name").asText("");
+        String sha = n.path("sha256").asText("");
+        long size = n.path("size").canConvertToLong() ? n.path("size").asLong() : 0;
+        if (!PAKETE_DATEI.equals(name) || !SHA256.matcher(sha).matches() || size <= 0) {
+            return null;
+        }
+        return new Pakete(name, sha, size);
     }
 
     /** {@code wartung}, wenn vollständig und gültig; sonst {@code null} (siehe {@link #wartung}). */
@@ -442,6 +481,17 @@ public final class ReleaseManifest {
             }
             if (m.skripte == null) {
                 throw new InvalidManifestException("skripte: name " + skripteDateiFuer(m.release)
+                        + ", sha256 aus 64 Zeichen 0-9a-f und size groesser als 0");
+            }
+        }
+        JsonNode pakete = root.get("pakete");
+        if (pakete != null && !pakete.isNull()) {
+            if (!light) {
+                throw new InvalidManifestException("pakete: den Paket-Anhang traegt nur ein "
+                        + "Edge-Light-Release (edge-light-JJJJ.MM.N)");
+            }
+            if (m.pakete == null) {
+                throw new InvalidManifestException("pakete: name " + PAKETE_DATEI
                         + ", sha256 aus 64 Zeichen 0-9a-f und size groesser als 0");
             }
         }

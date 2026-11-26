@@ -323,8 +323,26 @@ func (l *Lauf) manifestHolen(ctx context.Context, b protokoll.Beleg) (protokoll.
 		return b, err
 	}
 	l.pfadManifest, l.stand = pfad, &st
-	return b.Mit("manifest", fmt.Sprintf("signiert (%s), Stand %d, Datenformat %d", st.SigniertVon, st.ReleaseSeq,
-		st.StateSchema)), nil
+	b = b.Mit("manifest", fmt.Sprintf("signiert (%s), Stand %d, Datenformat %d", st.SigniertVon, st.ReleaseSeq,
+		st.StateSchema))
+	// Der Paket-Anhang der Direktvermarktung (Stufe 5, PS-D10): seine
+	// Pruefsumme kommt allein aus dem eben geprueften Manifest, nicht aus der
+	// Freigabe. Eine Fassung ohne Anhang (vor Stufe 5) laedt nichts; der
+	// Schritt direktvermarktung haelt das spaeter fest.
+	if st.PaketeSha256 != "" {
+		erg, err := l.k.Fassungen.Hole(ctx, fassungen.Pakete(l.freigabe.EdgeLight.Quelle, st.PaketeSha256))
+		if err != nil {
+			return b, err
+		}
+		herkunft := "aus dem Zwischenspeicher"
+		if erg.Geladen {
+			herkunft = "geladen von der Quelle der Fassung"
+		}
+		l.pfadPakete = erg.Pfad
+		b = b.Mit(fassungen.PaketeDatei, fmt.Sprintf("sha256 %s, %d Bytes, %s (Pruefsumme aus dem signierten Manifest)",
+			st.PaketeSha256, erg.Groesse, herkunft))
+	}
+	return b, nil
 }
 
 // ---- P3: OpenWrt aufspielen ---------------------------------------------------------
@@ -655,13 +673,19 @@ func UpdateBereit(h Health, st *fassungen.Stand) string { return updateBereit(h,
 // InstallUmgebung ist die Umgebung für install.sh aus dem Skriptstand: Bauart,
 // das signierte Manifest genau dieser Fassung (leer: ohne) und, mit Portal, das
 // Vertrauens-Set aus dem Verzeichnis des Laufs.
-func InstallUmgebung(bauart, manifest, vertrauensSet, portalURL string) []string {
+func InstallUmgebung(bauart, manifest, vertrauensSet, portalURL, pakete string) []string {
 	env := []string{"VP_LIGHT_ARCH=" + bauart}
 	if manifest != "" {
 		env = append(env, "VP_LIGHT_MANIFEST="+manifest)
 	}
 	if vertrauensSet != "" {
 		env = append(env, "VP_TRUST_SET_DIR="+vertrauensSet, "VP_PORTAL_URL="+strings.TrimRight(portalURL, "/"))
+	}
+	if pakete != "" {
+		// Der gepruefte Paket-Anhang (Stufe 5): install.sh prueft ihn auf dem
+		// Geraet noch einmal gegen die Pruefsumme aus VP_LIGHT_MANIFEST und
+		// installiert die Pakete nur daraus - nie aus dem Internet auf der Box.
+		env = append(env, "VP_PAKETE="+pakete)
 	}
 	return env
 }
@@ -739,7 +763,7 @@ func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protoko
 			return nil, err
 		}
 	}
-	env := InstallUmgebung(l.k.Bauart, l.pfadManifest, dir, l.k.PortalURL)
+	env := InstallUmgebung(l.k.Bauart, l.pfadManifest, dir, l.k.PortalURL, l.pfadPakete)
 	r, err := l.skript(ctx, "install.sh", nil, env...)
 	if err != nil {
 		return nil, err
@@ -839,6 +863,66 @@ func EinrichtungsWlanVorbereiten(ctx context.Context, v *box.Verbindung) (protok
 		return b, w["land"], errors.New("Paket relayd fehlt auf der Box (ohne Internet beim Kunden scheitert der WLAN-Weg)")
 	}
 	return b, w["land"], nil
+}
+
+// ---- S5: Direktvermarktung-bereit (vp-direktvermarktung-konzept d2, E5=A, Stufe 5) ------
+
+// befehlDirektvermarktung liest die Lage des Direktvermarkter-Anschlusses auf
+// einer frischen Box: Pakete (aus dem geprueften Release-Anhang, install.sh),
+// Startskript, Verwalter im Programm, und dass NICHTS laeuft - kein Tunnel,
+// keine Zone, keine Konfiguration von frueher.
+const befehlDirektvermarktung = `if command -v openvpn >/dev/null 2>&1; then echo openvpn=da; else echo openvpn=fehlt; fi
+echo paket=$(apk list --installed openvpn-mbedtls 2>/dev/null | head -n 1 | cut -d' ' -f1)
+echo kmod_tun=$(apk list --installed kmod-tun 2>/dev/null | head -n 1 | cut -d' ' -f1)
+if [ -x /etc/init.d/vp-vermarkter ] && ls /etc/rc.d/S??vp-vermarkter >/dev/null 2>&1; then echo start=da; else echo start=fehlt; fi
+if [ -s /tmp/vp-vermarkter/openvpn.pid ]; then echo tunnel=laeuft; else echo tunnel=aus; fi
+if [ -e /etc/vp-edge-light/vermarkter/openvpn.conf ]; then echo konfiguration=da; else echo konfiguration=keine; fi
+if uci -q get firewall.vp_vermarkter >/dev/null 2>&1 || [ -e /etc/nftables.d/30-vp-vermarkter.nft ]; then echo zone=da; else echo zone=keine; fi
+echo lage=$(wget -q -O - http://127.0.0.1:8484/api/direktvermarktung 2>/dev/null | sed -n 's/.*"lage":"\([a-z_]*\)".*/\1/p')`
+
+// direktvermarktungBereit prueft die Pruefung direktvermarktung_bereit
+// (Vektor docs/contracts/werkstatt-pruefungen.json). Eine Fassung ohne
+// Paket-Anhang (vor Stufe 5) laesst den Beleg leer statt zu luegen; ob die
+// Abnahme das noch annimmt, entscheidet die Uebergangsfrist der API.
+func (l *Lauf) direktvermarktungBereit(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
+	if l.stand == nil || l.stand.PaketeSha256 == "" {
+		// Wie der Schritt grundprogramm des PFC200: der Beleg sagt, WAS geschah,
+		// statt zu schweigen - die Fassung ist einfach aelter als Stufe 5.
+		grund := "die Fassung " + l.freigabe.EdgeLight.Fassung + " trägt keinen Paket-Anhang (vor Stufe 5)"
+		l.belege["direktvermarktung_bereit"] = "Schritt direktvermarktung: übersprungen - " + grund +
+			". Am Gerät ist nichts geändert; OpenVPN kommt mit der nächsten Fassung per Werkstatt oder signiertem Release."
+		return protokoll.Beleg{}.Mit("ergebnis", "übersprungen - "+grund), nil
+	}
+	w, _, err := l.v.Werte(ctx, befehlDirektvermarktung)
+	if err != nil {
+		return nil, err
+	}
+	b := protokoll.Beleg{}
+	for _, k := range []string{"openvpn", "paket", "kmod_tun", "start", "tunnel", "konfiguration", "zone", "lage"} {
+		b = b.Mit(k, orNone(w[k]))
+	}
+	switch {
+	case w["openvpn"] != "da":
+		return b, errors.New("openvpn fehlt auf der Box - der Paket-Anhang wurde nicht installiert")
+	case !strings.HasPrefix(w["paket"], "openvpn-mbedtls-"):
+		return b, fmt.Errorf("apk nennt das Paket openvpn-mbedtls nicht (%q)", w["paket"])
+	case !strings.HasPrefix(w["kmod_tun"], "kmod-tun-"):
+		return b, fmt.Errorf("apk nennt das Paket kmod-tun nicht (%q)", w["kmod_tun"])
+	case w["start"] != "da":
+		return b, errors.New("das Startskript /etc/init.d/vp-vermarkter fehlt oder ist nicht eingeschaltet")
+	case w["tunnel"] != "aus":
+		return b, errors.New("auf einer frischen Box darf kein Vermarkter-Tunnel laufen")
+	case w["konfiguration"] != "keine":
+		return b, errors.New("auf einer frischen Box darf keine openvpn.conf des Vermarkters liegen")
+	case w["zone"] != "keine":
+		return b, errors.New("auf einer frischen Box darf keine Zone vermarkter und kein nft-Einschub liegen")
+	case w["lage"] != "ohne_profil":
+		return b, fmt.Errorf("der Verwalter im Programm meldet %q statt ohne_profil", orNone(w["lage"]))
+	}
+	l.belege["direktvermarktung_bereit"] = "Schritt direktvermarktung: " + w["paket"] + " und " + w["kmod_tun"] +
+		" aus dem geprueften Release-Anhang (Pruefsumme im signierten Manifest), Startskript vp-vermarkter" +
+		" eingeschaltet, Verwalter meldet ohne_profil, Tunnel aus, keine Zone, keine Konfiguration"
+	return b.Mit("ergebnis", "bereit (ohne Profil, Tunnel aus)"), nil
 }
 
 // ---- P5: Tunnel -----------------------------------------------------------------------
@@ -1367,7 +1451,7 @@ echo "weg=$(ip -4 route show default | head -n1)"`)
 // Pruefungen der Werkstatt-Regel (docs/contracts/werkstatt-pruefungen.json) in
 // ihrer Reihenfolge; anmeldeprobe und fenster_zu bleiben in V1a Handgriffe im
 // Portal, bestätigt im Schritt probe.
-var Pruefungen = []string{"root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit", "einrichtung_wlan_bereit"}
+var Pruefungen = []string{"root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit", "einrichtung_wlan_bereit", "direktvermarktung_bereit"}
 
 func (l *Lauf) uebergabe(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, error) {
 	b := protokoll.Beleg{}.

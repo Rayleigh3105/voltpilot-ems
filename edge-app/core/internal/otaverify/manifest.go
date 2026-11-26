@@ -174,6 +174,22 @@ type Manifest struct {
 	// kommt (vp-werkstatt-immer-neueste). Additiv: schema_version bleibt 1.0,
 	// ein aelterer Stand ignoriert das Feld.
 	Skripte *Skripte `json:"skripte,omitempty"`
+	// Pakete sind die OpenWrt-Pakete eines Edge-Light-Release
+	// (edge-light-pakete.tar.gz, Pins in edge-light/openwrt/pakete.json):
+	// heute OpenVPN samt Abhaengigkeiten fuer den Anschluss an einen
+	// Direktvermarkter (Konzept vp-direktvermarktung-konzept d2, E5/Stufe 5,
+	// PS-D10). Anders als Skripte wendet die BOX dieses Feld an: Eine Box im
+	// Feld laedt den Anhang aus dem Portal, prueft ihn gegen diese signierte
+	// Pruefsumme und installiert die Pakete aus der geprueften Datei - nie
+	// aus dem Internet. Trotzdem KEIN Eintrag in Artifacts: ein unbekannter
+	// Bestandteil liesse aeltere Boxen das ganze Release zurueckstellen; als
+	// additives Feld ignoriert ein aelterer Stand es und laesst nur die
+	// Pakete weg - die sichere Richtung (der Tunnel-Dienst meldet dann
+	// "openvpn fehlt", statt dass ein Update liegen bleibt). Die Werkstatt
+	// installiert denselben Anhang im Schritt programm (install.sh,
+	// VP_PAKETE). Nur Edge Light: Die Firmware des PFC200 bringt ihr OpenVPN
+	// selbst mit. Additiv: schema_version bleibt 1.0.
+	Pakete *Pakete `json:"pakete,omitempty"`
 	// Wartung ist das Tunnel-Programm vp-wartung eines Edge-Industrie-Release
 	// (edge-industrie/wartung, linux/arm): Der Werkstatt-Dienst legt es beim
 	// Einrichten eines WAGO PFC200 auf das Geraet. Es ist KEIN Bestandteil des
@@ -203,11 +219,22 @@ const (
 	IndustrieSkripteDatei = "edge-industrie-skripte.tar.gz"
 	WartungDatei          = "vp-wartung-linux-arm"
 	GrundprogrammDatei    = "edge-industrie-grundprogramm.tar.gz"
+	// PaketeDatei ist der Paket-Anhang eines Edge-Light-Release; ihn wendet
+	// anders als die uebrigen auch die Box an (siehe [Manifest.Pakete]).
+	PaketeDatei = "edge-light-pakete.tar.gz"
 )
 
 // Skripte beschreibt den Skriptstand eines Edge-Light- oder
 // Edge-Industrie-Release.
 type Skripte struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
+// Pakete beschreibt den Paket-Anhang eines Edge-Light-Release (die OpenWrt-
+// Pakete, die Werkstatt und Feld-Update aus der geprueften Datei installieren).
+type Pakete struct {
 	Name   string `json:"name"`
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
@@ -547,6 +574,22 @@ func (m *Manifest) checkProduced() error {
 		}
 		if m.Skripte.Size <= 0 {
 			return errors.New("skripte.size: groesser als 0")
+		}
+	}
+	if m.Pakete != nil {
+		if !strings.HasPrefix(m.Release, LightReleasePrefix) {
+			// Nur Edge Light: Die Firmware des PFC200 bringt ihr OpenVPN
+			// selbst mit, die Docker-Box hat keinen Paketstand.
+			return fmt.Errorf("pakete: den Paket-Anhang traegt nur ein Edge-Light-Release (%sJJJJ.MM.N)", LightReleasePrefix)
+		}
+		if m.Pakete.Name != PaketeDatei {
+			return fmt.Errorf("pakete.name: '%s' statt '%s'", m.Pakete.Name, PaketeDatei)
+		}
+		if !sha256Re.MatchString(m.Pakete.SHA256) {
+			return errors.New("pakete.sha256: 64 Zeichen 0-9a-f")
+		}
+		if m.Pakete.Size <= 0 {
+			return errors.New("pakete.size: groesser als 0")
 		}
 	}
 	if m.Wartung != nil {

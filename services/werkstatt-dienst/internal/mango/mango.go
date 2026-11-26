@@ -194,6 +194,7 @@ type Lauf struct {
 	passwortAge                           string // das Root-Passwort, nur verschlüsselt
 	notfallFP                             string
 	pfadAbbild, pfadProgramm, pfadSkripte string
+	pfadPakete                            string // der Paket-Anhang (Stufe 5); leer: Fassung ohne
 	dr                                    *durchreiche.Server
 	tmpFrei                               int64
 	belege                                map[string]string // Prüfung → wo ihr Beleg steht
@@ -260,6 +261,7 @@ func (l *Lauf) Schritte(e Einstieg) []lauf.Schritt {
 		lauf.Schritt{Kennung: "notfall", Titel: "Notfall-Schlüssel", Frist: time.Minute, Tun: l.notfallSchluessel},
 		lauf.Schritt{Kennung: "programm", Titel: "Edge Light einspielen", Frist: 10 * time.Minute, Tun: l.programmEinspielen},
 		lauf.Schritt{Kennung: "einrichtung_wlan", Titel: "Einrichtungs-WLAN vorbereiten (Land DE, relayd)", Frist: 3 * time.Minute, Tun: l.einrichtungsWlanVorbereiten},
+		lauf.Schritt{Kennung: "direktvermarktung", Titel: "Direktvermarktung-bereit prüfen", Frist: 3 * time.Minute, Tun: l.direktvermarktungBereit},
 		lauf.Schritt{Kennung: "tunnel_schluessel", Titel: "Tunnel-Schlüssel erzeugen", Frist: 5 * time.Minute, Tun: l.tunnelSchluessel},
 		l.adressSchritt(),
 		lauf.Schritt{Kennung: "tunnel", Titel: "Tunnel einrichten", Frist: 10 * time.Minute, Tun: l.tunnelEinrichten},

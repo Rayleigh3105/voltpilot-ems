@@ -140,6 +140,10 @@ func (a *Agent) otaLightSchritt(v otaVerdict) otaVerdict {
 		}
 		// Ausserhalb der Probe laeuft die bestaetigte Fassung aus dem Flash.
 		a.otaLightBestaetigt(v)
+		// Erst NACH der Bestaetigung (nie waehrend einer Probe, die noch
+		// zurueckrollen kann): die Pakete des Direktvermarkter-Anschlusses
+		// aus dem geprueften Anhang dieser Fassung (pakete_pflege.go).
+		a.paketePflegeAnstossen(v.release)
 		v.state = cloud.UpdateStateSucceeded
 		v.reason = "Release " + v.release + " ist verifiziert, bestaetigt und laeuft hier."
 		return v

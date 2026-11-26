@@ -88,9 +88,9 @@ describe('PFC200: Phasen und Schritte', () => {
     expect(meistDauer([], 'pfc200')).toEqual({});
     const ohne = fortschritt(l, meistDauer([], 'pfc200'));
     expect(ohne.restMinuten).toBeNull();
-    expect(ohne.anteil).toBeCloseTo(11 / 16, 5);
+    expect(ohne.anteil).toBeCloseTo(12 / 17, 5);
     expect(jetzt(l, {}, T)!.meistSek).toBeNull();
-    expect(jetzt(l, {}, T)).toMatchObject({ nummer: 12, von: 16, titel: 'Netze trennen, Firewall einschalten', danach: 'Neustart-Probe' });
+    expect(jetzt(l, {}, T)).toMatchObject({ nummer: 13, von: 17, titel: 'Netze trennen, Firewall einschalten', danach: 'Neustart-Probe' });
     const offen = schrittListe(l, {}, T).flatMap((p) => p.schritte).filter((s) => s.zustand === 'offen');
     expect(offen.length).toBeGreaterThan(0);
     expect(offen.every((s) => s.dauer === null)).toBe(true);
@@ -109,9 +109,9 @@ describe('PFC200: Phasen und Schritte', () => {
     expect(meistDauer([gemessen('pfc200', 60)]).neustart).toBe(180);
   });
 
-  it('die Abnahme hat elf Prüfungen', () => {
-    expect(PRUEFUNGEN_PFC200).toHaveLength(11);
-    expect(SCHRITT_TEXT_PFC200.uebergabe.titel).toBe('Abnahme: elf Prüfungen mit Beleg');
+  it('die Abnahme hat zwölf Prüfungen', () => {
+    expect(PRUEFUNGEN_PFC200).toHaveLength(12);
+    expect(SCHRITT_TEXT_PFC200.uebergabe.titel).toBe('Abnahme: zwölf Prüfungen mit Beleg');
   });
 });
 

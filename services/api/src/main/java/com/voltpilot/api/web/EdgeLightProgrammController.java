@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.ota.BoxArt;
 import com.voltpilot.api.ota.ReleaseManifest;
+import com.voltpilot.api.repo.EdgeLightPaketeRepository;
 import com.voltpilot.api.repo.EdgeLightProgrammRepository;
 import com.voltpilot.api.repo.EdgeReleaseRepository;
 import com.voltpilot.api.web.dto.EdgeReleaseDto;
@@ -61,10 +62,13 @@ public class EdgeLightProgrammController {
 
     private final EdgeReleaseRepository releases;
     private final EdgeLightProgrammRepository programme;
+    private final EdgeLightPaketeRepository pakete;
 
-    public EdgeLightProgrammController(EdgeReleaseRepository releases, EdgeLightProgrammRepository programme) {
+    public EdgeLightProgrammController(EdgeReleaseRepository releases, EdgeLightProgrammRepository programme,
+            EdgeLightPaketeRepository pakete) {
         this.releases = releases;
         this.programme = programme;
+        this.pakete = pakete;
     }
 
     /** Ein Teil der gepackten Lieferung; {@code ab} = Byte-Versatz (0 beginnt neu). */
@@ -158,6 +162,92 @@ public class EdgeLightProgrammController {
                                 .immutable())
                         .body(daten))
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Ein Teil des Paket-Anhangs {@code edge-light-pakete.tar.gz}
+     * (Direktvermarktung Stufe 5, PS-D10); dasselbe Teil-Protokoll wie bei den
+     * Programmen. Prüfsumme und Größe stehen im signierten Manifest
+     * ({@code pakete}); ein Release ohne das Feld hat keinen Anhang (404).
+     */
+    @PutMapping(path = "/api/v1/admin/edge-releases/{version}/pakete",
+            consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @PreAuthorize(PUBLISH)
+    public Map<String, Object> paketeHochladen(@PathVariable String version, @RequestParam("ab") long ab,
+            @RequestBody(required = false) byte[] teil, @AuthenticationPrincipal Jwt caller) {
+        if (teil == null || teil.length == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Der Teil ist leer.");
+        }
+        if (teil.length > TEIL_MAX) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
+                    "Ein Teil darf hoechstens " + TEIL_MAX + " Bytes haben.");
+        }
+        EdgeReleaseDto release = lightRelease(version);
+        ReleaseManifest.Pakete p = ReleaseManifest.read(release.manifest()).pakete()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Das Manifest von " + version + " nennt keinen Paket-Anhang (pakete)."));
+        long seq = release.releaseSeq();
+        pakete.anlegen(seq, p.sha256(), p.size(), caller == null ? null : caller.getSubject());
+        EdgeLightPaketeRepository.Stand stand = pakete.stand(seq).orElseThrow();
+        if (stand.fertig()) {
+            return paketeAntwort(version, stand);
+        }
+        boolean geschrieben;
+        if (ab == 0) {
+            geschrieben = pakete.neuBeginnen(seq, teil);
+        } else if (ab == stand.laenge()) {
+            geschrieben = pakete.anhaengen(seq, ab, teil);
+        } else {
+            geschrieben = false;
+        }
+        if (!geschrieben) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Der Teil passt nicht an die Lieferung (ab " + ab + ", bisher " + stand.laenge()
+                            + " Bytes) - von vorn beginnen (ab=0).");
+        }
+        long laenge = ab + teil.length;
+        if (laenge > p.size()) {
+            pakete.verwerfen(seq);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Die Lieferung ist laenger als im signierten Manifest (" + p.size()
+                            + " Bytes) - verworfen.");
+        }
+        if (laenge == p.size()) {
+            String ist = sha256(pakete.daten(seq));
+            if (!ist.equals(p.sha256())) {
+                pakete.verwerfen(seq);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Die Pruefsumme der Lieferung passt nicht zum signierten Manifest - verworfen.");
+            }
+            pakete.fertig(seq);
+        }
+        return paketeAntwort(version, pakete.stand(seq).orElseThrow());
+    }
+
+    /** Die offene Abruf-Route des Paket-Anhangs: nur fertige Anhänge signierter Edge-Light-Releases. */
+    @GetMapping("/api/v1/edge/light-pakete/{sha256}")
+    public ResponseEntity<byte[]> paketeAbrufen(@PathVariable String sha256) {
+        if (!SHA256.matcher(sha256).matches()) {
+            return ResponseEntity.notFound().build();
+        }
+        return pakete.auslieferbar(sha256)
+                .map(daten -> ResponseEntity.ok()
+                        .contentType(MediaType.parseMediaType("application/gzip"))
+                        .contentLength(daten.length)
+                        .eTag("\"" + sha256 + "\"")
+                        .cacheControl(CacheControl.maxAge(java.time.Duration.ofDays(365)).cachePublic()
+                                .immutable())
+                        .body(daten))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    private static Map<String, Object> paketeAntwort(String version, EdgeLightPaketeRepository.Stand s) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("version", version);
+        out.put("empfangen", s.laenge());
+        out.put("groesse", s.groesse());
+        out.put("fertig", s.fertig());
+        return out;
     }
 
     private record Ziel(long seq, String arch, ReleaseManifest.Program program) {

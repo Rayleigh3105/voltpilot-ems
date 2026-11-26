@@ -48,7 +48,8 @@ class WerkstattRegelnTest {
                 || p.contains("firmware") || p.contains("wlan"));
         assertThat(WerkstattPruefungen.fehlend(WerkstattRegel.PFC200, List.of("zugaenge", "neustart")))
                 .containsExactly("notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel",
-                        "fenster_zu", "netze", "dienste_zu", "update_bereit", "grundprogramm");
+                        "fenster_zu", "netze", "dienste_zu", "update_bereit", "grundprogramm",
+                        "direktvermarktung_bereit");
         assertThat(WerkstattPruefungen.unbekannt(WerkstattRegel.PFC200, List.of("zugaenge", "root_passwort",
                 "lan_netz"))).containsExactly("lan_netz", "root_passwort");
     }
@@ -57,7 +58,8 @@ class WerkstattRegelnTest {
     void fehlendUndUnbekanntInDerReihenfolgeDerRegel() {
         assertThat(WerkstattPruefungen.fehlend(List.of("neustart", "root_passwort")))
                 .containsExactly("notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel",
-                        "fenster_zu", "lan_netz", "update_bereit", "einrichtung_wlan_bereit");
+                        "fenster_zu", "lan_netz", "update_bereit", "einrichtung_wlan_bereit",
+                        "direktvermarktung_bereit");
         assertThat(WerkstattPruefungen.fehlend(WerkstattPruefungen.ALLE)).isEmpty();
         assertThat(WerkstattPruefungen.unbekannt(List.of("neustart", "zz", "aa", "zz"))).containsExactly("aa", "zz");
     }
@@ -79,6 +81,34 @@ class WerkstattRegelnTest {
         assertThat(WerkstattPruefungen.uebergangGilt(List.of("einrichtung_wlan_bereit", "lan_netz"), vorDerFrist))
                 .isFalse();
         assertThat(WerkstattPruefungen.uebergangGilt(List.of(), vorDerFrist)).isFalse();
+    }
+
+    /**
+     * Übergangsfristen gemeinsam (Stufe 5 der Direktvermarktung, dasselbe
+     * Muster): jede fehlende Prüfung muss eine Übergangs-Prüfung innerhalb
+     * ihrer eigenen Frist sein - auch beide zusammen, aber nie eine Pflicht-
+     * Prüfung und nie nach der Frist.
+     */
+    @Test
+    void uebergangGiltFuerJedeUebergangsPruefungInIhrerFrist() {
+        Instant dvFrist = WerkstattPruefungen.DIREKTVERMARKTUNG_UEBERGANG_BIS;
+        Instant wlanFrist = WerkstattPruefungen.EINRICHTUNG_WLAN_UEBERGANG_BIS;
+        Instant vorBeiden = Instant.parse("2026-11-26T12:00:00Z");
+        assertThat(vorBeiden).isBefore(wlanFrist);
+        List<String> dv = List.of("direktvermarktung_bereit");
+        assertThat(WerkstattPruefungen.uebergangGiltFuer(dv, dvFrist.minus(1, ChronoUnit.SECONDS))).isTrue();
+        assertThat(WerkstattPruefungen.uebergangGiltFuer(dv, dvFrist)).isFalse();
+        assertThat(WerkstattPruefungen.uebergangGiltFuer(
+                List.of("einrichtung_wlan_bereit", "direktvermarktung_bereit"), vorBeiden)).isTrue();
+        // Nach der WLAN-Frist, vor der DV-Frist: nur die DV-Prüfung darf noch fehlen.
+        Instant zwischen = wlanFrist.plus(1, ChronoUnit.SECONDS);
+        assertThat(zwischen).isBefore(dvFrist);
+        assertThat(WerkstattPruefungen.uebergangGiltFuer(dv, zwischen)).isTrue();
+        assertThat(WerkstattPruefungen.uebergangGiltFuer(
+                List.of("einrichtung_wlan_bereit", "direktvermarktung_bereit"), zwischen)).isFalse();
+        assertThat(WerkstattPruefungen.uebergangGiltFuer(List.of("direktvermarktung_bereit", "lan_netz"),
+                vorBeiden)).isFalse();
+        assertThat(WerkstattPruefungen.uebergangGiltFuer(List.of(), vorBeiden)).isFalse();
     }
 
     @Test

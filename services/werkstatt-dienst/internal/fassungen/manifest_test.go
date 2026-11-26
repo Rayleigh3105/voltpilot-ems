@@ -50,6 +50,33 @@ func TestPruefeManifest(t *testing.T) {
 	}
 }
 
+// Der Paket-Anhang der Direktvermarktung (Stufe 5): seine Prüfsumme kommt
+// allein aus dem signierten Manifest in den Stand; eine Fassung ohne das Feld
+// bleibt gültig (PaketeSha256 leer), eine halbe Angabe ist ein Fehler.
+func TestPruefeManifestPakete(t *testing.T) {
+	sha := strings.Repeat("a", 64)
+	psha := strings.Repeat("c", 64)
+	m, sig := attrappe.ManifestMitPakete("edge-light-2026.11.1", 77, sha, psha, 361296)
+	st, err := fassungen.PruefeManifest(m, sig, "edge-light-2026.11.1", "mipsle", sha)
+	if err != nil || st.PaketeSha256 != psha || st.PaketeGroesse != 361296 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	ohne, sigOhne := attrappe.Manifest("edge-light-2026.11.1", 77, sha)
+	st, err = fassungen.PruefeManifest(ohne, sigOhne, "edge-light-2026.11.1", "mipsle", sha)
+	if err != nil || st.PaketeSha256 != "" || st.PaketeGroesse != 0 {
+		t.Fatalf("ohne Anhang: %+v %v", st, err)
+	}
+	for name, kaputt := range map[string]string{
+		"falscher Name":    strings.Replace(string(m), "edge-light-pakete.tar.gz", "pakete.tar.gz", 1),
+		"halbe Pruefsumme": strings.Replace(string(m), psha, "cccc", 1),
+		"Groesse null":     strings.Replace(string(m), `"size": 361296`, `"size": 0`, 1),
+	} {
+		if _, err := fassungen.PruefeManifest([]byte(kaputt), sig, "edge-light-2026.11.1", "mipsle", sha); err == nil {
+			t.Errorf("%s: angenommen", name)
+		}
+	}
+}
+
 // Ein Manifest für den PFC200 nennt die Update-Linie industrie und das
 // Programm für linux/arm; eines der Mango gilt für ihn nicht, und umgekehrt.
 func TestPruefeManifestPFC200(t *testing.T) {

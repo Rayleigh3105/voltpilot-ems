@@ -118,7 +118,7 @@ class WerkstattApiTest {
         String admin = token("admin", "admin");
 
         JsonNode grundlagen = getJson(BASE + "/grundlagen", admin);
-        assertThat(werte(grundlagen.get("pruefungen"))).hasSize(10).startsWith("root_passwort").endsWith("einrichtung_wlan_bereit");
+        assertThat(werte(grundlagen.get("pruefungen"))).hasSize(11).startsWith("root_passwort").endsWith("direktvermarktung_bereit");
         assertThat(grundlagen.get("lanNetzVorschlag").asText()).isEqualTo("10.213.0.1/24");
 
         // ── Aufnehmen: Schreibweise wie bei der Kopplung, ein zweites Mal ändert nichts.
@@ -172,7 +172,8 @@ class WerkstattApiTest {
         // ── Abnahme: ohne LAN-Netz und ohne Tunnel geht nichts.
         Map<String, Object> abnahme = new HashMap<>(Map.of("hostSchluessel", HOST, "fassung", "edge-light-g9c3368e3a",
                 "pruefungen", List.of("root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe",
-                        "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit", "einrichtung_wlan_bereit"),
+                        "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit", "einrichtung_wlan_bereit",
+                        "direktvermarktung_bereit"),
                 "probeFensterId", UUID.randomUUID().toString()));
         ResponseEntity<String> ohneLan = send(HttpMethod.POST, BASE + "/boxen/" + BOX + "/abnahme", admin, abnahme);
         assertThat(ohneLan.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
@@ -234,7 +235,7 @@ class WerkstattApiTest {
         assertThat(a.get("fassung").asText()).isEqualTo("edge-light-g9c3368e3a");
         assertThat(a.get("tunnelAdresse").asText()).isEqualTo(adresse);
         assertThat(a.get("lanNetz").asText()).isEqualTo("10.213.0.1/24");
-        assertThat(werte(a.get("pruefungen"))).hasSize(10);
+        assertThat(werte(a.get("pruefungen"))).hasSize(11);
         assertThat(a.get("erfasstVon").asText()).isEqualTo("admin");
         JsonNode probe = a.get("probe");
         assertThat(probe.get("fensterId").asText()).isEqualTo(fensterId);
@@ -275,7 +276,8 @@ class WerkstattApiTest {
         ResponseEntity<String> abnahme = send(HttpMethod.POST, BASE + "/boxen/" + DOCKER + "/abnahme", admin,
                 Map.of("hostSchluessel", HOST, "fassung", "v1.2.3", "pruefungen", List.of("root_passwort",
                         "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu",
-                        "lan_netz", "neustart", "update_bereit", "einrichtung_wlan_bereit"), "probeFensterId", UUID.randomUUID().toString()));
+                        "lan_netz", "neustart", "update_bereit", "einrichtung_wlan_bereit", "direktvermarktung_bereit"),
+                "probeFensterId", UUID.randomUUID().toString()));
         assertThat(abnahme.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(message(abnahme)).contains("nur für das Edge Light");
     }

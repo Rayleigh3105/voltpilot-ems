@@ -227,6 +227,17 @@ for f in home/voltpilot/libexec/boot.sh etc/init.d/vp-edge-industrie; do
   # shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
   box_ssh "$TARGET" "cat > /$f.neu && chown root:root /$f.neu && chmod 0755 /$f.neu && mv -f /$f.neu /$f && sync" <"$HERE/files/$f"
 done
+
+# Direktvermarktung (Stufe 4/5, PS-D11/PS-D14): der EINE root-Helfer
+# vp-vermarkter. Er tut nichts ohne Zustellung (/home/voltpilot/vermarkter);
+# das Firmware-OpenVPN bringt das Geraet mit. Er startet mit dem Geraet
+# (rc-Link, wie vp-edge-industrie) und jetzt gleich - abgekoppelt mit
+# ignoriertem HUP, damit das Ende dieser SSH-Sitzung den Waechter nicht trifft
+# (dieselbe Falle wie bei config_ssh, services/werkstatt-dienst/README.md).
+# shellcheck disable=SC2029
+box_ssh "$TARGET" "cat > /etc/init.d/vp-vermarkter.neu && chown root:root /etc/init.d/vp-vermarkter.neu && chmod 0755 /etc/init.d/vp-vermarkter.neu && mv -f /etc/init.d/vp-vermarkter.neu /etc/init.d/vp-vermarkter && sync" <"$HERE/files/etc/init.d/vp-vermarkter"
+# shellcheck disable=SC2029
+box_ssh "$TARGET" "[ ! -d /etc/rc.d ] || ln -sf ../init.d/vp-vermarkter /etc/rc.d/S99_vp-vermarkter; trap '' HUP; nohup /etc/init.d/vp-vermarkter start >/dev/null 2>&1 & sleep 1"
 # Die Einstellungen nur anlegen, nie bestehende ueberschreiben.
 # shellcheck disable=SC2029
 box_ssh "$TARGET" "[ -f $KONFIG ] || { cat > $KONFIG.neu && chown root:root $KONFIG.neu && chmod 0644 $KONFIG.neu && mv -f $KONFIG.neu $KONFIG; }" <"$HERE/files/home/voltpilot/konfig"

@@ -355,6 +355,7 @@ func (l *Lauf) Schritte(e Einstieg) []lauf.Schritt {
 		{Kennung: "notfall", Titel: titelNotfall, Frist: 2 * time.Minute, Tun: l.notfallSchluessel},
 		{Kennung: "grundprogramm", Titel: titelGrundprogramm, Frist: z.Grundprogramm + 5*time.Minute, Tun: l.grundprogrammEinspielen},
 		{Kennung: "programm", Titel: titelProgramm, Frist: z.Programm + 10*time.Minute, Tun: l.programmEinspielen},
+		{Kennung: "direktvermarktung", Titel: titelDirektvermarktung, Frist: 3 * time.Minute, Tun: l.direktvermarktungBereit},
 		{Kennung: "tunnel_schluessel", Titel: titelTunnelSchluessel, Frist: 5 * time.Minute, Tun: l.tunnelSchluessel},
 		l.adressSchritt(),
 		{Kennung: "tunnel", Titel: titelTunnel, Frist: z.Tunnel + 10*time.Minute, Tun: l.tunnelEinrichten},

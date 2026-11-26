@@ -6,7 +6,7 @@
  *
  * Was die Werkstatt an ihm tut und was nicht:
  * - Sie richtet Zugänge, Notfall-Schlüssel, das Grundprogramm, Edge Industrie,
- *   Wartungstunnel und die zwei Netze ein und nimmt ihn mit elf Prüfungen ab.
+ *   Wartungstunnel und die zwei Netze ein und nimmt ihn mit zwölf Prüfungen ab.
  * - Sie hat einen Schritt für die SPS, aber nur das Grundprogramm (die
  *   Boot-Applikation des Basisprojekts, nur Firmware 04.xx oder neuer): kein
  *   Anlagenprogramm, keine Koppelprobe; Einstellungen und Modbus-Server der
@@ -46,7 +46,7 @@ export const PRUEFUNGEN_PFC200_WORT = zahlwort(PRUEFUNGEN_PFC200.length);
 export const PHASEN_PFC200 = [
   { id: 'erkannt', titel: 'Erkannt', klein: 'PFC200 erkannt, Firmware gelesen', schritte: ['erkennen', 'docker'] },
   { id: 'absichern', titel: 'Absichern', klein: 'Dateien der Freigabe, drei Passwörter, Notfall-Schlüssel', schritte: ['fassungen', 'internet', 'zugaenge', 'notfall'] },
-  { id: 'software', titel: 'Software', klein: `Grundprogramm und ${EDGE_INDUSTRIE} einspielen`, schritte: ['grundprogramm', 'programm'] },
+  { id: 'software', titel: 'Software', klein: `Grundprogramm und ${EDGE_INDUSTRIE} einspielen`, schritte: ['grundprogramm', 'programm', 'direktvermarktung'] },
   { id: 'anmelden', titel: 'Bei VoltPilot anmelden', klein: 'Geräteschlüssel und Wartungstunnel', schritte: ['tunnel_schluessel', 'einloesen', 'tunnel_adresse', 'tunnel'] },
   { id: 'probe', titel: 'Netze trennen und Probe', klein: 'Zwei Buchsen, Neustart, Anmeldung über den Tunnel', schritte: ['netze', 'neustart', 'probe'] },
   { id: 'abnahme', titel: 'Abnahme', klein: `Alle ${PRUEFUNGEN_PFC200_WORT} Prüfungen mit Beleg`, schritte: ['internet_weg', 'uebergabe'] },
@@ -85,6 +85,10 @@ export const SCHRITT_TEXT_PFC200: Record<string, { titel: string; tut: string }>
   programm: {
     titel: `${EDGE_INDUSTRIE} einspielen`,
     tut: 'Installiert das Programm, startet es und wartet, bis es sich mit seiner Referenz meldet. Die Laufzeit der SPS bleibt unberührt.',
+  },
+  direktvermarktung: {
+    titel: 'Direktvermarktung-bereit prüfen',
+    tut: 'Prüft, dass das Firmware-OpenVPN und der Helfer vp-vermarkter da sind und nichts läuft: kein Zugang, kein Tunnel, keine Umleitung.',
   },
   tunnel_schluessel: { titel: 'Tunnel-Schlüssel erzeugen', tut: 'Das Gerät erzeugt seinen Schlüssel für den Wartungstunnel.' },
   einloesen: { titel: 'Bei VoltPilot anmelden (Einmal-Code)', tut: 'Das Gerät löst einen Einmal-Code ein; das Portal hält seinen Geräteschlüssel fest.' },

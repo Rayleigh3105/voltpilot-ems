@@ -21,6 +21,9 @@
 #                              ohne die Variable entscheidet ~/.ssh/config.
 #   VP_LIGHT_ARCH              Bauart (mipsle, arm64, amd64); wird auf der Box eingetragen.
 #   VP_LIGHT_MANIFEST=<datei>  das signierte Manifest (release.json) GENAU dieser Fassung.
+#   VP_PAKETE=<datei>          der Paket-Anhang edge-light-pakete.tar.gz der Fassung
+#                              (Direktvermarktung Stufe 5): nur mit Manifest, nur bei
+#                              exakter Pruefsumme (pakete.sha256) installiert.
 #                              Damit vermerkt die Box den Stand (current.json: release_seq,
 #                              state_schema = Anti-Rollback-Boden) und kann die bestaetigte
 #                              Fassung nach einem Stromausfall beim Update aus dem Portal
@@ -244,6 +247,49 @@ if [ -n "$SEQ" ]; then
   printf '{"release":"%s","release_seq":%s,"state_schema":%s}\n' "$REL" "$SEQ" "$SCHEMA" >"$tmp/current.json"
   # shellcheck disable=SC2029
   box_ssh "$TARGET" "cat > $OTA_FEST/current.json.tmp && mv -f $OTA_FEST/current.json.tmp $OTA_FEST/current.json && sync" <"$tmp/current.json"
+fi
+
+# --- Direktvermarktung (Stufe 5, E5, PS-D10): Pakete aus dem geprueften Anhang ----
+# Die OpenWrt-Pakete des Direktvermarkter-Anschlusses (openvpn-mbedtls samt
+# Abhaengigkeiten, Pins edge-light/openwrt/pakete.json) kommen NIE aus dem
+# Internet auf die Box: VP_PAKETE ist der Release-Anhang
+# edge-light-pakete.tar.gz, dessen Pruefsumme im signierten Manifest steht
+# (pakete.sha256). Sie wird hier UND auf dem Geraet gegengehalten; installiert
+# wird nur aus der bestaetigten Datei (apk add --no-network --allow-untrusted:
+# OpenWrt signiert nur den Paket-INDEX, nicht die einzelne .apk-Datei - eine
+# lokale Datei kann apk darum nie selbst pruefen. Die Echtheit traegt wie beim
+# Programm die sha256-Kette: Pins aus edge-light/openwrt/pakete.json beim Bau,
+# pakete.sha256 im signierten Manifest bei der Lieferung, INHALT je Datei).
+PSUM=""
+if [ -n "$MANIFEST" ]; then
+  PSUM="$(awk '
+    index($0, "\"pakete\":") { f = 1; next }
+    f && /"sha256":/ { gsub(/[",]/, "", $2); print $2; exit }
+    f && /}/ { f = 0 }' "$MANIFEST")"
+fi
+if [ -n "${VP_PAKETE:-}" ]; then
+  [ -r "$VP_PAKETE" ] || { echo "FEHLER: VP_PAKETE=$VP_PAKETE ist nicht lesbar" >&2; exit 1; }
+  if [ -z "$PSUM" ]; then
+    echo "FEHLER: VP_PAKETE ist gesetzt, aber das signierte Manifest nennt keinen Paket-Anhang (pakete) - ohne signierte Pruefsumme wird nichts installiert" >&2
+    exit 1
+  fi
+  if [ "$(summe "$VP_PAKETE")" != "$PSUM" ]; then
+    echo "FEHLER: $VP_PAKETE hat nicht die Pruefsumme aus dem signierten Manifest ($PSUM) - nichts installiert" >&2
+    exit 1
+  fi
+  echo "--- Direktvermarktung: Pakete aus dem geprueften Anhang installieren"
+  # shellcheck disable=SC2029
+  box_ssh "$TARGET" "rm -rf /tmp/vp-pakete && mkdir -p /tmp/vp-pakete && cat > /tmp/vp-pakete/pakete.tar.gz" <"$VP_PAKETE"
+  # shellcheck disable=SC2029
+  box_ssh "$TARGET" "[ \"\$(sha256sum /tmp/vp-pakete/pakete.tar.gz | cut -d' ' -f1)\" = '$PSUM' ] || { echo 'FEHLER: Pruefsumme des Paket-Anhangs stimmt auf dem Geraet nicht' >&2; rm -rf /tmp/vp-pakete; exit 1; }"
+  # INHALT noch einmal je Datei gegenhalten (sha256sum -c), dann installieren.
+  # shellcheck disable=SC2029
+  box_ssh "$TARGET" "cd /tmp/vp-pakete && tar xzf pakete.tar.gz && cd pakete && grep -E '^[0-9a-f]{64}  ' INHALT | sha256sum -c - >/dev/null && apk add --no-network --allow-untrusted ./*.apk && cd / && rm -rf /tmp/vp-pakete"
+  # shellcheck disable=SC2029
+  box_ssh "$TARGET" "command -v openvpn >/dev/null" || { echo "FEHLER: openvpn fehlt nach der Installation" >&2; exit 1; }
+  echo "    Pakete installiert (Pruefsumme auf dem Geraet bestaetigt, apk ohne Netz)"
+elif [ -n "$PSUM" ]; then
+  echo "--- Hinweis: das Manifest nennt einen Paket-Anhang, VP_PAKETE ist nicht gesetzt - die Pakete kommen per Werkstatt oder Update"
 fi
 
 echo "--- setze Bauart ($ARCH), entferne base_url und aktiviere den Dienst"

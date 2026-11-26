@@ -168,6 +168,13 @@ case "$*" in *127.0.0.1:8484/health*) [ -e "$Z/edge.laeuft" ] && cat "$Z/health.
 [ "$1" = -s ] && [ "$4" = -c ] || exit 2
 exec sh -c "$5"
 `,
+	// Das Firmware-OpenVPN (FW27-Paketliste: openvpn 2.5.7, ohne iproute2).
+	"openvpn": `#!/bin/sh
+case "${1:-}" in
+  --version) echo "OpenVPN 2.5.7 arm-wago-linux-gnueabi [SSL (OpenSSL)] [LZO] [EPOLL] built on Jan 01 2026" ;;
+  *) exit 1 ;;
+esac
+`,
 	// usermod -p <hash> <benutzer>: config_linux_user lehnt user=root ab
 	// (siehe dort); root setzt sein eigenes Passwort so, wie die Werkstatt es
 	// am Geraet tut, ueber das Standardwerkzeug von shadow-utils.
@@ -259,6 +266,16 @@ DIENST
     gzip -dc "$Z/zurueck.tar.gz" | COPYFILE_DISABLE=1 tar -xf - || exit 4
     "$W/etc/init.d/vp-edge-industrie" start
     ;;
+  vermarkter)
+    # Direktvermarktung Stufe 5: der root-Helfer vp-vermarkter aus dem
+    # Skriptstand, mit Start-Link; sein status-Verb wie das echte (eine frische
+    # Box: Waechter laeuft, kein Zugang, kein Tunnel, keine Umleitung).
+    mkdir -p "$W/etc/init.d" "$W/etc/rc.d"
+    printf '#!/bin/sh\nZ="%s"\ncase "$1" in\n  start) touch "$Z/vermarkter.laeuft" ;;\n  stop) rm -f "$Z/vermarkter.laeuft" ;;\n  status)\n    if [ -e "$Z/vermarkter.laeuft" ]; then echo dienst=laeuft; else echo dienst=steht; fi\n    echo zugang=fehlt\n    echo openvpn=steht\n    echo tunnel=unten\n    echo umleitung=fehlt\n    [ -e "$Z/vermarkter.laeuft" ] || exit 3\n    ;;\n  *) echo "nur start|stop|restart|status" >&2; exit 2 ;;\nesac\n' "$Z" >"$W/etc/init.d/vp-vermarkter"
+    chmod 0755 "$W/etc/init.d/vp-vermarkter"
+    ln -sf "../init.d/vp-vermarkter" "$W/etc/rc.d/S99_vp-vermarkter"
+    touch "$Z/vermarkter.laeuft"
+    ;;
   key)
     cat >"$Z/wartung-programm"
     mkdir -p "$W/home/voltpilot/wartung"
@@ -298,6 +315,11 @@ if [ -n "${VP_INDUSTRIE_MANIFEST:-}" ]; then
 fi
 ssh -i /dev/null "$ziel" "vp-attrappe install $rel $seq" < "$bin"
 echo "    0.1 MB gepackt, Pruefsumme auf dem Geraet bestaetigt"
+# Direktvermarktung (Stufe 4/5): der Helfer vp-vermarkter aus dem Skriptstand,
+# nur wenn dieser Stand ihn traegt (wie das echte install.sh).
+if [ -f "$(dirname "$0")/files/etc/init.d/vp-vermarkter" ]; then
+  ssh -i /dev/null "$ziel" 'vp-attrappe vermarkter'
+fi
 `
 
 // pfcFernlaufSh steht für edge-industrie/fernlauf.sh (das echte läuft in
@@ -359,7 +381,7 @@ esac
 // edge-industrie-skripte.tar.gz, mit Attrappen-Skripten.
 func SkripteTarGzPFC200(t testing.TB) []byte {
 	t.Helper()
-	return skripteTarGzPFC200(t, true)
+	return skripteTarGzPFC200(t, true, true)
 }
 
 // GrundprogrammTarGzPFC200 baut ein kleines, aber echtes tar.gz wie der
@@ -390,10 +412,18 @@ func GrundprogrammTarGzPFC200(t testing.TB) []byte {
 // solche Fassung richtet die Werkbank ein, ein Fernlauf spielt sie nicht auf.
 func SkripteTarGzPFC200OhneFernlauf(t testing.TB) []byte {
 	t.Helper()
-	return skripteTarGzPFC200(t, false)
+	return skripteTarGzPFC200(t, false, true)
 }
 
-func skripteTarGzPFC200(t testing.TB, mitFernlauf bool) []byte {
+// SkripteTarGzPFC200OhneVermarkter ist ein Skriptstand vor Stufe 5 der
+// Direktvermarktung: ohne files/etc/init.d/vp-vermarkter. Die Pruefung
+// direktvermarktung_bereit wird damit uebersprungen statt zu scheitern.
+func SkripteTarGzPFC200OhneVermarkter(t testing.TB) []byte {
+	t.Helper()
+	return skripteTarGzPFC200(t, true, false)
+}
+
+func skripteTarGzPFC200(t testing.TB, mitFernlauf, mitVermarkter bool) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
@@ -404,6 +434,9 @@ func skripteTarGzPFC200(t testing.TB, mitFernlauf bool) []byte {
 	}
 	if mitFernlauf {
 		dateien = append(dateien, struct{ name, inhalt string }{"edge-industrie/fernlauf.sh", pfcFernlaufSh})
+	}
+	if mitVermarkter {
+		dateien = append(dateien, struct{ name, inhalt string }{"edge-industrie/files/etc/init.d/vp-vermarkter", "#!/bin/sh\n"})
 	}
 	for _, d := range dateien {
 		if err := tw.WriteHeader(&tar.Header{Name: d.name, Mode: 0o755, Size: int64(len(d.inhalt)), Typeflag: tar.TypeReg}); err != nil {

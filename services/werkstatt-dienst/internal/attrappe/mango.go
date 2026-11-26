@@ -77,6 +77,7 @@ type Mango struct {
 	lan          string
 	land         string // wireless.radio0.country, S1
 	relayd       bool   // Paket relayd auf der Box, S1
+	pakete       bool   // Paket-Anhang installiert (Stufe 5, vp-attrappe pakete)
 	edge, laeuft bool
 	tunnel       string
 	befehle      []string
@@ -503,6 +504,31 @@ func (m *Mango) exec(ch ssh.Channel, b string) (code int, abreissen bool) {
 		m.edge = true
 		m.mu.Unlock()
 		aus("installiert\n")
+	case b == "vp-attrappe pakete":
+		_, _ = io.Copy(io.Discard, ch)
+		m.mu.Lock()
+		m.pakete = true
+		m.mu.Unlock()
+		aus("pakete installiert\n")
+	case strings.Contains(b, "apk list --installed openvpn-mbedtls"): // Stufe 5, befehlDirektvermarktung
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.pakete {
+			aus("openvpn=da\npaket=openvpn-mbedtls-2.7.8-r1\nkmod_tun=kmod-tun-6.12.94-r1\n")
+		} else {
+			aus("openvpn=fehlt\npaket=\nkmod_tun=\n")
+		}
+		if m.edge {
+			aus("start=da\n") // install.sh legt /etc/init.d/vp-vermarkter und schaltet es ein
+		} else {
+			aus("start=fehlt\n")
+		}
+		aus("tunnel=aus\nkonfiguration=keine\nzone=keine\n")
+		if m.laeuft {
+			aus("lage=ohne_profil\n")
+		} else {
+			aus("lage=\n")
+		}
 	case b == "/etc/init.d/vp-edge-light restart":
 		m.mu.Lock()
 		m.laeuft = m.edge
