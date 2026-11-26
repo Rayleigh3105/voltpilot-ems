@@ -31,9 +31,20 @@ function installEnv(opts: { standalone?: boolean; ua?: string } = {}) {
 }
 
 describe('InstallAppPanel', () => {
-  it('nennt ohne Angebot des Browsers den GRUND statt eines toten Knopfes', () => {
+  it('nennt auf Chrome/Android ohne Angebot den Menü-Weg, NIE die falsche Behauptung "bietet es nicht an"', () => {
     resetInstallApp();
     initInstallApp(installEnv());
+    render(<InstallAppPanel />);
+    expect(screen.queryByText(/bietet das Einrichten hier nicht an/)).toBeNull();
+    expect(screen.getByText(/noch nicht von sich aus angeboten/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'App installieren' })).toBeNull();
+  });
+
+  it('nennt auf einem wirklich fremden Browser den GRUND statt eines toten Knopfes', () => {
+    resetInstallApp();
+    initInstallApp(
+      installEnv({ ua: 'Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/118.0 Firefox/118.0' }),
+    );
     render(<InstallAppPanel />);
     expect(screen.getByText(/bietet das Einrichten hier nicht an/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'App installieren' })).toBeNull();

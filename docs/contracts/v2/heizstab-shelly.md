@@ -116,6 +116,10 @@ Zu `consumers.{id}` kommt additiv `stage` hinzu:
 
 Das ist der Beleg, mit dem das Ledger die Energie aus den kW der **bestätigten** Stufe rechnet statt aus Nennleistung × Zeit. Die Cloud schreibt dafür je Herzschlag die Laufzeit-Differenz der Box × kW der zuvor gemeldeten Stufe fort (`consumer_runtime_status.stufe_energie_kwh_heute`); fällt der Laufzeit-Zähler der Box, beginnt ein neuer Tag.
 
+Ein sichtbarer Wechsel in diesem Block (Zustand, `confirmed`, Stufe oder eine beginnende/endende Abweichung) schickt den Herzschlag sofort, statt auf den nächsten Takt zu warten.
+Das gilt für jeden über `consumerControlLoop` geschalteten Verbraucher, nicht nur den Heizstab (`agent/consumer_status_kick.go`, derselbe Wächter wie bei den Ladepunkten, [Stufe 3](../../agents/edge/stufe-3-der-herzschlag-traegt-die-ladepu.md)).
+Gemessene Werte lösen dabei nichts aus; nur das Wortbild ändert sich.
+
 ## Verbindungstest und „nach Stromausfall“ (Probe, [mqtt-probe.schema.json](../mqtt-probe.schema.json))
 
 - **`test_connection`** mit `connection.channels` braucht zwei Anfragen wie bei einem Ausgang (`/shelly`, `Shelly.GetStatus`). Die Antwort enthält:

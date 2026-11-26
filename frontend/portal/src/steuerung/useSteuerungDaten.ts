@@ -42,7 +42,8 @@ import type { SiteFahrzeuge } from '../fahrzeugProfile';
 import type { SiteProfiles } from '../profiles';
 import { customerFlowApi, type FlowSummary } from '../flows/flowsApi';
 import type { EditorEntity } from '../flows/model';
-import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
+import { wartetAufBestaetigung } from '../consumers/pendingPoll';
+import { LIST_POLL_MS, LIVE_POLL_MS, SCHNELL_POLL_MS } from '../pollCadence';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { raster, slotVon, N } from './zeit';
 
@@ -214,7 +215,12 @@ export function useSteuerungDaten(site: Site): SteuerungLaden {
     if (ids) verlaeufe();
   }, [ids, verlaeufe]);
 
-  useFreshnessPoll(() => void jetzt(), LIVE_POLL_MS);
+  // vp-schalten-sofort: solange ein Handeingriff auf die Bestätigung seines
+  // Verbrauchers wartet, fragt die Seite im schnellen Takt statt im
+  // üblichen Live-Takt - sonst säße eine schon vorliegende Bestätigung der
+  // Box bis zu LIVE_POLL_MS unbemerkt in der Antwort.
+  const wartetSchaltung = wartetAufBestaetigung(daten.overrides, daten.status);
+  useFreshnessPoll(() => void jetzt(), wartetSchaltung ? SCHNELL_POLL_MS : LIVE_POLL_MS);
   useFreshnessPoll(() => {
     void tragend();
     void ruhig();

@@ -74,3 +74,20 @@ export const LIST_POLL_MS = 30_000;
  * ohnehin.
  */
 export const ERLOES_POLL_MS = 5 * 60_000;
+
+/**
+ * Der Takt, während eine Schaltung eines Verbrauchers (Relais, Heizstab-
+ * Phase, Wallbox, …) GESENDET, aber noch nicht bestätigt ist - die Zeit, in
+ * der die Fläche ohnehin „gesendet, noch nicht bestätigt" zeigt und der
+ * Kunde auf das Ergebnis wartet (Captain-Befund vp-schalten-sofort,
+ * 26.11.2026: bis zu {@link LIVE_POLL_MS} nach einer schon vorliegenden
+ * Bestätigung der Box war zu langsam).
+ *
+ * Nur WÄHREND des Wartens: `consumers/pendingPoll.ts` liest denselben
+ * tri-state `confirmed`, den jeder Verbraucher meldet, also gilt das für
+ * Shelly-Relais/-Heizstab, go-e-Wallbox und jeden weiteren Verbrauchertyp
+ * gleich. Sobald die Box bestätigt (oder ehrlich eine Abweichung meldet),
+ * fällt die Fläche auf {@link LIVE_POLL_MS} zurück - kein Dauerbetrieb im
+ * schnellen Takt.
+ */
+export const SCHNELL_POLL_MS = 1_000;

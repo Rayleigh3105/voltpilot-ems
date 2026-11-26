@@ -569,6 +569,13 @@ type Agent struct {
 	entReadback map[string]*bool    // per-entity latest readback all_match
 	arbWake     chan struct{}
 
+	// consumerFPMu guards the consumers block's last-seen visible fingerprint
+	// (consumer_status_kick.go), so an early heartbeat follows a switch
+	// confirmation instead of waiting for statusHeartbeatEvery.
+	consumerFPMu     sync.Mutex
+	consumerFP       string
+	consumerFPSeeded bool
+
 	// AP-15 IP-17 (Y2): the accepted share document of a Gemeinsame
 	// Steuerung, restored from disk in New - before the first measurement
 	// (R15). nil = no document: the box behaves byte for byte as before.
