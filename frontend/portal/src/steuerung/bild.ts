@@ -38,6 +38,7 @@ import type { Consumer } from '../consumers/types';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { CONSUMER_REASON_TEXT, CONSUMER_STATE_TEXT, STATUS_UNKNOWN_TEXT } from '../consumers/status';
 import type { ManualOverride } from '../consumers/fulfillment';
+import { kleinsteReglerStufe, naechsteReglerStufe, reglerSatz, stufeText, type ReglerStufe } from '../heizstab';
 import { LADEQUELLE } from '../glossar';
 import type { ChargePoint, ChargeConnector, LadepunktSperre, LadeZustand, LadeZustandKind, SiteCharging } from '../ladepunkte';
 import { budgetFuer, ladepunktSperre, ladeZustand, aktuelleLeistung, boostbar, ladevorgangRows, schnellWirktNichtGrund, KEIN_LADEVORGANG_SATZ, keinLadevorgang, ladungLaeuft } from '../ladepunkte';
@@ -318,6 +319,12 @@ export interface GeraetBild {
   gemessen: boolean;
   nennKw: number | null;
   stufenKw: number[] | null;
+  /** Der Stab wird von seinem Box-Regler geführt, statt von der Policy-Schwelle. */
+  heizstabReglerAktiv: boolean;
+  /** Kleinste erlaubte Stufe des Box-Reglers; sie beschreibt den Smart-Start. */
+  heizstabStartStufe: ReglerStufe | null;
+  /** Nächste Stufe, die der Box-Regler aus dem aktuellen Zustand einschalten kann. */
+  naechsteHeizstabStufe: ReglerStufe | null;
   steuerart: Steuerart | null;
   /** Noch kein Auftrag gewählt (Server: Herkunft `ohne`). */
   ohneAuftrag: boolean;
@@ -403,7 +410,11 @@ function formFuer(typ: string, c: Consumer | null, ladepunkt: boolean): Form {
 const QUELLE_SONNIG = new Set(['ueberschuss', 'freigabe_ueberschuss']);
 
 /** Der Smart-Auftrag als Satz - Wörter des Prototyps, Zahlen nur, wo belegt. */
-export function auftragSatz(s: Steuerart | null | undefined, g: { form: Form; ladepunkt: boolean }): string {
+export function auftragSatz(s: Steuerart | null | undefined, g: {
+  form: Form;
+  ladepunkt: boolean;
+  heizstabStartStufe?: ReglerStufe | null;
+}): string {
   if (!s) return 'Noch kein Auftrag';
   const freigabe = g.form === 'freigabe';
   let satz: string;
@@ -416,7 +427,10 @@ export function auftragSatz(s: Steuerart | null | undefined, g: { form: Form; la
         satz = s.ueberschussModus === 'mindestleistung' ? LADEQUELLE.min
           : s.ueberschussModus === 'speicher' ? LADEQUELLE.speicher : LADEQUELLE.sonne;
       }
-      else satz = typeof s.schwelleKw === 'number' ? `Mit Sonnenstrom ab ${fKw(s.schwelleKw)}` : 'Mit Sonnenstrom';
+      else if (g.heizstabStartStufe) {
+        const stufe = g.heizstabStartStufe;
+        satz = `Mit Sonnenstrom ab ${fKw(stufe.kw)} (${stufeText(stufe.ausgaenge)})`;
+      } else satz = typeof s.schwelleKw === 'number' ? `Mit Sonnenstrom ab ${fKw(s.schwelleKw)}` : 'Mit Sonnenstrom';
       break;
     case 'guenstig':
     case 'freigabe_guenstig': {
@@ -555,6 +569,14 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
     const lp = ladepunktVon(e, i.charging);
     const form = formFuer(e.typ, c, e.ladepunkt);
     const s = e.steuerart ?? null;
+    // Der Heizstab-Regler der Box wertet die gespeicherte Überschuss-Schwelle
+    // nicht aus. Solange er lebt, beschreibt nur sein Stufenprofil, was als
+    // Nächstes einschaltet; alle anderen Verbraucher behalten ihre Policy.
+    const heizstabReglerAktiv = e.typ === 'heating-rod' && form === 'stufig' && st?.heizstab != null;
+    const heizstabStartStufe = heizstabReglerAktiv ? kleinsteReglerStufe(c?.levelsKw) : null;
+    const naechsteHeizstabStufe = heizstabReglerAktiv
+      ? naechsteReglerStufe(c?.levelsKw, st?.heizstab?.stufe ?? -1)
+      : null;
     const gemessen = e.ladepunkt
       ? lp?.con?.powerKw != null
       : c?.confirmationChannel
@@ -587,9 +609,12 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
       }
     } else if (!ohnePlan) {
       const nenn = nennLeistung(c, e);
-      const erwartung = erwarteteLaeufe(s, { form, nennKw: nenn, ladepunkt: e.ladepunkt }, i.reihen, r.jetzt + 1);
+      const erwartung = erwarteteLaeufe(s, {
+        form, nennKw: nenn, ladepunkt: e.ladepunkt, startKw: heizstabStartStufe?.kw ?? null,
+      }, i.reihen, r.jetzt + 1);
+      const erwarteteLeistung = heizstabStartStufe?.kw ?? nenn;
       for (let t = r.jetzt + 1; t < N; t++) {
-        if (erwartung[t]) { kw[t] = nenn; herkunft[t] = 'erwartet'; }
+        if (erwartung[t]) { kw[t] = erwarteteLeistung; herkunft[t] = 'erwartet'; }
       }
     }
 
@@ -625,14 +650,19 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
       if (regelJetzt && laeuft) {
         zustand = { ...zustand, kurz: `Regel „${regelJetzt}“ greift`, lang: `Die Regel „${regelJetzt}“ schaltet das Gerät gerade ein.` };
       } else if (zustand.pill[0] === 'wait' && sonnig) {
-        const braucht = num(s?.schwelleKw) ?? nennLeistung(c, e);
-        const frei = Math.max(0, -(i.reihen.netz[r.jetzt] ?? 0));
-        if (braucht != null && i.reihen.netz[r.jetzt] != null) {
+        const braucht = heizstabReglerAktiv ? naechsteHeizstabStufe?.kw ?? null : num(s?.schwelleKw) ?? nennLeistung(c, e);
+        const frei = num(st.heizstab?.verfuegbar_kw) ?? Math.max(0, -(i.reihen.netz[r.jetzt] ?? 0));
+        const regler = heizstabReglerAktiv ? reglerSatz(st.heizstab) : null;
+        if (braucht != null && (heizstabReglerAktiv || i.reihen.netz[r.jetzt] != null)) {
           zustand = {
             ...zustand,
-            kurz: `Wartet · braucht ${fKw(braucht)}, frei ${fKw(frei)}`,
-            lang: `Wartet auf Sonnenstrom: braucht ${fKw(braucht)}, frei sind ${fKw(frei)}.`,
+            kurz: regler ? `Wartet · ${regler} · braucht ${fKw(braucht)}` : `Wartet · braucht ${fKw(braucht)}, frei ${fKw(frei)}`,
+            lang: regler
+              ? `${regler} Die nächste Stufe braucht ${fKw(braucht)}, frei sind ${fKw(frei)}.`
+              : `Wartet auf Sonnenstrom: braucht ${fKw(braucht)}, frei sind ${fKw(frei)}.`,
           };
+        } else if (regler) {
+          zustand = { ...zustand, kurz: `Wartet · ${regler}`, lang: regler };
         }
       } else if (laeuft && s?.ziel && s.zielFenster?.bis) {
         zustand = { ...zustand, kurz: `Plan: fertig bis ${s.zielFenster.bis}`, lang: `Läuft nach Plan, damit es bis ${s.zielFenster.bis} fertig ist.` };
@@ -686,6 +716,9 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
       gemessen,
       nennKw: nennLeistung(c, e),
       stufenKw: c?.levelsKw ?? null,
+      heizstabReglerAktiv,
+      heizstabStartStufe,
+      naechsteHeizstabStufe,
       steuerart: s,
       ohneAuftrag: s?.herkunft === 'ohne',
       sonnig,
@@ -703,7 +736,7 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
       warumLang: zustand.lang,
       eingriff,
       regelJetzt: regelJetzt && zustand.pill[0] === 'on' ? regelJetzt : null,
-      auftrag: auftragSatz(s, { form, ladepunkt: e.ladepunkt }),
+      auftrag: auftragSatz(s, { form, ladepunkt: e.ladepunkt, heizstabStartStufe }),
       regeln: e.regeln ?? 0,
     };
   });
@@ -851,7 +884,7 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
  */
 export function erwarteteLaeufe(
   s: Steuerart | null | undefined,
-  g: { form: Form; nennKw: number | null; ladepunkt: boolean },
+  g: { form: Form; nennKw: number | null; ladepunkt: boolean; startKw?: number | null },
   rh: Reihen,
   ab = 0,
 ): boolean[] {
@@ -863,7 +896,7 @@ export function erwarteteLaeufe(
       case 'ueberschuss':
       case 'freigabe_ueberschuss': {
         if (g.ladepunkt) break;
-        const schwelle = num(s.schwelleKw) ?? nenn;
+        const schwelle = g.startKw ?? num(s.schwelleKw) ?? nenn;
         const netz = rh.netz[t];
         const pv = rh.pv[t];
         const last = rh.last[t];
@@ -1105,9 +1138,12 @@ export function leiste(
     for (const id of platzListe) {
       const g = liste.find((x) => x.id === id);
       if (!g || g.pill[0] !== 'wait' || g.eingriff) continue;
-      const braucht = num(g.steuerart?.schwelleKw) ?? g.nennKw;
+      const braucht = g.heizstabReglerAktiv
+        ? g.naechsteHeizstabStufe?.kw ?? null
+        : num(g.steuerart?.schwelleKw) ?? g.nennKw;
       if (braucht == null) continue;
-      wartet = { id: g.id, name: g.name, platz: platzListe.indexOf(id) + 1, braucht, frei: exp };
+      const frei = g.heizstabReglerAktiv ? num(g.status?.heizstab?.verfuegbar_kw) ?? exp : exp;
+      wartet = { id: g.id, name: g.name, platz: platzListe.indexOf(id) + 1, braucht, frei };
       break;
     }
   }
