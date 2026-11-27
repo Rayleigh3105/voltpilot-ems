@@ -71,13 +71,22 @@ public class ConsumerOverrideService {
             BigDecimal effectivePowerKw, boolean gridImportPossible, boolean ttlCapped,
             String message, String pushReason,
             @com.fasterxml.jackson.annotation.JsonInclude(
-                    com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Boolean phasenGenau) {
+                    com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Boolean phasenGenau,
+            @com.fasterxml.jackson.annotation.JsonInclude(
+                    com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) UUID spur) {
 
         public OverrideOutcome(boolean applied, boolean pushed, String kind, Instant endsAt,
                 BigDecimal effectivePowerKw, boolean gridImportPossible, boolean ttlCapped,
                 String message, String pushReason) {
             this(applied, pushed, kind, endsAt, effectivePowerKw, gridImportPossible, ttlCapped, message,
-                    pushReason, null);
+                    pushReason, null, null);
+        }
+
+        public OverrideOutcome(boolean applied, boolean pushed, String kind, Instant endsAt,
+                BigDecimal effectivePowerKw, boolean gridImportPossible, boolean ttlCapped,
+                String message, String pushReason, Boolean phasenGenau) {
+            this(applied, pushed, kind, endsAt, effectivePowerKw, gridImportPossible, ttlCapped, message,
+                    pushReason, phasenGenau, null);
         }
     }
 
@@ -101,6 +110,7 @@ public class ConsumerOverrideService {
 
     @Transactional
     public OverrideOutcome start(UUID siteId, UUID entityId, OverrideRequest req, String actor) {
+        Instant eingang = Instant.now();
         ConsumerRow row = requireConnected(siteId, entityId);
         String action = req == null ? null : req.action();
         boolean stop = "stop".equals(action);
@@ -182,13 +192,26 @@ public class ConsumerOverrideService {
         ConsumerOverridePublisher pub = flagOn ? publisher.getIfAvailable() : null;
         // Die gewählten Phasen gehen nur an eine Box, die sie kennt; jede andere bekommt die Stufe.
         boolean phasenGenau = ausgaenge != null && heizstab.phasenEinzeln(deviceId);
-        boolean pushed = pub != null && (phasenGenau
-                ? pub.publishPhasenOverride(TenantContext.get(), siteId, deviceId, entityId, value, ausgaenge,
-                        ttlSeconds, now)
-                : pub.publishOverride(TenantContext.get(), siteId, deviceId, entityId, onOff, value,
-                        ttlSeconds, now));
+        // Die Schaltspur (vp-schalten-3s): ihre Kennung reist als request_id zur Box.
+        SchaltSpur.Neu spur = schaltSpur == null ? null
+                : schaltSpur.beginnen(siteId, entityId, stop ? "stop" : "start", command, value,
+                        phasenGenau ? ausgaenge : null, eingang);
+        boolean pushed = pub != null && (spur == null
+                ? (phasenGenau
+                        ? pub.publishPhasenOverride(TenantContext.get(), siteId, deviceId, entityId, value, ausgaenge,
+                                ttlSeconds, now)
+                        : pub.publishOverride(TenantContext.get(), siteId, deviceId, entityId, onOff, value,
+                                ttlSeconds, now))
+                : (phasenGenau
+                        ? pub.publishPhasenOverride(TenantContext.get(), siteId, deviceId, entityId, value, ausgaenge,
+                                ttlSeconds, now, spur.requestId())
+                        : pub.publishOverride(TenantContext.get(), siteId, deviceId, entityId, onOff, value,
+                                ttlSeconds, now, spur.requestId())));
         String reason = !flagOn ? "control_disabled" : pub == null ? "publisher_unavailable"
                 : pushed ? null : "publish_failed";
+        if (schaltSpur != null) {
+            schaltSpur.gesendet(spur, deviceId, eingang, pushed, reason);
+        }
         boolean grid = !stop; // a manual run may draw grid power (the §14.13 hint)
         String msg = message(stop, flagOn, pushed)
                 + ("publisher_unavailable".equals(reason) ? " Die Zustellung ist derzeit nicht verfügbar."
@@ -198,26 +221,36 @@ public class ConsumerOverrideService {
                                 + "nächsten Update."
                         : "");
         return new OverrideOutcome(true, pushed, stop ? "stop" : "start", endsAt, effectivePower,
-                grid, capped, msg, reason, ausgaenge == null ? null : pushed && phasenGenau);
+                grid, capped, msg, reason, ausgaenge == null ? null : pushed && phasenGenau,
+                spur == null ? null : spur.id());
     }
 
     @Transactional
     public OverrideOutcome clear(UUID siteId, UUID entityId, String actor) {
+        Instant eingang = Instant.now();
         requireConsumer(siteId, entityId);
         boolean flagOn = activation.activationAvailable();
         UUID deviceId = flagOn ? ziel.komponente(siteId, entityId).id() : null;
         overrides.clear(siteId, entityId);
         audit.append(siteId, entityId, "override_cleared", null, null, actor, null);
         ConsumerOverridePublisher pub = flagOn ? publisher.getIfAvailable() : null;
-        boolean pushed = pub != null && pub.publishWithdraw(TenantContext.get(), siteId, deviceId, entityId);
+        SchaltSpur.Neu spur = schaltSpur == null ? null
+                : schaltSpur.beginnen(siteId, entityId, "zurueck", null, null, null, eingang);
+        boolean pushed = pub != null && (spur == null
+                ? pub.publishWithdraw(TenantContext.get(), siteId, deviceId, entityId)
+                : pub.publishWithdraw(TenantContext.get(), siteId, deviceId, entityId, spur.requestId()));
         String reason = !flagOn ? "control_disabled" : pub == null ? "publisher_unavailable"
                 : pushed ? null : "publish_failed";
+        if (schaltSpur != null) {
+            schaltSpur.gesendet(spur, deviceId, eingang, pushed, reason);
+        }
         return new OverrideOutcome(true, pushed, "resume", null, null, false, false,
                 pushed ? "Der manuelle Eingriff wurde beendet. Die Automatik übernimmt wieder."
                         : "Das Beenden ist notiert, wurde aber noch nicht an die Box gesendet. "
                                 + (!flagOn ? "Die Steuerung ist noch nicht aktiviert."
                                         : pub == null ? "Die Zustellung ist derzeit nicht verfügbar."
-                                                : "Die Zustellung an die Box ist fehlgeschlagen."), reason);
+                                                : "Die Zustellung an die Box ist fehlgeschlagen."), reason, null,
+                spur == null ? null : spur.id());
     }
 
     // --- helpers -------------------------------------------------------------
@@ -248,6 +281,14 @@ public class ConsumerOverrideService {
             return now.plus(vorgabe);
         }
         throw badRequest("Bitte eine Endzeit oder Dauer angeben - ein Eingriff läuft nie unbegrenzt.");
+    }
+
+    /** Die Schaltspur (vp-schalten-3s; optional, damit von Hand gebaute Tests unverändert bleiben). */
+    private SchaltSpur schaltSpur;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void schaltSpur(SchaltSpur schaltSpur) {
+        this.schaltSpur = schaltSpur;
     }
 
     /** Heizstab V1, Paket 3 (optional, damit von Hand gebaute Tests unverändert bleiben). */

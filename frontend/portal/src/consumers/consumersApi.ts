@@ -12,6 +12,7 @@ import type {
   ConsumerPolicyVersion,
 } from './types';
 import type { IoModulZustandDto } from './ioZustand';
+import { merkeSpur, pruefeSpuren, spurKlick, spurMeldeweg } from './schaltspur';
 
 /** Das Ergebnis eines Schaltens: `state` ist der ZURÜCKGELESENE Zustand. */
 export interface IoAusgangSchaltErgebnis {
@@ -97,7 +98,11 @@ export const consumersApi = {
    */
   status: (siteId: string) =>
     request<import('./status').ConsumerRuntimeStatus[]>(
-      `/api/v1/sites/${siteId}/consumer-status`),
+      `/api/v1/sites/${siteId}/consumer-status`).then((liste) => {
+      // Schaltspur (vp-schalten-3s): jede frische Rückmeldung prüft die offenen Handeingriffe der Anlage.
+      pruefeSpuren(siteId, liste);
+      return liste;
+    }),
   get: (siteId: string, id: string) => request<Consumer>(`${base(siteId)}/${id}`),
   create: (siteId: string, body: CreateConsumerBody) =>
     request<Consumer>(base(siteId), { method: 'POST', body: JSON.stringify(body) }),
@@ -147,15 +152,69 @@ export const consumersApi = {
       /** Heizstab, Handeingriff je Phase: die Kanäle der gewählten Ausgänge (heizstab-shelly.md). */
       ausgaenge?: number[];
     },
-  ) =>
-    request<ConsumerOverrideOutcome>(`${base(siteId)}/${id}/override`, {
+  ) => {
+    const klick = spurKlick();
+    return request<ConsumerOverrideOutcome>(`${base(siteId)}/${id}/override`, {
       method: 'POST',
       body: JSON.stringify(body),
-    }),
+    }).then((out) => {
+      merkeSpur(siteId, id, out?.spur, {
+        art: body.action,
+        ausgaenge: out?.phasenGenau ? body.ausgaenge ?? null : null,
+      }, klick);
+      return out;
+    });
+  },
   /** "Automatik fortsetzen": end the manual intervention now. */
-  clearOverride: (siteId: string, id: string) =>
-    request<ConsumerOverrideOutcome>(`${base(siteId)}/${id}/override`, { method: 'DELETE' }),
+  clearOverride: (siteId: string, id: string) => {
+    const klick = spurKlick();
+    return request<ConsumerOverrideOutcome>(`${base(siteId)}/${id}/override`, { method: 'DELETE' })
+      .then((out) => {
+        merkeSpur(siteId, id, out?.spur, { art: 'zurueck' }, klick);
+        return out;
+      });
+  },
+  /** Die jüngsten Schaltspuren eines Verbrauchers - nur Plattform-Administration (Technik & Diagnose). */
+  schaltspuren: (siteId: string, id: string) =>
+    request<SchaltSpur[]>(`/api/v1/admin/sites/${siteId}/consumers/${id}/schaltspuren`),
 };
+
+// Die Portal-Zeiten einer Schaltspur gehen über dieselbe Anfrage-Schicht (Mandant, Kundenbereich, Token).
+spurMeldeweg((siteId, entityId, spur, zeiten) =>
+  request<void>(`${base(siteId)}/${entityId}/schaltspuren/${spur}/portal`, {
+    method: 'POST',
+    body: JSON.stringify(zeiten),
+  }));
+
+/**
+ * Eine Schaltspur (`docs/contracts/v2/schaltspur.md`). `box*` in der Uhr der Box, alles übrige in der der API;
+ * die Portal-Zeiten in Millisekunden ab dem Klick. `null` = dieser Schritt fand nicht statt oder ist nicht gemeldet.
+ */
+export interface SchaltSpur {
+  id: string;
+  deviceId: string | null;
+  requestId: string;
+  art: 'start' | 'stop' | 'zurueck';
+  kommando: string | null;
+  wert: number | null;
+  ausgaenge: number[] | null;
+  apiEingang: string;
+  gesendet: string | null;
+  zustellung: string | null;
+  ersteMeldung: string | null;
+  boxEmpfangen: string | null;
+  boxEntschieden: string | null;
+  boxGeschrieben: string | null;
+  boxZurueckgelesen: string | null;
+  boxGemeldet: string | null;
+  boxUrteil: string | null;
+  gehalten: string | null;
+  grund: string | null;
+  bestaetigt: string | null;
+  ergebnis: 'offen' | 'bestaetigt' | 'gehalten' | 'abweichung' | 'ersetzt';
+  portalAntwortMs: number | null;
+  portalSichtbarMs: number | null;
+}
 
 /** The override start/stop/resume outcome (honest `pushed` while the flag is off). */
 export interface ConsumerOverrideOutcome {
@@ -169,4 +228,6 @@ export interface ConsumerOverrideOutcome {
   message: string;
   /** Nur bei einer Phasen-Wahl: ob die Box genau diese Phasen schaltet (`heizstab_phasen`). */
   phasenGenau?: boolean;
+  /** Die Schaltspur dieses Eingriffs (vp-schalten-3s); fehlt, wenn die API keine anlegen konnte. */
+  spur?: string;
 }

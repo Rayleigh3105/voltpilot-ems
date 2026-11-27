@@ -1147,6 +1147,24 @@ type ConsumerRuntime struct {
 	// the surplus it sees and when a higher stage may start. Additive; absent
 	// for every consumer without the controller block.
 	Heizstab *ConsumerHeizstab `json:"heizstab,omitempty"`
+	// Trace is the Schaltspur of the latest manual override of this consumer
+	// (docs/contracts/v2/schaltspur.md, vp-schalten-3s): its request_id and
+	// the box's own timestamps. Additive; absent without a recent override.
+	Trace *ConsumerTrace `json:"trace,omitempty"`
+}
+
+// ConsumerTrace is one manual override's path through the box, in the box's
+// own clock (RFC 3339, milliseconds). An empty time means the step did not
+// happen (e.g. a guard held the wish, so nothing was written) - never "at once".
+type ConsumerTrace struct {
+	RequestID  string `json:"request_id"`
+	ReceivedAt string `json:"received_at,omitempty"`
+	AdmittedAt string `json:"admitted_at,omitempty"`
+	WrittenAt  string `json:"written_at,omitempty"`
+	ReadBackAt string `json:"read_back_at,omitempty"`
+	// Outcome: written | unchanged | held | failed | withdrawn.
+	Outcome    string `json:"outcome,omitempty"`
+	ReasonCode string `json:"reason_code,omitempty"`
 }
 
 // ConsumerHeizstab is the controller's view of one heating rod.

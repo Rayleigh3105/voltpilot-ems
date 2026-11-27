@@ -177,4 +177,3 @@ func TestDvMesspunktPassVeroeffentlichtBatch(t *testing.T) {
 		t.Fatal("kein Batch auf dem Bus")
 	}
 }
-

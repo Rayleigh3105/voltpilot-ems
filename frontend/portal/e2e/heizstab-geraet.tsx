@@ -17,6 +17,10 @@ import '../src/index.css';
 
 (keycloak as unknown as { token: string; updateToken: () => Promise<boolean> }).token = 'e2e-token';
 (keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
+// `?admin=1`: die Plattform-Administration (Technik & Diagnose › „Schaltspur (Admin)“, vp-schalten-3s).
+if (new URLSearchParams(window.location.search).get('admin') === '1') {
+  (keycloak as unknown as { tokenParsed: unknown }).tokenParsed = { realm_access: { roles: ['platform-admin'] } };
+}
 
 /**
  * E2E-Bühne der GERÄTESEITE eines Heizstabs (Heizstab V1): die echte `GeraetSeiteSection` mit einem Shelly Pro 3,
@@ -276,7 +280,36 @@ Object.assign(consumersApi, {
   pause: (...a: unknown[]) => { merke.pause = a; return Promise.resolve({ published: true, message: '' }); },
   resume: (...a: unknown[]) => { merke.resume = a; return Promise.resolve({ activated: true, reason: null, message: '', published: true, policyVersion: 1 }); },
   patch: (...a: unknown[]) => { merke.patch = a.at(-1); return Promise.resolve(verbraucher); },
+  // Drei Tipps, neueste zuerst: eine Box mit Schaltspur, die bestätigt; dieselbe, gehalten von der
+  // Mindestlaufzeit; eine ältere Box ohne eigene Zeitpunkte.
+  schaltspuren: ok([
+    spur('s3', 'start', [0], { gesendet: 40, ersteMeldung: 260, bestaetigt: 260, box: [0, 2, 150, 210, 230],
+      boxUrteil: 'written', ergebnis: 'bestaetigt', portal: [120, 1180] }),
+    spur('s2', 'stop', null, { gesendet: 35, ersteMeldung: 190, gehalten: 190, box: [0, 1, null, null, 30],
+      boxUrteil: 'held:guard_min_on', ergebnis: 'gehalten', grund: 'guard_min_on', portal: [110, null] }),
+    spur('s1', 'start', [0], { gesendet: 50, ersteMeldung: 14_030, bestaetigt: 14_030, box: null,
+      boxUrteil: null, ergebnis: 'bestaetigt', portal: [140, 19_900] }),
+  ]),
 });
+
+/** Eine Schaltspur der Bühne; Zeiten in ms ab der Anfrage (die Box ab ihrem Empfang, 30 ms nach dem Senden). */
+function spur(id: string, art: 'start' | 'stop', ausgaenge: number[] | null, z: {
+  gesendet: number; ersteMeldung: number; bestaetigt?: number; gehalten?: number;
+  box: (number | null)[] | null; boxUrteil: string | null; ergebnis: string; grund?: string;
+  portal: [number, number | null];
+}) {
+  const ab = Date.parse(JETZT) - (id === 's3' ? 2 : id === 's2' ? 6 : 30) * 60_000;
+  const t = (ms: number | null | undefined) => (ms == null ? null : new Date(ab + ms).toISOString());
+  const boxAb = ab + z.gesendet + 30;
+  const b = (i: number) => (z.box?.[i] == null ? null : new Date(boxAb + (z.box[i] as number)).toISOString());
+  return {
+    id, deviceId: box.id, requestId: `override:${STAB}:${id}`, art, kommando: 'setpoint_kw',
+    wert: art === 'stop' ? 0 : 2, ausgaenge, apiEingang: t(0), gesendet: t(z.gesendet), zustellung: null,
+    ersteMeldung: t(z.ersteMeldung), boxEmpfangen: b(0), boxEntschieden: b(1), boxGeschrieben: b(2),
+    boxZurueckgelesen: b(3), boxGemeldet: b(4), boxUrteil: z.boxUrteil, gehalten: t(z.gehalten), grund: z.grund ?? null,
+    bestaetigt: t(z.bestaetigt), ergebnis: z.ergebnis, portalAntwortMs: z.portal[0], portalSichtbarMs: z.portal[1],
+  };
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

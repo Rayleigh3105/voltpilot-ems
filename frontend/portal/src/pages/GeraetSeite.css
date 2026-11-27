@@ -874,3 +874,12 @@
   gap: 8px;
   margin-top: 4px;
 }
+
+/* Technik & Diagnose › „Schaltspur (Admin)“ (vp-schalten-3s): je Tipp ein Block, getrennt wie die Abschnitte
+   einer Karte - sonst laufen drei Spuren mit gleichen Zeilen ineinander. */
+.vp-schaltspur-eintrag {
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+.vp-schaltspur-eintrag > .vp-geraet-sec-sub { margin-bottom: var(--vp-space-2, 8px); }

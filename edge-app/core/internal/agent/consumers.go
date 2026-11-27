@@ -145,6 +145,8 @@ func (a *Agent) consumersSummary() cloud.ConsumersSummary {
 		// ...and, where the box's heating-rod controller drives it, the stage
 		// the controller wants and why (heizstab.go).
 		entry.Heizstab = a.heizstabSummary(v.id)
+		// ...and the Schaltspur of its latest manual override (consumer_trace.go).
+		entry.Trace = a.consumerTraceFor(v.id, now)
 
 		out[v.id] = entry
 	}

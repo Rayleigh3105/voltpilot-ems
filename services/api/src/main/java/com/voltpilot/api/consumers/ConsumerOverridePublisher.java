@@ -82,8 +82,20 @@ public class ConsumerOverridePublisher {
      */
     public boolean publishOverride(UUID tenantId, UUID siteId, UUID deviceId, UUID entityId,
             Boolean onOff, BigDecimal setpointKw, int ttlSeconds, Instant now) {
+        return publishOverride(tenantId, siteId, deviceId, entityId, onOff, setpointKw, ttlSeconds, now,
+                zeitKennung(entityId, now));
+    }
+
+    /**
+     * Wie oben, mit der {@code request_id}, die der Aufrufer vergibt - beim Handeingriff an einem Verbraucher die
+     * Kennung seiner Schaltspur ({@link SchaltSpur#requestId}), unter der eine Box ab dem Release mit Schaltspur
+     * ihre eigenen Zeitpunkte zurückmeldet. Der Vertrag kennt die request_id als die eine Korrelation je
+     * Aussendung (edge-desired.schema.json); jede Box behandelt sie als undurchsichtige Zeichenkette.
+     */
+    public boolean publishOverride(UUID tenantId, UUID siteId, UUID deviceId, UUID entityId,
+            Boolean onOff, BigDecimal setpointKw, int ttlSeconds, Instant now, String requestId) {
         return publish(tenantId, siteId, deviceId,
-                envelope(entityId, onOff, setpointKw, null, ttlSeconds, now).toString(), entityId);
+                envelope(entityId, onOff, setpointKw, null, ttlSeconds, now, requestId).toString(), entityId);
     }
 
     /**
@@ -94,16 +106,28 @@ public class ConsumerOverridePublisher {
      */
     public boolean publishPhasenOverride(UUID tenantId, UUID siteId, UUID deviceId, UUID entityId,
             BigDecimal setpointKw, java.util.List<Integer> outputs, int ttlSeconds, Instant now) {
+        return publishPhasenOverride(tenantId, siteId, deviceId, entityId, setpointKw, outputs, ttlSeconds, now,
+                zeitKennung(entityId, now));
+    }
+
+    /** Wie oben, mit der request_id der Schaltspur (siehe {@link #publishOverride(UUID, UUID, UUID, UUID, Boolean, BigDecimal, int, Instant, String)}). */
+    public boolean publishPhasenOverride(UUID tenantId, UUID siteId, UUID deviceId, UUID entityId,
+            BigDecimal setpointKw, java.util.List<Integer> outputs, int ttlSeconds, Instant now, String requestId) {
         return publish(tenantId, siteId, deviceId,
-                envelope(entityId, null, setpointKw, outputs, ttlSeconds, now).toString(), entityId);
+                envelope(entityId, null, setpointKw, outputs, ttlSeconds, now, requestId).toString(), entityId);
+    }
+
+    /** Die request_id vor der Schaltspur: Entität und Sekunde (der Weg der Speicher-Eingriffe bis heute). */
+    private static String zeitKennung(UUID entityId, Instant now) {
+        return "override:" + entityId + ":" + now.getEpochSecond();
     }
 
     private ObjectNode envelope(UUID entityId, Boolean onOff, BigDecimal setpointKw,
-            java.util.List<Integer> outputs, int ttlSeconds, Instant now) {
+            java.util.List<Integer> outputs, int ttlSeconds, Instant now, String requestId) {
         ObjectNode env = mapper.createObjectNode();
         env.put("schema_version", "1.0");
         env.put("entity_id", entityId.toString());
-        env.put("request_id", "override:" + entityId + ":" + now.getEpochSecond());
+        env.put("request_id", requestId);
         ObjectNode source = env.putObject("source");
         source.put("kind", "local-ui");
         env.put("priority", "flow");
@@ -126,9 +150,21 @@ public class ConsumerOverridePublisher {
 
     /** Publish the withdrawal so the plan/automation re-takes at once ("Automatik fortsetzen"). */
     public boolean publishWithdraw(UUID tenantId, UUID siteId, UUID deviceId, UUID entityId) {
+        return publishWithdraw(tenantId, siteId, deviceId, entityId, null);
+    }
+
+    /**
+     * Wie oben; {@code requestId} (nicht null) trägt die Kennung der Schaltspur von „Automatik fortsetzen“ mit. Eine
+     * Box vor der Schaltspur liest im Rücknahme-Umschlag nur {@code entity_id} und {@code withdraw} und überliest das
+     * Feld.
+     */
+    public boolean publishWithdraw(UUID tenantId, UUID siteId, UUID deviceId, UUID entityId, String requestId) {
         ObjectNode env = mapper.createObjectNode();
         env.put("entity_id", entityId.toString());
         env.put("withdraw", true);
+        if (requestId != null) {
+            env.put("request_id", requestId);
+        }
         return publish(tenantId, siteId, deviceId, env.toString(), entityId);
     }
 

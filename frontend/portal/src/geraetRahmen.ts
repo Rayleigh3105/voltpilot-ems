@@ -58,7 +58,8 @@ export const BAUSTEIN_TITEL: Record<BausteinId, string> = {
 };
 
 /** Ein Teil der Unteransicht „Technik & Diagnose". */
-export type TechnikId = 'register' | 'ocpp' | 'anbindung' | 'auswertung' | 'einrichtung' | 'rohdaten' | 'plattform';
+export type TechnikId = 'register' | 'ocpp' | 'anbindung' | 'auswertung' | 'einrichtung' | 'rohdaten' | 'schaltspur'
+  | 'plattform';
 
 export const TECHNIK_ORDNUNG: readonly TechnikId[] = [
   'register',
@@ -67,6 +68,7 @@ export const TECHNIK_ORDNUNG: readonly TechnikId[] = [
   'auswertung',
   'einrichtung',
   'rohdaten',
+  'schaltspur',
   'plattform',
 ];
 
@@ -78,6 +80,8 @@ export const TECHNIK_TITEL: Record<TechnikId, string> = {
   auswertung: 'Auswertung',
   einrichtung: 'Einrichtung',
   rohdaten: 'Rohdaten',
+  // vp-schalten-3s: wo die Zeit zwischen Klick und bestätigtem Zustand hingeht (nur Plattform-Administration).
+  schaltspur: 'Schaltspur (Admin)',
   plattform: 'Plattform-Sicht (Admin)',
 };
 
