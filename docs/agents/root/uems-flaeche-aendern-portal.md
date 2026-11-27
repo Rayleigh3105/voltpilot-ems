@@ -116,6 +116,17 @@ Migration: geschrieben über `PUT /api/v1/orte/{id}/flaeche` (IP-5), gelesen üb
     (dort jetzt als `FolgenKarteAnsicht`/`ArchivObjekt`-Pattern exportiert statt dupliziert). Ist der
     Kunde danach wieder bei genau einem Standort, verschwindet „Gehört zu“ von selbst
     (`mehrereStandorte()`) — keine eigene Privatkunden-Prüfung nötig.
+    **„Fertig“ zeigt sofort die neue Adresse, kein eigener Mechanismus nötig:** `onGespeichert`
+    ruft dieselbe Kette wie jede Berichtigung (`AnlageOrtZeile` → `AnlageTechnik`s
+    `standortNeuLaden()` → `useAnlageStandort`s `GET /api/v1/standorte` neu) — die Zeile UND das
+    Blatt lesen live, nie eine lokale Kopie der alten Adresse (Inbox 017, Captain-Frage vor dem
+    ersten Merge: ein Screenshot mit der statisch gebliebenen alten Adresse war eine Lücke im
+    e2e-Mock, kein Produktverhalten — `e2e/anlage-ort-umzug.spec.ts` trägt seitdem einen
+    ZUSTANDSBEHAFTETEN `standorte()`-Mock, der nach `POST .../ort/umzug` wie ein echter Server
+    antwortet, und prüft die neue Adresse an der Zeile UND im wieder geöffneten Blatt). Ab zwei
+    Standorten (der bisherige, jetzt nur mit seinen übrigen Geschwistern, UND der neue) trägt die
+    Zeile zusätzlich den Standort-Namen voran (§6.2, E3) — normales `ortZeileText`-Verhalten, kein
+    Umzug-Sonderfall.
     **Zwei Umzüge derselben Anlage:** der zweite still angelegte Standort hieße wieder wie die
     Anlage — kollidiert der Name mit dem ersten (noch nicht archivierten) Umzugs-Standort,
     hängt `StandortService.freierStandortName(basis)` einen Zähler an („Halle 1 (2)“), statt mit

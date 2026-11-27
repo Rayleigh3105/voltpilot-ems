@@ -17,17 +17,45 @@ import { ahrenbergUnternehmen, FIXTURE_IDS, werkAhrenberg } from '../src/test/st
 const BILDER = process.env.ORT_BILDER;
 const json = (body: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-function standorte(): StandorteAmStichtag {
+function standorteVorDemUmzug(): StandorteAmStichtag {
   return { stichtag: '2026-11-27', standorte: [werkAhrenberg()], nichtGezeigt: [], nochNichtZugeordnet: null };
+}
+
+/**
+ * Wie ein echter Server nach `POST …/ort/umzug` antworten würde: die Anlage (Halle 2) gehört ab
+ * `gueltigAb` zum NEUEN Standort mit der neuen Adresse; der bisherige bleibt mit SEINEN übrigen
+ * Geschwistern (Halle 1 zieht nicht mit, §6.6-Regel). Beweist Inbox 017: die Zeile/das Blatt lesen
+ * `GET /api/v1/standorte` neu (`standortNeuLaden`), keine statische Kopie der alten Adresse.
+ */
+function standorteNachDemUmzug(
+  adresse: { strasse: string; plz: string | null; ort: string; land: string },
+  lage: { breitengrad: number; laengengrad: number },
+  gueltigAb: string,
+): StandorteAmStichtag {
+  const bisher = werkAhrenberg({
+    anlagen: werkAhrenberg().anlagen.filter((a) => a.id !== FIXTURE_IDS.an2),
+    anlagenZahl: 1,
+  });
+  const neu = werkAhrenberg({
+    id: 'st-neu',
+    kurzzeichen: 'ST-3',
+    name: 'Werk Ahrenberg – Halle 2',
+    adresse: adresse as never,
+    lage,
+    anlagen: [{ id: FIXTURE_IDS.an2, name: 'Werk Ahrenberg – Halle 2', gueltigAb, gueltigBis: null }],
+    anlagenZahl: 1,
+  });
+  return { stichtag: '2026-11-27', standorte: [bisher, neu], nichtGezeigt: [], nochNichtZugeordnet: null };
 }
 
 async function verdrahte(page: Page) {
   const gesendet: unknown[] = [];
   let merkzettel: UmzugMerkzettel | null = null;
+  let standorteAntwort = standorteVorDemUmzug();
   await page.route('**/api/v1/**', (r) => r.fulfill(json({}, 404)));
   await page.route('**/api/v1/sites/*/assets', (r) => r.fulfill(json([])));
   await page.route('**/api/v1/unternehmen', (r) => r.fulfill(json(ahrenbergUnternehmen())));
-  await page.route('**/api/v1/standorte**', (r) => r.fulfill(json(standorte())));
+  await page.route('**/api/v1/standorte**', (r) => r.fulfill(json(standorteAntwort)));
   await page.route('**/api/v1/standorte/*/orte**', (r) =>
     r.fulfill(
       json({
@@ -111,6 +139,7 @@ async function verdrahte(page: Page) {
       wetterNachholungAngestossen: true,
     };
     merkzettel = { seit: '2026-11-27T10:00:00Z', solaranlageErledigt: false, stromtarifErledigt: false, einspeiseverguetungErledigt: false };
+    standorteAntwort = standorteNachDemUmzug(body.adresse, body.lage, body.gueltigAb);
     return r.fulfill(json(ergebnis));
   });
   await page.route('**/api/v1/sites/*/umzug-merkzettel', (r) => {
@@ -182,13 +211,30 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     await dialog.getByRole('button', { name: 'Fertig' }).click();
     await expect(dialog).toBeHidden();
 
+    // Inbox 017: "Fertig" löst `standortNeuLaden()` aus (AnlageOrtZeile → AnlageTechnik) - die
+    // Zeile zeigt jetzt die NEUE Adresse, nicht mehr "Gewerbering 7, Ahrenberg". Kein Neuladen der
+    // Seite nötig - derselbe `useAnlageStandort`-Hook liest live neu. Ab zwei Standorten (der
+    // bisherige, jetzt nur noch mit Halle 1, UND der neue) trägt die Zeile zusätzlich den
+    // Standort-Namen voran (§6.2, E3) - "Hauptplatz 1, Wien" reicht als Beleg.
+    const zeile = karte.getByRole('button', { name: /^Standort bearbeiten:.*Hauptplatz 1, Wien/ });
+    await expect(zeile).toBeVisible();
+    await expect(karte.getByRole('button', { name: /Gewerbering 7/ })).toHaveCount(0);
+    await foto(page, 'umzug-4-standort-zeile-neue-adresse');
+
+    // Auch das Blatt selbst zeigt beim erneuten Öffnen die neue Adresse, nicht die alte.
+    await zeile.click();
+    const standortBlatt = page.getByRole('dialog', { name: 'Standort' });
+    await expect(standortBlatt.getByLabel('Adresse')).toHaveValue('Hauptplatz 1, Wien');
+    await standortBlatt.getByRole('button', { name: 'Abbrechen' }).click();
+    await expect(standortBlatt).toBeHidden();
+
     // Bericht 6.6 Punkt 7: je Anlage gespeichert, auf jedem Gerät sichtbar - ein voller Neuladen
     // (wie ein zweites Gerät) zeigt ihn als eigene Zeile über den Einstellungsgruppen.
     await page.reload();
     const banner = page.getByTestId('umzug-merkzettel');
     await expect(banner).toBeVisible();
     await expect(banner.getByText('Neues Haus? Bitte prüfen')).toBeVisible();
-    await foto(page, 'umzug-4-merkzettel-anlageseite');
+    await foto(page, 'umzug-5-merkzettel-anlageseite');
 
     // Ein Tipp erledigt nur diesen Teil - "geprüft" und "weggeklickt" sind dieselbe Handlung.
     await banner.getByRole('button', { name: 'Solaranlage: geprüft' }).click();
