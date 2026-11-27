@@ -8,6 +8,7 @@ import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
  * „Ort berichtigen" (vp-standort-konzept §6.1, B1/B3/B6): EIN Schreibweg für Adresse und
  * Kartenpunkt einer Anlage statt drei getrennter — {@link AnlageOrtService}. Nie ein Datum
  * (eine Korrektur, kein Umzug); die Zuordnung „Gehört zu" bleibt {@code AnlageStandortController}.
+ *
+ * <p>„Umzug" (E1 = B, §7): {@code POST .../ort/umzug} statt {@code PUT .../ort} - EIN eigener
+ * Weg, weil ein Umzug einen NEUEN Standort anlegt statt den bisherigen in-place zu berichtigen
+ * ({@link AnlageOrtService#umziehen}).
  *
  * <p>Rechte: {@code anlage.ort_berichtigen} (E2 = A, vp-standort-konzept §7) - Kundenadministrator
  * und Energiemanager unternehmensweit, Unterstützer ab Umfang „Einrichten" (befristet, Banner und
@@ -41,5 +46,13 @@ public class AnlageOrtController {
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         AnlageOrtDto.Anfrage a = anfrage.lies(body, AnlageOrtDto.Anfrage.class, false);
         return ort.berichtigen(siteId, a, OrtAnfrage.akteur(auth));
+    }
+
+    @PostMapping("/umzug")
+    @Recht(value = "anlage.ort_berichtigen", ziel = RechtZiel.ANLAGE)
+    public AnlageOrtDto.UmzugErgebnis umziehen(@PathVariable UUID siteId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        AnlageOrtDto.UmzugAnfrage a = anfrage.lies(body, AnlageOrtDto.UmzugAnfrage.class, false);
+        return ort.umziehen(siteId, a, OrtAnfrage.akteur(auth));
     }
 }

@@ -9,6 +9,7 @@ import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.TestKeycloak;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -212,6 +213,81 @@ class AnlageOrtApiTest {
         assertThat(offeneWetterNachholung(anC)).isEqualTo(1);
     }
 
+    // ---- Umzug (§7, E1 = B) ---------------------------------------------------------------------
+
+    @Test
+    void umziehtZuEinemStillAngelegtenStandortDerWieDieAnlageHeisstUndLaesstGeschwisterStehen() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+        String geschwister = anlage(w.wer(), "Halle 2", w.standort(), "48.950000", "10.920000");
+        gatewayAnlegen(w.tenant(), anlage);
+        // Die Zuordnung muss vor "heute" beginnen - sonst lehnt der bestehende Verschieben-Weg mit
+        // "gleicher_tag" ab (zwei Intervalle am selben Tag); das ist der reale Fall (Halle 1 gehört
+        // schon länger zu Werk Ahrenberg), nicht das Testgerüst selbst.
+        root.update("UPDATE anlage_standort SET gueltig_ab = '2026-10-01' WHERE site_id = ?::uuid", anlage);
+
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.POST, "/sites/" + anlage + "/ort/umzug", w.wer(), Map.of(
+                "adresse", Map.of("strasse", "Hauptplatz 1", "ort", "Wien", "land", "AT"),
+                "lage", Map.of("breitengrad", "48.208500", "laengengrad", "16.373800")));
+        assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
+        JsonNode body = r.getBody();
+        assertThat(body.at("/neuerStandort/name").asText()).isEqualTo("Halle 1");
+        assertThat(body.at("/neuerStandort/adresse/ort").asText()).isEqualTo("Wien");
+        assertThat(body.at("/umzug/bisher/id").asText()).isEqualTo(w.standort());
+        assertThat(body.at("/umzug/neu/id").asText()).isEqualTo(body.at("/neuerStandort/id").asText());
+        assertThat(body.at("/umzug/bleibt")).isNotEmpty();
+        assertThat(body.at("/site/latitude").decimalValue()).isEqualByComparingTo("48.208500");
+        assertThat(body.get("boxZugestellt").asBoolean()).isTrue();
+        assertThat(body.get("wetterNachholungAngestossen").asBoolean()).isTrue();
+
+        String neuerStandort = body.at("/neuerStandort/id").asText();
+        assertThat(neuerStandort).isNotEqualTo(w.standort());
+        assertThat(laufenderStandort(anlage)).isEqualTo(neuerStandort);
+        // Die Geschwister-Anlage bleibt am bisherigen Standort und an ihrem Punkt - kein Mitziehen
+        // wie bei PUT .../ort (das ist eine Berichtigung des GANZEN Standorts, kein Umzug).
+        assertThat(laufenderStandort(geschwister)).isEqualTo(w.standort());
+        erwartePunkt(punkt(geschwister), bd("48.950000"), bd("10.920000"));
+        BigDecimal standortBreiteAlt = root.queryForObject(
+                "SELECT lage_breitengrad FROM standort WHERE id = ?::uuid", BigDecimal.class, w.standort());
+        assertThat(standortBreiteAlt).isEqualByComparingTo("48.950000");
+    }
+
+    @Test
+    void derUmzugstagDarfNichtInDerZukunftLiegenUndSchreibtNichts() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+        String vorStandort = laufenderStandort(anlage);
+
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.POST, "/sites/" + anlage + "/ort/umzug", w.wer(), Map.of(
+                "adresse", Map.of("strasse", "Hauptplatz 1", "ort", "Wien", "land", "AT"),
+                "lage", Map.of("breitengrad", "48.208500", "laengengrad", "16.373800"),
+                "gueltigAb", LocalDate.now(java.time.ZoneId.of("Europe/Berlin")).plusDays(1).toString()));
+        assertThat(r.getStatusCode().value()).isEqualTo(400);
+        assertThat(r.getBody().get("code").asText()).isEqualTo("anfrage_ungueltig");
+        assertThat(r.getBody().get("feld").asText()).isEqualTo("gueltigAb");
+        assertThat(laufenderStandort(anlage)).isEqualTo(vorStandort);
+    }
+
+    @Test
+    void ohneLageWirdBeimUmzugAbgelehnt() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.POST, "/sites/" + anlage + "/ort/umzug", w.wer(),
+                Map.of("adresse", Map.of("strasse", "Hauptplatz 1", "ort", "Wien", "land", "AT")));
+        assertThat(r.getStatusCode().value()).isEqualTo(400);
+        assertThat(r.getBody().get("code").asText()).isEqualTo("anfrage_ungueltig");
+        assertThat(r.getBody().get("feld").asText()).isEqualTo("lage");
+    }
+
+    @Test
+    void fremdeAnlageIst404BeimUmzug() {
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.POST, "/sites/" + UUID.randomUUID() + "/ort/umzug",
+                ADMIN_OHNE_KUNDENBEREICH, Map.of("adresse", Map.of("strasse", "X 1", "ort", "Y", "land", "DE"),
+                        "lage", Map.of("breitengrad", "48.0", "laengengrad", "10.0")));
+        assertThat(r.getStatusCode().value()).isEqualTo(404);
+    }
+
     // ---- Gerüst --------------------------------------------------------------------------------
 
     private record Welt(UUID tenant, Anrufer wer, String standort) {}
@@ -259,6 +335,14 @@ class AnlageOrtApiTest {
         assertThat(tatsaechlich).hasSize(2);
         assertThat(tatsaechlich.get(0)).isEqualByComparingTo(breite);
         assertThat(tatsaechlich.get(1)).isEqualByComparingTo(laenge);
+    }
+
+    /** Die laufende Zuordnung der Anlage (heute gültig, nicht aufgehoben). */
+    private String laufenderStandort(String siteId) {
+        return root.queryForObject(
+                "SELECT standort_id FROM anlage_standort WHERE site_id = ?::uuid AND aufgehoben_am IS NULL "
+                        + "AND gueltig_ab <= now()::date AND (gueltig_bis IS NULL OR gueltig_bis >= now()::date)",
+                String.class, siteId);
     }
 
     private int offeneWetterNachholung(String siteId) {

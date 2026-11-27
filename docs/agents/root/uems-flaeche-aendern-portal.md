@@ -13,6 +13,7 @@ Migration: geschrieben über `PUT /api/v1/orte/{id}/flaeche` (IP-5), gelesen üb
 | Ableitung Standort der Anlage und Picker (rein) | `src/anlageStandort.ts` · `anlageStandort.test.ts` |
 | Zeile „Standort” (unvollständiger Standort) + Lese-Hook, Wirt `TechnikSection` | `src/components/AnlageStandortZeile.tsx` (+ `.css`) · `pages/AnlageTechnik.tsx` |
 | Zeile „Standort” + Blatt „Ort berichtigen” (vollständiger Standort, vp-standort-konzept §6.1, B1/B3/B6/E3) | `src/components/AnlageOrtZeile.tsx`/`.css`, `AnlageOrtBlatt.tsx`/`.css` · `src/anlageOrtBerichtigen.ts` (+ `.test.ts`) |
+| „Umzug“ im selben Blatt, ab 2 km (§7, E1 = B) | `AnlageOrtBlatt.tsx` (Schritte `frage`/`datum`) · `src/anlageOrtBerichtigen.ts` (`istUmzugsfrage`/`umzugAnfrage`) · Backend `AnlageOrtService.umziehen`/`AnlageOrtController` · `.umzug.test.tsx` |
 | Umschalter + Felder „Koordinaten manuell bearbeiten” (geteilt: `LocationMap` selbst UND unter „Details” im Blatt) | `src/components/KoordinatenManuellFelder.tsx` |
 | Picker in Schritt 1 | `AnlageStep` in `src/components/AnlageFlow.tsx` |
 | Bestandsschutz (Snapshots aufgenommen VOR IP-8, eigener Commit) | `pages/AnlageTechnik.standort.test.tsx`, `components/AnlageFlow.standort.test.tsx`, je `__snapshots__/*.html` |
@@ -87,11 +88,52 @@ Migration: geschrieben über `PUT /api/v1/orte/{id}/flaeche` (IP-5), gelesen üb
     Nachtrags-Kennung siehe andere `nachtraege`-Einträge, z. B. „Steuerlogik v1 §8.8"), mit drei
     Vektor-Fällen in `rechte-vectors.json` und einer Zeile in `RechtMatrixApiTest.zeilen()`. „Gehört
     zu" ändern bleibt separat `anlage.zuordnen` (nur Kundenadministrator) — unberührt.
+11. **„Umzug" (vp-standort-konzept §7, E1 = B): derselbe Weg wie die Berichtigung, ein eigener
+    Schreibweg erst ab 2 km.** `AnlageOrtBlatt`s `AdressSuche` prüft jede Wahl mit
+    `istUmzugsfrage(ursprung, neuerPunkt)` (`WEIT_WEG_METER = 2000`, wie seit §6.6 schon für Box-
+    Neubau/Wetter-Nachholung dokumentiert — nur jetzt auch als UI-Schwelle genutzt); darunter bleibt
+    es die normale Berichtigung (Regel 5: nie ein Datum). Darüber fragt das Blatt erst „Ist Ihre
+    Anlage umgezogen?“ — „Nein, die Adresse war falsch“ übernimmt die Adresse wie gehabt; „Ja, wir
+    sind umgezogen“ fragt den Umzugstag (`VpDatePicker` mit `max = antwort.stichtag`: heute oder
+    rückwirkend, nie in die Zukunft) und speichert über den neuen `POST /api/v1/sites/{id}/ort/
+    umzug` (`AnlageOrtController`/`AnlageOrtService.umziehen`).
+    **Der Standort entsteht still.** `AnlageOrtService.umziehen` ruft `StandortService.anlegen`
+    DIREKT auf (Bean-zu-Bean, nicht über `StandortController`) — ein Unterstützer mit
+    `anlage.ort_berichtigen`, aber ohne `standort.verwalten`, kann so trotzdem einen neuen Standort
+    auslösen, weil `@Recht` nur am HTTP-Rand prüft. Der neue Standort heißt wie die Anlage (keine
+    eigene Eingabe). Anschließend ruft der Service — intern, nicht über HTTP — denselben
+    `AnlageUmzugService.umziehen` wie „Gehört zu“ (`docs/agents/root/uems-anlage-umziehen.md`) auf:
+    Geschwister am alten Standort ziehen NICHT mit (anders als `berichtigen()`s „Geschwister
+    mitziehen“ — ein bewusst getrennter Code-Pfad, keine Erweiterung von `berichtigen()`). Die
+    Antwort (`AnlageOrtUmzugErgebnis`) bettet das volle `AnlageUmzug`-Objekt der Umzugs-Antwort ein,
+    damit das Blatt dieselbe, schon getestete `folgenKarte()`/`kurzeFolgen()` aus `anlageUmziehen.ts`
+    für die Ergebnis-Sätze wiederverwendet (keine zweite, unverifizierte Satzliste) — eine echte
+    Vorschau VOR dem Speichern ist strukturell nicht möglich, da `AnlageUmzugService.vorschau()`
+    einen bereits bestehenden `standortId` braucht.
+    **Danach:** wie bei „Zuordnung korrigieren“ liest das Blatt `GET /standorte/{id}/orte` des
+    bisherigen Standorts und bietet `ArchivierenDialog` an, wenn `aktionen.archivieren.erlaubt` —
+    keine eigene Mechanik, derselbe `archivAngebot`-Zustand wie in `AnlageStandortDialog.tsx`
+    (dort jetzt als `FolgenKarteAnsicht`/`ArchivObjekt`-Pattern exportiert statt dupliziert). Ist der
+    Kunde danach wieder bei genau einem Standort, verschwindet „Gehört zu“ von selbst
+    (`mehrereStandorte()`) — keine eigene Privatkunden-Prüfung nötig.
+    **Zwei bewusste, dokumentierte Lücken (keine Baustellen, Entscheidung im PR):**
+    (a) die Wetter-Nachholung bleibt der BESTEHENDE, flache 28-Tage-Mechanismus
+    (`OrtWetterNachholungRepository.anfordern` → `wetter_nachholung.py`, `NACHHOL_TAGE = 28`): er
+    löscht alle gespeicherten Werte des Standorts und holt 28 Tage am NEUEN Punkt nach — er kann
+    nicht „alter Punkt bis Umzugstag, neuer Punkt danach“ ausdrücken. Für Umzug reicht das (das
+    Lernfenster beginnt praktisch am neuen Ort), eine tagesgenaue Trennung wäre ein eigener Umbau
+    des Python-Nachholwegs. (b) der Merkzettel „Neues Haus? Bitte prüfen“ ist eine einfache, NICHT
+    gespeicherte Erinnerungskarte auf der Ergebnis-Ansicht — kein `localStorage`, keine Erkennung,
+    ob Solaranlage/Stromtarif/Einspeisevergütung inzwischen geändert wurden (es gibt dafür keinen
+    bestehenden „geprüft/geändert“-Zustand im Code).
+    Preise/Tarif/Einspeisevergütung brauchen dagegen KEINEN Umzug-Sondercode mehr: seit
+    `anlage_preisfassung` (PR #2043, „Preise ab einem Tag“) gelten sie ohnehin je Anlage ab einem
+    Tag, nicht je Standort.
 
 ## Prüfen
 
 ```bash
-(cd frontend/portal && npx vitest run src/flaecheAendern.test.ts src/anlageStandort.test.ts src/anlageOrtBerichtigen.test.ts src/anlageUmziehen.test.ts src/components/FlaecheDialog.test.tsx src/components/OrtDialog.test.tsx src/components/AnlageFlow.standort.test.tsx src/components/AnlageStandortDialog.test.tsx src/pages/AnlageTechnik.standort.test.tsx src/pages/AnlageTechnik.test.tsx src/rechte.test.ts src/rechteMatrix.sync.test.ts src/copy.test.ts src/migration.test.ts)
-(cd frontend/portal && npx playwright test e2e/flaeche-aendern.spec.ts e2e/anlage-ort-berichtigen.spec.ts e2e/anlage-umziehen.spec.ts e2e/zuordnung-korrigieren.spec.ts e2e/einspeiseverguetung.spec.ts --project=desktop-chromium)
-(cd services/api && ./mvnw test -Dtest='AnlageOrtApiTest,RechteKennungenDerRoutenTest,RechteAbleitungVectorsTest,RechtRoutenArchitekturTest,RechtMatrixApiTest')
+(cd frontend/portal && npx vitest run src/flaecheAendern.test.ts src/anlageStandort.test.ts src/anlageOrtBerichtigen.test.ts src/anlageUmziehen.test.ts src/components/FlaecheDialog.test.tsx src/components/OrtDialog.test.tsx src/components/AnlageFlow.standort.test.tsx src/components/AnlageStandortDialog.test.tsx src/components/AnlageOrtBlatt.umzug.test.tsx src/pages/AnlageTechnik.standort.test.tsx src/pages/AnlageTechnik.test.tsx src/rechte.test.ts src/rechteMatrix.sync.test.ts src/copy.test.ts src/migration.test.ts)
+(cd frontend/portal && npx playwright test e2e/flaeche-aendern.spec.ts e2e/anlage-ort-berichtigen.spec.ts e2e/anlage-ort-umzug.spec.ts e2e/anlage-umziehen.spec.ts e2e/zuordnung-korrigieren.spec.ts e2e/einspeiseverguetung.spec.ts --project=desktop-chromium)
+(cd services/api && ./mvnw test -Dtest='AnlageOrtApiTest,OrtSchnittstelleVertragTest,RechteKennungenDerRoutenTest,RechteAbleitungVectorsTest,RechtRoutenArchitekturTest,RechtMatrixApiTest')
 ```

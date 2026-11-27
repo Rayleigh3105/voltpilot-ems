@@ -1,7 +1,15 @@
-import type { AnlageOrtAnfrage, StandortAdresse, StandortAmStichtag, StandorteAmStichtag, StandortLage } from './api';
+import type {
+  AnlageOrtAnfrage,
+  AnlageOrtUmzugAnfrage,
+  StandortAdresse,
+  StandortAmStichtag,
+  StandorteAmStichtag,
+  StandortLage,
+} from './api';
 import { adresseText, ZEITZONE_DES_LANDES, type Adresse } from './anlageOrt';
 import { zoneForCountry } from './anlageFlow';
 import { adresseKurz } from './standorte';
+import type { Tag } from './uemsOrtsbaum';
 
 /**
  * „Standort berichtigen" (vp-standort-konzept §6.1/§6.6, B1/B3/B6): die reine Hälfte der neuen
@@ -73,6 +81,34 @@ export function ortAnfrage(form: OrtForm): AnlageOrtAnfrage {
   const adresse: StandortAdresse = { strasse: form.adresse.strasse, plz: form.adresse.plz, ort: form.adresse.ort, land: form.adresse.land };
   const lage: StandortLage = { breitengrad: form.punkt.breitengrad, laengengrad: form.punkt.laengengrad };
   return { adresse, lage };
+}
+
+/**
+ * „Umzug" (vp-standort-konzept §7, E1 = B): eine neu gewählte Adresse mehr als 2 km vom
+ * ursprünglichen Punkt fragt „Ist Ihre Anlage umgezogen?" statt sie wortlos als Berichtigung zu
+ * übernehmen (B1 ist weiter die Berichtigung — „Nein, die Adresse war falsch").
+ */
+export function istUmzugsfrage(ursprung: OrtPunkt, neuerPunkt: OrtPunkt): boolean {
+  return distanzMeter(ursprung, neuerPunkt) > WEIT_WEG_METER;
+}
+
+/** „{adresse} ist {n} km entfernt." — gerundet, reicht für diese Frage. */
+export function entfernungKmGerundet(a: OrtPunkt, b: OrtPunkt): number {
+  return Math.round(distanzMeter(a, b) / 1000);
+}
+
+export interface UmzugForm {
+  adresse: Adresse;
+  punkt: OrtPunkt;
+  /** Lesart 1 (§7): heute oder ein Tag davor, nie in der Zukunft — der Picker setzt die Grenze. */
+  gueltigAb: Tag;
+}
+
+/** Der Rumpf von `POST …/ort/umzug`. */
+export function umzugAnfrage(form: UmzugForm): AnlageOrtUmzugAnfrage {
+  const adresse: StandortAdresse = { strasse: form.adresse.strasse, plz: form.adresse.plz, ort: form.adresse.ort, land: form.adresse.land };
+  const lage: StandortLage = { breitengrad: form.punkt.breitengrad, laengengrad: form.punkt.laengengrad };
+  return { adresse, lage, gueltigAb: form.gueltigAb };
 }
 
 /**

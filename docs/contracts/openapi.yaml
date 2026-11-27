@@ -1868,8 +1868,7 @@ paths:
         entfernt, wird zusätzlich das gespeicherte Wetter verworfen und 28 Tage am neuen Punkt
         nachgeholt (`wetterNachholungAngestossen`, services/forecast). Abgelehnt mit dem Satz des
         Vertrags wie jede Ortsstruktur-Route (fehlende Adresse, fehlender Punkt, falsches Land);
-        eine fremde Anlage ist 404. Rechte: vorläufig `anlage.verwalten` (das eigene Recht „Ort
-        berichtigen" nach E2 folgt).
+        eine fremde Anlage ist 404. Rechte: `anlage.ort_berichtigen` (E2 = A).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -1886,6 +1885,40 @@ paths:
         "400": { $ref: "#/components/responses/OrtAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/sites/{siteId}/ort/umzug:
+    post:
+      tags: [ortsstruktur]
+      summary: "\"Umzug\" (vp-standort-konzept §7, E1 = B): ein neuer Standort entsteht still, die Anlage zieht ab dem Umzugstag um."
+      description: >
+        Anders als PUT .../ort (eine Berichtigung, die den bisherigen Standort in-place ändert):
+        ein NEUER Standort entsteht still mit der neuen Adresse - er heißt wie die Anlage - und
+        NUR diese Anlage gehört ihm ab dem Umzugstag, über den vorhandenen Zuordnungsweg (PUT
+        .../standort, Vorgang VERSCHIEBEN). Geschwister-Anlagen am bisherigen Standort bleiben
+        unberührt. Der Umzugstag (`gueltigAb`, fehlend = heute) darf nicht in der Zukunft liegen -
+        der Kartenpunkt der Anlage hat keine Gültigkeit und wechselt sofort beim Speichern; wer
+        vorab plant, trägt den Umzug am Tag selbst ein. Die Steuerlogik-Bündel werden neu gebaut
+        und zugestellt (`boxZugestellt`); liegt der neue Punkt mehr als 2 km vom alten entfernt,
+        wird zusätzlich das Wetter nachgeholt (`wetterNachholungAngestossen`, wie PUT .../ort).
+        Der bisherige Standort wird NICHT automatisch archiviert - das Portal liest ihn danach
+        (GET .../standorte/{id}/orte) und bietet das Archivieren an, wie bei „Zuordnung
+        korrigieren". Rechte: `anlage.ort_berichtigen` (E2 = A).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnlageOrtUmzugAnfrage" }
+      responses:
+        "200":
+          description: Umgezogen - Anlage, der neue Standort und die Zuordnung (`umzug`, nennt den bisherigen Standort).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnlageOrtUmzugErgebnis" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "422": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/sites/{siteId}/deletion-preview:
     get:
       tags: [sites]
@@ -33075,6 +33108,34 @@ components:
       properties:
         site: { $ref: "#/components/schemas/Site" }
         standort: { $ref: "#/components/schemas/StandortAmStichtag" }
+        boxZugestellt:
+          type: boolean
+          description: Die Steuerlogik-Bündel der Anlage wurden mit dem neuen Sonnenbezug neu gebaut und zugestellt.
+        wetterNachholungAngestossen:
+          type: boolean
+          description: Der neue Punkt lag mehr als 2 km vom alten entfernt - das Wetter der Anlage wird nachgeholt.
+    AnlageOrtUmzugAnfrage:
+      type: object
+      additionalProperties: false
+      required: [adresse, lage]
+      description: >
+        "Umzug" (§7, E1 = B): wie AnlageOrtAnfrage, dazu der Umzugstag - fehlend = heute (in der
+        Zeitzone des bisherigen Standorts), nie in der Zukunft.
+      properties:
+        adresse: { $ref: "#/components/schemas/StandortAdresse" }
+        lage: { $ref: "#/components/schemas/StandortLage" }
+        gueltigAb: { type: string, format: date, nullable: true }
+    AnlageOrtUmzugErgebnis:
+      type: object
+      properties:
+        site: { $ref: "#/components/schemas/Site" }
+        neuerStandort: { $ref: "#/components/schemas/StandortAmStichtag" }
+        umzug:
+          allOf: [{ $ref: "#/components/schemas/AnlageUmzug" }]
+          description: >
+            Dieselbe Form wie PUT .../standort - `bisher` nennt den bisherigen Standort. Das
+            Portal setzt dieselben Folgen-Sätze wie bei „Gehört zu" (keine zweite Sprache für
+            dieselbe Sache) und prüft danach selbst, ob der bisherige Standort jetzt leer ist.
         boxZugestellt:
           type: boolean
           description: Die Steuerlogik-Bündel der Anlage wurden mit dem neuen Sonnenbezug neu gebaut und zugestellt.

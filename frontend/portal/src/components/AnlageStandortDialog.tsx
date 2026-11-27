@@ -506,7 +506,8 @@ export function AnlageStandortDialog({
   );
 }
 
-function FolgenKarteAnsicht({ karte, berichte = null }: { karte: FolgenKarte; berichte?: BerichteFolgen | null }) {
+/** Geteilt mit `AnlageOrtBlatt` (Umzug, §7): dieselbe Folgen-Form, dieselbe Darstellung. */
+export function FolgenKarteAnsicht({ karte, berichte = null }: { karte: FolgenKarte; berichte?: BerichteFolgen | null }) {
   return (
     <section className="vp-au-folgen" aria-live="polite" data-testid="umzug-folgen">
       <div className="vp-au-teil">
