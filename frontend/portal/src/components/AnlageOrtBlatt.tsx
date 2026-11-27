@@ -1,8 +1,15 @@
 import { Recht } from './Recht';
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { ApiError, type AnlageOrtErgebnis, type OrtTreffer, type StandortAmStichtag } from '../api';
+import {
+  ApiError,
+  type AnlageOrtErgebnis,
+  type AnlageUmzug,
+  type OrtTreffer,
+  type StandortAmStichtag,
+  type StandorteAmStichtag,
+} from '../api';
 import { api } from '../apiVoll';
 import {
   adresseWaehlen,
@@ -15,9 +22,11 @@ import {
   type OrtForm,
   type OrtPunkt,
 } from '../anlageOrtBerichtigen';
+import { gehoertZuText, KNOPF_GEHOERT_ZU_AENDERN } from '../anlageStandort';
 import { adresseAusTreffer, adresseText, type Adresse } from '../anlageOrt';
 import { alsOrtFehler } from '../standorte';
 import { AdressSuche, type AdressWahl } from './AdressSuche';
+import { AnlageStandortDialog } from './AnlageStandortDialog';
 import { KoordinatenManuellFelder } from './KoordinatenManuellFelder';
 import { LocationMap } from './LocationMap';
 import './AnlageOrtBlatt.css';
@@ -40,20 +49,20 @@ const KNOPF_FERTIG = 'Fertig';
 export function AnlageOrtBlatt({
   siteId,
   standort,
+  antwort,
   mehrereStandorte,
-  verweise,
+  onStandorteNeuLaden,
   onClose,
   onGespeichert,
 }: {
   siteId: string;
   standort: StandortAmStichtag;
+  /** `GET /api/v1/standorte` von heute — für „Gehört zu › Ändern" (Zielliste und „heute"). */
+  antwort: StandorteAmStichtag;
   /** §6.2: ab zwei Standorten trägt die Adresse „Gilt für alle Anlagen im Werk". */
   mehrereStandorte: boolean;
-  /**
-   * §6.5 (captain-Korrektur): „Anderem Standort zuordnen"/„Zuordnung korrigieren" stehen bis
-   * Schritt 2c hier unter „Details", nicht mehr an der Zeile davor.
-   */
-  verweise?: ReactNode;
+  /** §6.5: nach „Neuer Standort" im „Gehört zu"-Dialog die Liste neu lesen (B4). */
+  onStandorteNeuLaden?: () => void;
   onClose: () => void;
   onGespeichert: (ergebnis: AnlageOrtErgebnis) => void;
 }) {
@@ -65,9 +74,11 @@ export function AnlageOrtBlatt({
   const [fokus, setFokus] = useState(0);
   const [uebernahme, setUebernahme] = useState<{ adresse: Adresse; punkt: OrtPunkt } | null>(null);
   const [detailsOffen, setDetailsOffen] = useState(false);
+  const [gehoertZuOffen, setGehoertZuOffen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [ergebnis, setErgebnis] = useState<AnlageOrtErgebnis | null>(null);
+  const zuordnung = standort.anlagen.find((a) => a.id === siteId) ?? null;
   // Der Punkt VOR dem laufenden Zug — in onChange festgehalten, bevor der State sich ändert, denn
   // die Auflösung (onOrtAufgeloest) kommt immer erst NACH dem nächsten Render mit dem NEUEN Punkt.
   const vorZugRef = useRef<OrtPunkt | null>(start?.punkt ?? null);
@@ -142,6 +153,15 @@ export function AnlageOrtBlatt({
     if (ergebnis) onGespeichert(ergebnis);
   };
 
+  // „Gehört zu › Ändern" (§6.5) zieht die Anlage zu einem anderen Standort um - dieses Blatt
+  // zeigt dann einen Standort, zu dem die Anlage nicht mehr gehört. Statt mit dem veralteten
+  // Stand weiterzumachen, schließt das ganze Blatt und „Meine Anlage" liest neu.
+  function gehoertZuGespeichert(_umzug: AnlageUmzug) {
+    setGehoertZuOffen(false);
+    onStandorteNeuLaden?.();
+    onClose();
+  }
+
   return (
     <Modal
       open
@@ -155,7 +175,7 @@ export function AnlageOrtBlatt({
             <Button variant="ghost" onClick={onClose} disabled={busy}>
               {KNOPF_ABBRECHEN}
             </Button>
-            <Recht aktion="anlage.verwalten">
+            <Recht aktion="anlage.ort_berichtigen">
               <Button
                 variant="primary"
                 disabled={busy || !hatSichGeaendert}
@@ -174,7 +194,7 @@ export function AnlageOrtBlatt({
             <p>
               <strong>Gespeichert.</strong> Vorher: {adresseText(start.adresse)}
             </p>
-            <Recht aktion="anlage.verwalten">
+            <Recht aktion="anlage.ort_berichtigen">
               <button type="button" className="vp-linklike" onClick={() => void rueckgaengig()} disabled={busy}>
                 {KNOPF_RUECKGAENGIG}
               </button>
@@ -182,6 +202,21 @@ export function AnlageOrtBlatt({
           </div>
         ) : (
           <>
+            {mehrereStandorte && zuordnung && (
+              <p className="vp-ob-gehoert-zu">
+                {gehoertZuText(standort)} ·{' '}
+                <Recht aktion="anlage.zuordnen">
+                  <button
+                    type="button"
+                    className="vp-linklike"
+                    aria-label={`${KNOPF_GEHOERT_ZU_AENDERN}: ${zuordnung.name}`}
+                    onClick={() => setGehoertZuOffen(true)}
+                  >
+                    {KNOPF_GEHOERT_ZU_AENDERN}
+                  </button>
+                </Recht>
+              </p>
+            )}
             {mehrereStandorte && (
               <p className="vp-ob-gilt-fuer-alle">Gilt für alle Anlagen im Werk.</p>
             )}
@@ -241,7 +276,6 @@ export function AnlageOrtBlatt({
                   </div>
                 </dl>
                 <KoordinatenManuellFelder lat={form.punkt.breitengrad} lon={form.punkt.laengengrad} onChange={pinSetzen} />
-                {verweise && <div className="vp-ob-details-verweise">{verweise}</div>}
               </div>
             )}
             {fehler && (
@@ -252,6 +286,18 @@ export function AnlageOrtBlatt({
           </>
         )}
       </div>
+      {gehoertZuOffen && zuordnung && (
+        <AnlageStandortDialog
+          open
+          anlageId={zuordnung.id}
+          anlageName={zuordnung.name}
+          standorte={antwort}
+          gueltigAbVorgabe={zuordnung.gueltigAb}
+          onClose={() => setGehoertZuOffen(false)}
+          onStandorteNeuLaden={onStandorteNeuLaden}
+          onGespeichert={gehoertZuGespeichert}
+        />
+      )}
     </Modal>
   );
 }

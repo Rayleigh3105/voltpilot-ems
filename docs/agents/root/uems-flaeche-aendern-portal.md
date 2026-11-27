@@ -66,26 +66,32 @@ Migration: geschrieben über `PUT /api/v1/orte/{id}/flaeche` (IP-5), gelesen üb
    `m2Text`-Sätzen suchen mit Leerzeichen (`sp()` in `FlaecheDialog.test.tsx`). E2E: Leaflet-Kacheln
    liegen abgeschnitten außerhalb ihres Rahmens — die Elementprüfung nimmt `.leaflet-container` aus
    (`seite` misst trotzdem); am Telefon ist `TechCard` zugeklappt.
-9. **Anlage zuordnen/umziehen (IP-11, T6b) bleibt übergangsweise an `AnlageStandortZeile` hängen -
-   aber unter „Details” im Blatt, nicht mehr an der Zeile.** `AnlageOrtZeile` nimmt einen optionalen
-   `verweise`-Slot und reicht ihn nur an `AnlageOrtBlatt` weiter; solange Schritt 2c („Gehört zu” mit
-   Liste/„Neuer Standort”/„Seit wann?”, B4) noch nicht steht, rendert `AnlageTechnik.tsx` für einen
-   vollständigen Standort `<AnlageStandortZeile nurVerweise />` als `verweise` - dieser Zweig gibt
-   seit der Korrektur ein Fragment zurück (keine eigene Hülle, `AnlageOrtBlatt` platziert die beiden
-   Verweise „Anderem Standort zuordnen”/„Zuordnung korrigieren” selbst unter „Details”, zusammen mit
-   Strommarkt/Zeitzone UND „Koordinaten manuell bearbeiten” (`KoordinatenManuellFelder`, dieselbe
-   Komponente wie in `LocationMap` selbst - die Karte im Blatt blendet ihre eigene Kopie über
-   `manuellAusblenden` aus). Ohne den Slot verlöre ein vollständiger Standort die Fähigkeit
-   ersatzlos (AGENTS.md: bestehende Funktion erhalten). Ein Test, der „Anderem Standort
-   zuordnen”/„Zuordnung korrigieren” sucht, muss die Zeile erst öffnen und „Details” aufklappen
-   (`e2e/anlage-umziehen.spec.ts`, `e2e/zuordnung-korrigieren.spec.ts`). **Nicht hier:** die Fläche
-   eines STANDORTS ändern (keine Schreibroute), der Verlauf vor dem Speichern (Server-Weg), die Lage
-   des Standorts als Karten-Vorschlag im Assistenten. Befund: unter dem Picker steht im Assistenten
-   weiter „Gleicher Standort wie …” (Koordinaten) — W4 ist dort nicht aufgelöst.
+9. **Schritt 2c (fertig): „Gehört zu: … · Ändern” oben im Blatt, nicht mehr an der Zeile.**
+   `AnlageOrtBlatt` zeigt für einen vollständigen Standort selbst „Gehört zu: {Standort}
+   ({Kurzzeichen}) · {n} Anlagen · Ändern” über der Karte (nur ab zwei Standorten, `mehrereStandorte`)
+   und öffnet dafür direkt `AnlageStandortDialog` (keine `AnlageStandortZeile` mehr dafür nötig -
+   das `verweise`-Übergangsstück aus der Captain-Korrektur ist wieder entfernt). Siehe
+   `docs/agents/root/uems-anlage-umziehen.md` für den Dialog selbst (Seit wann?, Neuer Standort, B2/B4).
+   **Nicht hier:** die Fläche eines STANDORTS ändern (keine Schreibroute), der Verlauf vor dem
+   Speichern (Server-Weg), die Lage des Standorts als Karten-Vorschlag im Assistenten. Befund: unter
+   dem Picker steht im Assistenten weiter „Gleicher Standort wie …” (Koordinaten) — W4 ist dort
+   nicht aufgelöst.
+10. **Recht „Ort berichtigen" (E2 = A, vp-standort-konzept §7, Rechte-Stufe B5):** `PUT /api/v1/sites/
+    {id}/ort` prüft seitdem `anlage.ort_berichtigen` statt des vorläufigen `anlage.verwalten`
+    (`AnlageOrtController`) — Kundenadministrator und Energiemanager unternehmensweit, Unterstützer
+    ab Umfang „Einrichten" (befristet, mit dem bestehenden Banner/Protokoll der Unterstützung, keine
+    neue Mechanik), VoltPilot-Betrieb; Bearbeiter bekommt es nicht (wie `standort.verwalten`). Beide
+    Portal-Einstiege (`Recht aktion` in `AnlageOrtBlatt.tsx` am Speichern/Rückgängig, `AnlageOrtZeile.tsx`
+    am Öffnen der Zeile) tragen die neue Kennung; `docs/contracts/v2/rechte-matrix.json` trägt die
+    Zeile als `nachtrag: "Standort v1 §7"` (Captain-Entscheid, kein AP-03-Bestand - Format der
+    Nachtrags-Kennung siehe andere `nachtraege`-Einträge, z. B. „Steuerlogik v1 §8.8"), mit drei
+    Vektor-Fällen in `rechte-vectors.json` und einer Zeile in `RechtMatrixApiTest.zeilen()`. „Gehört
+    zu" ändern bleibt separat `anlage.zuordnen` (nur Kundenadministrator) — unberührt.
 
 ## Prüfen
 
 ```bash
-(cd frontend/portal && npx vitest run src/flaecheAendern.test.ts src/anlageStandort.test.ts src/anlageOrtBerichtigen.test.ts src/components/FlaecheDialog.test.tsx src/components/OrtDialog.test.tsx src/components/AnlageFlow.standort.test.tsx src/pages/AnlageTechnik.standort.test.tsx src/pages/AnlageTechnik.test.tsx src/copy.test.ts)
-(cd frontend/portal && npx playwright test e2e/flaeche-aendern.spec.ts e2e/anlage-ort-berichtigen.spec.ts e2e/anlage-umziehen.spec.ts e2e/einspeiseverguetung.spec.ts --project=desktop-chromium)
+(cd frontend/portal && npx vitest run src/flaecheAendern.test.ts src/anlageStandort.test.ts src/anlageOrtBerichtigen.test.ts src/anlageUmziehen.test.ts src/components/FlaecheDialog.test.tsx src/components/OrtDialog.test.tsx src/components/AnlageFlow.standort.test.tsx src/components/AnlageStandortDialog.test.tsx src/pages/AnlageTechnik.standort.test.tsx src/pages/AnlageTechnik.test.tsx src/rechte.test.ts src/rechteMatrix.sync.test.ts src/copy.test.ts src/migration.test.ts)
+(cd frontend/portal && npx playwright test e2e/flaeche-aendern.spec.ts e2e/anlage-ort-berichtigen.spec.ts e2e/anlage-umziehen.spec.ts e2e/zuordnung-korrigieren.spec.ts e2e/einspeiseverguetung.spec.ts --project=desktop-chromium)
+(cd services/api && ./mvnw test -Dtest='AnlageOrtApiTest,RechteKennungenDerRoutenTest,RechteAbleitungVectorsTest,RechtRoutenArchitekturTest,RechtMatrixApiTest')
 ```

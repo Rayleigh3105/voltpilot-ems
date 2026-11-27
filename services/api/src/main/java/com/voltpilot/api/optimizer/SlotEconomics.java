@@ -245,23 +245,58 @@ public final class SlotEconomics {
     // the equivalence is pinned vector-for-vector against real Postgres by
     // PortalApiTest.importPriceSqlMatchesTheSlotEconomicsCompositionVectors.
 
+    // ---- The price basis of a slot: its Preisfassung (vp-tarif-ab-tag) ------
+    //
+    // Tariff, Preisblatt and customer-stated Einspeisevergütung are valid from a
+    // DAY (V20261126223000__anlage_preisfassung.sql): every fragment below reads
+    // them from the alias {@code pf}, a row of the view {@code anlage_preiszeitraum}
+    // (the Fassung as a half-open interval [von, bis)). A query that values PAST
+    // energy joins the Fassung of the slot ({@link #preisFassungJoinSql}); a
+    // query about the CURRENT state (labels, today's configuration) joins
+    // today's ({@link #heutigePreisFassungJoinSql}). The Fassung rows are
+    // complete (one row per site and interval, every site has its founding
+    // Fassung), so both are inner joins that never fan a slot out.
+
+    /** The alias every price fragment of this class reads the price basis from. */
+    public static final String PREISFASSUNG_ALIAS = "pf";
+
+    /**
+     * {@code JOIN} of the Preisfassung that is valid at {@code slotExpr} (a
+     * timestamptz) for the site {@code siteIdExpr}, as alias {@code pf}: the
+     * rate valid when the energy flowed, never today's.
+     */
+    public static String preisFassungJoinSql(String siteIdExpr, String slotExpr) {
+        return "JOIN anlage_preiszeitraum pf ON pf.site_id = " + siteIdExpr
+                + " AND " + slotExpr + " >= pf.von AND " + slotExpr + " < pf.bis ";
+    }
+
+    /**
+     * {@code JOIN} of TODAY's Preisfassung of the site (the open-ended one; a
+     * Fassung never starts after today) as alias {@code pf} - for site-level
+     * labels and the current configuration, which equal {@code site} /
+     * {@code site_supply_price}.
+     */
+    public static String heutigePreisFassungJoinSql(String siteIdExpr) {
+        return "JOIN anlage_preiszeitraum pf ON pf.site_id = " + siteIdExpr
+                + " AND pf.bis = 'infinity'::timestamptz ";
+    }
+
     /** The maintained-sheet gate in SQL (SupplyPrice.hasComponents twin). */
     private static final String SQL_SHEET_MAINTAINED =
-            "(ssp.netzentgelt_arbeitspreis_ct IS NOT NULL OR ssp.stromsteuer_ct IS NOT NULL"
-                    + " OR ssp.konzessionsabgabe_ct IS NOT NULL OR ssp.umlagen_ct IS NOT NULL"
-                    + " OR ssp.vertriebsaufschlag_ct IS NOT NULL)";
+            "(pf.netzentgelt_arbeitspreis_ct IS NOT NULL OR pf.stromsteuer_ct IS NOT NULL"
+                    + " OR pf.konzessionsabgabe_ct IS NOT NULL OR pf.umlagen_ct IS NOT NULL"
+                    + " OR pf.vertriebsaufschlag_ct IS NOT NULL)";
 
     /** Σ of the maintained components in SQL (componentsCtKwh twin). */
     private static final String SQL_SHEET_COMPONENTS_CT =
-            "(COALESCE(ssp.netzentgelt_arbeitspreis_ct, 0) + COALESCE(ssp.stromsteuer_ct, 0)"
-                    + " + COALESCE(ssp.konzessionsabgabe_ct, 0) + COALESCE(ssp.umlagen_ct, 0)"
-                    + " + COALESCE(ssp.vertriebsaufschlag_ct, 0))";
+            "(COALESCE(pf.netzentgelt_arbeitspreis_ct, 0) + COALESCE(pf.stromsteuer_ct, 0)"
+                    + " + COALESCE(pf.konzessionsabgabe_ct, 0) + COALESCE(pf.umlagen_ct, 0)"
+                    + " + COALESCE(pf.vertriebsaufschlag_ct, 0))";
 
     /**
      * The SQL twin of {@link #importPriceCtKwh(Double)}: a ct/kWh expression
-     * over a query that aliases the site row as {@code s} and LEFT JOINs its
-     * supply-price sheet as {@code ssp}
-     * ({@code LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id});
+     * over a query that joins the slot's Preisfassung as {@code pf}
+     * ({@link #preisFassungJoinSql}: tariff and Preisblatt valid at the slot);
      * {@code spotEurMwhExpr} is the slot's day-ahead price expression in
      * EUR/MWh (NULL propagates to NULL, exactly like the Java twin - except
      * the flat {@code fest} tariff, which needs no spot). The
@@ -274,15 +309,15 @@ public final class SlotEconomics {
     public static String importPriceCtSql(String spotEurMwhExpr, boolean defaultSupplyComponents) {
         String spotCt = "(" + spotEurMwhExpr + " / 10.0)";
         StringBuilder sql = new StringBuilder("(CASE")
-                .append(" WHEN s.tarif_art = 'fest' AND s.tarif_param_ct_kwh IS NOT NULL")
-                .append(" THEN s.tarif_param_ct_kwh")
-                .append(" WHEN s.tarif_art IN ('dynamisch', 'ohne') AND ").append(SQL_SHEET_MAINTAINED)
+                .append(" WHEN pf.tarif_art = 'fest' AND pf.tarif_param_ct_kwh IS NOT NULL")
+                .append(" THEN pf.tarif_param_ct_kwh")
+                .append(" WHEN pf.tarif_art IN ('dynamisch', 'ohne') AND ").append(SQL_SHEET_MAINTAINED)
                 .append(" THEN (").append(spotCt).append(" + ").append(SQL_SHEET_COMPONENTS_CT)
-                .append(") * (1 + ssp.ust_pct / 100.0)")
-                .append(" WHEN s.tarif_art = 'dynamisch' AND s.tarif_param_ct_kwh IS NOT NULL")
-                .append(" THEN ").append(spotCt).append(" + s.tarif_param_ct_kwh");
+                .append(") * (1 + pf.ust_pct / 100.0)")
+                .append(" WHEN pf.tarif_art = 'dynamisch' AND pf.tarif_param_ct_kwh IS NOT NULL")
+                .append(" THEN ").append(spotCt).append(" + pf.tarif_param_ct_kwh");
         if (defaultSupplyComponents) {
-            sql.append(" WHEN s.tarif_art IN ('dynamisch', 'ohne')")
+            sql.append(" WHEN pf.tarif_art IN ('dynamisch', 'ohne')")
                     .append(" THEN (").append(spotCt).append(" + ")
                     .append(DEFAULT_SUPPLY_PRICE.componentsCtKwh()).append(") * ")
                     .append(1.0 + DEFAULT_SUPPLY_PRICE.ustPct() / 100.0);
@@ -300,11 +335,11 @@ public final class SlotEconomics {
      */
     public static String tarifPricedSql(boolean defaultSupplyComponents) {
         String structured = defaultSupplyComponents
-                ? "s.tarif_art IN ('dynamisch', 'ohne')"
-                : "s.tarif_art IN ('dynamisch', 'ohne') AND " + SQL_SHEET_MAINTAINED;
-        return "((s.tarif_art = 'fest' AND s.tarif_param_ct_kwh IS NOT NULL)"
+                ? "pf.tarif_art IN ('dynamisch', 'ohne')"
+                : "pf.tarif_art IN ('dynamisch', 'ohne') AND " + SQL_SHEET_MAINTAINED;
+        return "((pf.tarif_art = 'fest' AND pf.tarif_param_ct_kwh IS NOT NULL)"
                 + " OR (" + structured + ")"
-                + " OR (s.tarif_art = 'dynamisch' AND s.tarif_param_ct_kwh IS NOT NULL))";
+                + " OR (pf.tarif_art = 'dynamisch' AND pf.tarif_param_ct_kwh IS NOT NULL))";
     }
 
     /**
@@ -466,7 +501,9 @@ public final class SlotEconomics {
      * The SQL twin of {@link #exportValueCtKwh(Double, Instant)}: a ct/kWh
      * expression over a query that aliases the site row as {@code s}
      * ({@code plant_kind}, {@code netzladen_erlaubt},
-     * {@code anzulegender_wert_ct_kwh}), the slot's Monatsmarktwert row as
+     * {@code anzulegender_wert_ct_kwh}), the slot's Preisfassung as {@code pf}
+     * ({@link #preisFassungJoinSql}: the stated Einspeisevergütung and the
+     * §51a answer valid at the slot), the slot's Monatsmarktwert row as
      * {@code mv} ({@code mv.value_ct_kwh}, joined for the slot's Berlin month)
      * and the site's PRIMARY pv asset as {@code pv}
      * ({@code LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND
@@ -493,11 +530,11 @@ public final class SlotEconomics {
      * AND this deviation by name
      * ({@code PortalApiTest.exportValueSqlMatchesTheSlotEconomicsCompositionVectors}).
      *
-     * <p>The customer-stated rate {@code s.einspeiseverguetung_ct_kwh} enters
+     * <p>The customer-stated rate {@code pf.einspeiseverguetung_ct_kwh} enters
      * exactly like in the Java twin: it wins over the schedule lookup
      * ({@code COALESCE}) and opens the fixed branch without a commissioning
      * date and past the 20-year end, while §51a stays on the commissioning
-     * date - or, without one, on {@code s.inbetriebnahme_ab_solarspitzengesetz}
+     * date - or, without one, on {@code pf.inbetriebnahme_ab_solarspitzengesetz}
      * (the shared vectors of {@code einspeiseverguetung-vectors.json}).
      *
      * <p><b>S4 (vp-mastr-mehrere-einheiten-konzept §5.2).</b> When the site is
@@ -594,7 +631,7 @@ public final class SlotEconomics {
             EegRates eegRates, Vorab vorab) {
         String spotCt = "(" + spotEurMwhExpr + " / 10.0)";
         String yearExpr = "EXTRACT(YEAR FROM (" + slotStartExpr + " AT TIME ZONE 'Europe/Berlin'))";
-        String rate = "COALESCE(s.einspeiseverguetung_ct_kwh, "
+        String rate = "COALESCE(pf.einspeiseverguetung_ct_kwh, "
                 + (vorab == null ? eegRates.festeVerguetungCtSql("pv.commissioned_on", "pv.pv_capacity_kwp")
                         : vorab.festePvCt()) + ")";
         // The DV premium exactly as the earnings' PREMIUM_ELIGIBLE /
@@ -618,7 +655,7 @@ public final class SlotEconomics {
         String s51aAware = "(CASE WHEN (pv.pv_capacity_kwp >= "
                 + EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP
                 + " AND (pv.commissioned_on >= DATE '" + EegRates.SOLARSPITZENGESETZ_CUTOFF + "'"
-                + " OR (pv.commissioned_on IS NULL AND s.inbetriebnahme_ab_solarspitzengesetz)))"
+                + " OR (pv.commissioned_on IS NULL AND pf.inbetriebnahme_ab_solarspitzengesetz)))"
                 + " THEN (CASE WHEN " + spotEurMwhExpr + " >= 0 THEN " + rate
                 + " WHEN " + spotEurMwhExpr + " < 0 THEN 0 END)"
                 + " ELSE " + rate + " END)";
@@ -641,10 +678,10 @@ public final class SlotEconomics {
         String perUnitAngegeben = "(CASE WHEN (re.leistung_kwp >= "
                 + EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP
                 + " AND re.inbetriebnahme >= DATE '" + EegRates.SOLARSPITZENGESETZ_CUTOFF + "')"
-                + " THEN (CASE WHEN " + spotEurMwhExpr + " >= 0 THEN s.einspeiseverguetung_ct_kwh"
+                + " THEN (CASE WHEN " + spotEurMwhExpr + " >= 0 THEN pf.einspeiseverguetung_ct_kwh"
                 + " WHEN " + spotEurMwhExpr + " < 0 THEN 0 END)"
-                + " ELSE s.einspeiseverguetung_ct_kwh END)";
-        String perUnitValue = "(CASE WHEN s.einspeiseverguetung_ct_kwh IS NOT NULL THEN " + perUnitAngegeben
+                + " ELSE pf.einspeiseverguetung_ct_kwh END)";
+        String perUnitValue = "(CASE WHEN pf.einspeiseverguetung_ct_kwh IS NOT NULL THEN " + perUnitAngegeben
                 + " WHEN re.inbetriebnahme IS NULL OR " + yearExpr
                 + " > EXTRACT(YEAR FROM re.inbetriebnahme) + 20 THEN " + spotCt
                 + " ELSE " + perUnitS51a + " END)";
@@ -672,7 +709,7 @@ public final class SlotEconomics {
      * a feste Einspeisevergütung (derived from the EEG or stated by the
      * customer, see {@link #exportVerguetungQuelleSql}) instead of bare spot -
      * the export-side sibling of {@link #tarifPricedSql} (same aliases
-     * {@code s} and {@code pv}), so the portal can say WHAT the
+     * {@code s}, {@code pf} - today's Fassung - and {@code pv}), so the portal can say WHAT the
      * Einspeise-Erlös was valued with. Deliberately narrow: {@code false} for
      * Direktvermarktung (its spot + Marktprämie valuation is already explained
      * by the premium fields), and evaluated against TODAY's Berlin year (a
@@ -686,7 +723,7 @@ public final class SlotEconomics {
     /**
      * WHERE the fixed export valuation of {@link #exportVerguetungPricedSql}
      * comes from, as SQL text: {@code 'angegeben'} (the customer-stated rate
-     * {@code s.einspeiseverguetung_ct_kwh}), {@code 'eeg'} (the rate derived
+     * {@code pf.einspeiseverguetung_ct_kwh}), {@code 'eeg'} (the rate derived
      * from the EEG schedule) or NULL (no fixed valuation - bare spot, or
      * Direktvermarktung). Same aliases and the same TODAY rule as its boolean
      * sibling, so the label can never name a source the money math did not
@@ -695,7 +732,7 @@ public final class SlotEconomics {
      */
     public static String exportVerguetungQuelleSql() {
         return "(CASE WHEN " + eegFixedAppliesSql(TODAY_BERLIN_YEAR_SQL)
-                + " THEN (CASE WHEN s.einspeiseverguetung_ct_kwh IS NOT NULL"
+                + " THEN (CASE WHEN pf.einspeiseverguetung_ct_kwh IS NOT NULL"
                 + " THEN 'angegeben' ELSE 'eeg' END) END)";
     }
 
@@ -713,7 +750,7 @@ public final class SlotEconomics {
      */
     private static String eegFixedAppliesSql(String atYearExpr) {
         return "(s.plant_kind = 'eigenverbrauch' AND NOT s.netzladen_erlaubt"
-                + " AND (s.einspeiseverguetung_ct_kwh IS NOT NULL"
+                + " AND (pf.einspeiseverguetung_ct_kwh IS NOT NULL"
                 + " OR (pv.commissioned_on IS NOT NULL"
                 + " AND " + atYearExpr + " <= EXTRACT(YEAR FROM pv.commissioned_on) + 20)))";
     }

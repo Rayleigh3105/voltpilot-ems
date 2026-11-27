@@ -242,6 +242,9 @@ class RechtMatrixApiTest {
         z.add(new Zeile("anlage.zuordnen", HttpMethod.PUT, "/api/v1/sites/{A1}/standort", "e34433333"));
         z.add(new Zeile("anlage.verwalten", HttpMethod.POST, "/api/v1/sites", "e333333e3"));
         z.add(new Zeile("anlage.verwalten", HttpMethod.DELETE, "/api/v1/sites/{A1}", "e344333e3"));
+        // Standort v1 §7 E2: Kundenadministrator und Energiemanager unternehmensweit, Unterstützer ab
+        // Einrichten, VoltPilot-Betrieb - Bearbeiter nicht (wie standort.verwalten).
+        z.add(new Zeile("anlage.ort_berichtigen", HttpMethod.PUT, "/api/v1/sites/{A1}/ort", "ee4433ee3"));
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/components", "ee4433e33"));
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A2}/components", "eee443443"));
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/modbus-probe", "ee4433e33"));

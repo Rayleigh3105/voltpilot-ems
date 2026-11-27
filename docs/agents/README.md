@@ -119,6 +119,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [OTA Stufe 1 „Vertrauen": jedes künftige Anwenden ist kryptografisch gedeckt](root/ota-stufe-1-vertrauen-jedes-kuenftige-an.md)
 - [Peak-shaving flow node (E5a): the `vp.strategy.peakshaving` runtime path](root/peak-shaving-flow-node-e5a-the-vp-strate.md)
 - [Peak Shaving / Lastspitzenkappung (PS-1 + PS-2, cloud side)](root/peak-shaving-lastspitzenkappung-ps-1-ps.md)
+- [Preise ab einem Tag: Tarif, Preisblatt und Einspeisevergütung (vp-tarif-ab-tag)](root/preise-ab-einem-tag.md)
 - [Per-site grid-charging switch (`site.netzladen_erlaubt`, EEG compliance)](root/per-site-grid-charging-switch-site-netzl.md)
 - [Planungshorizont: 48 h angefragt, auf echte Eingaben gekürzt (28.08.2026)](root/planungshorizont-48-h-angefragt-auf-echt.md)
 - [Portal-Admin optimizer surface (diagnostics + config + what-if, `services/api` `optimizer/` package)](root/portal-admin-optimizer-surface-diagnosti.md)

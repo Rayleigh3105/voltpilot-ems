@@ -885,7 +885,7 @@ export function EbenenCockpit({
           anlageId={korrektur.anlage.id}
           anlageName={korrektur.anlage.name}
           standorte={korrektur.standorte}
-          modus="korrektur"
+          anfangsSeitWann="schon_immer"
           gueltigAbVorgabe={korrektur.ersterTag}
           onClose={() => setKorrektur(null)}
           onGespeichert={() => {

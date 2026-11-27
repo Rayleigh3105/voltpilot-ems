@@ -69,7 +69,9 @@ public class SteuerartPreisVorgabe {
             BigDecimal q = jdbc.queryForObject(
                     "SELECT percentile_cont(?) WITHIN GROUP (ORDER BY " + importPriceCt + ") "
                             + "FROM site s "
-                            + "LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id "
+                            // Der HEUTIGE Tarif: die Grenze steuert ab jetzt, nicht rückwirkend
+                            // (eine Vorgabe, keine Erlösrechnung - vp-tarif-ab-tag).
+                            + SlotEconomics.heutigePreisFassungJoinSql("s.id")
                             + "JOIN day_ahead_prices p ON p.bidding_zone = s.bidding_zone "
                             + "WHERE s.id = ? AND p.ts >= ? AND p.ts < ? "
                             + "AND p.resolution = (CASE WHEN EXISTS ("

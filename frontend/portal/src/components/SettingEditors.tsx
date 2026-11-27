@@ -67,6 +67,8 @@ import { NetzladenBadge } from './NetzladenBadge';
 import { NetzladenField } from './NetzladenField';
 import { SpeicherschonungField } from './SpeicherschonungField';
 import { TariffFields } from './TariffFields';
+import { PreisGiltAbFeld } from './PreisGiltAbFeld';
+import { FEHLER_KEIN_TAG, gueltigAbWert, preisGiltAbStart, type PreisGiltAb } from '../preisGiltAb';
 import './SettingEditors.css';
 
 /** Ein fail-soft „—" für einen fehlenden (von VoltPilot noch nicht gesetzten) Wert. */
@@ -503,6 +505,9 @@ function StromtarifEditor({
   // „Schnell" beim Speichern ein Preisblatt entwertet.
   const [storedMode, setStoredMode] = useState<PriceMode>('schnell');
   const [mode, setMode] = useState<PriceMode>('schnell');
+  // „Ab wann?“ (vp-tarif-ab-tag): vorbelegt mit heute - die Erlöse davor bleiben.
+  const [giltAb, setGiltAb] = useState<PreisGiltAb>(() => preisGiltAbStart());
+  const [giltAbFehler, setGiltAbFehler] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -540,6 +545,11 @@ function StromtarifEditor({
     // ENTFERNT ein zuvor gepflegtes - sonst gewänne es serverseitig weiter
     // (pricing.py: das Preisblatt ersetzt den Sammelaufschlag) und die
     // Oberfläche würde behaupten, die eingetippte Zahl zähle.
+    const gueltigAb = gueltigAbWert(giltAb);
+    if (gueltigAb == null) {
+      setGiltAbFehler(FEHLER_KEIN_TAG);
+      return;
+    }
     let supplyPatch: SupplyPriceUpdate | null = null;
     if (supply && showSupplyPriceFields(tarifArt)) {
       if (mode === 'genau') {
@@ -558,12 +568,13 @@ function StromtarifEditor({
     try {
       const updated = await api.updateSite(
         site.id,
-        buildSitePayload(site, { tarifArt, tarifParamCtKwh: paramValue }),
+        buildSitePayload(site, { tarifArt, tarifParamCtKwh: paramValue, tarifGueltigAb: gueltigAb }),
       );
       // The sheet is a separate row; persist it so the operator's maintained
       // components activate the structured import price (Stufe-1 semantics).
+      // Same „Ab wann?“ as the tariff: one change, one day.
       if (supplyPatch) {
-        await api.updateSupplyPrice(site.id, supplyPatch);
+        await api.updateSupplyPrice(site.id, { ...supplyPatch, gueltigAb });
       }
       onSaved(updated);
     } catch {
@@ -587,6 +598,15 @@ function StromtarifEditor({
           priceMode={mode}
           onPriceMode={setMode}
           storedPriceMode={storedMode}
+        />
+        <PreisGiltAbFeld
+          idPrefix="setting-tarif"
+          wert={giltAb}
+          onChange={(w) => {
+            setGiltAb(w);
+            setGiltAbFehler(null);
+          }}
+          fehler={giltAbFehler}
         />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}

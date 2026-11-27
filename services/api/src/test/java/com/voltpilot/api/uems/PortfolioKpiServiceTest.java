@@ -27,9 +27,9 @@ class PortfolioKpiServiceTest {
     @Test
     void aggregiertVerbrauchKostenUndLastspitzeUeberAnlagen() {
         AnlageKpiRoh halle1 = new AnlageKpiRoh("Werk Ahrenberg – Halle 1",
-                bd(199_500), true, bd(207_000), bd("22.4"), bd(412), bd(550), SPITZE_AM, "2026");
+                bd(199_500), true, bd(207_000), bd("22.4"), bd("22.4"), bd(412), bd(550), SPITZE_AM, "2026");
         AnlageKpiRoh halle2 = new AnlageKpiRoh("Werk Ahrenberg – Halle 2",
-                bd(36_900), true, bd(35_000), bd("23.1"), bd(120), bd(200), SPITZE_AM, "2026");
+                bd(36_900), true, bd(35_000), bd("23.1"), bd("23.1"), bd(120), bd(200), SPITZE_AM, "2026");
 
         PortfolioKpiDto dto = PortfolioKpiService.aggregiere(SEPTEMBER, List.of(halle1, halle2), null, null);
 
@@ -57,7 +57,7 @@ class PortfolioKpiServiceTest {
 
     @Test
     void fehlendIstKeineNull() {
-        AnlageKpiRoh leer = new AnlageKpiRoh("Werk Lindach", null, true, null, null, null, null, null, null);
+        AnlageKpiRoh leer = new AnlageKpiRoh("Werk Lindach", null, true, null, null, null, null, null, null, null);
 
         PortfolioKpiDto dto = PortfolioKpiService.aggregiere(SEPTEMBER, List.of(leer), null, null);
 
@@ -80,7 +80,7 @@ class PortfolioKpiServiceTest {
     void verbrauchOhneTarifTraegtKeineKosten() {
         // Anlage mit Netzbezug, aber tarif_art='ohne' (kein Arbeitspreis): Verbrauch zählt, Kosten bleibt leer.
         AnlageKpiRoh ohneTarif = new AnlageKpiRoh("Werk Ahrenberg – Halle 1",
-                bd(199_500), true, bd(207_000), null, null, null, null, null);
+                bd(199_500), true, bd(207_000), null, null, null, null, null, null);
 
         PortfolioKpiDto dto = PortfolioKpiService.aggregiere(SEPTEMBER, List.of(ohneTarif), null, null);
 
@@ -91,8 +91,8 @@ class PortfolioKpiServiceTest {
 
     @Test
     void lastspitzeNimmtDieHoechsteSpitzeUndDerenVereinbarung() {
-        AnlageKpiRoh a = new AnlageKpiRoh("A", bd(100), true, null, null, bd(100), bd(500), SPITZE_AM, "2026");
-        AnlageKpiRoh b = new AnlageKpiRoh("B", bd(100), true, null, null, bd(300), bd(400),
+        AnlageKpiRoh a = new AnlageKpiRoh("A", bd(100), true, null, null, null, bd(100), bd(500), SPITZE_AM, "2026");
+        AnlageKpiRoh b = new AnlageKpiRoh("B", bd(100), true, null, null, null, bd(300), bd(400),
                 Instant.parse("2026-07-01T10:00:00Z"), "2026"); // höhere Spitze
 
         PortfolioKpiDto dto = PortfolioKpiService.aggregiere(SEPTEMBER, List.of(a, b), null, null);
@@ -106,7 +106,7 @@ class PortfolioKpiServiceTest {
 
     @Test
     void teilmonatMachtDenVerbrauchUnvollstaendig() {
-        AnlageKpiRoh teil = new AnlageKpiRoh("A", bd(100), false, null, null, null, null, null, null);
+        AnlageKpiRoh teil = new AnlageKpiRoh("A", bd(100), false, null, null, null, null, null, null, null);
         assertThat(PortfolioKpiService.aggregiere(SEPTEMBER, List.of(teil), null, null).verbrauch().vollstaendig())
                 .isFalse();
     }
@@ -218,5 +218,34 @@ class PortfolioKpiServiceTest {
         BilanzDto.Hauptzaehler hz = new BilanzDto.Hauptzaehler(null, null, null, false, List.of(abschnitt), null);
         return new BilanzDto.Bilanz(null, "monat", LocalDate.parse("2026-09-15"),
                 LocalDate.parse("2026-09-01"), LocalDate.parse("2026-09-30"), "Europe/Berlin", List.of(hz));
+    }
+
+    /** vp-tarif-ab-tag: jeder Monat mit dem Arbeitspreis, der in ihm galt. */
+    @Test
+    void arbeitspreisImMonatFolgtDenFassungen() {
+        java.util.List<com.voltpilot.api.repo.PreisfassungRepository.Fassung> f = java.util.List.of(
+                fassung(null, "fest", "30"),
+                fassung(java.time.LocalDate.parse("2026-09-16"), "fest", "40"),
+                fassung(java.time.LocalDate.parse("2026-11-01"), "ohne", null));
+        // Ein ganzer Monat zum selben Preis bleibt genau dieser Preis.
+        assertThat(PortfolioKpiService.arbeitspreisImMonat(f, java.time.YearMonth.of(2026, 8))).isEqualTo(bd("30"));
+        assertThat(PortfolioKpiService.arbeitspreisImMonat(f, java.time.YearMonth.of(2026, 10))).isEqualTo(bd("40"));
+        // Wechsel am 16.09.: 15 Tage zu 30, 15 Tage zu 40 - nach Tagen gewichtet.
+        assertThat(PortfolioKpiService.arbeitspreisImMonat(f, java.time.YearMonth.of(2026, 9)))
+                .isEqualByComparingTo("35");
+        // Ab November ohne Tarif: unbekannt, nie 0.
+        assertThat(PortfolioKpiService.arbeitspreisImMonat(f, java.time.YearMonth.of(2026, 11))).isNull();
+        // Ein halb bekannter Monat ist unbekannt.
+        java.util.List<com.voltpilot.api.repo.PreisfassungRepository.Fassung> spaet = java.util.List.of(
+                fassung(null, "ohne", null), fassung(java.time.LocalDate.parse("2026-09-10"), "fest", "30"));
+        assertThat(PortfolioKpiService.arbeitspreisImMonat(spaet, java.time.YearMonth.of(2026, 9))).isNull();
+        assertThat(PortfolioKpiService.arbeitspreisImMonat(java.util.List.of(), java.time.YearMonth.of(2026, 9)))
+                .isNull();
+    }
+
+    private static com.voltpilot.api.repo.PreisfassungRepository.Fassung fassung(java.time.LocalDate ab,
+            String art, String param) {
+        return new com.voltpilot.api.repo.PreisfassungRepository.Fassung(ab, art,
+                param == null ? null : new java.math.BigDecimal(param), false, null, null);
     }
 }

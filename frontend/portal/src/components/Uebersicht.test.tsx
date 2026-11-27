@@ -13,7 +13,7 @@ import { wvR12 } from '../test/wiedervorlageFixtures';
 import { FIXTURE_IDS, ahrenbergHeute, werkAhrenberg, werkLindach } from '../test/standorteFixtures';
 import { versorgungAhrenberg, versorgungLindach } from '../test/versorgungFixtures';
 import { pageRoute, standortRoute } from '../nav';
-import { KORREKTUR_VORSPANN } from '../anlageUmziehen';
+import { SEIT_WANN_SCHON_IMMER } from '../anlageUmziehen';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import type { EbenenLeistenKachel } from '../ebenenNav';
@@ -383,10 +383,13 @@ describe('die Standort-Übersicht ist DIESELBE Seite mit einem Filter', () => {
     fireEvent.click(within(karte).getByRole('button', { name: 'Zuordnung korrigieren' }));
     const dialog = await screen.findByRole('dialog');
     expect(standorte).toHaveBeenCalled();
-    expect(within(dialog).getByText('Werk Ahrenberg – Halle 1')).toBeTruthy();
-    expect(within(dialog).getByText(KORREKTUR_VORSPANN)).toBeTruthy();
-    // Vorgabe ist der bestätigte erste Tag der Zuordnung (werkAhrenberg: Halle 1 seit 12.03.2024).
-    expect(within(dialog).getByText('12.03.2024')).toBeTruthy();
+    expect(within(dialog).getByText('Zu welchem Standort gehört Werk Ahrenberg – Halle 1?')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Werk Lindach/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weiter' }));
+    // „Seit wann?" steht vorgewählt auf „Schon immer" (Regel 5: kein sichtbares Datum); intern
+    // gilt der bestätigte erste Tag der Zuordnung (werkAhrenberg: Halle 1 seit 12.03.2024).
+    expect(within(dialog).getByRole('radio', { name: SEIT_WANN_SCHON_IMMER })).toBeChecked();
+    expect(within(dialog).queryByRole('combobox', { name: 'Gültig ab' })).toBeNull();
     // Der Knopf führt in den Dialog, nicht nebenbei in die Anlage.
     expect(navigiert).not.toHaveBeenCalled();
   });

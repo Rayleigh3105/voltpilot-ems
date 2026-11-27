@@ -469,7 +469,7 @@ export function TechnikSection({
   }
 
   /** Setzt die Angabe zurück auf den vorigen Stand - das „Rückgängig" der Folge. */
-  async function verguetungZurueck(vorher: Einspeiseverguetung) {
+  async function verguetungZurueck(vorher: Einspeiseverguetung, gueltigAb: string) {
     setSchaltBusy('verguetung');
     setSchaltFehler(null);
     try {
@@ -478,6 +478,8 @@ export function TechnikSection({
         site.id,
         vorher.angegebenCtKwh,
         vorher.angegebenCtKwh == null ? null : vorher.inbetriebnahmeAbSolarspitzengesetz,
+        // Rückgängig ab DEMSELBEN Tag wie die Änderung (vp-tarif-ab-tag).
+        gueltigAb,
       );
       setVerguetung(neu);
       setFolge({ key: 'verguetung', text: verguetungFolge(neu), zurueck: null });
@@ -600,14 +602,7 @@ export function TechnikSection({
                 standortNeuLaden();
                 onSiteSaved(ergebnis.site);
               }}
-              verweise={
-                <AnlageStandortZeile
-                  anlageStandort={anlageStandort}
-                  antwort={standortAntwort}
-                  onGeaendert={standortNeuLaden}
-                  nurVerweise
-                />
-              }
+              onStandorteNeuLaden={standortNeuLaden}
             />
           )}
           {anlageStandort && standortAntwort && anlageStandort.standort.esFehlt.length > 0 && (
@@ -990,13 +985,13 @@ export function TechnikSection({
                 schliesse();
                 setMastrOpen(true);
               }}
-              onSaved={(neu, vorher) => {
+              onSaved={(neu, vorher, gueltigAb) => {
                 schliesse();
                 setVerguetung(neu);
                 setFolge({
                   key: 'verguetung',
                   text: verguetungFolge(neu),
-                  zurueck: () => void verguetungZurueck(vorher),
+                  zurueck: () => void verguetungZurueck(vorher, gueltigAb),
                 });
               }}
             />

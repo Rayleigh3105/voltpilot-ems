@@ -279,10 +279,17 @@ public class EarningsRepository {
     private static final String BATTERIE_BEWEGT_KWH =
             "(COALESCE(r.battery_charge_kwh, 0) + COALESCE(r.battery_discharge_kwh, 0))";
 
-    /** The supply-price sheet join every import valuation needs (fixed
-     * {@code ssp} alias, the importPriceCtSql contract). */
-    private static final String SUPPLY_PRICE_JOIN =
-            "LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id ";
+    /**
+     * The price basis every valuation of a slot needs (fixed {@code pf} alias,
+     * the importPriceCtSql/exportValueCtSql contract): tariff, Preisblatt and
+     * stated Einspeisevergütung of the Preisfassung VALID AT THE SLOT
+     * ({@link SlotEconomics#preisFassungJoinSql}, vp-tarif-ab-tag) - a change
+     * from a day never revalues the energy before it.
+     */
+    private static final String PREISFASSUNG_JOIN = SlotEconomics.preisFassungJoinSql("s.id", "r.bucket");
+
+    /** Today's Preisfassung as {@code pf} - for the site-level labels only, never for money. */
+    private static final String HEUTIGE_PREISFASSUNG_JOIN = SlotEconomics.heutigePreisFassungJoinSql("s.id");
 
     /**
      * The PRIMARY pv asset join every export valuation needs (fixed {@code pv}
@@ -308,26 +315,30 @@ public class EarningsRepository {
     private static final String VORAB_SPALTEN = "{vorab_spalten}";
     private static final String VORAB_EINHEITEN = "{vorab_einheiten}";
 
-    /** Die Spalten der Zeile je Anlage hinter {@code s.*} (Preisblatt, PV-Asset, Anlagen-Teile des Exports). */
+    /**
+     * Alle Preisfassungen der Anlage (vp-tarif-ab-tag): die Zeile je Anlage ist eine Zeile je Anlage UND Fassung,
+     * die Fassung steht als EINE Spalte {@code vorab_pf} (Zeilentyp der Sicht) mit ihrem Zeitraum {@code [von, bis)};
+     * {@link #VORAB_FROM} nimmt je Viertelstunde die Zeile ihres Zeitraums - die Fassungen einer Anlage überlappen
+     * nie, also genau eine.
+     */
+    private static final String ANLAGE_PREISFASSUNGEN_JOIN = "JOIN anlage_preiszeitraum pf ON pf.site_id = s.id ";
+
+    /** Die Spalten der Zeile je Anlage hinter {@code s.*} (Preisfassung, PV-Asset, Anlagen-Teile des Exports). */
     private static final String ANLAGE_SPALTEN =
-            " ssp.netzentgelt_arbeitspreis_ct AS vorab_ssp_netzentgelt_arbeitspreis_ct,"
-                    + " ssp.stromsteuer_ct AS vorab_ssp_stromsteuer_ct,"
-                    + " ssp.konzessionsabgabe_ct AS vorab_ssp_konzessionsabgabe_ct,"
-                    + " ssp.umlagen_ct AS vorab_ssp_umlagen_ct, ssp.vertriebsaufschlag_ct AS vorab_ssp_vertriebsaufschlag_ct,"
-                    + " ssp.ust_pct AS vorab_ssp_ust_pct,"
+            " pf AS vorab_pf,"
                     + " pv.commissioned_on AS vorab_pv_commissioned_on, pv.pv_capacity_kwp AS vorab_pv_capacity_kwp, "
                     + VORAB_SPALTEN + " ";
 
     /**
      * H2/H3 (vp-perf3-server): EINE Zeile je sichtbarer Anlage mit allem, was die Kompositionen von ihr brauchen -
-     * die Spalten der Anlage, das Preisblatt ({@link #SUPPLY_PRICE_JOIN}), das primäre PV-Asset
+     * die Spalten der Anlage, die Preisfassungen ({@link #ANLAGE_PREISFASSUNGEN_JOIN}), das primäre PV-Asset
      * ({@link #PV_ASSET_JOIN}) und die Teile der Export-Komposition, die nur von der Anlage abhängen
      * ({@link SlotEconomics#vorab}). Dieselben Joins über dieselben Tabellen unter derselben Row-Level-Security, nur
      * einmal je Anlage statt je Viertelstunde. Über {@link #vorab(String)} einsetzen.
      */
     private static final String ANLAGE_CTE = ", anlage AS MATERIALIZED (SELECT s.*," + ANLAGE_SPALTEN
             + "FROM site s "
-            + SUPPLY_PRICE_JOIN
+            + ANLAGE_PREISFASSUNGEN_JOIN
             + PV_ASSET_JOIN
             + VORAB_EINHEITEN + ") ";
 
@@ -341,36 +352,37 @@ public class EarningsRepository {
             + "JOIN asset b ON b.site_id = s.id AND b.type = 'battery' AND b.is_primary"
             + " AND b.capacity_kwh IS NOT NULL AND b.max_charge_kw IS NOT NULL"
             + " AND b.max_discharge_kw IS NOT NULL "
-            + SUPPLY_PRICE_JOIN
+            + ANLAGE_PREISFASSUNGEN_JOIN
             + PV_ASSET_JOIN
             + VORAB_EINHEITEN + ") ";
 
     /**
-     * Hinter der Zeile je Anlage ({@code s}): {@code ssp}/{@code pv} als Projektion ihrer Spalten (kein Join je
+     * Hinter der Zeile je Anlage ({@code s}): {@code pf}/{@code pv} als Projektion ihrer Spalten (kein Join je
      * Viertelstunde), der Preis-Slot mit seinem Marktwert als {@code p}/{@code mv} ({@link #PREIS_MW_CTE}).
      */
     private static final String VORAB_JOINS =
-            "CROSS JOIN LATERAL (SELECT s.vorab_ssp_netzentgelt_arbeitspreis_ct AS netzentgelt_arbeitspreis_ct,"
-                    + " s.vorab_ssp_stromsteuer_ct AS stromsteuer_ct, s.vorab_ssp_konzessionsabgabe_ct AS konzessionsabgabe_ct,"
-                    + " s.vorab_ssp_umlagen_ct AS umlagen_ct, s.vorab_ssp_vertriebsaufschlag_ct AS vertriebsaufschlag_ct,"
-                    + " s.vorab_ssp_ust_pct AS ust_pct) ssp "
+            "CROSS JOIN LATERAL (SELECT (s.vorab_pf).*) pf "
                     + "CROSS JOIN LATERAL (SELECT s.vorab_pv_commissioned_on AS commissioned_on,"
                     + " s.vorab_pv_capacity_kwp AS pv_capacity_kwp) pv "
                     + "LEFT JOIN preis_mw p ON p.bidding_zone = s.bidding_zone AND p.slot = r.bucket "
                     + "CROSS JOIN LATERAL (SELECT p.mv_value_ct_kwh AS value_ct_kwh) mv ";
 
+    /** Die Zeile je Anlage, deren Preisfassung zur Viertelstunde gilt ({@link #ANLAGE_PREISFASSUNGEN_JOIN}). */
+    private static final String ANLAGE_JE_VIERTELSTUNDE = "JOIN anlage s ON s.id = r.site_id"
+            + " AND r.bucket >= (s.vorab_pf).von AND r.bucket < (s.vorab_pf).bis ";
+
     /**
      * Der FROM-Block über {@link #ANLAGE_CTE} und {@link #PREIS_MW_CTE}: ersetzt {@code JOIN site s} +
-     * {@link #SUPPLY_PRICE_JOIN} + {@link #PV_ASSET_JOIN} + {@link #PRICE_JOIN} + {@link #MARKET_VALUE_JOIN}; die
+     * {@link #PREISFASSUNG_JOIN} + {@link #PV_ASSET_JOIN} + {@link #PRICE_JOIN} + {@link #MARKET_VALUE_JOIN}; die
      * Aliase der Kompositionen bleiben.
      */
     private static final String VORAB_FROM = "FROM telemetry_rollup_15m r "
-            + "JOIN anlage s ON s.id = r.site_id "
+            + ANLAGE_JE_VIERTELSTUNDE
             + VORAB_JOINS;
 
     /** {@link #VORAB_FROM} über {@link #ANLAGE_CTE_SPEICHER}, dazu {@code b} (statt {@link #BATTERY_ASSET_JOIN}). */
     private static final String VORAB_FROM_SPEICHER = "FROM telemetry_rollup_15m r "
-            + "JOIN anlage s ON s.id = r.site_id "
+            + ANLAGE_JE_VIERTELSTUNDE
             + "CROSS JOIN LATERAL (SELECT s.vorab_b_capacity_kwh AS capacity_kwh,"
             + " s.vorab_b_max_charge_kw AS max_charge_kw, s.vorab_b_max_discharge_kw AS max_discharge_kw,"
             + " s.vorab_b_roundtrip_efficiency_pct AS roundtrip_efficiency_pct,"
@@ -466,7 +478,7 @@ public class EarningsRepository {
      * - statt je Viertelstunde. Vorher schätzte der Planer im Walk den Join Anlage ⋈ Speicher auf 1 Zeile und probte
      * PV-Asset und Marktwert je Viertelstunde per Index (21 000 Buffer bei 4 Anlagen und 14 Tagen), und jede
      * Viertelstunde fragte die Registereinheiten zweimal ab ({@code EXISTS}); die Tranchen-Tabelle stand zweimal im
-     * SQL-Text. Die Aliase {@code s}, {@code b}, {@code ssp}, {@code pv}, {@code mv} bleiben (als Projektion der
+     * SQL-Text. Die Aliase {@code s}, {@code b}, {@code pf}, {@code pv}, {@code mv} bleiben (als Projektion der
      * Zeile je Anlage bzw. je Slot), darum ist jede Komposition dieselbe wie zuvor;
      * {@code EarningsStammdatenJeAnlageGleichheitTest} hält die alte Form als Orakel.
      */
@@ -756,7 +768,7 @@ public class EarningsRepository {
                         + "   AS marktpraemie_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
-                        + SUPPLY_PRICE_JOIN
+                        + PREISFASSUNG_JOIN
                         + PV_ASSET_JOIN
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
@@ -805,7 +817,7 @@ public class EarningsRepository {
         Map<UUID, Boolean> result = new HashMap<>();
         jdbc.query(
                 "SELECT s.id, " + tarifPricedExpr + " AS tarif_priced "
-                        + "FROM site s " + SUPPLY_PRICE_JOIN,
+                        + "FROM site s " + HEUTIGE_PREISFASSUNG_JOIN,
                 rs -> {
                     result.put(rs.getObject("id", UUID.class), rs.getBoolean("tarif_priced"));
                 });
@@ -820,7 +832,7 @@ public class EarningsRepository {
     public boolean tarifPricedForSite(UUID site) {
         Boolean priced = jdbc.query(
                 "SELECT " + tarifPricedExpr + " AS tarif_priced "
-                        + "FROM site s " + SUPPLY_PRICE_JOIN + "WHERE s.id = ?",
+                        + "FROM site s " + HEUTIGE_PREISFASSUNG_JOIN + "WHERE s.id = ?",
                 rs -> rs.next() ? rs.getBoolean("tarif_priced") : Boolean.FALSE,
                 site);
         return Boolean.TRUE.equals(priced);
@@ -845,7 +857,7 @@ public class EarningsRepository {
         Map<UUID, String> result = new HashMap<>();
         jdbc.query(
                 "SELECT s.id, " + exportVerguetungQuelleExpr + " AS quelle "
-                        + "FROM site s " + PV_ASSET_JOIN,
+                        + "FROM site s " + HEUTIGE_PREISFASSUNG_JOIN + PV_ASSET_JOIN,
                 rs -> {
                     String quelle = rs.getString("quelle");
                     if (quelle != null) {
@@ -863,7 +875,7 @@ public class EarningsRepository {
     public String exportVerguetungQuelleForSite(UUID site) {
         return jdbc.query(
                 "SELECT " + exportVerguetungQuelleExpr + " AS quelle "
-                        + "FROM site s " + PV_ASSET_JOIN + "WHERE s.id = ?",
+                        + "FROM site s " + HEUTIGE_PREISFASSUNG_JOIN + PV_ASSET_JOIN + "WHERE s.id = ?",
                 rs -> rs.next() ? rs.getString("quelle") : null,
                 site);
     }

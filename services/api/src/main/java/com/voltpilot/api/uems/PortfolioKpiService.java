@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.repo.PreisfassungRepository;
 import com.voltpilot.api.repo.PortfolioKpiRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.BilanzDto;
@@ -72,10 +73,13 @@ public class PortfolioKpiService {
     private final PortfolioKpiRepository spitzen;
     private final MessstelleRegisterService messstellen;
     private final KennzahlAuswertungService auswertung;
+    private final PreisfassungRepository preisfassungen;
 
     public PortfolioKpiService(SiteRepository sites, BilanzService bilanz, NetzanschlussRepository netzanschluss,
-            PortfolioKpiRepository spitzen, MessstelleRegisterService messstellen, KennzahlAuswertungService auswertung) {
+            PortfolioKpiRepository spitzen, MessstelleRegisterService messstellen, KennzahlAuswertungService auswertung,
+            PreisfassungRepository preisfassungen) {
         this.sites = sites;
+        this.preisfassungen = preisfassungen;
         this.bilanz = bilanz;
         this.netzanschluss = netzanschluss;
         this.spitzen = spitzen;
@@ -106,6 +110,8 @@ public class PortfolioKpiService {
         Map<UUID, List<BilanzDto.Bilanz>> bilanzen = bilanz.bilanzen(ids, "monat",
                 List.of(aktuell.atDay(15), vorjahr.atDay(15)));
         Map<UUID, BigDecimal> vereinbart = vereinbartKw(ids, heute);
+        // vp-tarif-ab-tag: jeder Monat mit dem Arbeitspreis, der IN IHM galt - nicht mit dem heutigen.
+        Map<UUID, List<PreisfassungRepository.Fassung>> fassungen = preisfassungen.fassungen(ids);
         List<AnlageKpiRoh> roh = new ArrayList<>();
         for (SiteDto s : alle) {
             List<BilanzDto.Bilanz> b = bilanzen.get(s.id());
@@ -113,8 +119,10 @@ public class PortfolioKpiService {
             Netzbezug vorM = netzbezugAus(b.get(1));
             boolean monat = "monat".equals(s.abrechnungLeistung());
             PortfolioKpiRepository.Spitze sp = (monat ? spMonat : spJahr).get(s.id());
+            List<PreisfassungRepository.Fassung> f0 = fassungen.getOrDefault(s.id(), List.of());
             roh.add(new AnlageKpiRoh(s.name(), jetztM.kwh(), jetztM.vollstaendig(), vorM.kwh(),
-                    arbeitspreis(s), sp != null ? sp.kw() : null, vereinbart.get(s.id()),
+                    arbeitspreisImMonat(f0, aktuell), arbeitspreisImMonat(f0, vorjahr),
+                    sp != null ? sp.kw() : null, vereinbart.get(s.id()),
                     sp != null ? sp.zeitpunkt() : null, monat ? f.monatLabel() : f.jahrLabel()));
         }
 
@@ -162,6 +170,7 @@ public class PortfolioKpiService {
             boolean bezugVollstaendig,
             BigDecimal bezugVorjahrKwh,
             BigDecimal tarifCtKwh,
+            BigDecimal tarifVorjahrCtKwh,
             BigDecimal lastspitzeKw,
             BigDecimal vereinbartKw,
             Instant lastspitzeZeitpunkt,
@@ -193,10 +202,11 @@ public class PortfolioKpiService {
             if (a.tarifCtKwh() != null) {
                 tarifHinterlegt = true;
                 kosten = plus(kosten, kostenAus(a.bezugKwh(), a.tarifCtKwh()));
-                // Review R2 §B5: die Vorjahreskosten bepreisen die VORJAHRESMENGE mit dem HEUTE
-                // hinterlegten Arbeitspreis (historische Tarife werden nicht gespeichert). „Kosten
-                // ggü. Vorjahr" bildet damit den MENGENeffekt ab, nicht die echte Tarifänderung.
-                kostenVorjahr = plus(kostenVorjahr, kostenAus(a.bezugVorjahrKwh(), a.tarifCtKwh()));
+            }
+            // vp-tarif-ab-tag (ersetzt Review R2 §B5): die Vorjahreskosten bepreisen die VORJAHRESMENGE
+            // mit dem Arbeitspreis, der damals galt - „Kosten ggü. Vorjahr" zeigt Menge UND Tarifwechsel.
+            if (a.tarifVorjahrCtKwh() != null) {
+                kostenVorjahr = plus(kostenVorjahr, kostenAus(a.bezugVorjahrKwh(), a.tarifVorjahrCtKwh()));
             }
             if (a.lastspitzeKw() != null
                     && (spitze == null || a.lastspitzeKw().compareTo(spitze.lastspitzeKw()) > 0)) {
@@ -253,10 +263,49 @@ public class PortfolioKpiService {
 
     /** Der hinterlegte Arbeitspreis (ct/kWh) einer Anlage, oder null bei {@code tarif_art='ohne'}. */
     static BigDecimal arbeitspreis(SiteDto s) {
-        if (s.tarifArt() == null || "ohne".equals(s.tarifArt())) {
+        return arbeitspreis(s.tarifArt(), s.tarifParamCtKwh());
+    }
+
+    /** Die Regel je Fassung: der Tarif-Parameter, oder null bei {@code ohne} (oder ohne Wert). */
+    static BigDecimal arbeitspreis(String tarifArt, BigDecimal tarifParamCtKwh) {
+        if (tarifArt == null || "ohne".equals(tarifArt)) {
             return null;
         }
-        return s.tarifParamCtKwh();
+        return tarifParamCtKwh;
+    }
+
+    /**
+     * Der Arbeitspreis eines Berliner Monats aus den Preisfassungen der Anlage (vp-tarif-ab-tag) - REIN.
+     * Gilt eine Fassung den ganzen Monat, ihr Preis; wechselt er im Monat, das nach Tagen gewichtete Mittel.
+     * {@code null}, sobald an einem Tag des Monats kein Arbeitspreis galt: ein halb bekannter Preis ist
+     * unbekannt, nie stillschweigend auf den ganzen Monat gestreckt.
+     */
+    static BigDecimal arbeitspreisImMonat(List<PreisfassungRepository.Fassung> fassungen, YearMonth monat) {
+        BigDecimal summe = BigDecimal.ZERO;
+        BigDecimal einziger = null;
+        boolean wechselt = false;
+        int tage = monat.lengthOfMonth();
+        for (int tag = 1; tag <= tage; tag++) {
+            LocalDate d = monat.atDay(tag);
+            PreisfassungRepository.Fassung gilt = null;
+            for (PreisfassungRepository.Fassung f : fassungen) {
+                if (f.gueltigAb() == null || !f.gueltigAb().isAfter(d)) {
+                    gilt = f; // in Tagesfolge: die letzte, die an d schon begonnen hat
+                }
+            }
+            BigDecimal preis = gilt == null ? null : arbeitspreis(gilt.tarifArt(), gilt.tarifParamCtKwh());
+            if (preis == null) {
+                return null;
+            }
+            if (einziger == null) {
+                einziger = preis;
+            } else if (einziger.compareTo(preis) != 0) {
+                wechselt = true;
+            }
+            summe = summe.add(preis);
+        }
+        // Ein ganzer Monat zum selben Preis bleibt genau dieser Preis (keine Rundungsspur).
+        return wechselt ? summe.divide(BigDecimal.valueOf(tage), 6, RoundingMode.HALF_UP) : einziger;
     }
 
     private static BigDecimal kostenAus(BigDecimal kwh, BigDecimal ctKwh) {

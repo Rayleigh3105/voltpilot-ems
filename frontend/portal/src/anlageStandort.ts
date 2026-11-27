@@ -21,6 +21,8 @@ export const STANDORT_OBJEKT_LABEL = UEMS_STANDORT;
 export const STANDORT_KARTE_LABEL = UEMS_STANDORT_AUF_DER_KARTE;
 /** Wie am Standort-Kopf (IP-6): öffnet den Standort-Dialog „vervollständigen“. */
 export const KNOPF_ADRESSE_NACHTRAGEN = 'Adresse nachtragen';
+/** vp-standort-konzept §6.2/§6.5: ersetzt „Anderem Standort zuordnen“/„Zuordnung korrigieren“. */
+export const KNOPF_GEHOERT_ZU_AENDERN = 'Ändern';
 
 export interface AnlageStandort {
   standort: StandortAmStichtag;
@@ -60,6 +62,17 @@ export function standortZeile(a: AnlageStandort): StandortZeile {
     zeile: teile.join(' · '),
     fehlt: esFehltSatz(standort),
   };
+}
+
+/**
+ * vp-standort-konzept §6.2/§6.5: „Gehört zu: Werk Ahrenberg (ST-1) · 3 Anlagen“ — nur ab zwei
+ * Standorten gezeigt (der Aufrufer prüft {@link mehrereStandorte}); ersetzt die beiden Verweise
+ * „Anderem Standort zuordnen“/„Zuordnung korrigieren“ von heute, ihre Wirkung bleibt hinter einem
+ * einzigen „Ändern“ erreichbar.
+ */
+export function gehoertZuText(standort: StandortAmStichtag): string {
+  const n = standort.anlagenZahl ?? standort.anlagen.length;
+  return `Gehört zu: ${standort.name} (${standort.kurzzeichen}) · ${n} ${n === 1 ? 'Anlage' : 'Anlagen'}`;
 }
 
 // ─────────────────────────────────────────── Anlage-Assistent, Schritt 1

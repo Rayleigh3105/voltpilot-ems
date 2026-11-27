@@ -23,39 +23,50 @@ import { datumText, type Tag } from './uemsOrtsbaum';
  * es wird kein Befehl gesendet. Das ist hier die beruhigende Information.
  */
 
-export const UMZUG_TITEL = 'Anlage zuordnen';
+/** Schritt 2c (Captain-Korrektur, vp-standort-konzept §6.3/§6.5): EIN Blatt „Gehört zu" in zwei
+ * Schritten statt des früheren einseitigen Formulars „Anlage zuordnen" - erst die Liste aller
+ * Standorte, dann die Frage „Seit wann?". Dieselbe Vorschau- und Zuordnungs-Route wie vorher. */
+export const GEHOERT_ZU_TITEL = 'Gehört zu';
 export const UMZUG_GESPEICHERT_TITEL = 'Zuordnung gespeichert';
-export const KNOPF_ANDEREM_STANDORT = 'Anderem Standort zuordnen';
-export const KNOPF_ZUORDNUNG_KORRIGIEREN = 'Zuordnung korrigieren';
-export const KNOPF_ZUORDNEN = 'Zuordnen';
+export const KNOPF_WEITER = 'Weiter';
+export const KNOPF_SPEICHERN = 'Speichern';
 export const KNOPF_FERTIG = 'Fertig';
-export const UMZUG_VORSPANN =
-  'Die Anlage gehört ab dem gewählten Tag zu einem anderen Standort. Das ist eine Aussage über die Zugehörigkeit — am Betrieb der Anlage ändert sich nichts.';
+export const KNOPF_NEUER_STANDORT = 'Neuer Standort';
 export const KORREKTUR_VORSPANN =
   'Die Anlage gehört seit ihrem ersten Tag zu einem anderen Standort? Hier ändern Sie das rückwirkend. Steuerung und Messwerte bleiben unberührt.';
+/** vp-standort-konzept §6.3/§6.5: die Frage, die „Anderem Standort zuordnen“ und „Zuordnung
+ * korrigieren“ von heute ersetzt - ein einziges „Gehört zu › Ändern“ fragt sie im selben Dialog. */
+export const LABEL_SEIT_WANN = 'Seit wann?';
+export const SEIT_WANN_AB_EINEM_TAG = 'Ab einem Tag';
+export const SEIT_WANN_SCHON_IMMER = 'Schon immer (war falsch)';
 export const FOLGEN_AENDERT_TITEL = 'Das ändert sich';
 export const FOLGEN_BLEIBT_TITEL = 'Das bleibt, wie es ist';
 export const FOLGEN_PRUEFEN = 'Die Folgen werden geprüft …';
-export const FOLGEN_WAEHLEN = 'Wählen Sie Standort und Tag — dann steht hier, was die Zuordnung bewirkt.';
-export const LABEL_ZIEL = 'Neuer Standort *';
-export const LABEL_GUELTIG_AB = 'Gültig ab *';
+export const LABEL_GUELTIG_AB = 'Gültig ab';
 export const LABEL_BEGRUENDUNG = 'Begründung (freiwillig)';
 export const HINWEIS_BEGRUENDUNG = 'Steht im Änderungsprotokoll der Anlage und der beiden Standorte.';
+export const LABEL_ALLE_FOLGEN = 'Alle Folgen';
+export const KNOPF_DETAILS = 'Details';
 export const VERLAUF_TITEL = 'Zuordnungen der Anlage';
 export const BEGRUENDUNG_MAX = 500;
+
+export type SeitWann = 'ab_einem_tag' | 'schon_immer';
 
 export interface UmzugForm {
   standortId: string | null;
   gueltigAb: Tag | null;
   begruendung: string;
+  /** §6.5: ersetzt die beiden getrennten Einstiege von heute durch eine Frage im selben Dialog. */
+  seitWann: SeitWann;
 }
 
 export type UmzugFeld = 'standortId' | 'gueltigAb' | 'begruendung';
 export type UmzugFehler = Partial<Record<UmzugFeld, string>>;
 
-/** Der normale Umzug öffnet heute; die geführte Korrektur reicht den ersten Anlagentag ein. */
-export function umzugStart(heute: Tag, gueltigAb = heute): UmzugForm {
-  return { standortId: null, gueltigAb, begruendung: '' };
+/** Öffnet mit heute und „Ab einem Tag“ — den Einstieg „Schon immer“ setzt `AnlageStandortDialog`
+ * selbst (`anfangsSeitWann`), inklusive des passenden Datums. */
+export function umzugStart(heute: Tag): UmzugForm {
+  return { standortId: null, gueltigAb: heute, begruendung: '', seitWann: 'ab_einem_tag' };
 }
 
 /**
@@ -74,15 +85,39 @@ function zielSub(s: StandortAmStichtag, anlageId: string): string | null {
   return adresse ? `Heute zugeordnet · ${adresse}` : 'Heute zugeordnet';
 }
 
-/** Was vor dem Senden fehlt — dieselben Grenzen wie der Server. */
-export function pruefeUmzug(f: UmzugForm): UmzugFehler {
+/** „Zu welchem Standort gehört Halle 2?“ — die Frage des ersten Schritts (Liste). */
+export function zuWelchemStandortFrage(anlageName: string): string {
+  return `Zu welchem Standort gehört ${anlageName}?`;
+}
+
+/** Der heutige Standort der Anlage, für den Satz „Heute: {Name}.“ über der Liste. */
+export function aktuellerStandortName(antwort: StandorteAmStichtag, anlageId: string): string | null {
+  return antwort.standorte.find((s) => s.anlagen.some((a) => a.id === anlageId))?.name ?? null;
+}
+
+/** „Seit wann gehört Halle 2 zu Werk Nord?“ — die Frage des zweiten Schritts. */
+export function seitWannFrage(anlageName: string, zielName: string): string {
+  return `Seit wann gehört ${anlageName} zu ${zielName}?`;
+}
+
+/** Was im ersten Schritt fehlt: nur der Standort. */
+export function pruefeStandort(f: UmzugForm): UmzugFehler {
+  return f.standortId ? {} : { standortId: 'Bitte wählen Sie den Standort, zu dem die Anlage gehören soll.' };
+}
+
+/** Was im zweiten Schritt fehlt: Tag und Begründung. */
+export function pruefeSeitWann(f: UmzugForm): UmzugFehler {
   const fehler: UmzugFehler = {};
-  if (!f.standortId) fehler.standortId = 'Bitte wählen Sie den Standort, zu dem die Anlage gehören soll.';
   if (!f.gueltigAb) fehler.gueltigAb = 'Bitte geben Sie an, ab welchem Tag die Zuordnung gilt.';
   if ([...f.begruendung.trim()].length > BEGRUENDUNG_MAX) {
     fehler.begruendung = `Die Begründung darf höchstens ${BEGRUENDUNG_MAX} Zeichen lang sein.`;
   }
   return fehler;
+}
+
+/** Was vor dem Senden fehlt - dieselben Grenzen wie der Server. */
+export function pruefeUmzug(f: UmzugForm): UmzugFehler {
+  return { ...pruefeStandort(f), ...pruefeSeitWann(f) };
 }
 
 /**
@@ -131,8 +166,8 @@ export interface FolgenKarte {
 export const BLEIBT_SATZ: Record<AnlageUmzugBleibt, (u: AnlageUmzug) => string> = {
   box: (u) =>
     u.boxen > 1
-      ? `Die ${u.boxen} ${UEMS_BOX}en bleiben mit der Anlage verbunden — nichts wird neu eingerichtet.`
-      : `Die ${UEMS_BOX} bleibt mit der Anlage verbunden — nichts wird neu eingerichtet.`,
+      ? `Die ${u.boxen} ${UEMS_BOX}en bleiben mit der Anlage verbunden. Nichts wird neu eingerichtet.`
+      : `Die ${UEMS_BOX} bleibt mit der Anlage verbunden. Nichts wird neu eingerichtet.`,
   topics: () => 'Die Datenwege bleiben gleich: Messwerte kommen weiter auf demselben Weg an.',
   freigaben: () => 'Die Freigaben zum Steuern bleiben, wie sie sind.',
   betriebsmodell: () => 'Das Betriebsmodell und Ihre Regeln bleiben, wie sie sind.',
@@ -170,10 +205,19 @@ export function folgenKarte(u: AnlageUmzug): FolgenKarte {
     bleibt.push(
       u.steuern.standort.id === u.neu.id
         ? `${teilnahme}.`
-        : `${teilnahme} — geführt wird sie weiter bei ${standortText(u.steuern.standort)}.`,
+        : `${teilnahme}. Geführt wird sie weiter bei ${standortText(u.steuern.standort)}.`,
     );
   }
   return { aendert, bleibt, befehl: u.befehle === 0 ? 'Es wird kein Befehl an die Anlage gesendet.' : null };
+}
+
+/** Die drei kurzen Sätze, die Schritt 2 („Seit wann?“) standardmäßig zeigt - der Rest der
+ * Folgen-Karte steht erst hinter „Alle Folgen“. */
+export function kurzeFolgen(karte: FolgenKarte): string[] {
+  const saetze = [karte.aendert[0]];
+  if (karte.aendert.length > 1) saetze.push(karte.aendert[karte.aendert.length - 1]);
+  if (karte.befehl) saetze.push(karte.befehl);
+  return saetze;
 }
 
 /** Der Kopf nach dem Speichern. */

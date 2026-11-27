@@ -1,5 +1,5 @@
 import { Recht } from './Recht';
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { AnlageOrtErgebnis, StandortAmStichtag, StandorteAmStichtag } from '../api';
 import { UEMS_STANDORT } from '../glossar';
@@ -15,26 +15,22 @@ import './AnlageOrtZeile.css';
  * Korrektur: dieselbe Zeilen-Form wie ihre Nachbarn (`vp-einst-zeile` aus `AnlageTechnik.tsx`,
  * dort nicht exportiert - hier dieselben Klassen statt eines eigenen `vp-kv`-Looks), die kleine
  * Karte ersetzt nur die Symbol-Kachel links, der Pfeil rechts, ganze Zeile tippbar. Ein Tipp
- * öffnet {@link AnlageOrtBlatt}; „Anderem Standort zuordnen"/„Zuordnung korrigieren" stehen seit
- * der Korrektur NICHT mehr hier, sondern im Blatt unter „Details" ({@link AnlageOrtBlatt}).
+ * öffnet {@link AnlageOrtBlatt}; seit Schritt 2c steht „Gehört zu … · Ändern" dort oben, über der
+ * Karte (§6.2/§6.5) — es ersetzt „Anderem Standort zuordnen"/„Zuordnung korrigieren" von heute.
  */
 export function AnlageOrtZeile({
   siteId,
   standort,
   antwort,
   onGeaendert,
-  verweise,
+  onStandorteNeuLaden,
 }: {
   siteId: string;
   standort: StandortAmStichtag;
   antwort: StandorteAmStichtag;
   onGeaendert: (ergebnis: AnlageOrtErgebnis) => void;
-  /**
-   * §6.5 (captain-Korrektur): bis Schritt 2c „Gehört zu" eine eigene Fläche bekommt, bleiben
-   * „Anderem Standort zuordnen"/„Zuordnung korrigieren" erreichbar - nicht mehr an der Zeile,
-   * sondern im Blatt unter „Details" (`AnlageOrtBlatt` rendert dies weiter).
-   */
-  verweise?: ReactNode;
+  /** §6.5: nach „Neuer Standort" im „Gehört zu"-Dialog die Liste neu lesen (B4). */
+  onStandorteNeuLaden?: () => void;
 }) {
   const [offen, setOffen] = useState(false);
   const ausloeser = useRef<HTMLButtonElement>(null);
@@ -50,7 +46,7 @@ export function AnlageOrtZeile({
 
   return (
     <li>
-      <Recht aktion="anlage.verwalten">
+      <Recht aktion="anlage.ort_berichtigen">
         <button
           ref={ausloeser}
           type="button"
@@ -81,8 +77,9 @@ export function AnlageOrtZeile({
         <AnlageOrtBlatt
           siteId={siteId}
           standort={standort}
+          antwort={antwort}
           mehrereStandorte={mehrere}
-          verweise={verweise}
+          onStandorteNeuLaden={onStandorteNeuLaden}
           onClose={schliesse}
           onGespeichert={(ergebnis) => {
             schliesse();

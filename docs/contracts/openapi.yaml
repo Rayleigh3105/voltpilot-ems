@@ -4664,13 +4664,21 @@ paths:
                 vertriebsaufschlagCt: { type: number, nullable: true, minimum: 0 }
                 ustPct: { type: number, minimum: 0, maximum: 100 }
                 komponentenStand: { type: string, format: date, nullable: true }
+                gueltigAb:
+                  type: string
+                  nullable: true
+                  description: >
+                    Ab wann die Änderung gilt (vp-tarif-ab-tag): ein Tag
+                    (JJJJ-MM-TT, Europe/Berlin, heute oder davor - nie in der
+                    Zukunft) oder `beginn` (der alte Wert war schon immer falsch).
+                    Fehlt = heute; die Energie vor dem Tag behält ihren Satz.
       responses:
         "200":
           description: The recomputed sheet.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SupplyPrice" }
-        "400": { description: A component/USt/date value is invalid (German message). }
+        "400": { description: A component/USt/date value or gueltigAb is invalid, or gueltigAb lies in the future (German message). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/einspeiseverguetung:
@@ -4731,6 +4739,14 @@ paths:
                   description: >
                     Pflicht zu einem Satz, solange das Inbetriebnahmedatum fehlt:
                     ging die Anlage ab dem 25.02.2025 in Betrieb (§ 51a EEG)?
+                gueltigAb:
+                  type: string
+                  nullable: true
+                  description: >
+                    Ab wann die Änderung gilt (vp-tarif-ab-tag): ein Tag
+                    (JJJJ-MM-TT, Europe/Berlin, heute oder davor - nie in der
+                    Zukunft) oder `beginn` (der alte Wert war schon immer falsch).
+                    Fehlt = heute; die Energie vor dem Tag behält ihren Satz.
       responses:
         "200":
           description: Der neue Stand der Karte.
@@ -4742,6 +4758,37 @@ paths:
         "403": { description: Recht `anlage.verwalten` fehlt. }
         "404": { description: Site not found for this tenant. }
         "409": { description: Direktvermarktung - es gibt keinen festen Satz (German message). }
+  /api/v1/sites/{siteId}/preisfassungen:
+    get:
+      tags: [sites]
+      summary: Die Preisfassungen der Anlage (Tarif, Preisblatt, Einspeisevergütung ab einem Tag).
+      description: >
+        vp-tarif-ab-tag: die wirksamen Fassungen in Tagesfolge; die letzte gilt
+        heute. `gueltigAb` null = von Anfang an; eine Fassung gilt bis zum
+        Vortag der nächsten. Jede bewertete Viertelstunde der Erlöse rechnet mit
+        der Fassung ihres Zeitpunkts. Geschrieben wird über die drei bestehenden
+        Wege (`tarifGueltigAb` / `gueltigAb`), nie hier. RLS-scoped (foreign
+        site 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die Fassungen.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [gueltigAb, tarifArt, tarifParamCtKwh, preisblatt, einspeiseverguetungCtKwh]
+                  properties:
+                    gueltigAb: { type: string, format: date, nullable: true }
+                    tarifArt: { type: string, enum: [dynamisch, fest, ohne] }
+                    tarifParamCtKwh: { type: number, nullable: true }
+                    preisblatt: { type: boolean }
+                    einspeiseverguetungCtKwh: { type: number, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/topology:
     get:
       tags: [topology]
@@ -29233,6 +29280,14 @@ components:
             positive, at most 2 decimals); null keeps the stored value (a
             form that omits the field never clears the cap - the
             netzladenErlaubt pattern).
+        tarifGueltigAb:
+          type: string
+          nullable: true
+          description: >
+            Ab wann ein GEÄNDERTER Tarif gilt (vp-tarif-ab-tag): ein Tag
+            (JJJJ-MM-TT, Europe/Berlin, heute oder davor) oder `beginn`.
+            Fehlt = heute. Ein unveränderter Tarif zeichnet keine Fassung auf;
+            die Energie vor dem Tag behält ihren Tarif.
     SiteDeletionPreview:
       type: object
       description: What deleting a site would remove (drives the confirm dialog).
