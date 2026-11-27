@@ -101,6 +101,8 @@ class KundenbereichBeendetApiTest {
         m.put("POST /api/v1/admin/edge-releases", "Box-Software der Plattform");
         m.put("PUT /api/v1/admin/edge-releases/{version}/programme/{os}/{arch}",
                 "Programme der Box-Software der Plattform (Edge Light)");
+        m.put("PUT /api/v1/admin/edge-releases/{version}/pakete",
+                "Paket-Anhang der Box-Software der Plattform (Edge Light, Direktvermarktung Stufe 5)");
         m.put("POST /api/v1/admin/rollouts", "Flotten-Rollout — Befund im PR: er erreicht auch Boxen beendeter Bereiche");
         m.put("POST /api/v1/admin/edge-updates/erstverbindung/{bereich}",
                 "Schalter der Automatik beim ersten Verbinden, je Linie der Plattform; die Regel selbst lässt beendete Bereiche aus");
