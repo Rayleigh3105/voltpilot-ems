@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { ErloeseSection } from './ErloeseSection';
 import { clearHistoryCache } from '../historyCache';
+import { CHART_CHUNK } from '../pageChunks';
 import { clearEarningsCache } from '../useSiteEarnings';
 import { api, type History, type Site, type SiteEarnings, type SiteEarningsBucket } from '../api';
 import SPEICHER_VEKTOREN from '../speicherAussage.vektoren.json';
@@ -179,12 +180,24 @@ afterEach(() => {
  * folgt der ausgelieferten Fläche (`test/bestandsschutz/README.md`).
  */
 it('AP-13 Bestandsschutz · Verlauf Erlöse ohne Messfunktion', async () => {
-  stub();
-  const view = render(<ErloeseSection site={site()} />);
-  await geladen();
-  // Der Vergleich kommt aus einer eigenen Abfrage; unter Last steht er sonst noch nicht im Bild.
-  await screen.findByText(/25 % weniger als gestern bis 12 Uhr/);
-  await bestandSnapshot('verlauf-erloese', view);
+  // Die Aufnahme zeigt den freigehaltenen Platz des nachladenden Diagramms (Suspense-Fallback). Ob das Stück vor der
+  // Aufnahme eintraf, entschied bisher die Last der Maschine (Flake im Volllauf, 27.11.2026): es wird deshalb erst
+  // NACH der Aufnahme freigegeben - die Aufnahme bleibt bytegleich, die Fälle danach bekommen das echte Diagramm.
+  const echt = CHART_CHUNK.erloese;
+  let freigeben = () => {};
+  const frei = new Promise<void>((r) => { freigeben = r; });
+  const halten = vi.spyOn(CHART_CHUNK, 'erloese').mockImplementation(() => frei.then(echt));
+  try {
+    stub();
+    const view = render(<ErloeseSection site={site()} />);
+    await geladen();
+    // Der Vergleich kommt aus einer eigenen Abfrage; unter Last steht er sonst noch nicht im Bild.
+    await screen.findByText(/25 % weniger als gestern bis 12 Uhr/);
+    await bestandSnapshot('verlauf-erloese', view);
+  } finally {
+    freigeben();
+    halten.mockRestore();
+  }
 });
 
 describe('Aufbau · Kennzahlen, Verlauf, Abrechnung, Kontext', () => {
