@@ -327,6 +327,24 @@ export function installView(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Kein totes Ende: VoltPilot auf einem weiteren Gerät                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Wer VoltPilot hier schon als App nutzt, braucht keine Anleitung mehr FÜR DIESES Gerät - die
+ * Frage dahinter war aber oft "wie installiere ich es auch auf meinem Handy/Rechner" (Kunden-Fall:
+ * mehrere Geräte derselben Anlage). Darum bleibt die Fläche kein totes Ende: ein Link (und sein
+ * QR-Code) zum Öffnen auf dem ANDEREN Gerät. Welcher Weg dort als nächstes dran ist, weiß diese
+ * Seite nicht - anderes Gerät, anderer Browser -, darum EIN ehrlich allgemeiner Satz statt einer
+ * falschen Festlegung, kein zweiter Fall der obigen Zustands-Regel.
+ */
+export const ANDERES_GERAET_TITEL = 'Auf einem weiteren Gerät installieren';
+
+/** Der eine Satz dazu, ohne das andere Gerät zu kennen - beide Wege, nie nur einer. */
+export const ANDERES_GERAET_HINWEIS =
+  'Dort öffnen und wie hier einrichten - am Handy über „Zum Home-Bildschirm“ (iPhone/iPad) oder über „App installieren“ im Browser-Menü (Android/Chrome).';
+
+/* -------------------------------------------------------------------------- */
 /* Der Speicher (kein React)                                                   */
 /* -------------------------------------------------------------------------- */
 
