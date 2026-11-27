@@ -158,6 +158,7 @@ func (a *Agent) onEntityDesired(topic string, payload []byte) {
 	}
 	a.arb.Submit(id, payload)
 	a.traceAdmittedFromDesired(id, payload, time.Now())
+	a.answerManualDesired(id, payload)
 	a.requestConsumerControlNow()
 }
 

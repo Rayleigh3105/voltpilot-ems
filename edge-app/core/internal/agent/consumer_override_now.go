@@ -29,6 +29,14 @@ package agent
 //     ratenbegrenzten Kanal - die Ausnahme gilt nur der einen Bestätigung, die
 //     ein Mensch gerade erwartet.
 
+import (
+	"encoding/json"
+	"log/slog"
+	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
+)
+
 // requestConsumerControlNow weckt consumerControlLoop ohne zu blockieren -
 // dieselbe Coalescing-Form wie requestStatusHeartbeat.
 func (a *Agent) requestConsumerControlNow() {
@@ -57,16 +65,16 @@ func (a *Agent) priorityStatusKick() chan struct{} {
 	return a.priorityKickCh
 }
 
-// markPriorityConfirm kündigt an, dass die NÄCHSTE Rücklesung dieser Entität
-// die Bestätigung eines Handeingriffs ist (onDesiredDownlink, Start wie
-// Rücknahme). Einmal-Flag: takePriorityConfirm löscht es beim Verbrauch, eine
-// spätere, unabhängige Änderung bekommt die Ausnahme nicht noch einmal.
+// markPriorityConfirm kündigt an, dass die NÄCHSTE Antwort zu dieser Entität
+// die eines Handeingriffs ist (Start und Rücknahme). Einmal-Flag mit dem
+// Zeitpunkt der Ankündigung: takePriorityConfirm löscht es beim Verbrauch,
+// eine spätere, unabhängige Änderung bekommt die Ausnahme nicht noch einmal.
 func (a *Agent) markPriorityConfirm(entityID string) {
 	a.priorityConfirmMu.Lock()
 	if a.priorityConfirmPending == nil {
-		a.priorityConfirmPending = map[string]bool{}
+		a.priorityConfirmPending = map[string]time.Time{}
 	}
-	a.priorityConfirmPending[entityID] = true
+	a.priorityConfirmPending[entityID] = time.Now()
 	a.priorityConfirmMu.Unlock()
 }
 
@@ -75,9 +83,64 @@ func (a *Agent) markPriorityConfirm(entityID string) {
 func (a *Agent) takePriorityConfirm(entityID string) bool {
 	a.priorityConfirmMu.Lock()
 	defer a.priorityConfirmMu.Unlock()
-	if a.priorityConfirmPending[entityID] {
+	if _, ok := a.priorityConfirmPending[entityID]; ok {
 		delete(a.priorityConfirmPending, entityID)
 		return true
 	}
 	return false
+}
+
+// Dritte Runde (vp-schalten-3s, Captain 27.11.2026, "mehr als 30 Sekunden"):
+// die Ausnahme hing allein an einer RÜCKLESUNG. Schreibt die Box nichts, weil
+// eine Schutzregel den Wunsch hält (Mindestlauf/-pause des Heizstab-Profils,
+// je 300 s) oder weil der gewünschte Stand schon anliegt, kommt keine
+// Rücklesung - und die Antwort, die die Box nach Millisekunden kennt, wartete
+// auf den nächsten statusHeartbeatEvery (15 s). Beide Fälle antworten jetzt
+// selbst, mit demselben Einmal-Flag: entweder die Rücklesung ODER eine dieser
+// Antworten verbraucht es, nie beide.
+
+// answerManualDesired läuft in onEntityDesired direkt nach arb.Submit: ist der
+// Wunsch ein Handeingriff (Quelle local-ui), kündigt es seine Antwort an; hält
+// eine Schutzregel ihn, steht die Antwort schon jetzt fest.
+func (a *Agent) answerManualDesired(entityID string, payload []byte) {
+	var msg struct {
+		Source struct {
+			Kind string `json:"kind"`
+		} `json:"source"`
+	}
+	if json.Unmarshal(payload, &msg) != nil || msg.Source.Kind != string(desired.SourceLocalUI) {
+		return
+	}
+	a.markPriorityConfirm(entityID)
+	a.answerIfHeld(entityID)
+}
+
+// answerIfHeld sendet die Antwort sofort, wenn die Entscheidung des
+// Schiedsrichters eine Schutzregel nennt: geschrieben wird dann nichts Neues.
+func (a *Agent) answerIfHeld(entityID string) {
+	if a.arb == nil {
+		return
+	}
+	if dec, ok := a.arb.DecisionFor(entityID); ok && dec.Cycle != nil && a.takePriorityConfirm(entityID) {
+		slog.Info("Handeingriff gehalten - Antwort sofort", "entity", entityID, "grund", dec.Cycle.Code)
+		a.requestPriorityStatusHeartbeat()
+	}
+}
+
+// answerUnchanged: ein Steuer-Durchgang, der NACH der Ankündigung begann,
+// fand für diese Entität nichts zu schreiben - die Antwort ist der Stand, der
+// schon anliegt. Ein älterer Durchgang las noch den vorigen Wunsch und zählt
+// nicht.
+func (a *Agent) answerUnchanged(entityID string, passStart time.Time) {
+	a.priorityConfirmMu.Lock()
+	at, ok := a.priorityConfirmPending[entityID]
+	if ok && !passStart.Before(at) {
+		delete(a.priorityConfirmPending, entityID)
+	} else {
+		ok = false
+	}
+	a.priorityConfirmMu.Unlock()
+	if ok {
+		a.requestPriorityStatusHeartbeat()
+	}
 }

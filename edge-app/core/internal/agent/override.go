@@ -57,11 +57,13 @@ func (a *Agent) onDesiredDownlink(payload []byte) {
 		a.arb.Withdraw(env.EntityID, desired.Source{Kind: desired.SourceLocalUI}.Key(), false)
 		a.traceAdmitted(env.EntityID, env.RequestID, time.Now(), traceWithdrawn, "")
 		a.pokeArbitration()
-		// This IS a Handeingriff too (a person ended it on purpose): wake the
-		// control pass now and let its own next readback skip statusKickMinGap
-		// (vp-schalten-sofort round 2).
-		a.requestConsumerControlNow()
+		// This IS a Handeingriff too (a person ended it on purpose): its answer
+		// skips statusKickMinGap - marked BEFORE the control pass is woken, so
+		// that pass already counts as "after" it (vp-schalten-sofort round 2,
+		// vp-schalten-3s). A guard that holds the release answers right away.
 		a.markPriorityConfirm(env.EntityID)
+		a.answerIfHeld(env.EntityID)
+		a.requestConsumerControlNow()
 		slog.Info("manual consumer override withdrawn", "entity", env.EntityID)
 		return
 	}
@@ -78,11 +80,10 @@ func (a *Agent) onDesiredDownlink(payload []byte) {
 		return
 	}
 	a.pokeArbitration()
-	// The readback that follows is THIS override's own confirmation - it earns
-	// the one statusKickMinGap exception (consumer_override_now.go). Marked
-	// before the async bus round trip resolves on purpose: the flag only needs
-	// to be set by the time a LATER readback checks it, never before.
-	a.markPriorityConfirm(env.EntityID)
+	// The answer to THIS override earns the one statusKickMinGap exception
+	// (consumer_override_now.go). It is marked in onEntityDesired right after
+	// arb.Submit (answerManualDesired), not here: only then does the decision
+	// exist that a control pass can act on (vp-schalten-3s).
 	slog.Info("manual consumer override forwarded to the arbiter", "entity", env.EntityID)
 }
 

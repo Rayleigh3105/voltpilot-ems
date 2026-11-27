@@ -184,6 +184,7 @@ func (a *Agent) runShellyControlPass(ctx context.Context, doer shelly.Doer,
 		due := now.Sub(lastAssert[e.ID]) >= goeReassertInterval
 		if fp == lastFP[e.ID] && !due {
 			a.traceUnchanged(e.ID, now)
+			a.answerUnchanged(e.ID, now)
 			continue
 		}
 		ident, err := a.shellyIdentity(ctx, doer, cfg)
