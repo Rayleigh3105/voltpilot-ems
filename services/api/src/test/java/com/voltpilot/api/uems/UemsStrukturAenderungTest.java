@@ -366,13 +366,21 @@ class UemsStrukturAenderungTest {
         long innen = ortAenderung("gebaeude", IDS.get("G-2"), "verschoben", "{\"eltern_id\": \"" + st1
                 + "\", \"standort_id\": \"" + st1 + "\"}", "{\"eltern_id\": \"" + st1 + "\", \"standort_id\": \"" + st1 + "\"}",
                 OKT_AB, true, Instant.parse("2026-11-25T09:01:00Z"));
-        assertThat(laeufer.lauf(Instant.parse("2026-11-25T09:05:00Z")).gescheitert()).isEmpty();
+        Instant takt = Instant.parse("2026-11-25T09:05:00Z");
+        // DB-Uhr auf diesen Takt, aus demselben Grund wie in B8/Order 6 (Zeitbombe gegen die echte DB-Uhr) - danach
+        // wieder lösen.
+        BerichtKaskade.dbUhrStellen(con -> takt);
+        try {
+            assertThat(laeufer.lauf(takt).gescheitert()).isEmpty();
 
-        assertThat(anstoesse("zuordnung_rueckwirkend/G-2/2026-10-01/2026-11-25/ort_aenderung-" + wechsel))
-                .containsExactly("BR-2026-0001 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -",
-                        "BR-2026-0002 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -");
-        assertThat(gelesen(ORT, wechsel)).isEqualTo("zuordnung_rueckwirkend · 4");
-        assertThat(gelesen(ORT, innen)).isEqualTo("zuordnung_rueckwirkend · 0");
+            assertThat(anstoesse("zuordnung_rueckwirkend/G-2/2026-10-01/2026-11-25/ort_aenderung-" + wechsel))
+                    .containsExactly("BR-2026-0001 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -",
+                            "BR-2026-0002 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -");
+            assertThat(gelesen(ORT, wechsel)).isEqualTo("zuordnung_rueckwirkend · 4");
+            assertThat(gelesen(ORT, innen)).isEqualTo("zuordnung_rueckwirkend · 0");
+        } finally {
+            BerichtKaskade.dbUhrStellen(null);
+        }
     }
 
     // ============================================================================================ Wasserzeichen
@@ -395,18 +403,26 @@ class UemsStrukturAenderungTest {
             }
         }, 200);
 
-        StrukturAenderungLaeufer.Lauf lauf = scheitert.lauf(Instant.parse("2026-11-26T09:05:00Z"));
+        // DB-Uhr auf diesen Takt, aus demselben Grund wie in B8/Order 6 (Zeitbombe gegen die echte DB-Uhr) - danach
+        // wieder lösen.
+        Instant takt = Instant.parse("2026-11-26T09:05:00Z");
+        BerichtKaskade.dbUhrStellen(con -> takt);
+        try {
+            StrukturAenderungLaeufer.Lauf lauf = scheitert.lauf(takt);
 
-        assertThat(lauf.gescheitert()).containsOnlyKeys("messstelle_aenderung-" + zeile);
-        assertThat(gelesen(MESSSTELLE, zeile)).isNull();
-        assertThat(berichtsTabellen()).as("die Transaktion rollt ganz zurück").isEqualTo(vorher);
+            assertThat(lauf.gescheitert()).containsOnlyKeys("messstelle_aenderung-" + zeile);
+            assertThat(gelesen(MESSSTELLE, zeile)).isNull();
+            assertThat(berichtsTabellen()).as("die Transaktion rollt ganz zurück").isEqualTo(vorher);
 
-        assertThat(laeufer.lauf(Instant.parse("2026-11-26T09:10:00Z")).gescheitert()).isEmpty();
-        assertThat(gelesen(MESSSTELLE, zeile)).isEqualTo("zuordnung_rueckwirkend · 4");
-        assertThat(anstoesse(kennung)).hasSize(2);
-        String nachher = berichtsTabellen();
-        assertThat(laeufer.lauf(Instant.parse("2026-11-26T09:15:00Z")).gelesen()).isZero();
-        assertThat(berichtsTabellen()).isEqualTo(nachher);
+            assertThat(laeufer.lauf(Instant.parse("2026-11-26T09:10:00Z")).gescheitert()).isEmpty();
+            assertThat(gelesen(MESSSTELLE, zeile)).isEqualTo("zuordnung_rueckwirkend · 4");
+            assertThat(anstoesse(kennung)).hasSize(2);
+            String nachher = berichtsTabellen();
+            assertThat(laeufer.lauf(Instant.parse("2026-11-26T09:15:00Z")).gelesen()).isZero();
+            assertThat(berichtsTabellen()).isEqualTo(nachher);
+        } finally {
+            BerichtKaskade.dbUhrStellen(null);
+        }
     }
 
     // ============================================================================================ Bezugsgröße
