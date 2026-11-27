@@ -164,3 +164,72 @@ func TestDieRuecknahmeTraegtIhreSpurUndAlteSpurenVerfallen(t *testing.T) {
 		t.Fatal("a trace older than consumerTraceWindow must leave the heartbeat")
 	}
 }
+
+// vp-schalten-3s, Captain-Befund 27.11.2026: hält eine Schutzregel den
+// Handeingriff (hier die Mindestpause), schreibt die Box nichts - und ihre
+// Antwort darf trotzdem nicht auf den nächsten statusHeartbeatEvery warten,
+// auch nicht, wenn gerade ein Herzschlag lief (statusKickMinGap).
+func TestEinGehaltenerHandeingriffAntwortetSofortImHerzschlag(t *testing.T) {
+	id := "rod-spur-sofort"
+	minOff := 600.0
+	r := newTraceRig(t, id, &minOff)
+	r.a.onDesiredDownlink(manualOnOffOverride(id, true))
+	waitFor(t, 2*time.Second, "the rod ran once", func() bool { on, _ := r.dev.snapshot(); return on[0] })
+	r.a.onDesiredDownlink(manualWithdraw(id))
+	waitFor(t, 2*time.Second, "the rod stopped", func() bool {
+		on, _ := r.dev.snapshot()
+		return !on[0] && !on[1] && !on[2]
+	})
+	// Frischer Herzschlag: statusKickMinGap stünde jeder normalen Anforderung im Weg.
+	r.a.requestStatusHeartbeat()
+	time.Sleep(100 * time.Millisecond)
+	_, vorher := r.rec.snapshot()
+
+	click := time.Now()
+	r.a.onDesiredDownlink(manualOnOffOverride(id, true))
+	var gehaltenAm time.Time
+	waitFor(t, 3*time.Second, "the heartbeat names the hold", func() bool {
+		at, sent := r.rec.snapshot()
+		for i := len(vorher); i < len(sent); i++ {
+			if e, ok := sent[i][id]; ok && e.ReasonCode == "guard_min_off" {
+				gehaltenAm = at[i]
+				return true
+			}
+		}
+		return false
+	})
+	if d := gehaltenAm.Sub(click); d > 1500*time.Millisecond {
+		t.Fatalf("die Antwort 'gehalten' kam erst nach %v - sie wartete offenbar auf den Takt", d)
+	}
+	if on, _ := r.dev.snapshot(); on[0] || on[1] || on[2] {
+		t.Fatalf("die Mindestpause muss halten: %v", on)
+	}
+}
+
+// Ein Handeingriff, dessen Stand schon anliegt (hier "Aus" an einem Stab, der
+// schon aus ist), hat nichts zu schreiben - auch er antwortet sofort.
+func TestEinHandeingriffOhneEtwasZuSchreibenAntwortetSofort(t *testing.T) {
+	id := "rod-spur-schon-so"
+	r := newTraceRig(t, id, nil)
+	r.a.requestStatusHeartbeat()
+	time.Sleep(100 * time.Millisecond)
+	_, vorher := r.rec.snapshot()
+	spur := "override:" + id + ":3f6d7b1e-0000-4000-8000-000000000003"
+
+	click := time.Now()
+	r.a.onDesiredDownlink(overrideWithRequestID(t, id, spur, false))
+	var am time.Time
+	waitFor(t, 3*time.Second, "the heartbeat answers the manual Aus", func() bool {
+		at, sent := r.rec.snapshot()
+		for i := len(vorher); i < len(sent); i++ {
+			if e, ok := sent[i][id]; ok && e.Trace != nil && e.Trace.RequestID == spur && e.Trace.Outcome != "" {
+				am = at[i]
+				return true
+			}
+		}
+		return false
+	})
+	if d := am.Sub(click); d > 1500*time.Millisecond {
+		t.Fatalf("die Antwort kam erst nach %v", d)
+	}
+}

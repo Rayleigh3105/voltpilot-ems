@@ -123,6 +123,9 @@ Gemessene Werte lösen dabei nichts aus; nur das Wortbild ändert sich.
 Ein Handeingriff (Start oder „Automatik fortsetzen“) weckt `consumerControlLoop` zusätzlich sofort, statt bis zu `consumerControlTick` zu warten, und seine eigene erste Rücklesung darf den Herzschlag ohne die sonst geltende Mindestlücke (`statusKickMinGap`) anfordern - ein Einmal-Flag je Entität, das nur diese eine Bestätigung trifft (`agent/consumer_override_now.go`).
 Eine greifende Schutzregel (Mindestlauf/-pause, Schutzgrenze) hält genauso wie vorher; nur ihre Ablehnung steht jetzt ebenso schnell im Herzschlag.
 Eine Wiederholung oder eine automatische Entscheidung bleibt auf dem normalen, ratenbegrenzten Weg.
+Schreibt die Box auf einen Handeingriff nichts, kommt auch keine Rücklesung: eine Schutzregel hält den Wunsch (Mindestlauf, Mindestpause), oder der gewünschte Stand liegt schon an.
+Auch dann geht die Antwort sofort und ohne Mindestlücke hinaus - beim Halten direkt nach der Entscheidung des Schiedsrichters, sonst nach dem ersten Steuer-Durchgang, der nichts zu schreiben fand; dasselbe Einmal-Flag wie die Rücklesung, nie beide (`agent/consumer_override_now.go`, vp-schalten-3s).
+Das Portal zeigt einen gehaltenen Wunsch mit dem Grund der Box („bleibt an … Mindestlaufzeit des Geräts hält“), nicht als „gesendet, noch nicht bestätigt“.
 Wo die Zeit eines Handeingriffs hingeht, zeigt seine [Schaltspur](schaltspur.md) (`consumers.{id}.trace`).
 
 ## Verbindungstest und „nach Stromausfall“ (Probe, [mqtt-probe.schema.json](../mqtt-probe.schema.json))

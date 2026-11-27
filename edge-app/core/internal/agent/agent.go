@@ -752,7 +752,7 @@ type Agent struct {
 	// priorityConfirmMu guards the one-shot per-entity flag that marks a
 	// readback as the confirmation of a manual override (consumer_override_now.go).
 	priorityConfirmMu      sync.Mutex
-	priorityConfirmPending map[string]bool
+	priorityConfirmPending map[string]time.Time
 	// consumerKickCh wakes consumerControlLoop ahead of its tick when a
 	// manual override just got admitted (consumer_override_now.go). Lazily
 	// made like statusKickCh.

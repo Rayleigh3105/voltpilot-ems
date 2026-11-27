@@ -154,6 +154,7 @@ func (a *Agent) runShellyGroupEntity(ctx context.Context, doer shelly.Doer, e en
 	due := now.Sub(lastAssert[e.ID]) >= goeReassertInterval
 	if fp == lastFP[e.ID] && !due {
 		a.traceUnchanged(e.ID, now)
+		a.answerUnchanged(e.ID, now)
 		return
 	}
 	ident, err := a.shellyIdentity(ctx, doer, cfg)
