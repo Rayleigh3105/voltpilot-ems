@@ -228,6 +228,8 @@ class UemsBestandSteuerungAusEinemStueckTest {
     @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) SprungprobePublisher sprungprobePublisher;
     @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE)
     com.voltpilot.api.geraetesuche.GeraetesuchePublisher geraetesuchePublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE)
+    com.voltpilot.api.direktvermarktung.DirektvermarktungPublisher direktvermarktungPublisher;
     @Autowired ApplicationContext context;
     @Autowired MockMvc mvc;
     @Autowired EntityRegistryService registry;
@@ -242,7 +244,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
     private String lastRegisterCorrelation;
     /** Sender, die es auf main nicht gibt (die Referenz kennt sie nicht): beim Start gezählt und stumm verlangt. */
     private static final java.util.Set<String> NEU_SEIT_MAIN = java.util.Set.of("VerbundAnteilePublisher",
-            "SprungprobePublisher", "GeraetesuchePublisher", "PreisZuleitungPublisher");
+            "SprungprobePublisher", "GeraetesuchePublisher", "PreisZuleitungPublisher", "DirektvermarktungPublisher");
     private final Map<String, Integer> startNeu = new TreeMap<>();
     private MockedStatic<Instant> time;
 
@@ -738,7 +740,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
         for (Object sender : List.of(registryPublisher, probePublisher, chargingPublisher, boostPublisher,
                 registerPublisher, flowPublisher, certificationPublisher, otaPublisher, preisPublisher, provisioningPublisher,
                 measurementPublisher, consumerPublisher, verbundAnteilePublisher, sprungprobePublisher,
-                geraetesuchePublisher))
+                geraetesuchePublisher, direktvermarktungPublisher))
             result.put(mockingDetails(sender).getMockCreationSettings().getTypeToMock().getSimpleName(), sender);
         return result;
     }
