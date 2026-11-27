@@ -1,6 +1,7 @@
 package com.voltpilot.api.repo;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -89,5 +90,17 @@ public class PreisfassungRepository {
                 },
                 (Object) siteIds.toArray(UUID[]::new));
         return result;
+    }
+
+    /**
+     * Umzug-Merkzettel (vp-standort-konzept §7, E1 = B): ob Tarif, Preisblatt oder
+     * Einspeisevergütung seit {@code seit} geändert wurden — jede Änderung zeichnet der Trigger
+     * als neue Fassung auf, egal über welchen der bestehenden Schreibwege sie kam.
+     */
+    public boolean geaendertSeit(UUID siteId, Instant seit) {
+        Boolean geaendert = jdbc.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM anlage_preisfassung WHERE site_id = ? AND created_at > ?)",
+                Boolean.class, siteId, java.sql.Timestamp.from(seit));
+        return Boolean.TRUE.equals(geaendert);
     }
 }

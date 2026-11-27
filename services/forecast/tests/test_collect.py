@@ -4,7 +4,7 @@ computes + upserts the expected rows end to end (all offline)."""
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
 
@@ -16,6 +16,7 @@ from voltpilot_forecast.forecast_collect import (
     CollectorConfig,
     SiteRow,
     collect_site,
+    lernfenster_start,
     load_pv_flaechen,
     load_sites,
 )
@@ -192,20 +193,45 @@ class _SiteQueryConn:
         return _Cur()
 
 
+# ---- lernfenster_start (vp-standort-konzept §7, E1 = B, Bericht 6.4/E1 Punkt 4) --------------
+
+
+def test_lernfenster_start_ist_das_flache_fenster_ohne_umzug():
+    assert lernfenster_start(NOW, 28, None) == NOW - timedelta(days=28)
+
+
+def test_lernfenster_start_beginnt_am_umzugstag_wenn_juenger_als_das_flache_fenster():
+    # Umzug vor 5 Tagen - jünger als das 28-Tage-Fenster, also gewinnt der Umzugstag.
+    umzugstag = (NOW - timedelta(days=5)).date()
+    assert lernfenster_start(NOW, 28, umzugstag) == datetime.combine(umzugstag, time.min, tzinfo=timezone.utc)
+
+
+def test_lernfenster_start_faellt_bei_einem_laengst_vergangenen_umzug_auf_das_flache_fenster_zurueck():
+    # Umzug vor 100 Tagen - das 28-Tage-Fenster liegt später, gewinnt also (kein eigenes Aufräumen nötig).
+    umzugstag = (NOW - timedelta(days=100)).date()
+    assert lernfenster_start(NOW, 28, umzugstag) == NOW - timedelta(days=28)
+
+
+def test_lernfenster_start_am_umzugstag_selbst():
+    umzugstag = NOW.date()
+    assert lernfenster_start(NOW, 28, umzugstag) == datetime.combine(umzugstag, time.min, tzinfo=timezone.utc)
+
+
 def test_load_sites_builds_the_plant_from_the_pv_asset_row():
     rows = [
         # linked site: full geometry from the registry
-        ("t1", "s1", 52.52, 13.405, 6.05, 180.0, 30.0),
+        ("t1", "s1", 52.52, 13.405, 6.05, 180.0, 30.0, None),
         # Balkonkraftwerk: kWp known, orientation not in the registry -> defaults
-        ("t1", "s2", 52.52, 13.405, 0.8, None, None),
+        ("t1", "s2", 52.52, 13.405, 0.8, None, None, None),
         # unlinked site: no pv asset row
-        ("t2", "s3", None, None, None, None, None),
+        ("t2", "s3", None, None, None, None, None, None),
     ]
     sites = load_sites(_SiteQueryConn(rows))
 
     assert sites[0].plant == PlantSpec(capacity_kwp=6.05, azimuth_deg=180.0, tilt_deg=30.0)
     assert sites[1].plant == PlantSpec(capacity_kwp=0.8, azimuth_deg=180.0, tilt_deg=30.0)
     assert sites[2].plant is None and sites[2].location is None
+    assert sites[0].umzug_seit is None
 
 
 class _FlaechenConn:

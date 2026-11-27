@@ -197,3 +197,30 @@ describe('Meine Anlage mit vollständigem Standort — EINE Zeile (vp-standort-k
     setSelbstauskunft(rechteSeed('JW').me);
   });
 });
+
+describe('Umzug-Merkzettel auf "Meine Anlage" (§7, Bericht 6.6 Punkt 7)', () => {
+  it('zeigt den offenen Merkzettel als eigene Zeile über den Einstellungsgruppen', async () => {
+    const halle2: Site = { ...hof, id: FIXTURE_IDS.an2, name: 'Werk Ahrenberg – Halle 2' };
+    vi.spyOn(api, 'umzugMerkzettelLesen').mockResolvedValue({
+      seit: '2026-11-27T10:00:00Z', solaranlageErledigt: false, stromtarifErledigt: true, einspeiseverguetungErledigt: false,
+    });
+    await karte(halle2, async () => ahrenbergHeute());
+
+    const banner = await screen.findByTestId('umzug-merkzettel');
+    expect(within(banner).getByText('Neues Haus? Bitte prüfen')).toBeInTheDocument();
+    expect(within(banner).getByText('Solaranlage')).toBeInTheDocument();
+    expect(within(banner).queryByText('Stromtarif')).toBeNull();
+    expect(within(banner).getByText('Einspeisevergütung')).toBeInTheDocument();
+  });
+
+  it('bleibt ohne Umzug ganz weg', async () => {
+    const halle2: Site = { ...hof, id: FIXTURE_IDS.an2, name: 'Werk Ahrenberg – Halle 2' };
+    vi.spyOn(api, 'umzugMerkzettelLesen').mockResolvedValue(null);
+    await karte(halle2, async () => ahrenbergHeute());
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.queryByTestId('umzug-merkzettel')).toBeNull();
+  });
+});

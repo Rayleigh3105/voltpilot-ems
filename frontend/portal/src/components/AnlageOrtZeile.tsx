@@ -1,7 +1,7 @@
 import { Recht } from './Recht';
 import { useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { AnlageOrtErgebnis, StandortAmStichtag, StandorteAmStichtag } from '../api';
+import type { AnlageOrtErgebnis, AnlageOrtUmzugErgebnis, StandortAmStichtag, StandorteAmStichtag } from '../api';
 import { UEMS_STANDORT } from '../glossar';
 import { mehrereStandorte, ortZeileText } from '../anlageOrtBerichtigen';
 import { AnlageOrtBlatt } from './AnlageOrtBlatt';
@@ -28,7 +28,7 @@ export function AnlageOrtZeile({
   siteId: string;
   standort: StandortAmStichtag;
   antwort: StandorteAmStichtag;
-  onGeaendert: (ergebnis: AnlageOrtErgebnis) => void;
+  onGeaendert: (ergebnis: AnlageOrtErgebnis | AnlageOrtUmzugErgebnis) => void;
   /** §6.5: nach „Neuer Standort" im „Gehört zu"-Dialog die Liste neu lesen (B4). */
   onStandorteNeuLaden?: () => void;
 }) {

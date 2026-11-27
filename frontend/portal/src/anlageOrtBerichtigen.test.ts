@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { StandortAmStichtag } from './api';
+import type { AnlageUmzug } from './api';
 import {
   adresseWaehlen,
   distanzMeter,
+  entfernungKmGerundet,
   geaendert,
+  istUmzugsfrage,
   landFolgen,
   mehrereStandorte,
   ortAnfrage,
@@ -11,7 +14,11 @@ import {
   ortZeileText,
   pinZiehen,
   uebernahmeAnbieten,
+  umzugAnfrage,
+  umzugErgebnisSatz,
+  umzugsFolgenSaetze,
   WEIT_GEZOGEN_METER,
+  type UmzugForm,
 } from './anlageOrtBerichtigen';
 
 function standort(over: Partial<StandortAmStichtag> = {}): StandortAmStichtag {
@@ -194,5 +201,86 @@ describe('landFolgen (§6.1 Regel 4: Gebotszone und Zeitzone folgen dem Land)', 
     ['CH', 'CH', 'Europe/Zurich'],
   ] as const)('%s -> %s, %s', (land, gebotszone, zeitzone) => {
     expect(landFolgen(land)).toEqual({ gebotszone, zeitzone });
+  });
+});
+
+describe('istUmzugsfrage (§7, E1 = B): ab 2 km fragt das Blatt „Ist Ihre Anlage umgezogen?"', () => {
+  const ahrenberg = { breitengrad: 48.95, laengengrad: 10.92 };
+
+  it('unter 2 km: keine Frage, bleibt eine Berichtigung', () => {
+    expect(istUmzugsfrage(ahrenberg, { breitengrad: 48.951, laengengrad: 10.921 })).toBe(false);
+  });
+
+  it('über 2 km: die Frage steht', () => {
+    expect(istUmzugsfrage(ahrenberg, { breitengrad: 48.2085, laengengrad: 16.3738 })).toBe(true);
+  });
+});
+
+describe('entfernungKmGerundet', () => {
+  it('rundet die Entfernung in Kilometern (Wien von Ahrenberg)', () => {
+    const km = entfernungKmGerundet({ breitengrad: 48.95, laengengrad: 10.92 }, { breitengrad: 48.2085, laengengrad: 16.3738 });
+    expect(km).toBeGreaterThan(400);
+    expect(km).toBeLessThan(500);
+  });
+});
+
+describe('umzugAnfrage (POST …/ort/umzug)', () => {
+  it('trägt Adresse, Lage und den Umzugstag', () => {
+    const form: UmzugForm = {
+      adresse: { strasse: 'Hauptplatz 1', plz: null, ort: 'Wien', land: 'AT' },
+      punkt: { breitengrad: 48.2085, laengengrad: 16.3738 },
+      gueltigAb: '2026-11-20',
+    };
+    expect(umzugAnfrage(form)).toEqual({
+      adresse: { strasse: 'Hauptplatz 1', plz: null, ort: 'Wien', land: 'AT' },
+      lage: { breitengrad: 48.2085, laengengrad: 16.3738 },
+      gueltigAb: '2026-11-20',
+    });
+  });
+});
+
+describe('umzugErgebnisSatz (Captain-Korrektur: kein "X gehört zu X")', () => {
+  it('nennt die Adresse, nicht den (gleich benannten) stillen neuen Standort', () => {
+    const adresse = { strasse: 'Hauptplatz 1', plz: null, ort: 'Wien', land: 'AT' as const };
+    expect(umzugErgebnisSatz(adresse, '2026-11-27')).toBe('Ab 27.11.2026 steht die Anlage in Hauptplatz 1, Wien.');
+  });
+});
+
+describe('umzugsFolgenSaetze (Bericht 6.4) - eigene Sätze, nicht die Zuordnungs-Sätze von "Gehört zu"', () => {
+  function umzug(over: Partial<AnlageUmzug> = {}): AnlageUmzug {
+    return {
+      anlageId: 'a-1',
+      anlageName: 'Halle 2',
+      bisher: { id: 'st-1', kurzzeichen: 'ST-1', name: 'Werk Ahrenberg' },
+      neu: { id: 'st-2', kurzzeichen: 'ST-2', name: 'Halle 2' },
+      gueltigAb: '2026-11-27',
+      gueltigBis: null,
+      danach: null,
+      rueckwirkung: { art: 'ab_heute', tage: 0, abzeichen: null },
+      zuordnungen: [],
+      bleibt: [],
+      boxen: 1,
+      netzanschluss: null,
+      steuern: null,
+      befehle: 0,
+      begruendung: null,
+      protokoll: [],
+      ...over,
+    };
+  }
+
+  it('nennt den Verlauf, die Prognose und die Box', () => {
+    expect(umzugsFolgenSaetze(umzug())).toEqual([
+      'Der Verlauf läuft weiter. Bis 26.11.2026 zählt er zum bisherigen Standort.',
+      'Die nächste Prognose rechnet am neuen Ort; sie lernt mit Messwerten ab dem Umzugstag.',
+      'Die Box bleibt an der Anlage und bekommt den neuen Ort.',
+    ]);
+  });
+
+  it('erfindet keine Box ohne eine (Regel: nie eine Box erfinden)', () => {
+    expect(umzugsFolgenSaetze(umzug({ boxen: 0 }))).toEqual([
+      'Der Verlauf läuft weiter. Bis 26.11.2026 zählt er zum bisherigen Standort.',
+      'Die nächste Prognose rechnet am neuen Ort; sie lernt mit Messwerten ab dem Umzugstag.',
+    ]);
   });
 });

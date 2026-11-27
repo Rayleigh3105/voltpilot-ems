@@ -59,3 +59,17 @@
 .vp-ob-ergebnis p {
   margin: 0;
 }
+/* §7, E1 = B: die drei Sätze der Umzug-Folgen, vor dem Speichern - derselbe Listen-Look wie die
+   kurzen Folgen in "Gehört zu" (AnlageStandortDialog.css), hier ohne eigenen Rahmen nötig. */
+.vp-ob-umzug-folgen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-text-sm);
+}
+.vp-ob-umzug-folgen li {
+  overflow-wrap: anywhere;
+}

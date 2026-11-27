@@ -18,6 +18,7 @@ import {
   type Site,
   type SiteAsset,
   type SiteDeletionPreview,
+  type UmzugMerkzettel,
 } from '../api';
 import { api } from '../apiVoll';
 import { BATTERY_NO_DEVICE_WARNING, parseFeedInCapInput, premiumInputText, tarifArtLabel } from '../fleet';
@@ -46,6 +47,7 @@ import { anlageRoute, hashForRoute } from '../nav';
 import { LocationMap } from '../components/LocationMap';
 import { AnlageStandortZeile, useAnlageStandort } from '../components/AnlageStandortZeile';
 import { AnlageOrtZeile } from '../components/AnlageOrtZeile';
+import { UmzugMerkzettelKarte } from '../components/UmzugMerkzettelKarte';
 import { koordinatenLabel } from '../anlageStandort';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { EinspeiseverguetungBlatt } from '../components/EinspeiseverguetungBlatt';
@@ -287,6 +289,20 @@ export function TechnikSection({
   // Daten (Netzanschluss-Bindung, Grundlast) noch einmal selbst.
   const [gridLimitKw, setGridLimitKw] = useState<number | null>(null);
   const [anschlussgrenzeOffen, setAnschlussgrenzeOffen] = useState(false);
+  // Umzug (§7, E1 = B, Bericht 6.6 Punkt 7): der Merkzettel "Neues Haus? Bitte prüfen" ist je
+  // Anlage gespeichert und auf jedem Gerät sichtbar - nicht nur auf dem, das den Umzug speicherte.
+  const [umzugMerkzettel, setUmzugMerkzettel] = useState<{ siteId: string; wert: UmzugMerkzettel | null } | null>(
+    null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    const id = site.id;
+    api.umzugMerkzettelLesen(id).then((wert) => !cancelled && setUmzugMerkzettel({ siteId: id, wert })).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [site.id]);
+  const merkzettel = umzugMerkzettel?.siteId === site.id ? umzugMerkzettel.wert : null;
 
   // Ein Rückgängig baut auf dem NEUESTEN Stand auf, nie auf dem des Klicks -
   // sonst setzte es eine inzwischen gespeicherte andere Änderung mit zurück.
@@ -550,6 +566,13 @@ export function TechnikSection({
 
   return (
     <div className="vp-einst">
+      {merkzettel && (
+        <UmzugMerkzettelKarte
+          siteId={site.id}
+          merkzettel={merkzettel}
+          onGeaendert={(wert) => setUmzugMerkzettel({ siteId: site.id, wert })}
+        />
+      )}
       <div className="vp-einst-raster">
         {/* ---------- Anlage ---------- */}
         <Gruppe id="anlage" titel="Anlage">

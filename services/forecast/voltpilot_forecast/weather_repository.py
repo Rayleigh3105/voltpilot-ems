@@ -48,6 +48,20 @@ class WeatherForecastRepository(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def points_before(self, site_id: str, cutoff) -> list[WeatherPoint]:
+        """The best-known value per hour strictly BEFORE ``cutoff`` (latest run wins per hour,
+        like :func:`forecast_collect._weather_history`).
+
+        Used only for the Umzug weather catch-up (vp-standort-konzept §7, E1 = B): unlike a
+        correction, a move must NOT discard the weather learned at the OLD point for days
+        before the move day - it stays correct. :func:`wetter_nachholung.process_auftraege`
+        reads these back, merges them with the newly fetched points from ``cutoff`` onward
+        under ONE fresh ``run_at``, and only then calls :meth:`delete_for_site` + :meth:`save` -
+        so ``latest()`` keeps seeing exactly one coherent run across the whole site, same as today.
+        """
+        raise NotImplementedError
+
 
 class InMemoryWeatherForecastRepository(WeatherForecastRepository):
     """Non-durable reference implementation keyed by site_id (latest run wins)."""
@@ -71,6 +85,13 @@ class InMemoryWeatherForecastRepository(WeatherForecastRepository):
 
     def latest(self, site_id: str) -> WeatherForecast | None:
         return self._store.get(site_id)
+
+    def points_before(self, site_id: str, cutoff) -> list:
+        existing = self._store.get(site_id)
+        if existing is None:
+            return []
+        cutoff_utc = ensure_utc(cutoff)
+        return [p for p in existing.points if ensure_utc(p.timestamp) < cutoff_utc]
 
     def delete_for_site(self, site_id: str) -> int:
         removed = len(self.rows)
@@ -104,6 +125,16 @@ SELECT time, temperature_c, cloud_cover_pct, ghi_w_m2, dni_w_m2, dhi_w_m2,
 FROM weather_forecast
 WHERE site_id = %s AND run_at = %s
 ORDER BY time
+"""
+
+#: Umzug (§7, E1 = B): the best-known value per hour before the move day - latest RUN wins per
+#: hour, same rule as forecast_collect._weather_history, not "the one run_at" like latest().
+_POINTS_BEFORE_SQL = """
+SELECT DISTINCT ON (time) time, temperature_c, cloud_cover_pct, ghi_w_m2, dni_w_m2, dhi_w_m2,
+       dni_normal_w_m2
+FROM weather_forecast
+WHERE site_id = %s AND time < %s
+ORDER BY time, run_at DESC
 """
 
 
@@ -154,6 +185,23 @@ class TimescaleWeatherForecastRepository(WeatherForecastRepository):
             removed = cur.rowcount
         self._conn.commit()
         return removed
+
+    def points_before(self, site_id: str, cutoff) -> list[WeatherPoint]:
+        with self._conn.cursor() as cur:
+            cur.execute(_POINTS_BEFORE_SQL, (site_id, ensure_utc(cutoff)))
+            rows = cur.fetchall()
+        return [
+            WeatherPoint(
+                timestamp=ensure_utc(ts),
+                temperature_c=None if t is None else float(t),
+                cloud_cover_pct=None if c is None else float(c),
+                ghi_w_m2=None if g is None else float(g),
+                dni_w_m2=None if dn is None else float(dn),
+                dhi_w_m2=None if dh is None else float(dh),
+                dni_normal_w_m2=None if dnn is None else float(dnn),
+            )
+            for ts, t, c, g, dn, dh, dnn in rows
+        ]
 
     def latest(self, site_id: str) -> WeatherForecast | None:
         with self._conn.cursor() as cur:

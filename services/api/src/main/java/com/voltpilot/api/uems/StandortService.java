@@ -431,6 +431,27 @@ public class StandortService {
         return s.name();
     }
 
+    /**
+     * Ein freier Name, beginnend bei {@code basis} (vp-standort-konzept §7, E1 = B): der still
+     * angelegte Standort eines Umzugs heißt wie die Anlage. Ist der Name schon vergeben — ein
+     * früherer Umzug DERSELBEN Anlage, dessen alter Standort noch nicht archiviert ist — hängt ein
+     * Zähler an, statt {@link #anlegen} mit {@code name_belegt} abzulehnen.
+     */
+    public String freierStandortName(String basis) {
+        LocalDate heute = tag(uhr.instant(), ZoneId.systemDefault());
+        Baum b = baum();
+        if (OrtsbaumAbleitung.nameBelegt(b.baum(), OrtArt.STANDORT, null, basis, heute, null).isEmpty()) {
+            return basis;
+        }
+        for (int n = 2; n < 1000; n++) {
+            String kandidat = basis + " (" + n + ")";
+            if (OrtsbaumAbleitung.nameBelegt(b.baum(), OrtArt.STANDORT, null, kandidat, heute, null).isEmpty()) {
+                return kandidat;
+            }
+        }
+        return basis;
+    }
+
     private void nameFrei(Baum b, String name, LocalDate heute, String ausser) {
         Optional<OrtsbaumAbleitung.Ort> belegt =
                 OrtsbaumAbleitung.nameBelegt(b.baum(), OrtArt.STANDORT, null, name, heute, ausser);
