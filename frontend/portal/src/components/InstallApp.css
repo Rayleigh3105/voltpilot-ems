@@ -103,3 +103,13 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Volle Textfarbe und -größe wie `.vp-installapp-text`, NICHT die kleine, blasse
+   `.vp-installapp-hint` - dieselben Anführungen („Zum Home-Bildschirm“, „App installieren“) lesen
+   sich dort klein und blass leicht als gerade Striche statt als unten-auf/oben-zu Anführung (vgl.
+   dieselben Wörter groß und dunkel in den iPhone/iPad-Schritten weiter oben). */
+.vp-installapp-weiter-hinweis {
+  margin: 0;
+  min-width: 0;
+  line-height: 1.5;
+}

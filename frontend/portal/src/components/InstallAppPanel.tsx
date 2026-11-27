@@ -119,7 +119,7 @@ export function InstallAppPanel() {
               </Button>
             </div>
           </div>
-          <p className="vp-installapp-hint">{ANDERES_GERAET_HINWEIS}</p>
+          <p className="vp-installapp-weiter-hinweis">{ANDERES_GERAET_HINWEIS}</p>
         </div>
       )}
     </div>
