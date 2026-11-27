@@ -51,18 +51,18 @@ func (l *Link) publishDirektvermarktung(leaf string, v any) error {
 // Null"). Werte are the values the partner currently reads at the interface,
 // straight from the Server's input cache.
 type DirektvermarktungSummary struct {
-	Partner             string                    `json:"partner"`
-	Lage                string                    `json:"lage"`
-	Revision            int                       `json:"revision"`
-	ZugangFingerabdruck string                    `json:"zugang_fingerabdruck,omitempty"`
-	VorgabePct          *int                      `json:"vorgabe_pct,omitempty"`
-	GrenzeKw            *float64                  `json:"grenze_kw,omitempty"`
-	LebenszeichenAm     *time.Time                `json:"lebenszeichen_am,omitempty"`
-	LetzteAbfrageAm     *time.Time                `json:"letzte_abfrage_am,omitempty"`
-	LetzteSchreibungAm  *time.Time                `json:"letzte_schreibung_am,omitempty"`
-	AbfragenJeMinute    *float64                  `json:"abfragen_je_minute,omitempty"`
-	Tunnel              *DirektvermarktungTunnel  `json:"tunnel,omitempty"`
-	Werte               *DirektvermarktungWerte   `json:"werte,omitempty"`
+	Partner             string                   `json:"partner"`
+	Lage                string                   `json:"lage"`
+	Revision            int                      `json:"revision"`
+	ZugangFingerabdruck string                   `json:"zugang_fingerabdruck,omitempty"`
+	VorgabePct          *int                     `json:"vorgabe_pct,omitempty"`
+	GrenzeKw            *float64                 `json:"grenze_kw,omitempty"`
+	LebenszeichenAm     *time.Time               `json:"lebenszeichen_am,omitempty"`
+	LetzteAbfrageAm     *time.Time               `json:"letzte_abfrage_am,omitempty"`
+	LetzteSchreibungAm  *time.Time               `json:"letzte_schreibung_am,omitempty"`
+	AbfragenJeMinute    *float64                 `json:"abfragen_je_minute,omitempty"`
+	Tunnel              *DirektvermarktungTunnel `json:"tunnel,omitempty"`
+	Werte               *DirektvermarktungWerte  `json:"werte,omitempty"`
 }
 
 // DirektvermarktungTunnel are the VPN facts the tunnel manager (Stage 2/4)

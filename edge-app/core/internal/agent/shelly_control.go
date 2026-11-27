@@ -183,6 +183,7 @@ func (a *Agent) runShellyControlPass(ctx context.Context, doer shelly.Doer,
 		fp := shellyPlanFingerprint(plan)
 		due := now.Sub(lastAssert[e.ID]) >= goeReassertInterval
 		if fp == lastFP[e.ID] && !due {
+			a.traceUnchanged(e.ID, now)
 			continue
 		}
 		ident, err := a.shellyIdentity(ctx, doer, cfg)
@@ -194,7 +195,9 @@ func (a *Agent) runShellyControlPass(ctx context.Context, doer shelly.Doer,
 			lastAssert[e.ID] = now
 			continue
 		}
-		res := shelly.Execute(ctx, doer, cfg, ident, cmd)
+		clock := &shellyWriteClock{inner: doer}
+		res := shelly.Execute(ctx, clock, cfg, ident, cmd)
+		a.traceExecuted(e.ID, now, clock.wroteAt(), time.Now(), res.OK)
 		if !res.OK {
 			slog.Warn("shelly control execute failed", "entity", e.ID,
 				"error_code", res.ErrorCode, "msg", res.Message)

@@ -576,6 +576,11 @@ type Agent struct {
 	consumerFP       string
 	consumerFPSeeded bool
 
+	// traces holds the Schaltspur of the latest manual override per consumer
+	// (consumer_trace.go, vp-schalten-3s): received/admitted/written/read back
+	// in the box's own clock, reported as consumers.{id}.trace.
+	traces consumerTraces
+
 	// AP-15 IP-17 (Y2): the accepted share document of a Gemeinsame
 	// Steuerung, restored from disk in New - before the first measurement
 	// (R15). nil = no document: the box behaves byte for byte as before.

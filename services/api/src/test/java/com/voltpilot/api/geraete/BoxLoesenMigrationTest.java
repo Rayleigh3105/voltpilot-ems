@@ -267,7 +267,7 @@ class BoxLoesenMigrationTest {
             // Cloud-/Server-authored Absicht AN die Box (ABSICHT): entsteht ohne jede Rückmeldung.
             Map.entry("schedule", ABSICHT), Map.entry("rollout_device", ABSICHT),
             Map.entry("rollout_event", ABSICHT), Map.entry("device_update_target", ABSICHT),
-            Map.entry("register_write_event", ABSICHT), Map.entry("plan_zustellung", ABSICHT),
+            Map.entry("register_write_event", ABSICHT), Map.entry("schaltspur", ABSICHT), Map.entry("plan_zustellung", ABSICHT),
             Map.entry("move_provisioning_operation", ABSICHT), Map.entry("geraetesuche", ABSICHT),
             Map.entry("geraetesuche_protokoll", ABSICHT), Map.entry("data_source_aenderung", ABSICHT),
             // Administrativ, nicht Box-Daten; device_site_assignment ohnehin ON DELETE CASCADE von device.

@@ -61,7 +61,7 @@ public final class BoxDatenBestand {
         m.put("messauswahl", List.of("device_measurement_selection", "device_measurement_selection_event"));
         m.put("meldungen", List.of("device_edge_version", "device_update_status", "box_update_verlauf"));
         m.put("befehle", List.of("device_command_log", "register_write_event",
-                "ocpp_action", "ocpp_action_intent", "ocpp_action_audit"));
+                "ocpp_action", "ocpp_action_intent", "ocpp_action_audit", "schaltspur"));
         m.put("ocpp", List.of("ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
                 "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
                 "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
