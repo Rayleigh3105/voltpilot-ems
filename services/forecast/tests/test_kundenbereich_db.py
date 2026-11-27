@@ -62,6 +62,8 @@ ALTER TABLE asset ADD COLUMN IF NOT EXISTS pv_capacity_kwp NUMERIC(10, 3);
 ALTER TABLE asset ADD COLUMN IF NOT EXISTS azimuth_deg NUMERIC(6, 2);
 ALTER TABLE asset ADD COLUMN IF NOT EXISTS tilt_deg NUMERIC(6, 2);
 ALTER TABLE asset ADD COLUMN IF NOT EXISTS is_primary BOOLEAN NOT NULL DEFAULT true;
+-- V20261127130000: Umzug (§7, E1 = B) - der jüngste Umzugstag für das Lernfenster.
+ALTER TABLE site ADD COLUMN IF NOT EXISTS umzug_seit DATE;
 CREATE TABLE forecast_model_state (
     tenant_id UUID NOT NULL, site_id UUID NOT NULL, model TEXT NOT NULL,
     kind TEXT NOT NULL, status TEXT NOT NULL, days_collected INTEGER,

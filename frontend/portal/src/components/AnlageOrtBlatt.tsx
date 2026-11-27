@@ -10,6 +10,7 @@ import {
   type OrtTreffer,
   type StandortAmStichtag,
   type StandorteAmStichtag,
+  type UmzugMerkzettel,
 } from '../api';
 import { api } from '../apiVoll';
 import {
@@ -23,12 +24,14 @@ import {
   pinZiehen,
   uebernahmeAnbieten,
   umzugAnfrage,
+  umzugErgebnisSatz,
+  umzugsFolgenSaetze,
   type OrtForm,
   type OrtPunkt,
   type UmzugForm,
 } from '../anlageOrtBerichtigen';
 import { datumText, type Tag } from '../uemsOrtsbaum';
-import { folgenKarte, kurzeFolgen, tagPlus } from '../anlageUmziehen';
+import { folgenKarte, tagPlus } from '../anlageUmziehen';
 import { gehoertZuText, KNOPF_GEHOERT_ZU_AENDERN } from '../anlageStandort';
 import { adresseAusTreffer, adresseText, type Adresse } from '../anlageOrt';
 import { alsOrtFehler } from '../standorte';
@@ -36,6 +39,7 @@ import { AdressSuche, type AdressWahl } from './AdressSuche';
 import { AnlageStandortDialog, FolgenKarteAnsicht } from './AnlageStandortDialog';
 import { ArchivierenDialog, type ArchivObjekt } from './ArchivierenDialog';
 import { KoordinatenManuellFelder } from './KoordinatenManuellFelder';
+import { UmzugMerkzettelKarte } from './UmzugMerkzettelKarte';
 import { LocationMap } from './LocationMap';
 import { VpDatePicker } from './VpDatePicker';
 import './AnlageOrtBlatt.css';
@@ -54,8 +58,6 @@ const KNOPF_UMGEZOGEN = 'Ja, wir sind umgezogen';
 const KNOPF_ZURUECK = 'Zurück';
 const LABEL_UMZUGSTAG = 'Seit wann?';
 const LABEL_ALLE_FOLGEN = 'Alle Folgen';
-const MERKZETTEL_TITEL = 'Neues Haus? Bitte prüfen';
-const MERKZETTEL_PUNKTE = ['Solaranlage', 'Stromtarif', 'Einspeisevergütung'];
 type ArchivAngebot = { objekt: ArchivObjekt; archiviert: boolean } | null;
 
 /**
@@ -70,7 +72,9 @@ type ArchivAngebot = { objekt: ArchivObjekt; archiviert: boolean } | null;
  * ursprünglichen Punkt fragt erst „Ist Ihre Anlage umgezogen?" statt die Berichtigung wortlos zu
  * übernehmen. „Nein" bleibt die Berichtigung oben; „Ja" fragt den Umzugstag (heute oder davor,
  * nie in der Zukunft) und speichert über den eigenen Weg (`api.anlageOrtUmziehen`) — ein neuer
- * Standort entsteht still, die Folgen stehen wie bei „Gehört zu" (`folgenKarte`), danach bietet
+ * Standort entsteht still (heißt wie die Anlage). Das Ergebnis trägt EIGENE Umzugs-Sätze
+ * (`umzugErgebnisSatz`/`umzugsFolgenSaetze`), nicht die Zuordnungs-Sätze von „Gehört zu" (ein „X
+ * gehört zu X" wäre doppelt und sinnlos) — der Titel bleibt durchgehend „Standort". Danach bietet
  * das Blatt das Archivieren des leeren bisherigen Standorts an (wie „Zuordnung korrigieren").
  */
 export function AnlageOrtBlatt({
@@ -115,6 +119,7 @@ export function AnlageOrtBlatt({
   const [alleFolgenOffen, setAlleFolgenOffen] = useState(false);
   const [archivAngebot, setArchivAngebot] = useState<ArchivAngebot>(null);
   const [archivDialog, setArchivDialog] = useState(false);
+  const [merkzettel, setMerkzettel] = useState<UmzugMerkzettel | null>(null);
   const zuordnung = standort.anlagen.find((a) => a.id === siteId) ?? null;
   // Der Punkt VOR dem laufenden Zug — in onChange festgehalten, bevor der State sich ändert, denn
   // die Auflösung (onOrtAufgeloest) kommt immer erst NACH dem nächsten Render mit dem NEUEN Punkt.
@@ -231,6 +236,8 @@ export function AnlageOrtBlatt({
       const form: UmzugForm = { adresse: weitWeg.adresse, punkt: weitWeg.punkt, gueltigAb: umzugTag };
       const r = await api.anlageOrtUmziehen(siteId, umzugAnfrage(form));
       setUmzugErgebnis(r);
+      // Bericht 6.6 Punkt 7: der echte, gerade angelegte Stand vom Server - kein geratener Anfangswert.
+      api.umzugMerkzettelLesen(siteId).then(setMerkzettel).catch(() => {});
     } catch (e) {
       const ortFehler = e instanceof ApiError ? alsOrtFehler(e.body) : null;
       setUmzugFehler(ortFehler?.message ?? (e instanceof Error ? e.message : 'Der Umzug konnte nicht gespeichert werden.'));
@@ -269,13 +276,11 @@ export function AnlageOrtBlatt({
     return () => { aktiv = false; };
   }, [umzugErgebnis]);
 
-  const titel = umzugSchritt || umzugErgebnis ? 'Gehört zu' : ORT_BLATT_TITEL;
-
   return (
     <Modal
       open
       onClose={umzugErgebnis ? umzugFertig : ergebnis ? fertig : onClose}
-      title={titel}
+      title={ORT_BLATT_TITEL}
       footer={
         umzugErgebnis ? (
           <Button onClick={umzugFertig}>{KNOPF_FERTIG}</Button>
@@ -320,11 +325,11 @@ export function AnlageOrtBlatt({
         {umzugErgebnis ? (
           <div className="vp-ob-ergebnis" aria-live="polite">
             <p>
-              <strong>Gespeichert.</strong> {ergebnisSatzUmzug(umzugErgebnis)}
+              <strong>Gespeichert.</strong> {umzugErgebnisSatz(weitWeg!.adresse, umzugErgebnis.umzug.gueltigAb)}
             </p>
             <div className="vp-au-folgen-kurz">
               <ul>
-                {kurzeFolgen(folgenKarte(umzugErgebnis.umzug)).map((s) => (
+                {umzugsFolgenSaetze(umzugErgebnis.umzug).map((s) => (
                   <li key={s}>{s}</li>
                 ))}
               </ul>
@@ -356,14 +361,9 @@ export function AnlageOrtBlatt({
                 )}
               </section>
             )}
-            <div className="vp-ob-merkzettel">
-              <b>{MERKZETTEL_TITEL}</b>
-              <div className="vp-ob-merkzettel-chips">
-                {MERKZETTEL_PUNKTE.map((p) => (
-                  <span key={p}>{p}</span>
-                ))}
-              </div>
-            </div>
+            {merkzettel && (
+              <UmzugMerkzettelKarte siteId={siteId} merkzettel={merkzettel} onGeaendert={setMerkzettel} />
+            )}
           </div>
         ) : ergebnis ? (
           <div className="vp-ob-ergebnis" aria-live="polite">
@@ -544,10 +544,5 @@ export function AnlageOrtBlatt({
       )}
     </Modal>
   );
-}
-
-/** „{Anlage} gehört ab {Tag} zu {neuer Standort}." — derselbe Satzbau wie `ergebnisSatz` (Gehört zu). */
-function ergebnisSatzUmzug(r: AnlageOrtUmzugErgebnis): string {
-  return `${r.umzug.anlageName} gehört ab ${datumText(r.umzug.gueltigAb)} zu ${r.neuerStandort.name}.`;
 }
 

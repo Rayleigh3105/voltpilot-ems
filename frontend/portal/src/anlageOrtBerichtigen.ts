@@ -1,6 +1,7 @@
 import type {
   AnlageOrtAnfrage,
   AnlageOrtUmzugAnfrage,
+  AnlageUmzug,
   StandortAdresse,
   StandortAmStichtag,
   StandorteAmStichtag,
@@ -8,8 +9,9 @@ import type {
 } from './api';
 import { adresseText, ZEITZONE_DES_LANDES, type Adresse } from './anlageOrt';
 import { zoneForCountry } from './anlageFlow';
+import { tagPlus } from './anlageUmziehen';
 import { adresseKurz } from './standorte';
-import type { Tag } from './uemsOrtsbaum';
+import { datumText, type Tag } from './uemsOrtsbaum';
 
 /**
  * „Standort berichtigen" (vp-standort-konzept §6.1/§6.6, B1/B3/B6): die reine Hälfte der neuen
@@ -109,6 +111,30 @@ export function umzugAnfrage(form: UmzugForm): AnlageOrtUmzugAnfrage {
   const adresse: StandortAdresse = { strasse: form.adresse.strasse, plz: form.adresse.plz, ort: form.adresse.ort, land: form.adresse.land };
   const lage: StandortLage = { breitengrad: form.punkt.breitengrad, laengengrad: form.punkt.laengengrad };
   return { adresse, lage, gueltigAb: form.gueltigAb };
+}
+
+/**
+ * „Gespeichert. Ab {Tag} steht die Anlage in {Adresse}." — Kundenwort statt der Zuordnungs-Form
+ * „{Anlage} gehört ab {Tag} zu {Standort}.": der still angelegte neue Standort heißt wie die
+ * Anlage, ein wörtliches „X gehört zu X" wäre doppelt und sinnlos (Captain-Korrektur).
+ */
+export function umzugErgebnisSatz(adresse: Adresse, gueltigAb: Tag): string {
+  return `Ab ${datumText(gueltigAb)} steht die Anlage in ${adresseText(adresse)}.`;
+}
+
+/**
+ * Die Umzugs-Folgen in Kundenworten (§7, Bericht 6.4) — EIGENE Sätze statt der
+ * Zuordnungs-Sätze von „Gehört zu" (`folgenKarte`/`kurzeFolgen`), die von einem ZIEL-Standort mit
+ * eigenem Namen ausgehen (hier gibt es keinen - der neue Standort heißt wie die Anlage). „Die Box
+ * bekommt den neuen Ort" nur, wenn es wirklich eine gibt (Regel: nie eine Box erfinden).
+ */
+export function umzugsFolgenSaetze(umzug: AnlageUmzug): string[] {
+  const saetze = [
+    `Der Verlauf läuft weiter. Bis ${datumText(tagPlus(umzug.gueltigAb, -1))} zählt er zum bisherigen Standort.`,
+    'Die nächste Prognose rechnet am neuen Ort; sie lernt mit Messwerten ab dem Umzugstag.',
+  ];
+  if (umzug.boxen > 0) saetze.push('Die Box bleibt an der Anlage und bekommt den neuen Ort.');
+  return saetze;
 }
 
 /**

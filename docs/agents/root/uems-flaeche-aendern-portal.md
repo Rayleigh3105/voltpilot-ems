@@ -116,24 +116,66 @@ Migration: geschrieben über `PUT /api/v1/orte/{id}/flaeche` (IP-5), gelesen üb
     (dort jetzt als `FolgenKarteAnsicht`/`ArchivObjekt`-Pattern exportiert statt dupliziert). Ist der
     Kunde danach wieder bei genau einem Standort, verschwindet „Gehört zu“ von selbst
     (`mehrereStandorte()`) — keine eigene Privatkunden-Prüfung nötig.
-    **Zwei bewusste, dokumentierte Lücken (keine Baustellen, Entscheidung im PR):**
-    (a) die Wetter-Nachholung bleibt der BESTEHENDE, flache 28-Tage-Mechanismus
-    (`OrtWetterNachholungRepository.anfordern` → `wetter_nachholung.py`, `NACHHOL_TAGE = 28`): er
-    löscht alle gespeicherten Werte des Standorts und holt 28 Tage am NEUEN Punkt nach — er kann
-    nicht „alter Punkt bis Umzugstag, neuer Punkt danach“ ausdrücken. Für Umzug reicht das (das
-    Lernfenster beginnt praktisch am neuen Ort), eine tagesgenaue Trennung wäre ein eigener Umbau
-    des Python-Nachholwegs. (b) der Merkzettel „Neues Haus? Bitte prüfen“ ist eine einfache, NICHT
-    gespeicherte Erinnerungskarte auf der Ergebnis-Ansicht — kein `localStorage`, keine Erkennung,
-    ob Solaranlage/Stromtarif/Einspeisevergütung inzwischen geändert wurden (es gibt dafür keinen
-    bestehenden „geprüft/geändert“-Zustand im Code).
-    Preise/Tarif/Einspeisevergütung brauchen dagegen KEINEN Umzug-Sondercode mehr: seit
+    **Zwei Umzüge derselben Anlage:** der zweite still angelegte Standort hieße wieder wie die
+    Anlage — kollidiert der Name mit dem ersten (noch nicht archivierten) Umzugs-Standort,
+    hängt `StandortService.freierStandortName(basis)` einen Zähler an („Halle 1 (2)“), statt mit
+    `name_belegt` (409) abzulehnen.
+    **Ergebnis-Sätze in Kundenworten, nicht die Zuordnungs-Sätze von „Gehört zu“** (Captain-
+    Korrektur): weil der neue Standort wie die Anlage heißt, wäre „{Anlage} gehört ab {Tag} zu
+    {Standort}“ ein wörtliches „X gehört zu X“ — doppelt und sinnlos. Das Ergebnis trägt stattdessen
+    EIGENE Sätze aus `anlageOrtBerichtigen.ts` (`umzugErgebnisSatz`: „Ab {Tag} steht die Anlage in
+    {Adresse}.“; `umzugsFolgenSaetze`: Verlauf/Prognose/Box aus den ECHTEN `AnlageUmzug`-Feldern,
+    „Die Box bleibt …“ nur, wenn `boxen > 0`). Der Titel bleibt durchgehend „Standort“, nicht
+    „Gehört zu“ — `folgenKarte()`/`FolgenKarteAnsicht` bleiben nur hinter „Alle Folgen“ als
+    optionaler, server-wahrer Beleg erhalten.
+    **Wetter trennt sich am Umzugstag, Lernfenster beginnt dort neu** (Captain-Korrektur auf die
+    vorherige Vereinfachung): `ort_wetter_nachholung.ab_tag` (Migration `V20261127130000`)
+    unterscheidet die zwei Auslöser derselben Outbox-Tabelle — `NULL` bleibt „Ort berichtigen“
+    (verwirft weiter ALLES und holt `NACHHOL_TAGE = 28` Tage am neuen Punkt nach, B3 unverändert);
+    gesetzt (Umzug) behält `wetter_nachholung.py`s `_umzug_fetch` das Wetter VOR `ab_tag`
+    (`WeatherForecastRepository.points_before`, pro Stunde der letzte `run_at` — derselbe Rang wie
+    `forecast_collect._weather_history`) und ersetzt nur AB `ab_tag` durch das neue am neuen Punkt
+    (`OpenMeteoWeatherSource.with_past_days`, dynamisch auf `heute - ab_tag` Tage, gedeckelt bei
+    `PAST_DAYS_MAX = 92`) — beide Hälften landen unter EINEM frischen `run_at`, damit `latest()`
+    weiter genau einen zusammenhängenden Lauf sieht, wie heute. `site.umzug_seit` (dieselbe
+    Migration) trägt den jüngsten Umzugstag; `forecast_collect.lernfenster_start` beginnt das
+    Lernfenster bei `max(heute − history_days, umzug_seit)` statt immer bei `heute − 28 Tage` — ein
+    länger als 28 Tage zurückliegender Umzug wirkt sich von selbst nicht mehr aus (das Maximum
+    fällt zurück), kein eigenes Aufräumen von `umzug_seit` nötig. Eine Berichtigung setzt
+    `umzug_seit` NICHT — sie darf weiter rückwirkend alles ersetzen. Dev-Mirror:
+    `infra/local/timescale/08-umzug-lernfenster.sql` (`site.umzug_seit`); `ort_wetter_nachholung`
+    selbst hat (wie schon vor diesem PR) keinen Mirror — reiner api/forecast-Schreibweg, nie vom
+    Init-Seed berührt.
+    **Merkzettel „Neues Haus? Bitte prüfen“ ist jetzt persistent, je Anlage, auf jedem Gerät
+    sichtbar** (Captain-Korrektur auf die vorherige Vereinfachung): Tabelle
+    `anlage_umzug_merkzettel` (Migration `V20261127140000`, `site_id` Primärschlüssel — ein Umzug
+    ERSETZT eine noch offene Erinnerung vollständig statt eine zweite anzulegen) mit drei
+    Haken-Spalten (`solaranlage_erledigt`/`stromtarif_erledigt`/`einspeiseverguetung_erledigt`).
+    `UmzugMerkzettelController` (`GET`/`POST .../erledigen`, Recht wie `SiteController#updateSite`:
+    `anlage.verwalten`) liest/schreibt sie; „geprüft“ und „weggeklickt“ sind dieselbe Handlung — EIN
+    Tipp auf einen Chip setzt seinen Haken, es gibt keine eigene Unterscheidung im Produkt.
+    „Geändert“ für Stromtarif/Einspeisevergütung braucht KEINEN eigenen Schreibweg-Hook: die api
+    liest live, ob seit `seit` eine neue `anlage_preisfassung`-Zeile entstanden ist
+    (`PreisfassungRepository.geaendertSeit`) — jede Preisänderung zeichnet dort ein Trigger auf,
+    unabhängig vom aufrufenden Endpunkt. Beide Felder werden GEMEINSAM wahr (eine Fassung trägt
+    Tarif, Preisblatt UND Einspeisevergütung zusammen; eine feinere Unterscheidung bräuchte einen
+    Vergleich gegen die vorherige Fassung — bewusst nicht gebaut). Solaranlage hat keine
+    entsprechende Fassungs-Historie — ihr Haken kommt NUR vom Tipp (dokumentierte, bewusste
+    Vereinfachung, im Unterschied zu den zwei oben korrigierten Punkten). Portal: die geteilte
+    `UmzugMerkzettelKarte` (`src/components/`) steht sowohl auf dem Ergebnis des Umzugs
+    (`AnlageOrtBlatt`, dort mit dem echten, frisch vom Server gelesenen Stand statt eines
+    geratenen Anfangswerts) als auch als eigene Zeile über den Einstellungsgruppen auf „Meine
+    Anlage“ (`AnlageTechnik`, `GET` beim Laden der Anlage) — verschwindet die Karte (alle drei
+    Haken), meldet sie `null` zurück.
+    Preise/Tarif/Einspeisevergütung selbst brauchen KEINEN Umzug-Sondercode: seit
     `anlage_preisfassung` (PR #2043, „Preise ab einem Tag“) gelten sie ohnehin je Anlage ab einem
     Tag, nicht je Standort.
 
 ## Prüfen
 
 ```bash
-(cd frontend/portal && npx vitest run src/flaecheAendern.test.ts src/anlageStandort.test.ts src/anlageOrtBerichtigen.test.ts src/anlageUmziehen.test.ts src/components/FlaecheDialog.test.tsx src/components/OrtDialog.test.tsx src/components/AnlageFlow.standort.test.tsx src/components/AnlageStandortDialog.test.tsx src/components/AnlageOrtBlatt.umzug.test.tsx src/pages/AnlageTechnik.standort.test.tsx src/pages/AnlageTechnik.test.tsx src/rechte.test.ts src/rechteMatrix.sync.test.ts src/copy.test.ts src/migration.test.ts)
+(cd frontend/portal && npx vitest run src/flaecheAendern.test.ts src/anlageStandort.test.ts src/anlageOrtBerichtigen.test.ts src/anlageUmziehen.test.ts src/components/FlaecheDialog.test.tsx src/components/OrtDialog.test.tsx src/components/AnlageFlow.standort.test.tsx src/components/AnlageStandortDialog.test.tsx src/components/AnlageOrtBlatt.umzug.test.tsx src/components/UmzugMerkzettelKarte.test.tsx src/pages/AnlageTechnik.standort.test.tsx src/pages/AnlageTechnik.test.tsx src/rechte.test.ts src/rechteMatrix.sync.test.ts src/copy.test.ts src/migration.test.ts)
 (cd frontend/portal && npx playwright test e2e/flaeche-aendern.spec.ts e2e/anlage-ort-berichtigen.spec.ts e2e/anlage-ort-umzug.spec.ts e2e/anlage-umziehen.spec.ts e2e/zuordnung-korrigieren.spec.ts e2e/einspeiseverguetung.spec.ts --project=desktop-chromium)
-(cd services/api && ./mvnw test -Dtest='AnlageOrtApiTest,OrtSchnittstelleVertragTest,RechteKennungenDerRoutenTest,RechteAbleitungVectorsTest,RechtRoutenArchitekturTest,RechtMatrixApiTest')
+(cd services/api && ./mvnw test -Dtest='AnlageOrtApiTest,OrtSchnittstelleVertragTest,RechteKennungenDerRoutenTest,RechteAbleitungVectorsTest,RechtRoutenArchitekturTest,RechtMatrixApiTest,KundeDatenBestandMigrationTest')
+(cd services/forecast && python3 -m pytest tests/test_wetter_nachholung.py tests/test_collect.py -q)
 ```

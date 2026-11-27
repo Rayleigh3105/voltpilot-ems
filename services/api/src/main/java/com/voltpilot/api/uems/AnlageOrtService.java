@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.repo.UmzugMerkzettelRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.StandortLesemodell.Lage;
 import com.voltpilot.api.uems.StandortLesemodell.StandortAmStichtag;
@@ -44,6 +45,15 @@ import org.springframework.transaction.annotation.Transactional;
  * eingetragen ({@link OrtWetterNachholungRepository}) — der Wetter-Collector (services/forecast)
  * verwirft dann das gespeicherte Wetter der Anlage und holt 28 Tage am neuen Punkt nach, damit
  * die Prognose nicht am alten Ort weiterlernt.
+ *
+ * <h2>Umzug (§7, E1 = B): dasselbe Wetter, aber am Tag getrennt</h2>
+ *
+ * {@link #umziehen} trägt denselben Nachholungs-Auftrag MIT einem {@code ab_tag} ein: der
+ * Collector verwirft dann NICHT alles, sondern behält das Wetter vor dem Umzugstag (am alten
+ * Punkt richtig gelernt) und ersetzt nur ab dann durch das neue am neuen Punkt. Außerdem setzt
+ * {@code umziehen} {@code site.umzug_seit} — der Prognose-Sammler beginnt sein Lernfenster bei
+ * max(heute − 28 Tage, Umzugstag) statt immer bei heute − 28 Tage (Bericht 6.4/E1 Punkt 4); eine
+ * Berichtigung („Adresse war falsch") setzt das NICHT, sie darf wie bisher alles ersetzen.
  */
 @Service
 public class AnlageOrtService {
@@ -57,17 +67,20 @@ public class AnlageOrtService {
     private final FlowActivationService deployments;
     private final OrtWetterNachholungRepository wetterNachholung;
     private final AnlageUmzugService umzuege;
+    private final UmzugMerkzettelRepository merkzettel;
     private volatile Clock uhr = Clock.systemUTC();
 
     public AnlageOrtService(SiteRepository sites, StandortLesemodellService lesemodell,
             StandortService standorte, FlowActivationService deployments,
-            OrtWetterNachholungRepository wetterNachholung, AnlageUmzugService umzuege) {
+            OrtWetterNachholungRepository wetterNachholung, AnlageUmzugService umzuege,
+            UmzugMerkzettelRepository merkzettel) {
         this.sites = sites;
         this.lesemodell = lesemodell;
         this.standorte = standorte;
         this.deployments = deployments;
         this.wetterNachholung = wetterNachholung;
         this.umzuege = umzuege;
+        this.merkzettel = merkzettel;
     }
 
     /** Nur für Tests: die Uhr, an der „heute" (keine Zukunft, E1 = B Lesart 1) hängt. */
@@ -154,8 +167,11 @@ public class AnlageOrtService {
 
         // Ein neuer Standort entsteht still mit der neuen Adresse — er heißt wie die Anlage
         // (beim Privatkunden bleibt „Gehört zu" ohnehin unsichtbar, sobald der alte Standort
-        // leer archiviert ist: ein einziger vorhandener Standort zeigt es nie, §6.2).
-        StandortDto.Stammdaten stammdaten = new StandortDto.Stammdaten(site.name(), null, a.adresse(), null, null,
+        // leer archiviert ist: ein einziger vorhandener Standort zeigt es nie, §6.2). Ein noch
+        // nicht archivierter Standort eines FRÜHEREN Umzugs derselben Anlage trägt denselben Namen
+        // schon — ein Zähler hängt dann an, statt mit "name_belegt" abzulehnen.
+        String standortName = standorte.freierStandortName(site.name());
+        StandortDto.Stammdaten stammdaten = new StandortDto.Stammdaten(standortName, null, a.adresse(), null, null,
                 null, neueLage);
         StandortAmStichtag neuerStandort = standorte.anlegen(stammdaten, wer);
 
@@ -164,10 +180,19 @@ public class AnlageOrtService {
 
         String neueGebotszone = OrtFelder.gebotszoneFuerLand(a.adresse().land());
         sites.lageUndGebotszoneSetzen(siteId, neueLage.breitengrad(), neueLage.laengengrad(), neueGebotszone);
+        // Bericht 6.4/E1 Punkt 4: das Lernfenster der Prognose beginnt bei max(heute - 28 Tage,
+        // Umzugstag) — unabhängig davon, ob sich der Punkt um mehr als 2 km verschoben hat (auch
+        // ein naher Umzug ist ein Umzug, keine Berichtigung).
+        sites.umzugSeitSetzen(siteId, gueltigAb);
+        // Bericht 6.6 Punkt 7: der Merkzettel "Neues Haus? Bitte prüfen" ersetzt eine noch
+        // offene frühere Erinnerung vollständig (ein neuerer Umzug zählt).
+        merkzettel.neuAnlegen(tenant, siteId);
         boolean boxZugestellt = deployments.republishForSite(siteId);
         boolean wetterAngestossen = weitWeg(site.latitude(), site.longitude(), neueLage);
         if (wetterAngestossen) {
-            wetterNachholung.anfordern(tenant, siteId);
+            // §7: anders als bei "Ort berichtigen" bleibt das Wetter VOR dem Umzugstag (am alten
+            // Punkt gelernt) stehen - der Nachholer ersetzt nur ab `gueltigAb`.
+            wetterNachholung.anfordern(tenant, siteId, gueltigAb);
         }
 
         SiteDto neuesSite = sites.findById(siteId);

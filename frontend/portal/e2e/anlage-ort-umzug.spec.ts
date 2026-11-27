@@ -1,16 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AnlageOrtUmzugErgebnis, StandorteAmStichtag } from '../src/api';
+import type { AnlageOrtUmzugErgebnis, StandorteAmStichtag, UmzugMerkzettel } from '../src/api';
 import { ahrenbergUnternehmen, FIXTURE_IDS, werkAhrenberg } from '../src/test/standorteFixtures';
 
 /**
  * vp-standort-konzept §7, E1 = B: „Ist Ihre Anlage umgezogen?" am echten Weg (Bühne
  * `meine-anlage.html?fall=ahrenberg`, die echte `TechnikSection`). Eine über 2 km entfernte
  * Adresse fragt erst; „Ja" fragt den Umzugstag (Picker-Grenze „nie in der Zukunft") und speichert
- * über `POST …/ort/umzug` — ein neuer Standort entsteht still, die Folgen stehen wie bei „Gehört
- * zu", danach bietet das Blatt den jetzt leeren alten Standort zum Archivieren an. `ORT_BILDER=<Ordner>`
- * legt je Schritt Bilder ab.
+ * über `POST …/ort/umzug` — ein neuer Standort entsteht still, die Ergebnis-Sätze sind eigene
+ * Umzugs-Sätze (kein „X gehört zu X", Captain-Korrektur), der Titel bleibt durchgehend „Standort"
+ * (nicht „Gehört zu"), danach bietet das Blatt den jetzt leeren alten Standort zum Archivieren an.
+ * `ORT_BILDER=<Ordner>` legt je Schritt Bilder ab.
  */
 
 const BILDER = process.env.ORT_BILDER;
@@ -22,6 +23,7 @@ function standorte(): StandorteAmStichtag {
 
 async function verdrahte(page: Page) {
   const gesendet: unknown[] = [];
+  let merkzettel: UmzugMerkzettel | null = null;
   await page.route('**/api/v1/**', (r) => r.fulfill(json({}, 404)));
   await page.route('**/api/v1/sites/*/assets', (r) => r.fulfill(json([])));
   await page.route('**/api/v1/unternehmen', (r) => r.fulfill(json(ahrenbergUnternehmen())));
@@ -108,7 +110,23 @@ async function verdrahte(page: Page) {
       boxZugestellt: true,
       wetterNachholungAngestossen: true,
     };
+    merkzettel = { seit: '2026-11-27T10:00:00Z', solaranlageErledigt: false, stromtarifErledigt: false, einspeiseverguetungErledigt: false };
     return r.fulfill(json(ergebnis));
+  });
+  await page.route('**/api/v1/sites/*/umzug-merkzettel', (r) => {
+    if (r.request().method() !== 'GET') return r.fallback();
+    return merkzettel ? r.fulfill(json(merkzettel)) : r.fulfill({ status: 204, body: '' });
+  });
+  await page.route('**/api/v1/sites/*/umzug-merkzettel/erledigen', (r) => {
+    const { teil } = r.request().postDataJSON() as { teil: string };
+    if (merkzettel) {
+      const feld = teil === 'solaranlage' ? 'solaranlageErledigt' : teil === 'stromtarif' ? 'stromtarifErledigt' : 'einspeiseverguetungErledigt';
+      merkzettel = { ...merkzettel, [feld]: true };
+      if (merkzettel.solaranlageErledigt && merkzettel.stromtarifErledigt && merkzettel.einspeiseverguetungErledigt) {
+        merkzettel = null;
+      }
+    }
+    return r.fulfill({ status: 204, body: '' });
   });
   return gesendet;
 }
@@ -133,17 +151,16 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     await adresse.fill('Hauptplatz 1 wien');
     await page.getByRole('option', { name: /Hauptplatz 1, Wien/ }).click();
 
-    const frage = page.getByRole('dialog', { name: 'Gehört zu' });
-    await expect(frage.getByText('Ist Ihre Anlage umgezogen?')).toBeVisible();
-    await expect(frage.getByText(/Hauptplatz 1, Wien ist \d+ km entfernt\./)).toBeVisible();
+    await expect(dialog.getByText('Ist Ihre Anlage umgezogen?')).toBeVisible();
+    await expect(dialog.getByText(/Hauptplatz 1, Wien ist \d+ km entfernt\./)).toBeVisible();
     await foto(page, 'umzug-1-frage');
 
-    await frage.getByRole('radio', { name: /Ja, wir sind umgezogen/ }).click();
-    const umzugstag = frage.getByRole('combobox', { name: 'Seit wann?' });
+    await dialog.getByRole('radio', { name: /Ja, wir sind umgezogen/ }).click();
+    const umzugstag = dialog.getByRole('combobox', { name: 'Seit wann?' });
     await expect(umzugstag).toHaveText('27.11.2026');
     await foto(page, 'umzug-2-datum');
 
-    await frage.getByRole('button', { name: 'Speichern' }).click();
+    await dialog.getByRole('button', { name: 'Speichern' }).click();
 
     expect(gesendet).toHaveLength(1);
     expect(gesendet[0]).toMatchObject({
@@ -152,17 +169,35 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
       gueltigAb: '2026-11-27',
     });
 
-    await expect(frage.getByText(/^Gespeichert\./)).toBeVisible();
-    await expect(frage.getByText('Neues Haus? Bitte prüfen')).toBeVisible();
-    await expect(frage.getByText('Solaranlage')).toBeVisible();
-    await expect(frage.getByText('Stromtarif')).toBeVisible();
-    await expect(frage.getByText('Einspeisevergütung')).toBeVisible();
-    await expect(frage.getByTestId('standort-archiv-angebot')).toBeVisible();
-    await expect(frage.getByRole('button', { name: 'Standort archivieren' })).toBeVisible();
+    await expect(dialog.getByText(/^Gespeichert\./)).toBeVisible();
+    await expect(dialog.getByText(/Ab 27\.11\.2026 steht die Anlage in Hauptplatz 1, Wien\./)).toBeVisible();
+    await expect(dialog.getByText('Neues Haus? Bitte prüfen')).toBeVisible();
+    await expect(dialog.getByText('Solaranlage')).toBeVisible();
+    await expect(dialog.getByText('Stromtarif')).toBeVisible();
+    await expect(dialog.getByText('Einspeisevergütung')).toBeVisible();
+    await expect(dialog.getByTestId('standort-archiv-angebot')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Standort archivieren' })).toBeVisible();
     await foto(page, 'umzug-3-ergebnis');
 
-    await frage.getByRole('button', { name: 'Fertig' }).click();
-    await expect(frage).toBeHidden();
+    await dialog.getByRole('button', { name: 'Fertig' }).click();
+    await expect(dialog).toBeHidden();
+
+    // Bericht 6.6 Punkt 7: je Anlage gespeichert, auf jedem Gerät sichtbar - ein voller Neuladen
+    // (wie ein zweites Gerät) zeigt ihn als eigene Zeile über den Einstellungsgruppen.
+    await page.reload();
+    const banner = page.getByTestId('umzug-merkzettel');
+    await expect(banner).toBeVisible();
+    await expect(banner.getByText('Neues Haus? Bitte prüfen')).toBeVisible();
+    await foto(page, 'umzug-4-merkzettel-anlageseite');
+
+    // Ein Tipp erledigt nur diesen Teil - "geprüft" und "weggeklickt" sind dieselbe Handlung.
+    await banner.getByRole('button', { name: 'Solaranlage: geprüft' }).click();
+    await expect(banner.getByText('Solaranlage')).toBeHidden();
+    await expect(banner.getByText('Stromtarif')).toBeVisible();
+    await banner.getByRole('button', { name: 'Stromtarif: geprüft' }).click();
+    await banner.getByRole('button', { name: 'Einspeisevergütung: geprüft' }).click();
+    // Alle drei erledigt - die ganze Karte verschwindet.
+    await expect(page.getByTestId('umzug-merkzettel')).toBeHidden();
   });
 
   test('der Umzugstag lässt sich nicht in die Zukunft setzen', async ({ page }) => {
@@ -177,9 +212,8 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     await dialog.getByLabel('Adresse').fill('Hauptplatz 1 wien');
     await page.getByRole('option', { name: /Hauptplatz 1, Wien/ }).click();
 
-    const frage = page.getByRole('dialog', { name: 'Gehört zu' });
-    await frage.getByRole('radio', { name: /Ja, wir sind umgezogen/ }).click();
-    await frage.getByRole('combobox', { name: 'Seit wann?' }).click();
+    await dialog.getByRole('radio', { name: /Ja, wir sind umgezogen/ }).click();
+    await dialog.getByRole('combobox', { name: 'Seit wann?' }).click();
     const morgen = page.locator('[data-iso="2026-11-28"]');
     await expect(morgen).toBeDisabled();
   });
@@ -195,10 +229,8 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     await dialog.getByLabel('Adresse').fill('Hauptplatz 1 wien');
     await page.getByRole('option', { name: /Hauptplatz 1, Wien/ }).click();
 
-    const frage = page.getByRole('dialog', { name: 'Gehört zu' });
-    await frage.getByRole('radio', { name: /Nein, die Adresse war falsch/ }).click();
-    const standort = page.getByRole('dialog', { name: 'Standort' });
-    await expect(standort.getByLabel('Adresse')).toHaveValue('Hauptplatz 1, Wien');
+    await dialog.getByRole('radio', { name: /Nein, die Adresse war falsch/ }).click();
+    await expect(dialog.getByLabel('Adresse')).toHaveValue('Hauptplatz 1, Wien');
     expect(gesendet).toHaveLength(0);
   });
 
@@ -239,13 +271,12 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     await page.getByRole('option', { name: /Hauptplatz 1, Wien/ }).click();
     await messe('umzug-1-frage');
 
-    const frage = page.getByRole('dialog', { name: 'Gehört zu' });
-    await frage.getByRole('radio', { name: /Ja, wir sind umgezogen/ }).click();
+    await dialog.getByRole('radio', { name: /Ja, wir sind umgezogen/ }).click();
     await messe('umzug-2-datum');
 
-    await frage.getByRole('button', { name: 'Speichern' }).click();
-    await expect(frage.getByText(/^Gespeichert\./)).toBeVisible();
-    await expect(frage.getByTestId('standort-archiv-angebot')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Speichern' }).click();
+    await expect(dialog.getByText(/^Gespeichert\./)).toBeVisible();
+    await expect(dialog.getByTestId('standort-archiv-angebot')).toBeVisible();
     await messe('umzug-3-ergebnis');
   });
 });

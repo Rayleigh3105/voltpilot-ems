@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import ClassVar, Sequence
 
@@ -217,6 +217,12 @@ class OpenMeteoWeatherSource:
     ) -> None:
         self._config = config or OpenMeteoConfig()
         self._http = http_client or RequestsHttpClient()
+
+    def with_past_days(self, past_days: int) -> "OpenMeteoWeatherSource":
+        """A source with the SAME http client but a different ``past_days`` - the Umzug weather
+        catch-up (vp-standort-konzept §7, E1 = B) needs a window sized to the move day, not the
+        flat 28 days every other request shares."""
+        return OpenMeteoWeatherSource(replace(self._config, past_days=past_days), self._http)
 
     def fetch(
         self,

@@ -5839,9 +5839,10 @@ export interface AnlageOrtUmzugAnfrage {
 /**
  * @property neuerStandort der still angelegte Standort — heißt wie die Anlage
  * @property umzug dieselbe Form wie `PUT .../standort` (`AnlageUmzug`) — `bisher` nennt den
- *   bisherigen Standort; dieselben Folgen-Sätze wie bei „Gehört zu" (`folgenKarte`), keine
- *   zweite Sprache für dieselbe Sache. Das Portal liest den bisherigen Standort danach selbst
- *   (wie bei „Zuordnung korrigieren") und bietet das Archivieren an, wenn er jetzt leer ist.
+ *   bisherigen Standort; `boxen`/`gueltigAb` speisen EIGENE Umzugs-Sätze (`umzugErgebnisSatz`/
+ *   `umzugsFolgenSaetze`), NICHT die Zuordnungs-Sätze von „Gehört zu" (der neue Standort heißt
+ *   wie die Anlage, ein „X gehört zu X" wäre doppelt). Das Portal liest den bisherigen Standort
+ *   danach selbst (wie bei „Zuordnung korrigieren") und bietet das Archivieren an, wenn er jetzt leer ist.
  */
 export interface AnlageOrtUmzugErgebnis {
   site: Site;
@@ -5850,6 +5851,22 @@ export interface AnlageOrtUmzugErgebnis {
   boxZugestellt: boolean;
   wetterNachholungAngestossen: boolean;
 }
+
+/**
+ * Der Merkzettel „Neues Haus? Bitte prüfen" nach einem Umzug (§7, E1 = B, Bericht 6.6 Punkt 7) —
+ * je Anlage gespeichert, auf jedem Gerät sichtbar. `stromtarifErledigt`/`einspeiseverguetungErledigt`
+ * werden GEMEINSAM wahr, sobald seit `seit` irgendeine neue Preisfassung geschrieben wurde — eine
+ * feinere Unterscheidung führt der Server bewusst nicht. `solaranlageErledigt` kennt keine
+ * automatische Erkennung, nur einen Tipp (`api.umzugMerkzettelErledigen`).
+ */
+export interface UmzugMerkzettel {
+  seit: string;
+  solaranlageErledigt: boolean;
+  stromtarifErledigt: boolean;
+  einspeiseverguetungErledigt: boolean;
+}
+
+export type UmzugMerkzettelTeil = 'solaranlage' | 'stromtarif' | 'einspeiseverguetung';
 
 /**
  * Ein Standort zum Stichtag. Zeitgültig sind `bestand`, `anlagen`, die Zahlen

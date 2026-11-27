@@ -65,7 +65,8 @@ import type {
   UemsDatenquelleBearbeiten, UemsDatenquelleBestaetigt, UemsDatenquellePruefergebnis, UemsDatenquelleUebernommen,
   UemsDatenquelleVorschlagsliste, UemsDatenquellenListe, UemsGemeinsameSteuerungEinrichten,
   UemsGemeinsameSteuerungSetzen, UemsGemeinsameSteuerungZustand, UemsGeraet, UemsSprungprobe, UemsSteckerprobe,
-  UemsSteuerRichtung, UnternehmenVierAugen, UpdateDeviceInput, VariablenVorschlag, VergleichToleranzFassung,
+  UemsSteuerRichtung, UmzugMerkzettel, UmzugMerkzettelTeil, UnternehmenVierAugen, UpdateDeviceInput,
+  VariablenVorschlag, VergleichToleranzFassung,
   Versorgung, VerteilungZeileEingabe, VorgangAnstossAntwort, VorschauKnoepfe, WagoGeraeteangaben, WagoKartenAnlage,
   WagoKartenangaben, WagoKartenwechsel, WagoSollLesung, Wetterbezug, WetterbezugAnfrage, Zaehlerwechsel,
   ZaehlerwechselVorgang,
@@ -1905,6 +1906,18 @@ const weitere = {
     request<AnlageOrtUmzugErgebnis>(`/api/v1/sites/${encodeURIComponent(siteId)}/ort/umzug`, {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+
+  /** Der Merkzettel „Neues Haus? Bitte prüfen" (§7, Bericht 6.6 Punkt 7) - `null` ohne offenen. */
+  umzugMerkzettelLesen: (siteId: string) =>
+    request<UmzugMerkzettel | undefined>(`/api/v1/sites/${encodeURIComponent(siteId)}/umzug-merkzettel`)
+      .then((m) => m ?? null),
+
+  /** „Geprüft" und „weggeklickt" sind dieselbe Handlung - ein Tipp je Teil. */
+  umzugMerkzettelErledigen: (siteId: string, teil: UmzugMerkzettelTeil) =>
+    request<void>(`/api/v1/sites/${encodeURIComponent(siteId)}/umzug-merkzettel/erledigen`, {
+      method: 'POST',
+      body: JSON.stringify({ teil }),
     }),
 
   kostenstelleAnlegen: (body: KostenstelleProzessAnlegen) =>

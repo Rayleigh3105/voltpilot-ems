@@ -114,6 +114,15 @@ public class SiteRepository {
                 breite, laenge, biddingZone, siteId) > 0;
     }
 
+    /**
+     * „Umzug" (vp-standort-konzept §7, E1 = B): der jüngste Umzugstag — der Prognose-Sammler
+     * (services/forecast) liest ihn und beginnt sein Lernfenster erst ab diesem Tag, statt immer
+     * bei „heute minus 28 Tage" (Bericht 6.4/E1 Punkt 4). Eine Berichtigung setzt ihn NICHT.
+     */
+    public boolean umzugSeitSetzen(UUID siteId, java.time.LocalDate seit) {
+        return jdbc.update("UPDATE site SET umzug_seit = ? WHERE id = ?", seit, siteId) > 0;
+    }
+
     static SiteDto mapSite(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         return new SiteDto(
                 rs.getObject("id", UUID.class),

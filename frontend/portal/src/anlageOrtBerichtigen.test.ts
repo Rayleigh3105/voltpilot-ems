@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StandortAmStichtag } from './api';
+import type { AnlageUmzug } from './api';
 import {
   adresseWaehlen,
   distanzMeter,
@@ -14,6 +15,8 @@ import {
   pinZiehen,
   uebernahmeAnbieten,
   umzugAnfrage,
+  umzugErgebnisSatz,
+  umzugsFolgenSaetze,
   WEIT_GEZOGEN_METER,
   type UmzugForm,
 } from './anlageOrtBerichtigen';
@@ -233,5 +236,51 @@ describe('umzugAnfrage (POST …/ort/umzug)', () => {
       lage: { breitengrad: 48.2085, laengengrad: 16.3738 },
       gueltigAb: '2026-11-20',
     });
+  });
+});
+
+describe('umzugErgebnisSatz (Captain-Korrektur: kein "X gehört zu X")', () => {
+  it('nennt die Adresse, nicht den (gleich benannten) stillen neuen Standort', () => {
+    const adresse = { strasse: 'Hauptplatz 1', plz: null, ort: 'Wien', land: 'AT' as const };
+    expect(umzugErgebnisSatz(adresse, '2026-11-27')).toBe('Ab 27.11.2026 steht die Anlage in Hauptplatz 1, Wien.');
+  });
+});
+
+describe('umzugsFolgenSaetze (Bericht 6.4) - eigene Sätze, nicht die Zuordnungs-Sätze von "Gehört zu"', () => {
+  function umzug(over: Partial<AnlageUmzug> = {}): AnlageUmzug {
+    return {
+      anlageId: 'a-1',
+      anlageName: 'Halle 2',
+      bisher: { id: 'st-1', kurzzeichen: 'ST-1', name: 'Werk Ahrenberg' },
+      neu: { id: 'st-2', kurzzeichen: 'ST-2', name: 'Halle 2' },
+      gueltigAb: '2026-11-27',
+      gueltigBis: null,
+      danach: null,
+      rueckwirkung: { art: 'ab_heute', tage: 0, abzeichen: null },
+      zuordnungen: [],
+      bleibt: [],
+      boxen: 1,
+      netzanschluss: null,
+      steuern: null,
+      befehle: 0,
+      begruendung: null,
+      protokoll: [],
+      ...over,
+    };
+  }
+
+  it('nennt den Verlauf, die Prognose und die Box', () => {
+    expect(umzugsFolgenSaetze(umzug())).toEqual([
+      'Der Verlauf läuft weiter. Bis 26.11.2026 zählt er zum bisherigen Standort.',
+      'Die nächste Prognose rechnet am neuen Ort; sie lernt mit Messwerten ab dem Umzugstag.',
+      'Die Box bleibt an der Anlage und bekommt den neuen Ort.',
+    ]);
+  });
+
+  it('erfindet keine Box ohne eine (Regel: nie eine Box erfinden)', () => {
+    expect(umzugsFolgenSaetze(umzug({ boxen: 0 }))).toEqual([
+      'Der Verlauf läuft weiter. Bis 26.11.2026 zählt er zum bisherigen Standort.',
+      'Die nächste Prognose rechnet am neuen Ort; sie lernt mit Messwerten ab dem Umzugstag.',
+    ]);
   });
 });

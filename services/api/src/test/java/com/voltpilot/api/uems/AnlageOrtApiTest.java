@@ -127,6 +127,10 @@ class AnlageOrtApiTest {
         assertThat(body.get("wetterNachholungAngestossen").asBoolean())
                 .as("Wien liegt weit vom alten Punkt (B1-Fall)").isTrue();
         assertThat(offeneWetterNachholung(anlage)).isEqualTo(1);
+        // §7: eine Berichtigung ("Adresse war falsch") hat kein `ab_tag` - sie darf weiter ALLES
+        // ersetzen - und setzt `site.umzug_seit` NICHT (kein Lernfenster-Rückstand für eine Korrektur).
+        assertThat(offeneWetterNachholungAbTag(anlage)).isNull();
+        assertThat(umzugSeit(anlage)).isNull();
 
         // Die Datenbank zeigt EINEN Punkt - kein Auseinanderlaufen mehr (B3).
         BigDecimal standortBreite = root.queryForObject(
@@ -240,6 +244,12 @@ class AnlageOrtApiTest {
         assertThat(body.get("boxZugestellt").asBoolean()).isTrue();
         assertThat(body.get("wetterNachholungAngestossen").asBoolean()).isTrue();
 
+        // §7: der Nachholungs-Auftrag trägt den Umzugstag (anders als eine Berichtigung) und die
+        // Anlage ihr neues Lernfenster-Datum - der Prognose-Sammler beginnt sein Lernfenster erst ab hier.
+        LocalDate heute = LocalDate.now(java.time.ZoneId.of("Europe/Berlin"));
+        assertThat(offeneWetterNachholungAbTag(anlage)).isEqualTo(heute);
+        assertThat(umzugSeit(anlage)).isEqualTo(heute);
+
         String neuerStandort = body.at("/neuerStandort/id").asText();
         assertThat(neuerStandort).isNotEqualTo(w.standort());
         assertThat(laufenderStandort(anlage)).isEqualTo(neuerStandort);
@@ -286,6 +296,135 @@ class AnlageOrtApiTest {
                 ADMIN_OHNE_KUNDENBEREICH, Map.of("adresse", Map.of("strasse", "X 1", "ort", "Y", "land", "DE"),
                         "lage", Map.of("breitengrad", "48.0", "laengengrad", "10.0")));
         assertThat(r.getStatusCode().value()).isEqualTo(404);
+    }
+
+    // ---- Merkzettel "Neues Haus? Bitte prüfen" (Bericht 6.6 Punkt 7) -----------------------------
+
+    @Test
+    void ohneUmzugIstDerMerkzettelLeer() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.GET, "/sites/" + anlage + "/umzug-merkzettel", w.wer(), null);
+        assertThat(r.getStatusCode().value()).isEqualTo(204);
+    }
+
+    @Test
+    void derUmzugLegtEinenOffenenMerkzettelAnDenJedesGeraetLesenKann() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+        root.update("UPDATE anlage_standort SET gueltig_ab = '2026-10-01' WHERE site_id = ?::uuid", anlage);
+
+        umziehen(w, anlage);
+
+        JsonNode merkzettel = merkzettelLesen(w, anlage);
+        assertThat(merkzettel.get("solaranlageErledigt").asBoolean()).isFalse();
+        assertThat(merkzettel.get("stromtarifErledigt").asBoolean()).isFalse();
+        assertThat(merkzettel.get("einspeiseverguetungErledigt").asBoolean()).isFalse();
+        assertThat(merkzettel.get("seit").asText()).isNotBlank();
+    }
+
+    @Test
+    void einTippAufEinenTeilErledigtNurDiesenTeil() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+        root.update("UPDATE anlage_standort SET gueltig_ab = '2026-10-01' WHERE site_id = ?::uuid", anlage);
+        umziehen(w, anlage);
+
+        ResponseEntity<JsonNode> erledigt = rufe(HttpMethod.POST, "/sites/" + anlage + "/umzug-merkzettel/erledigen",
+                w.wer(), Map.of("teil", "solaranlage"));
+        assertThat(erledigt.getStatusCode().value()).isEqualTo(204);
+
+        JsonNode merkzettel = merkzettelLesen(w, anlage);
+        assertThat(merkzettel.get("solaranlageErledigt").asBoolean()).isTrue();
+        assertThat(merkzettel.get("stromtarifErledigt").asBoolean()).isFalse();
+        assertThat(merkzettel.get("einspeiseverguetungErledigt").asBoolean()).isFalse();
+    }
+
+    @Test
+    void sindAlleDreiErledigtVerschwindetDerMerkzettel() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+        root.update("UPDATE anlage_standort SET gueltig_ab = '2026-10-01' WHERE site_id = ?::uuid", anlage);
+        umziehen(w, anlage);
+
+        for (String teil : List.of("solaranlage", "stromtarif", "einspeiseverguetung")) {
+            assertThat(rufe(HttpMethod.POST, "/sites/" + anlage + "/umzug-merkzettel/erledigen", w.wer(),
+                    Map.of("teil", teil)).getStatusCode().value()).isEqualTo(204);
+        }
+
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.GET, "/sites/" + anlage + "/umzug-merkzettel", w.wer(), null);
+        assertThat(r.getStatusCode().value()).isEqualTo(204);
+    }
+
+    @Test
+    void einNeuerUmzugErsetztEinenNochOffenenMerkzettelVollstaendig() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+        root.update("UPDATE anlage_standort SET gueltig_ab = '2026-10-01' WHERE site_id = ?::uuid", anlage);
+        umziehen(w, anlage);
+        assertThat(rufe(HttpMethod.POST, "/sites/" + anlage + "/umzug-merkzettel/erledigen", w.wer(),
+                Map.of("teil", "solaranlage")).getStatusCode().value()).isEqualTo(204);
+        // Die erste Zuordnung muss vor "heute" liegen, sonst lehnt der zweite Umzug mit
+        // "gleicher_tag" ab (zwei Intervalle am selben Tag) - derselbe reale Fall wie oben. Dafür
+        // braucht die beendete Zuordnung (bis gestern) erst Platz, sonst überlappen sich beide.
+        root.update("UPDATE anlage_standort SET gueltig_bis = '2026-10-31' "
+                + "WHERE site_id = ?::uuid AND gueltig_bis IS NOT NULL", anlage);
+        root.update("UPDATE anlage_standort SET gueltig_ab = '2026-11-01' "
+                + "WHERE site_id = ?::uuid AND gueltig_bis IS NULL", anlage);
+
+        // Noch ein Umzug, bevor der erste Merkzettel fertig geprüft war - er wird ERSETZT, nicht ergänzt.
+        ResponseEntity<JsonNode> zweiterUmzug = rufe(HttpMethod.POST, "/sites/" + anlage + "/ort/umzug", w.wer(),
+                Map.of("adresse", Map.of("strasse", "Lindenweg 1", "ort", "Ahrenberg", "land", "DE"),
+                        "lage", Map.of("breitengrad", "48.260000", "laengengrad", "11.440000")));
+        assertThat(zweiterUmzug.getStatusCode().value()).as(String.valueOf(zweiterUmzug.getBody())).isEqualTo(200);
+        // Der erste Umzug-Standort heißt noch "Halle 1" (nicht archiviert) - ein Zähler hängt an,
+        // statt mit "name_belegt" abzulehnen (reale Falle: zwei Umzüge derselben Anlage).
+        assertThat(zweiterUmzug.getBody().at("/neuerStandort/name").asText()).isEqualTo("Halle 1 (2)");
+
+        JsonNode merkzettel = merkzettelLesen(w, anlage);
+        assertThat(merkzettel.get("solaranlageErledigt").asBoolean()).isFalse();
+    }
+
+    @Test
+    void eineNeuePreisfassungSeitDemUmzugErledigtStromtarifUndEinspeiseverguetungAutomatisch() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+        root.update("UPDATE anlage_standort SET gueltig_ab = '2026-10-01' WHERE site_id = ?::uuid", anlage);
+        umziehen(w, anlage);
+
+        ResponseEntity<JsonNode> tarifGeaendert = rufe(HttpMethod.PUT, "/sites/" + anlage, w.wer(), Map.of(
+                "name", "Halle 1", "tarifArt", "fest", "tarifParamCtKwh", new BigDecimal("32.500")));
+        assertThat(tarifGeaendert.getStatusCode().value()).as(String.valueOf(tarifGeaendert.getBody())).isEqualTo(200);
+
+        JsonNode merkzettel = merkzettelLesen(w, anlage);
+        assertThat(merkzettel.get("stromtarifErledigt").asBoolean()).isTrue();
+        assertThat(merkzettel.get("einspeiseverguetungErledigt").asBoolean()).isTrue();
+        // Keine entsprechende Fassungs-Historie für die Solaranlage - sie bleibt offen, ohne Tipp.
+        assertThat(merkzettel.get("solaranlageErledigt").asBoolean()).isFalse();
+    }
+
+    @Test
+    void erledigenOhneMerkzettelIst404() {
+        Welt w = ahrenberg();
+        String anlage = anlage(w.wer(), "Halle 1", w.standort(), "48.950000", "10.920000");
+
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.POST, "/sites/" + anlage + "/umzug-merkzettel/erledigen",
+                w.wer(), Map.of("teil", "solaranlage"));
+        assertThat(r.getStatusCode().value()).isEqualTo(404);
+    }
+
+    private void umziehen(Welt w, String anlage) {
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.POST, "/sites/" + anlage + "/ort/umzug", w.wer(), Map.of(
+                "adresse", Map.of("strasse", "Hauptplatz 1", "ort", "Wien", "land", "AT"),
+                "lage", Map.of("breitengrad", "48.208500", "laengengrad", "16.373800")));
+        assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
+    }
+
+    private JsonNode merkzettelLesen(Welt w, String anlage) {
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.GET, "/sites/" + anlage + "/umzug-merkzettel", w.wer(), null);
+        assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
+        return r.getBody();
     }
 
     // ---- Gerüst --------------------------------------------------------------------------------
@@ -349,6 +488,16 @@ class AnlageOrtApiTest {
         Integer n = root.queryForObject("SELECT count(*) FROM ort_wetter_nachholung "
                 + "WHERE site_id = ?::uuid AND erledigt_am IS NULL", Integer.class, siteId);
         return n == null ? 0 : n;
+    }
+
+    /** §7: {@code ab_tag} des jüngsten offenen Nachholungs-Auftrags — NULL heißt "Ort berichtigen". */
+    private LocalDate offeneWetterNachholungAbTag(String siteId) {
+        return root.queryForObject("SELECT ab_tag FROM ort_wetter_nachholung "
+                + "WHERE site_id = ?::uuid AND erledigt_am IS NULL ORDER BY id DESC LIMIT 1", LocalDate.class, siteId);
+    }
+
+    private LocalDate umzugSeit(String siteId) {
+        return root.queryForObject("SELECT umzug_seit FROM site WHERE id = ?::uuid", LocalDate.class, siteId);
     }
 
     private ResponseEntity<JsonNode> rufe(HttpMethod methode, String pfad, Anrufer wer, Object body) {
