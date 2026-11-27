@@ -69,7 +69,7 @@ public final class KundeDatenBestand {
         m.put("befehle", List.of("device_command_log", "device_command_recording", "register_write_event",
                 "ocpp_action", "ocpp_action_intent", "ocpp_action_audit", "erzeuger_vorgabe_lauf",
                 "erzeuger_vorgabe_luecke", "rule_event", "rule_event_recording", "consumer_audit_event",
-                "steuerlogik_protokoll", "steuerweg_schritt", "koppelbild_freigabe"));
+                "steuerlogik_protokoll", "steuerweg_schritt", "koppelbild_freigabe", "schaltspur"));
         m.put("ocpp", List.of("ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
                 "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
                 "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",

@@ -153,6 +153,8 @@ func (a *Agent) runShellyGroupEntity(ctx context.Context, doer shelly.Doer, e en
 	fp := shellyGroupFingerprint(shelly.PlanGroupFor(cfg, cmd, prev, day))
 	due := now.Sub(lastAssert[e.ID]) >= goeReassertInterval
 	if fp == lastFP[e.ID] && !due {
+		a.traceUnchanged(e.ID, now)
+		a.answerUnchanged(e.ID, now)
 		return
 	}
 	ident, err := a.shellyIdentity(ctx, doer, cfg)
@@ -161,7 +163,9 @@ func (a *Agent) runShellyGroupEntity(ctx context.Context, doer shelly.Doer, e en
 		lastAssert[e.ID] = now
 		return
 	}
-	res := shelly.ExecuteGroup(ctx, doer, cfg, ident, cmd, prev, day)
+	clock := &shellyWriteClock{inner: doer}
+	res := shelly.ExecuteGroup(ctx, clock, cfg, ident, cmd, prev, day)
+	a.traceExecuted(e.ID, now, clock.wroteAt(), time.Now(), res.OK && res.ErrorCode == "")
 	if !res.OK || res.ErrorCode != "" {
 		slog.Warn("shelly stage execute", "entity", e.ID, "ok", res.OK,
 			"error_code", res.ErrorCode, "msg", res.Message)

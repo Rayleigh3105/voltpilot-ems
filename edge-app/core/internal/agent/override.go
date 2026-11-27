@@ -13,6 +13,7 @@ package agent
 import (
 	"encoding/json"
 	"log/slog"
+	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
@@ -35,9 +36,11 @@ func (a *Agent) onDesiredDownlink(payload []byte) {
 	if !a.Cfg.ControlEnabled {
 		return
 	}
+	received := time.Now()
 	var env struct {
-		EntityID string `json:"entity_id"`
-		Withdraw bool   `json:"withdraw"`
+		EntityID  string `json:"entity_id"`
+		Withdraw  bool   `json:"withdraw"`
+		RequestID string `json:"request_id"`
 	}
 	if err := json.Unmarshal(payload, &env); err != nil || env.EntityID == "" {
 		return
@@ -45,17 +48,22 @@ func (a *Agent) onDesiredDownlink(payload []byte) {
 	if !a.desiredDownlinkAllowed(env.EntityID) {
 		return
 	}
+	// Schaltspur (consumer_trace.go): the request_id carries the portal's trace id.
+	a.traceReceived(env.EntityID, env.RequestID, received)
 	if env.Withdraw {
 		// "Automatik fortsetzen": end the intervention now so the plan/automation
 		// re-takes at once, without waiting out the TTL. Source local-ui holds one
 		// slot per entity, so the key is stable.
 		a.arb.Withdraw(env.EntityID, desired.Source{Kind: desired.SourceLocalUI}.Key(), false)
+		a.traceAdmitted(env.EntityID, env.RequestID, time.Now(), traceWithdrawn, "")
 		a.pokeArbitration()
-		// This IS a Handeingriff too (a person ended it on purpose): wake the
-		// control pass now and let its own next readback skip statusKickMinGap
-		// (vp-schalten-sofort round 2).
-		a.requestConsumerControlNow()
+		// This IS a Handeingriff too (a person ended it on purpose): its answer
+		// skips statusKickMinGap - marked BEFORE the control pass is woken, so
+		// that pass already counts as "after" it (vp-schalten-sofort round 2,
+		// vp-schalten-3s). A guard that holds the release answers right away.
 		a.markPriorityConfirm(env.EntityID)
+		a.answerIfHeld(env.EntityID)
+		a.requestConsumerControlNow()
 		slog.Info("manual consumer override withdrawn", "entity", env.EntityID)
 		return
 	}
@@ -72,11 +80,10 @@ func (a *Agent) onDesiredDownlink(payload []byte) {
 		return
 	}
 	a.pokeArbitration()
-	// The readback that follows is THIS override's own confirmation - it earns
-	// the one statusKickMinGap exception (consumer_override_now.go). Marked
-	// before the async bus round trip resolves on purpose: the flag only needs
-	// to be set by the time a LATER readback checks it, never before.
-	a.markPriorityConfirm(env.EntityID)
+	// The answer to THIS override earns the one statusKickMinGap exception
+	// (consumer_override_now.go). It is marked in onEntityDesired right after
+	// arb.Submit (answerManualDesired), not here: only then does the decision
+	// exist that a control pass can act on (vp-schalten-3s).
 	slog.Info("manual consumer override forwarded to the arbiter", "entity", env.EntityID)
 }
 

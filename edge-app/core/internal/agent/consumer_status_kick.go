@@ -110,6 +110,22 @@ func consumersStatusFingerprint(cs cloud.ConsumersSummary) string {
 			b.WriteByte('/')
 			b.WriteString(h.Grund)
 		}
+		// Die Schaltspur (consumer_trace.go): ein neuer Handeingriff und jeder
+		// erreichte Schritt sind Fortschritt, den der Mensch am Portal erwartet -
+		// ohne sie bliebe eine Rücklesung, die nichts Sichtbares ändert (der Stand
+		// lag schon an), ohne vorgezogenen Herzschlag. Zeitpunkte selbst nicht.
+		if t := e.Trace; t != nil {
+			b.WriteString("|spur:")
+			b.WriteString(t.RequestID)
+			b.WriteByte('/')
+			b.WriteString(t.Outcome)
+			if t.AdmittedAt != "" {
+				b.WriteString("/e")
+			}
+			if t.ReadBackAt != "" {
+				b.WriteString("/r")
+			}
+		}
 		b.WriteByte('\n')
 	}
 	return b.String()

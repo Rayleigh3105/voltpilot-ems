@@ -1,0 +1,366 @@
+{
+  "description": "Was EIN Herzschlag der Box über einen offenen Handeingriff sagt (Schaltspur, docs/contracts/v2/schaltspur.md). Gemeinsame Vektoren für SchaltSpurAbgleich (Java, API) und spurUrteil (TypeScript, Portal). status ist der consumers-Eintrag des Herzschlags.",
+  "vectors": [
+    {
+      "name": "Heizstab aus: L1 noch an zurückgelesen",
+      "wunsch": {
+        "art": "stop",
+        "kommando": "setpoint_kw",
+        "wert": 0,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true,
+        "stage": {
+          "commanded": 1,
+          "confirmed": 1,
+          "outputs_on": [
+            0
+          ]
+        }
+      },
+      "urteil": "offen"
+    },
+    {
+      "name": "Heizstab aus: kein Ausgang mehr an",
+      "wunsch": {
+        "art": "stop",
+        "kommando": "setpoint_kw",
+        "wert": 0,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "waiting",
+        "confirmed": true,
+        "stage": {
+          "commanded": 0,
+          "confirmed": 0,
+          "outputs_on": []
+        }
+      },
+      "urteil": "bestaetigt"
+    },
+    {
+      "name": "Heizstab aus: Mindestlaufzeit hält L1",
+      "wunsch": {
+        "art": "stop",
+        "kommando": "setpoint_kw",
+        "wert": 0,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true,
+        "stage": {
+          "commanded": 1,
+          "confirmed": 1,
+          "outputs_on": [
+            0
+          ]
+        },
+        "reason_code": "guard_min_on"
+      },
+      "urteil": "gehalten"
+    },
+    {
+      "name": "Heizstab aus: ein Ausgang ungelesen ist nie aus",
+      "wunsch": {
+        "art": "stop",
+        "kommando": "setpoint_kw",
+        "wert": 0,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "waiting",
+        "confirmed": true,
+        "stage": {
+          "commanded": 0,
+          "confirmed": null,
+          "outputs_on": []
+        }
+      },
+      "urteil": "offen"
+    },
+    {
+      "name": "Heizstab aus: Rücklesung weicht ab",
+      "wunsch": {
+        "art": "stop",
+        "kommando": "setpoint_kw",
+        "wert": 0,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true,
+        "stage": {
+          "commanded": 1,
+          "confirmed": 1,
+          "outputs_on": [
+            0
+          ],
+          "mismatch_since": "2026-11-27T10:00:00Z"
+        }
+      },
+      "urteil": "abweichung"
+    },
+    {
+      "name": "Phase L2: genau L2 von Hand",
+      "wunsch": {
+        "art": "start",
+        "kommando": "setpoint_kw",
+        "wert": 1.5,
+        "ausgaenge": [
+          1
+        ]
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true,
+        "stage": {
+          "commanded": 1,
+          "confirmed": 1,
+          "outputs_on": [
+            1
+          ]
+        }
+      },
+      "urteil": "bestaetigt"
+    },
+    {
+      "name": "Phase L2: Smart lässt zufällig L2 laufen",
+      "wunsch": {
+        "art": "start",
+        "kommando": "setpoint_kw",
+        "wert": 1.5,
+        "ausgaenge": [
+          1
+        ]
+      },
+      "status": {
+        "state": "running_optimized",
+        "confirmed": true,
+        "stage": {
+          "commanded": 1,
+          "confirmed": 1,
+          "outputs_on": [
+            1
+          ]
+        }
+      },
+      "urteil": "offen"
+    },
+    {
+      "name": "Phase L2: noch L1",
+      "wunsch": {
+        "art": "start",
+        "kommando": "setpoint_kw",
+        "wert": 1.5,
+        "ausgaenge": [
+          1
+        ]
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true,
+        "stage": {
+          "commanded": 1,
+          "confirmed": 1,
+          "outputs_on": [
+            0
+          ]
+        }
+      },
+      "urteil": "offen"
+    },
+    {
+      "name": "Phase L2: Mindestpause hält den Start",
+      "wunsch": {
+        "art": "start",
+        "kommando": "setpoint_kw",
+        "wert": 1.5,
+        "ausgaenge": [
+          1
+        ]
+      },
+      "status": {
+        "state": "waiting",
+        "confirmed": true,
+        "stage": {
+          "commanded": 0,
+          "confirmed": 0,
+          "outputs_on": []
+        },
+        "reason_code": "guard_min_off"
+      },
+      "urteil": "gehalten"
+    },
+    {
+      "name": "Stufe ohne Phasen-Wahl: befohlene Stufe bestätigt",
+      "wunsch": {
+        "art": "start",
+        "kommando": "setpoint_kw",
+        "wert": 1.5,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true,
+        "stage": {
+          "commanded": 1,
+          "confirmed": 1,
+          "outputs_on": [
+            2
+          ]
+        }
+      },
+      "urteil": "bestaetigt"
+    },
+    {
+      "name": "Stufe ohne Phasen-Wahl: Stufe noch nicht bestätigt",
+      "wunsch": {
+        "art": "start",
+        "kommando": "setpoint_kw",
+        "wert": 1.5,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true,
+        "stage": {
+          "commanded": 1,
+          "confirmed": 0,
+          "outputs_on": []
+        }
+      },
+      "urteil": "offen"
+    },
+    {
+      "name": "Relais an: von Hand und zurückgelesen",
+      "wunsch": {
+        "art": "start",
+        "kommando": "on_off",
+        "wert": null,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true
+      },
+      "urteil": "bestaetigt"
+    },
+    {
+      "name": "Relais an: ohne Rücklesung unbekannt",
+      "wunsch": {
+        "art": "start",
+        "kommando": "on_off",
+        "wert": null,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual"
+      },
+      "urteil": "offen"
+    },
+    {
+      "name": "Relais an: Mindestpause hält",
+      "wunsch": {
+        "art": "start",
+        "kommando": "on_off",
+        "wert": null,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "waiting",
+        "confirmed": true,
+        "reason_code": "guard_min_off"
+      },
+      "urteil": "gehalten"
+    },
+    {
+      "name": "Relais an: Rücklesung widerspricht",
+      "wunsch": {
+        "art": "start",
+        "kommando": "on_off",
+        "wert": null,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": false,
+        "reason_code": "readback_mismatch"
+      },
+      "urteil": "abweichung"
+    },
+    {
+      "name": "Relais aus: läuft nicht mehr",
+      "wunsch": {
+        "art": "stop",
+        "kommando": "on_off",
+        "wert": null,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "waiting",
+        "confirmed": true
+      },
+      "urteil": "bestaetigt"
+    },
+    {
+      "name": "Relais aus: läuft noch",
+      "wunsch": {
+        "art": "stop",
+        "kommando": "on_off",
+        "wert": null,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true
+      },
+      "urteil": "offen"
+    },
+    {
+      "name": "Automatik fortsetzen: noch von Hand",
+      "wunsch": {
+        "art": "zurueck",
+        "kommando": null,
+        "wert": null,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_manual",
+        "confirmed": true
+      },
+      "urteil": "offen"
+    },
+    {
+      "name": "Automatik fortsetzen: Smart läuft",
+      "wunsch": {
+        "art": "zurueck",
+        "kommando": null,
+        "wert": null,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "running_optimized",
+        "confirmed": true
+      },
+      "urteil": "bestaetigt"
+    },
+    {
+      "name": "Automatik fortsetzen: Smart ruht",
+      "wunsch": {
+        "art": "zurueck",
+        "kommando": null,
+        "wert": null,
+        "ausgaenge": null
+      },
+      "status": {
+        "state": "waiting",
+        "confirmed": true
+      },
+      "urteil": "bestaetigt"
+    }
+  ]
+}

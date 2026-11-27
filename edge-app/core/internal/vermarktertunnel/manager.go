@@ -89,20 +89,20 @@ type Options struct {
 // Status is the §5.4 view of the connection - for the local web app now and
 // the heartbeat block in Stage 3. Display material only, never a secret.
 type Status struct {
-	Lage          string     `json:"lage"`
-	Seit          time.Time  `json:"seit"`
-	Grund         string     `json:"grund,omitempty"`
-	Fehler        string     `json:"fehler,omitempty"`
-	Partner       string     `json:"partner,omitempty"`
-	TunnelAdresse string     `json:"tunnel_adresse,omitempty"`
-	Gegenstelle   string     `json:"gegenstelle,omitempty"`
+	Lage          string    `json:"lage"`
+	Seit          time.Time `json:"seit"`
+	Grund         string    `json:"grund,omitempty"`
+	Fehler        string    `json:"fehler,omitempty"`
+	Partner       string    `json:"partner,omitempty"`
+	TunnelAdresse string    `json:"tunnel_adresse,omitempty"`
+	Gegenstelle   string    `json:"gegenstelle,omitempty"`
 	// TunnelLebteZuletzt is the last proof of the peer (the keepalive byte
 	// counters grew) - the heartbeat block's handshake_am.
 	TunnelLebteZuletzt *time.Time `json:"tunnel_lebte_zuletzt,omitempty"`
 	LetzteAbfrage      *time.Time `json:"letzte_abfrage,omitempty"`
-	VorgabePct    *int       `json:"vorgabe_pct,omitempty"`
-	GrenzeKw      *float64   `json:"grenze_kw,omitempty"`
-	GueltigBis    *time.Time `json:"gueltig_bis,omitempty"`
+	VorgabePct         *int       `json:"vorgabe_pct,omitempty"`
+	GrenzeKw           *float64   `json:"grenze_kw,omitempty"`
+	GueltigBis         *time.Time `json:"gueltig_bis,omitempty"`
 }
 
 // Manager converges the box to the delivered state on every tick: profile

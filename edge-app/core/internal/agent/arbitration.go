@@ -157,6 +157,8 @@ func (a *Agent) onEntityDesired(topic string, payload []byte) {
 		return
 	}
 	a.arb.Submit(id, payload)
+	a.traceAdmittedFromDesired(id, payload, time.Now())
+	a.answerManualDesired(id, payload)
 	a.requestConsumerControlNow()
 }
 
@@ -182,6 +184,7 @@ func (a *Agent) onEntityReadback(topic string, payload []byte) {
 	}
 	a.entReadback[id] = m.AllMatch
 	a.arbMu.Unlock()
+	a.traceReadback(id, time.Now())
 	a.noteConsumerReadback(id)
 }
 

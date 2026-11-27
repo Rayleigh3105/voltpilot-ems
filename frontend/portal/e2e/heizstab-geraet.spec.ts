@@ -106,6 +106,38 @@ for (const breite of [375, 1440] as const) {
       expect(fehler).toEqual([]);
     });
 
+    test('vp-schalten-3s: die Mindestlaufzeit hält L1 - die Zeile sagt es, nie „gesendet, noch nicht bestätigt“', async ({ page }) => {
+      const fehler = await oeffne(page, breite, 'gehalten');
+      const l1 = page.getByTestId('heizstab-karte').getByTestId('heizstab-phase-L1');
+      await expect(l1).toContainText('bleibt an …');
+      await expect(l1).toContainText('Mindestlaufzeit des Geräts hält - schaltet danach aus');
+      await expect(l1).not.toContainText('noch nicht bestätigt');
+      await ohneUeberlauf(page);
+      await bild(page, 'k-gehalten', breite);
+      expect(fehler).toEqual([]);
+    });
+
+    test('vp-schalten-3s: Technik & Diagnose › „Schaltspur (Admin)“ zeigt je Tipp, wo die Zeit hinging', async ({ page }) => {
+      const fehler: string[] = [];
+      page.on('pageerror', (e) => fehler.push(e.message));
+      await page.clock.setFixedTime(new Date('2026-11-04T10:52:00Z'));
+      await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
+      await page.goto('/e2e/heizstab-geraet.html?fall=hand&admin=1'
+        + '#/anlage/site-seewiesen/geraet/edge-seewiesen/src-shelly-pro3-43?ansicht=technik&abschnitt=schaltspur');
+      const spur = page.getByTestId('schaltspur');
+      await expect(spur).toBeVisible({ timeout: 20_000 });
+      const eintraege = spur.locator('.vp-schaltspur-eintrag');
+      await expect(eintraege).toHaveCount(3);
+      await expect(eintraege.nth(0)).toContainText('An (Ausgänge 0) · bestätigt nach 1,2');
+      await expect(eintraege.nth(0)).toContainText('entschieden +2');
+      await expect(eintraege.nth(1)).toContainText('gehalten: Mindestlaufzeit des Geräts hält');
+      await expect(eintraege.nth(1)).toContainText('nichts geschrieben (gehalten)');
+      await expect(eintraege.nth(2)).toContainText('Software vor der Schaltspur');
+      await ohneUeberlauf(page);
+      await bild(page, 'k-schaltspur', breite);
+      expect(fehler).toEqual([]);
+    });
+
     test('Teil A (Captain-Befund 05.11.2026): die Hausbilanz widerlegt die Annahme - „eingeschaltet, aber nichts zu sehen", nie „Heizt gerade."', async ({ page }) => {
       const fehler = await oeffne(page, breite, 'widerspruch');
       await expect(page.getByText(

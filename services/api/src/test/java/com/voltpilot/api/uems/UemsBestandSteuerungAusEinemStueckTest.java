@@ -71,6 +71,7 @@ import org.testcontainers.utility.DockerImageName;
  * |---|---|---|
  * | Vier Override-HTTP-Antworten: pushReason:null | 439daaf4, 16.09.2026 | Nur dieses Feld entnehmen, null UND pushed:true; MQTT unverändert. |
  * | Registry driver.data_source_id nach bestätigter Übernahme | 1309008e, 18.09.2026 | Optional, alte Box überliest; hier KEINE Bestätigung, KEINE Ausnahme. |
+ * | Verbraucher-Handeingriff: request_id mit Schaltspur, Antwortfeld spur | vp-schalten-3s, 27.11.2026 | Format geprüft, nur diese Bytes zurückgeführt; die Box behandelt request_id als undurchsichtig. |
  * See README.md for the source and rationale; additional differences must fail.
  */
 @Testcontainers
@@ -276,6 +277,10 @@ class UemsBestandSteuerungAusEinemStueckTest {
         doCallRealMethod().when(consumerPublisher).publishOverride(any(), any(), any(), any(), nullable(Boolean.class),
                 nullable(BigDecimal.class), anyInt(), any());
         doCallRealMethod().when(consumerPublisher).publishWithdraw(any(), any(), any(), any());
+        // vp-schalten-3s: der Verbraucher-Handeingriff sendet über die Varianten mit der request_id seiner Schaltspur.
+        doCallRealMethod().when(consumerPublisher).publishOverride(any(), any(), any(), any(), nullable(Boolean.class),
+                nullable(BigDecimal.class), anyInt(), any(), anyString());
+        doCallRealMethod().when(consumerPublisher).publishWithdraw(any(), any(), any(), any(), nullable(String.class));
         doCallRealMethod().when(chargingPublisher).publish(any(), any(), any(), nullable(Double.class), any(),
                 nullable(String.class), nullable(String.class), any(), any(), any(), nullable(Integer.class), any(), any(),
                 nullable(String.class), any());
@@ -317,8 +322,12 @@ class UemsBestandSteuerungAusEinemStueckTest {
         ReflectionTestUtils.setField(verbindung, "jeVerbunden", true);
         ReflectionTestUtils.setField(publisher, "verbindung", verbindung);
         doAnswer(call -> {
-            wire.add(call.getArgument(0, String.class) + " qos=" + call.getArgument(2) + " retained="
-                    + call.getArgument(3) + "\n" + new String(call.getArgument(1, byte[].class), StandardCharsets.UTF_8));
+            String topic = call.getArgument(0, String.class);
+            String payload = new String(call.getArgument(1, byte[].class), StandardCharsets.UTF_8);
+            if (topic.endsWith("/v2/desired") && payload.contains("\"entity_id\":\"" + CONSUMER + "\"")) {
+                payload = ohneSchaltspur(payload);
+            }
+            wire.add(topic + " qos=" + call.getArgument(2) + " retained=" + call.getArgument(3) + "\n" + payload);
             return mock(IMqttDeliveryToken.class);
         }).when(client).publish(anyString(), any(byte[].class), anyInt(), anyBoolean());
         doAnswer(call -> {
@@ -706,7 +715,32 @@ class UemsBestandSteuerungAusEinemStueckTest {
         return response.getContentAsString(StandardCharsets.UTF_8);
     }
 
+    /**
+     * Bewusste Differenz vp-schalten-3s (README „Bewusste Differenzen“): der Handeingriff am Verbraucher trägt die
+     * Kennung seiner Schaltspur als request_id ({@code override:<entity>:<uuid>}), die Rücknahme dieselbe Form als
+     * zusätzliches letztes Feld. Format geprüft, dann - und nur das - auf die Bytes von main zurückgeführt: die
+     * Sekunde von {@link #NOW} beim Start, kein Feld bei der Rücknahme. Jedes andere Byte bleibt im Vergleich.
+     */
+    private static String ohneSchaltspur(String payload) {
+        var m = java.util.regex.Pattern.compile("\"request_id\":\"override:" + CONSUMER
+                + ":([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\"").matcher(payload);
+        assertThat(m.find()).as("request_id trägt die Schaltspur: " + payload).isTrue();
+        String feld = m.group();
+        if (payload.contains("\"withdraw\":true")) {
+            assertThat(payload).as("Rücknahme: request_id als letztes Feld").endsWith("," + feld + "}");
+            return payload.replace("," + feld, "");
+        }
+        return payload.replace(feld, "\"request_id\":\"override:" + CONSUMER + ":" + NOW.getEpochSecond() + "\"");
+    }
+
     private String mainOverrideBody(String route, String body) throws Exception {
+        if (route.startsWith("POST consumers") || route.startsWith("DELETE consumers")) {
+            // vp-schalten-3s: die Kennung der Schaltspur als letztes Feld der Antwort - geprüft und entnommen.
+            var spur = java.util.regex.Pattern.compile(",\"spur\":\"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}"
+                    + "-[0-9a-f]{12}\"}$").matcher(body);
+            assertThat(spur.find()).as(route + ": Antwort nennt die Schaltspur; " + body).isTrue();
+            body = body.substring(0, spur.start()) + "}";
+        }
         JsonNode value = JSON.readTree(body);
         assertThat(value.path("pushed")).as(route + ": Bestandsbox erreicht")
                 .isEqualTo(com.fasterxml.jackson.databind.node.BooleanNode.TRUE);

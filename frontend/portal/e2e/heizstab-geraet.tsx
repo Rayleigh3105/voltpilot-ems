@@ -17,6 +17,10 @@ import '../src/index.css';
 
 (keycloak as unknown as { token: string; updateToken: () => Promise<boolean> }).token = 'e2e-token';
 (keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
+// `?admin=1`: die Plattform-Administration (Technik & Diagnose › „Schaltspur (Admin)“, vp-schalten-3s).
+if (new URLSearchParams(window.location.search).get('admin') === '1') {
+  (keycloak as unknown as { tokenParsed: unknown }).tokenParsed = { realm_access: { roles: ['platform-admin'] } };
+}
 
 /**
  * E2E-Bühne der GERÄTESEITE eines Heizstabs (Heizstab V1): die echte `GeraetSeiteSection` mit einem Shelly Pro 3,
@@ -26,6 +30,8 @@ import '../src/index.css';
  * - `heizt` (Standard): bestätigt L1 und L2 · 4,0 kW, der Regler heizt mit Überschuss;
  * - `abweichung`: bestätigt 2 Phasen, ein Ausgang steht seit 11:00 gegen den Befehl (HZ-4 B);
  * - `hand`: von Hand L1 und L3 gewählt bis 13:47, bestätigt ist erst L1;
+ * - `gehalten` (vp-schalten-3s, Captain-Befund 27.11.2026): L1 lief von Hand, „Aus“ ist gesendet, die
+ *   Mindestlaufzeit der Box hält L1 noch an (`guard_min_on`);
  * - `still`: noch keine Rückmeldung der Box;
  * - `alt`: eine Box ohne `heizstab_phasen` - sie schaltet nur Stufen;
  * - `zusammen`: ein Stab „nur alle zusammen“ (ein Schalter);
@@ -143,6 +149,7 @@ const stufe = {
   heizt,
   abweichung: { commanded: 1, commanded_kw: 2, confirmed: 2, confirmed_kw: 4, outputs_on: [0, 1], mismatch_since: vor(52), at: JETZT },
   hand: { commanded: 2, commanded_kw: 4, confirmed: 1, confirmed_kw: 2, outputs_on: [0], mismatch_since: null, at: vor(1) },
+  gehalten: { commanded: 1, commanded_kw: 2, confirmed: 1, confirmed_kw: 2, outputs_on: [0], mismatch_since: null, at: JETZT },
   still: null,
   alt: heizt,
   zusammen: aus,
@@ -153,7 +160,7 @@ const stufe = {
   widerspruch: { commanded: 3, commanded_kw: 6, confirmed: 3, confirmed_kw: 6, outputs_on: [0, 1, 2], mismatch_since: null, at: JETZT },
 }[fall] ?? null;
 
-const regler = fall === 'still' || fall === 'hand' || fall === 'ruht' || fall === 'widerspruch'
+const regler = fall === 'still' || fall === 'hand' || fall === 'gehalten' || fall === 'ruht' || fall === 'widerspruch'
   ? null
   : fall === 'abweichung'
     ? { stufe: 1, code: 'kein_ueberschuss', grund: 'Netzbezug - hält er 30 Sekunden an, folgt eine kleinere Stufe.' }
@@ -192,13 +199,14 @@ const status = fall === 'still'
     entityId: STAB,
     // Teil B (Captain-Befund 05.11.2026): ein Handeingriff heißt im
     // geschlossenen Vokabular `running_manual`, nie ein erfundenes Wort.
-    state: fall === 'hand' ? 'running_manual' : 'running_optimized',
+    state: fall === 'hand' || fall === 'gehalten' ? 'running_manual' : 'running_optimized',
+    reasonCode: fall === 'gehalten' ? 'guard_min_on' : null,
     actualKw: null,
     confirmed: stufe ? true : null,
     reportedAt: JETZT,
     stufe,
     heizstab: regler,
-    stufeEnergieKwhHeute: fall === 'hand' ? null : 7.2,
+    stufeEnergieKwhHeute: fall === 'hand' || fall === 'gehalten' ? null : 7.2,
   }];
 
 const overrides = fall === 'hand'
@@ -206,7 +214,12 @@ const overrides = fall === 'hand'
     entityId: STAB, kind: 'start', targetCommand: 'setpoint_kw', targetValue: 4, targetOutputs: [0, 2],
     endsAt: new Date(Date.now() + 115 * 60_000).toISOString(),
   }]
-  : [];
+  : fall === 'gehalten'
+    ? [{
+      entityId: STAB, kind: 'stop', targetCommand: 'setpoint_kw', targetValue: 0, targetOutputs: null,
+      endsAt: new Date(Date.now() + 119 * 60_000).toISOString(),
+    }]
+    : [];
 
 const merke: Record<string, unknown> = {};
 (window as unknown as { __gesendet: Record<string, unknown> }).__gesendet = merke;
@@ -276,7 +289,36 @@ Object.assign(consumersApi, {
   pause: (...a: unknown[]) => { merke.pause = a; return Promise.resolve({ published: true, message: '' }); },
   resume: (...a: unknown[]) => { merke.resume = a; return Promise.resolve({ activated: true, reason: null, message: '', published: true, policyVersion: 1 }); },
   patch: (...a: unknown[]) => { merke.patch = a.at(-1); return Promise.resolve(verbraucher); },
+  // Drei Tipps, neueste zuerst: eine Box mit Schaltspur, die bestätigt; dieselbe, gehalten von der
+  // Mindestlaufzeit; eine ältere Box ohne eigene Zeitpunkte.
+  schaltspuren: ok([
+    spur('s3', 'start', [0], { gesendet: 40, ersteMeldung: 260, bestaetigt: 260, box: [0, 2, 150, 210, 230],
+      boxUrteil: 'written', ergebnis: 'bestaetigt', portal: [120, 1180] }),
+    spur('s2', 'stop', null, { gesendet: 35, ersteMeldung: 190, gehalten: 190, box: [0, 1, null, null, 30],
+      boxUrteil: 'held:guard_min_on', ergebnis: 'gehalten', grund: 'guard_min_on', portal: [110, null] }),
+    spur('s1', 'start', [0], { gesendet: 50, ersteMeldung: 14_030, bestaetigt: 14_030, box: null,
+      boxUrteil: null, ergebnis: 'bestaetigt', portal: [140, 19_900] }),
+  ]),
 });
+
+/** Eine Schaltspur der Bühne; Zeiten in ms ab der Anfrage (die Box ab ihrem Empfang, 30 ms nach dem Senden). */
+function spur(id: string, art: 'start' | 'stop', ausgaenge: number[] | null, z: {
+  gesendet: number; ersteMeldung: number; bestaetigt?: number; gehalten?: number;
+  box: (number | null)[] | null; boxUrteil: string | null; ergebnis: string; grund?: string;
+  portal: [number, number | null];
+}) {
+  const ab = Date.parse(JETZT) - (id === 's3' ? 2 : id === 's2' ? 6 : 30) * 60_000;
+  const t = (ms: number | null | undefined) => (ms == null ? null : new Date(ab + ms).toISOString());
+  const boxAb = ab + z.gesendet + 30;
+  const b = (i: number) => (z.box?.[i] == null ? null : new Date(boxAb + (z.box[i] as number)).toISOString());
+  return {
+    id, deviceId: box.id, requestId: `override:${STAB}:${id}`, art, kommando: 'setpoint_kw',
+    wert: art === 'stop' ? 0 : 2, ausgaenge, apiEingang: t(0), gesendet: t(z.gesendet), zustellung: null,
+    ersteMeldung: t(z.ersteMeldung), boxEmpfangen: b(0), boxEntschieden: b(1), boxGeschrieben: b(2),
+    boxZurueckgelesen: b(3), boxGemeldet: b(4), boxUrteil: z.boxUrteil, gehalten: t(z.gehalten), grund: z.grund ?? null,
+    bestaetigt: t(z.bestaetigt), ergebnis: z.ergebnis, portalAntwortMs: z.portal[0], portalSichtbarMs: z.portal[1],
+  };
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

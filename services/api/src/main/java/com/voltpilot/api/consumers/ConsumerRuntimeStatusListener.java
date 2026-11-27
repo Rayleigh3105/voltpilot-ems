@@ -130,6 +130,14 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
                 (client, quittung) -> client.subscribe(STATUS_FILTER, 1, null, quittung), this::empfangen);
     }
 
+    /** Die Schaltspur (vp-schalten-3s); optional, damit von Hand gebaute Zuhörer in Tests unverändert bleiben. */
+    private SchaltSpur schaltSpur;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void schaltSpur(SchaltSpur schaltSpur) {
+        this.schaltSpur = schaltSpur;
+    }
+
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
         ensureConnected();
@@ -155,6 +163,7 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
     /** Package-visible + test-visible: parse one heartbeat's consumers block. */
     public void handle(String topic, byte[] payload) {
         if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
+        Instant empfangen = Instant.now();
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));
@@ -227,6 +236,11 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
             // zweimal zu speichern erzeugte zwei Wahrheiten ueber ein Ereignis
             // - die Seite verbindet stattdessen beide Stroeme.
             commandLog.ingestConsumers(siteId, deviceId, rows, reportedAt);
+            // Und die SCHALTSPUR offener Handeingriffe dieser Box (vp-schalten-3s): erster Herzschlag nach dem
+            // Senden, gehalten, bestätigt - Zeitpunkt ist der EMPFANG hier, nicht die Uhr der Box. Nie werfend.
+            if (schaltSpur != null) {
+                schaltSpur.herzschlag(siteId, deviceId, empfangen, reportedAt, consumers, rows);
+            }
         } finally {
             TenantContext.clear();
         }

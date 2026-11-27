@@ -21,9 +21,9 @@ func TestDirektvermarktungSummaryMatchesSharedVectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	var vectors struct {
-		Lagen               []string `json:"lagen"`
-		QuittungEreignisse  []string `json:"quittung_ereignisse"`
-		Bloecke             []struct {
+		Lagen              []string `json:"lagen"`
+		QuittungEreignisse []string `json:"quittung_ereignisse"`
+		Bloecke            []struct {
 			Name  string          `json:"name"`
 			Block json.RawMessage `json:"block"`
 		} `json:"bloecke"`
@@ -69,4 +69,3 @@ func TestDirektvermarktungSummaryMatchesSharedVectors(t *testing.T) {
 		}
 	}
 }
-

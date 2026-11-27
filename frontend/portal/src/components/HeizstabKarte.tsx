@@ -20,6 +20,7 @@ import {
   leistungJePhase,
   nurZusammen,
   phaseTippen,
+  gehaltenAnsicht,
   phasenAnsicht,
   phasenFaehig,
   phasenZeilen,
@@ -218,6 +219,8 @@ export function HeizstabKarte({
   if (zusammen) {
     const an = gewuenschteStufe !== null ? gewuenschteStufe > 0 : bestaetigt === null ? null : bestaetigt > 0;
     const warte = gewuenschteStufe !== null && bestaetigt !== null && (gewuenschteStufe > 0) !== (bestaetigt > 0);
+    // vp-schalten-3s: hält eine Schutzregel der Box den Wunsch, sagt die Zeile das - statt „schaltet …“.
+    const gehalten = warte ? gehaltenAnsicht((gewuenschteStufe ?? 0) > 0, status?.reasonCode) : null;
     const gesamt = zeilen.reduce((a, z) => a + (z.kw ?? 0), 0);
     steuerung = (
       <>
@@ -226,7 +229,8 @@ export function HeizstabKarte({
           <li>
             <span className="vp-hz-ph">{n > 1 ? `L1–${n}` : 'L1'}</span>
             <span className="vp-hz-wert">
-              <b>{an === null ? '?' : warte ? (an ? 'schaltet ein …' : 'schaltet aus …') : an ? 'an' : 'aus'}</b>
+              <b>{an === null ? '?' : gehalten ? gehalten.wort : warte ? (an ? 'schaltet ein …' : 'schaltet aus …') : an ? 'an' : 'aus'}</b>
+              {gehalten && <small>{gehalten.unter}</small>}
               {n > 1 && jePhase && <small>{n} × {jePhase.replace(' je Phase', '')} zusammen</small>}
             </span>
             <Recht aktion="handeingriff.setzen">
@@ -249,7 +253,7 @@ export function HeizstabKarte({
         <div className="vp-hz-titel"><span>Phasen</span>{jePhase && <em>{jePhase}</em>}</div>
         <ul className="vp-hz-phasen-liste" aria-label="Phasen">
           {zeilen.map((z) => {
-            const v = phasenAnsicht(z, stufe);
+            const v = phasenAnsicht(z, stufe, status?.reasonCode);
             const an = v.stellung === 'an' || v.stellung === 'warte-an';
             return (
               <li key={z.kanal} data-testid={`heizstab-phase-${z.label}`}>

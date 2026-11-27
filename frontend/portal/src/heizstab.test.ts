@@ -149,6 +149,19 @@ describe('Steuerung wie in Home Assistant (D1-A, D2-A, D3-A)', () => {
     expect(aus.map((x) => phasenAnsicht(x, null).stellung)).toEqual(['warte-aus', 'warte-aus', 'aus']);
   });
 
+  // vp-schalten-3s (Captain-Befund 27.11.2026): L1 von Hand aus, die Mindestlaufzeit hält. Die Box HAT geantwortet -
+  // die Zeile sagt warum, statt bis zu fünf Minuten „gesendet, noch nicht bestätigt“.
+  it('eine haltende Schutzregel steht in der Zeile, nicht „noch nicht bestätigt“', () => {
+    const aus = phasenZeilen(pro3, { commanded: 1, confirmed: 1, outputs_on: [0] }, []);
+    expect(phasenAnsicht(aus[0], null, 'guard_min_on')).toEqual({ wort: 'bleibt an …',
+      unter: 'Mindestlaufzeit des Geräts hält - schaltet danach aus', stellung: 'warte-aus' });
+    const an = phasenZeilen(pro3, { commanded: 0, confirmed: 0, outputs_on: [] }, [1]);
+    expect(phasenAnsicht(an[1], null, 'guard_min_off')).toEqual({ wort: 'wartet …',
+      unter: 'Mindestpause des Geräts - schaltet danach ein', stellung: 'warte-an' });
+    // Ein Grund, der nichts hält, ändert nichts am Warten.
+    expect(phasenAnsicht(aus[0], null, 'price_below_threshold').unter).toBe('gesendet, noch nicht bestätigt');
+  });
+
   it('ein Tipp wechselt eine Phase, ausgehend vom Wunsch oder vom Bestätigten', () => {
     const bestaetigt = phasenZeilen(pro3, { commanded: 1, confirmed: 1, outputs_on: [0] }, null);
     expect(phaseTippen(pro3, bestaetigt, 2)).toEqual({ art: 'start', ausgaenge: [0, 2] });

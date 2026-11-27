@@ -1,5 +1,6 @@
 import { Recht } from '../components/Recht';
 import { HeizstabKarte } from '../components/HeizstabKarte';
+import { SchaltSpurListe } from '../components/SchaltSpurListe';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -1727,6 +1728,12 @@ function GeraetSeiteKern({
         }
         if (view.diagnose.length > 0) {
           technik.push({ id: 'rohdaten', inhalt: <ZeilenListe zeilen={view.diagnose} /> });
+        }
+        if (showTechnicalLayer() && eigenerVerbraucher) {
+          technik.push({
+            id: 'schaltspur',
+            inhalt: <SchaltSpurListe siteId={site.id} entityId={eigenerVerbraucher.id} />,
+          });
         }
         {/* E4 = A (Konzept `vp-adminview-konzept-k1` §4.6, Scheibe S2): die
             Admin-Karten entfallen hier - jeder Box-Fakt hat seither genau
