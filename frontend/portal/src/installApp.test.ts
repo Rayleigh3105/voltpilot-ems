@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  ANDERES_GERAET_HINWEIS,
+  ANDERES_GERAET_TITEL,
   initInstallApp,
   installIosContext,
   installSnapshot,
@@ -382,6 +384,19 @@ describe('installView: Kundencopy, kein Fachwort', () => {
     expect(v.state).toBe('nicht-verfuegbar');
     expect(v.text).toMatch(/abgebrochen/);
     expect(v.hint).toMatch(/Menü Ihres Browsers/);
+  });
+});
+
+describe('ANDERES_GERAET: kein totes Ende auf dem installierten Gerät', () => {
+  it('sagt App, nie PWA/Manifest, und schließt nie mit dem geraden Anführungszeichen', () => {
+    const text = `${ANDERES_GERAET_TITEL} ${ANDERES_GERAET_HINWEIS}`;
+    expect(text).not.toMatch(/PWA|Manifest|Service.?Worker|Web.?App/i);
+    expect(text).not.toContain('"');
+  });
+
+  it('nennt beide Wege, ohne das andere Gerät zu kennen - nie nur einen', () => {
+    expect(ANDERES_GERAET_HINWEIS).toMatch(/Home-Bildschirm/);
+    expect(ANDERES_GERAET_HINWEIS).toMatch(/Menü/);
   });
 });
 

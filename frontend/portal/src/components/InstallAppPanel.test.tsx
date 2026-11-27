@@ -86,4 +86,30 @@ describe('InstallAppPanel', () => {
     expect(steps[0]).toHaveTextContent(/Teilen/);
     expect(steps[1]).toHaveTextContent(/Home-Bildschirm/);
   });
+
+  it('ist auf dem installierten Gerät KEIN totes Ende: Link, QR-Code und Weg aufs andere Gerät', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    resetInstallApp();
+    initInstallApp(installEnv({ standalone: true }));
+    render(<InstallAppPanel />);
+
+    expect(screen.getByText('Auf einem weiteren Gerät installieren')).toBeInTheDocument();
+    const link = window.location.origin;
+    expect(screen.getByText(link)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: `QR-Code: ${link}` })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kopieren' }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(link));
+    expect(await screen.findByRole('button', { name: 'Kopiert' })).toBeInTheDocument();
+  });
+
+  it('zeigt den Weg aufs andere Gerät NUR, wenn dieses Gerät schon installiert ist', () => {
+    resetInstallApp();
+    initInstallApp(installEnv());
+    render(<InstallAppPanel />);
+    expect(screen.queryByText('Auf einem weiteren Gerät installieren')).toBeNull();
+  });
 });

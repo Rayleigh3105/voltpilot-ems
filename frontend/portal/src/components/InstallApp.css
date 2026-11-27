@@ -54,3 +54,52 @@
    Breite - das entscheidet aber `fullWidth` in `InstallAppPanel`, NICHT eine
    Regel hier: der Haus-`Button` setzt seine Breite inline, und ein Inline-Stil
    schlägt jede Medienabfrage (im Browser gemessen: 175 px statt 343 px). */
+
+/* Kein totes Ende auf dem installierten Gerät: Link und QR-Code auf ein weiteres Gerät.
+   `align-self: stretch` statt `width: 100%`, weil der Elternrahmen `align-items: flex-start`
+   setzt - seine Kinder nehmen sonst nur die Breite ihres Inhalts. */
+.vp-installapp-weiter {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e5e7eb);
+}
+
+.vp-installapp-weiter-titel {
+  margin: 0;
+  font-weight: 600;
+}
+
+.vp-installapp-weiter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-installapp-qr {
+  width: 96px;
+  height: 96px;
+  flex: 0 0 auto;
+  background: #fff;
+  border: 1px solid var(--vp-border, #e5e7eb);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.vp-installapp-weiter-link {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-installapp-weiter-link code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

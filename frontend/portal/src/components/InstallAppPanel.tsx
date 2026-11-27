@@ -1,9 +1,13 @@
-import { useSyncExternalStore } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { useIsPhone } from '../useIsPhone';
+import { KOPIEREN } from '../koppelTexte';
+import { qrCode, qrPfad } from '../qrCode';
 import {
+  ANDERES_GERAET_HINWEIS,
+  ANDERES_GERAET_TITEL,
   installIosContext,
   installSnapshot,
   installView,
@@ -12,6 +16,25 @@ import {
   subscribeInstallApp,
 } from '../installApp';
 import './InstallApp.css';
+
+const QR_RUHE = 4;
+
+/** Der QR-Code zum Link auf dem ANDEREN Gerät - dieselbe Vorlage wie das Gehäuse-Etikett der Werkstatt. */
+function WeiteresGeraetQr({ link }: { link: string }) {
+  const q = useMemo(() => qrCode(link), [link]);
+  const seite = q.groesse + 2 * QR_RUHE;
+  return (
+    <svg
+      className="vp-installapp-qr"
+      viewBox={`0 0 ${seite} ${seite}`}
+      role="img"
+      aria-label={`QR-Code: ${link}`}
+    >
+      <rect width={seite} height={seite} fill="#fff" />
+      <path d={qrPfad(q, QR_RUHE)} fill="#000" />
+    </svg>
+  );
+}
 
 /**
  * Die Fläche der Gruppe „Als App auf dem Handy" - reines Rendern.
@@ -40,6 +63,9 @@ export function InstallAppPanel() {
   // eigenen Speicher genügt, anders als `state`/`outcome` braucht es kein `useSyncExternalStore`.
   const ios = installIosContext() ?? undefined;
   const view = installView(state, outcome, ios);
+  // Der Link auf DIESES Gerät - derselbe Ursprung, der auf dem anderen Gerät im Browser landet.
+  const weiterLink = useMemo(() => window.location.origin, []);
+  const [kopiert, setKopiert] = useState(false);
 
   return (
     <div className={`vp-installapp is-${view.state}`}>
@@ -71,6 +97,31 @@ export function InstallAppPanel() {
         </Button>
       )}
       {view.hint && <p className="vp-installapp-hint">{view.hint}</p>}
+      {view.state === 'installiert' && (
+        <div className="vp-installapp-weiter">
+          <p className="vp-installapp-weiter-titel">{ANDERES_GERAET_TITEL}</p>
+          <div className="vp-installapp-weiter-row">
+            <WeiteresGeraetQr link={weiterLink} />
+            <div className="vp-installapp-weiter-link">
+              <code translate="no">{weiterLink}</code>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(weiterLink).then(
+                    () => setKopiert(true),
+                    () => setKopiert(false),
+                  );
+                }}
+              >
+                {kopiert ? KOPIEREN.kopiert : KOPIEREN.knopf}
+              </Button>
+            </div>
+          </div>
+          <p className="vp-installapp-hint">{ANDERES_GERAET_HINWEIS}</p>
+        </div>
+      )}
     </div>
   );
 }

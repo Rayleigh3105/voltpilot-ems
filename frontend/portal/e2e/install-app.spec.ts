@@ -11,13 +11,12 @@ import { expect, test, type Page } from '@playwright/test';
  * Lauf prüft die Fläche in jedem der fünf Zustände aus `installApp.ts`, auf dem Gerät, dessen
  * `navigator.userAgent` sie wirklich liest.
  *
- * Nur `desktop-*`-Projekte werden übersprungen: die Fläche ist ein Telefon-Thema, und ihre
- * Browser-Erkennung unterscheidet nicht nach Bildschirmgröße.
+ * Jede gerät-/browser-erkennende Probe (Android-, iPhone-, iPad-, Firefox-Fälle) überspringt
+ * `desktop-*`/`tablet-*` selbst (`test.skip(testInfo.project.name !== …)`): die Erkennung ist ein
+ * Telefon-Thema. Der `installiert`-Fall (Kunden-Fall „mehrere Geräte", Konzept
+ * `vp-app-mehrere-geraete`) betrifft dagegen JEDES Gerät - genau der Rechner aus dem
+ * Kunden-Screenshot war `desktop-chromium` - und läuft deshalb ungekürzt auf allen vier Projekten.
  */
-
-test.beforeEach(({}, testInfo) => {
-  test.skip(testInfo.project.name.startsWith('desktop') || testInfo.project.name.startsWith('tablet'));
-});
 
 async function oeffnen(page: Page, query = '') {
   await page.goto(`/e2e/install-app.html${query}`);
@@ -64,11 +63,43 @@ test('Android/Chrome MIT Angebot: echter Knopf, der wirklich den Browser-Dialog 
   await page.screenshot({ path: 'e2e/shots/install-app-android-installierbar.png' });
 });
 
-test('installiert (jedes Gerät): nur der ruhige Satz, kein Angebot und kein Weg mehr', async ({ page }) => {
+test('installiert (jedes Gerät, auch der Rechner): kein Angebot mehr FÜR DIESES Gerät, aber auch kein totes Ende', async ({
+  page,
+}, testInfo) => {
   await oeffnen(page, '?standalone=1');
   await expect(page.getByText('Sie nutzen VoltPilot bereits als App.')).toBeVisible();
-  await expect(page.locator('.vp-installapp-hint')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'App installieren' })).toHaveCount(0);
+
+  // Kein totes Ende: Link und QR-Code aufs WEITERE Gerät - derselbe Fall wie im Kunden-Screenshot
+  // (ein Windows-Rechner, auf dem „Sie nutzen VoltPilot bereits als App." bisher das letzte Wort war).
+  await expect(page.getByText('Auf einem weiteren Gerät installieren')).toBeVisible();
+  const link = await page.evaluate(() => window.location.origin);
+  await expect(page.getByText(link)).toBeVisible();
+  await expect(page.getByRole('img', { name: `QR-Code: ${link}` })).toBeVisible();
+  // Ein Satz für BEIDE Wege, ohne das andere Gerät zu kennen.
+  await expect(page.getByText(/Home-Bildschirm/)).toBeVisible();
+  await expect(page.getByText(/Browser-Menü/)).toBeVisible();
+
+  if (testInfo.project.name === 'desktop-chromium' || testInfo.project.name === 'mobile-webkit') {
+    await page.screenshot({ path: `e2e/shots/install-app-weiteres-geraet-${testInfo.project.name}.png` });
+  }
+});
+
+test('installiert: „Kopieren" legt den Link in die Zwischenablage, statt ihn nur zu zeigen', async ({
+  page,
+  context,
+  browserName,
+}) => {
+  // Chromium verweigert `navigator.clipboard.writeText` ohne diese Erlaubnis (auch bei einem
+  // echten Klick); WebKit kennt die Berechtigung gar nicht erst - dort geht Schreiben per
+  // Nutzer-Geste ohnehin ohne Nachfrage.
+  if (browserName === 'chromium') await context.grantPermissions(['clipboard-write', 'clipboard-read']);
+  await oeffnen(page, '?standalone=1');
+  const link = await page.evaluate(() => window.location.origin);
+  await page.getByRole('button', { name: 'Kopieren' }).click();
+  await expect(page.getByRole('button', { name: 'Kopiert' })).toBeVisible();
+  const zwischenablage = await page.evaluate(() => navigator.clipboard.readText()).catch(() => null);
+  if (zwischenablage != null) expect(zwischenablage).toBe(link);
 });
 
 test('iPhone/Safari: die Teilen-Anleitung, nie ein versprochener Dialog', async ({ page }, testInfo) => {
