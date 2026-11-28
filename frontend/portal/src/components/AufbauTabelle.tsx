@@ -132,8 +132,13 @@ export interface AufbauTabelleProps {
   onTechnischUebernehmen: ((q: AdoptableSource) => void) | null;
   /** Gerät hinzufügen (an einer Box oder allgemein); null = hier nicht möglich. */
   onGeraetHinzufuegen: ((box: AufbauBox | null) => void) | null;
-  /** „Geräte suchen" an einer leeren Box (Gerätesuche); null/absent = hier nicht angeboten. */
+  /** „Geräte suchen" an einer Box (Gerätesuche); null/absent = hier nicht angeboten. */
   onGeraeteSuchen?: ((box: AufbauBox) => void) | null;
+  /**
+   * „Geräte suchen" als werkzeugleisten-weite Haupthandlung (eine Box, egal welche, sucht); null = keine
+   * Box an dieser Anlage kann suchen - dann bleibt „Gerät hinzufügen" die Haupthandlung.
+   */
+  onGeraeteSuchenHaupt?: (() => void) | null;
   /** Warum „Gerät hinzufügen" gesperrt ist - nie ein stummer grauer Knopf. */
   geraetGesperrt: string | null;
   onBoxHinzufuegen: () => void;
@@ -272,32 +277,50 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           )}
         </div>
         <div className="vp-auf-neu">
-          <Recht aktion="geraet.einrichten"><button
-            type="button"
-            className="vp-btn vp-btn--primary vp-btn--sm vp-auf-neu-haupt"
-            // Schmal steht nur „Gerät“ da (die lange Beschriftung ist dann ausgeblendet) — der Name bleibt ganz.
-            aria-label="Gerät hinzufügen"
-            onClick={() => p.onGeraetHinzufuegen?.(null)}
-            disabled={!p.onGeraetHinzufuegen}
-            title={p.onGeraetHinzufuegen ? undefined : p.geraetGesperrt ?? undefined}
-          >
-            <Icon name="plus" size={16} />
-            <span className="vp-auf-neu-lang">Gerät hinzufügen</span>
-            <span className="vp-auf-neu-kurz" aria-hidden="true">
-              Gerät
-            </span>
-          </button></Recht>
-          {/* UEMS AP-03 IP-12: eine Box meldet man als Geräte-Einrichtung an, eine Anlage
-              legt die Anlagen-Verwaltung an - das Menü nennt nur, was die Rolle darf. */}
-          <RowMenu
-            label="Box oder Anlage hinzufügen"
-            icon="chevron-down"
-            buttonClassName="vp-btn vp-btn--primary vp-btn--sm vp-auf-neu-mehr"
-            items={[
-              { label: 'VoltPilot-Box hinzufügen', icon: 'wifi', recht: 'geraet.einrichten', onClick: p.onBoxHinzufuegen },
-              { label: 'Anlage hinzufügen', icon: 'layers', recht: 'anlage.verwalten', onClick: p.onAnlageHinzufuegen },
-            ]}
-          />
+          {/* Geräte suchen ist die Haupthandlung beim Einrichten (Captain-Befund): „Gerät hinzufügen“
+              (von Hand) rückt zur zweiten Wahl, sobald eine Box suchen kann. Der Name bleibt am
+              Telefon ganz - „Suchen" allein stand dort zu nah am Suchfeld „Name, Modell, Kennung"
+              und wurde damit verwechselt (Captain-Befund, PR #2050). */}
+          {p.onGeraeteSuchenHaupt && (
+            <Recht aktion="geraet.einrichten">
+              <button
+                type="button"
+                className="vp-btn vp-btn--primary vp-btn--sm vp-auf-neu-suchen"
+                onClick={p.onGeraeteSuchenHaupt}
+              >
+                <Icon name="target" size={16} />
+                {UEMS_GERAETE_SUCHEN}
+              </button>
+            </Recht>
+          )}
+          <div className="vp-auf-neu-hinzufuegen">
+            <Recht aktion="geraet.einrichten"><button
+              type="button"
+              className={`vp-btn vp-btn--sm vp-auf-neu-haupt${p.onGeraeteSuchenHaupt ? ' vp-btn--outline' : ' vp-btn--primary'}`}
+              // Schmal steht nur „Gerät“ da (die lange Beschriftung ist dann ausgeblendet) — der Name bleibt ganz.
+              aria-label="Gerät hinzufügen"
+              onClick={() => p.onGeraetHinzufuegen?.(null)}
+              disabled={!p.onGeraetHinzufuegen}
+              title={p.onGeraetHinzufuegen ? undefined : p.geraetGesperrt ?? undefined}
+            >
+              <Icon name="plus" size={16} />
+              <span className="vp-auf-neu-lang">Gerät hinzufügen</span>
+              <span className="vp-auf-neu-kurz" aria-hidden="true">
+                Gerät
+              </span>
+            </button></Recht>
+            {/* UEMS AP-03 IP-12: eine Box meldet man als Geräte-Einrichtung an, eine Anlage
+                legt die Anlagen-Verwaltung an - das Menü nennt nur, was die Rolle darf. */}
+            <RowMenu
+              label="Box oder Anlage hinzufügen"
+              icon="chevron-down"
+              buttonClassName={`vp-btn vp-btn--sm vp-auf-neu-mehr${p.onGeraeteSuchenHaupt ? ' vp-btn--outline' : ' vp-btn--primary'}`}
+              items={[
+                { label: 'VoltPilot-Box hinzufügen', icon: 'wifi', recht: 'geraet.einrichten', onClick: p.onBoxHinzufuegen },
+                { label: 'Anlage hinzufügen', icon: 'layers', recht: 'anlage.verwalten', onClick: p.onAnlageHinzufuegen },
+              ]}
+            />
+          </div>
         </div>
         {p.technik}
       </div>
@@ -581,6 +604,22 @@ function BoxZeile({
         )}
       </span>
       <span role="cell" className="vp-auf-t-aktion is-breit">
+        {/* Geräte suchen VOR Gerät hinzufügen (Captain-Befund): an der Box selbst, nicht erst nach
+            einem Abstecher ins Katalog-Modal - sobald sie schon Geräte trägt. Eine LEERE Box hat
+            bereits ihren eigenen, größeren Suchen-Knopf an der „leer"-Zeile - kein zweiter hier. */}
+        {aktuell && b.geraete.length > 0 && p.onGeraeteSuchen && (
+          <Recht aktion="geraet.einrichten"><button
+            type="button"
+            className="vp-auf-t-plus"
+            onClick={() => p.onGeraeteSuchen?.(b)}
+            aria-label={`${UEMS_GERAETE_SUCHEN} an ${b.name}`}
+          >
+            <Icon name="target" size={15} />
+            <span className="lbl" aria-hidden="true">
+              {UEMS_GERAETE_SUCHEN}
+            </span>
+          </button></Recht>
+        )}
         {aktuell && p.onGeraetHinzufuegen && (
           <Recht aktion="geraet.einrichten"><button
             type="button"
