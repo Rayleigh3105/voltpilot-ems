@@ -44,11 +44,15 @@ class RolleEinsichtBestandTest {
      * alle 81 Zeilen davor unverändert) sowie den zwei Zeilen {@code ueberwachung.eigene} und
      * {@code ueberwachung.verwalten} aus Alerting Scheibe 1 (84 Aktionen, 15.10.2026; alle 82 Zeilen davor
      * unverändert) und der Zeile {@code logik.bearbeiten;U;-;-;-;-;B;P} aus Steuerlogik v1 §8.8 (Entscheid E3 = B,
-     * Stufe 4, #1918; 85 Aktionen, 15.11.2026; alle 84 Zeilen davor unverändert). Das neue Recht gibt genau den drei
-     * Rollen Kundenadministrator (U), Unterstützer (B) und VoltPilot-Betrieb/Plattform (P) Zugriff; Bedienberechtigt
-     * bleibt bei „-“ (Lesart §17.8: Bedienberechtigte fragen nur an).
+     * Stufe 4, #1918; 85 Aktionen, 15.11.2026; alle 84 Zeilen davor unverändert; dieses Recht gibt genau den drei
+     * Rollen Kundenadministrator (U), Unterstützer (B) und VoltPilot-Betrieb/Plattform (P) Zugriff, Bedienberechtigt
+     * bleibt bei „-” - Lesart §17.8: Bedienberechtigte fragen nur an) sowie der Zeile
+     * {@code anlage.ort_berichtigen;U;U;-;-;-;Ei;P} aus Standort v1 §7 (Entscheid E2 = A, #2044; 86 Aktionen,
+     * 26.11.2026; alle 85 Zeilen davor unverändert; dieses Recht gibt genau Kundenadministrator (U), Energiemanager
+     * (U), Unterstützer (Ei) und VoltPilot-Betrieb/Plattform (P) Zugriff, Bearbeiter bleibt wie bei
+     * standort.verwalten bei „-” - Captain-Entscheid E2).
      */
-    private static final String BESTAND_SHA256 = "52dc75060813888233dfdd26328358550a3920ad384eb165f9287b8f171c1d53";
+    private static final String BESTAND_SHA256 = "d6b491e9d07a277e51c647794db40f330498f95eb73f9935b538e2e7f591e838";
 
     /** R6 „lesen“ — die Zeilen, an denen Einsicht U trägt (energiemanagement.ansehen seit IP-5). */
     private static final Set<String> LESEND = Set.of("aenderungsprotokoll.lesen", "messwerte.ansehen",
