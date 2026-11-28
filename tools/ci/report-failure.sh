@@ -36,7 +36,17 @@ report_failure_first_error_excerpt() {
 		'<<< FAILURE!|<<< ERROR!|Tests run: [0-9]+, Failures: [1-9]|Tests run: [0-9]+, Errors: [1-9]|^\[ERROR\]|^FAILED |^ERROR |^=+ FAILURES =+' \
 		"$log" 2>/dev/null | head -n1 | cut -d: -f1 || true)"
 	[ -n "$line" ] || return 0
-	tail -n "+$line" "$log" | head -n 200
+	# `|| true`: auf einem grossen Log (reale Maven-/Pytest-Laeufe, oft weit
+	# ueber 200 Zeilen ab der Fehlerstelle) schliesst `head` die Pipe, sobald
+	# seine 200 Zeilen stehen, waehrend `tail` noch mehr schreiben will -
+	# SIGPIPE, `tail` endet mit 141. Unter `set -o pipefail` (oben gesetzt)
+	# wird das zum Exitcode dieser Funktion und riss das ganze Skript vor dem
+	# Posten ab (beobachtet: alle Berichte seit #2031 blieben aus, weil jeder
+	# echte CI-Log laenger als 200 Zeilen ab der Fehlerstelle ist - der
+	# Selbsttest traf das nie, seine Testlogs sind klein genug, dass `tail`
+	# fertig schreibt, bevor `head` die Pipe schliesst). `head` hat seine
+	# Ausgabe in jedem Fall schon vollstaendig geliefert, wenn das passiert.
+	tail -n "+$line" "$log" | head -n 200 || true
 }
 
 if [ "$#" -lt 2 ]; then

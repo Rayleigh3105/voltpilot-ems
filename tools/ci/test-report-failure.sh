@@ -144,6 +144,32 @@ case "$body4" in
 esac
 
 echo
+echo "== grosses Log (SIGPIPE-Falle): tail|head in report_failure_first_error_excerpt darf das Skript nicht unter pipefail abreissen =="
+{
+	printf 'INFO: Start\n'
+	printf 'EchteKlasseTest.echteMethode:42 Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.1 s <<< FAILURE!\n'
+	printf 'java.lang.AssertionError: erwartet war anders\n'
+	# Deutlich mehr als 200 Zeilen nach dem Treffer UND gross genug, dass die
+	# Pipe (64 KB) voll wird, waehrend `tail` noch schreibt und `head` schon
+	# zu ist (SIGPIPE, tail endet 141) - ein kleines Testlog wie oben
+	# reproduziert das nicht zuverlaessig, siehe Kommentar im Skript selbst.
+	seq 1 500000 | sed 's/^/Abbau-Rauschen Zeile /'
+} >"$TMP/riesig.log"
+
+out5="$(FORGEJO_USERNAME=vp FORGEJO_PASSWORD=vp \
+	GITHUB_SERVER_URL="http://127.0.0.1:$PORT" GITHUB_REPOSITORY="$REPO" \
+	GITHUB_SHA=riesig GITHUB_WORKFLOW=Nightly GITHUB_RUN_NUMBER=999 \
+	"$HERE/report-failure.sh" "Test (api-1)" "$TMP/riesig.log")"
+eq "haengt trotz grossem Log weiter an Issue #1" "report-failure.sh: Bericht an Issue #1 angehaengt (http://127.0.0.1:$PORT/api/v1/repos/$REPO)" "$out5"
+
+kommentare5="$(curl -fsS -H "$AUTH" "http://127.0.0.1:$PORT/api/v1/repos/$REPO/issues/1/comments")"
+body5="$(printf '%s' "$kommentare5" | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1])')"
+case "$body5" in
+*"erwartet war anders"*) ok "die echte Fehlermeldung ist im Bericht, trotz 500000 Zeilen Rauschen danach" ;;
+*) bad "die echte Fehlermeldung ist im Bericht" "AssertionError im Bericht" "$body5" ;;
+esac
+
+echo
 echo "== zu wenige Argumente bricht laut ab =="
 fails "ohne Log-Datei" env FORGEJO_USERNAME=vp FORGEJO_PASSWORD=vp "$HERE/report-failure.sh" "Test (Go, Skripte)"
 
