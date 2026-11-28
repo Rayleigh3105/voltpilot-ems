@@ -545,14 +545,19 @@ export function AufbauSection({
    * einer box-verwalteten würde ein gespeichertes Soll nie wirken.
    */
   const portalManaged = components?.componentAuthority === 'portal';
+  // Captain-Befund (vp-aufbau-hinweise): `held` ist auch die ERSTE Antwort einer frisch
+  // verbundenen Box, bevor das Portal je einen Stand angewandt hat - „behält den letzten/
+  // zuletzt angewandten Stand" behauptete dann eine Geschichte, die es nie gab, und
+  // widersprach der Telemetrie-Zeile darüber („Wartet auf die ersten Daten").
+  const everApplied = components?.appliedAt != null;
   const stand = components?.components[0]
     ? {
-        text: sollIstText(components.components[0].syncStatus, components.components[0].definitionVersion ?? 1),
+        text: sollIstText(components.components[0].syncStatus, components.components[0].definitionVersion ?? 1, everApplied),
         ton: sollIstTon(components.components[0].syncStatus),
       }
     : null;
   const ablehnung = ablehnungText(components?.refusedRevision, components?.refusedReason);
-  const halt = haltGrund(components?.components[0]?.syncStatus, components?.heldReason);
+  const halt = haltGrund(components?.components[0]?.syncStatus, components?.heldReason, everApplied);
   const verwaltung = components ? verwaltungsHinweis(components.componentAuthority, components.adoptedAt) : null;
   const zeilenHinweisById = useMemo(() => {
     const out = new Map<string, { badge: string; satz: string }>();

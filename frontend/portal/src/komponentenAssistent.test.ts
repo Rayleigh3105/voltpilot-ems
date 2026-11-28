@@ -16,6 +16,7 @@ import {
   rolleVerfuegbar,
   schaltzustand,
   KEIN_EMPFAENGER_SATZ,
+  NEU_EINGERICHTET_SATZ,
   haltGrund,
   sollIstText,
   sollIstTon,
@@ -367,6 +368,31 @@ describe('Soll/Ist', () => {
     expect(haltGrund('pending', 'egal')).toBeNull();
     expect(haltGrund('in_sync', 'egal')).toBeNull();
     expect(haltGrund(undefined, undefined)).toBeNull();
+  });
+
+  /*
+    Captain-Befund (vp-aufbau-hinweise, Nachtrag zu PR #2050): `held` ist auch die ERSTE Antwort
+    einer frisch verbundenen Box, bevor das Portal je einen Stand angewandt hat (Go-Kern haelt von
+    Anfang an das leere Soll VOR der ersten angewandten Fassung) - „behaelt den letzten/zuletzt
+    angewandten Stand" behauptete dann eine Geschichte, die es nie gab, und widersprach der
+    Telemetrie-Zeile darueber („Wartet auf die ersten Daten"). `everApplied=false` (Default bleibt
+    `true` - bestehende Aufrufe und die Tests oben aendern sich nicht) traegt EINEN ehrlichen Satz
+    statt zweier sich widersprechender Zeilen.
+  */
+  it('behauptet ohne je angewandte Fassung keine Geschichte, die es nie gab', () => {
+    expect(sollIstText('held', 1, false)).toBe(NEU_EINGERICHTET_SATZ);
+    expect(sollIstText('held', 1, false)).not.toContain('letzten');
+    expect(sollIstText('held', 1, false)).not.toContain('zuletzt');
+    // Mit je angewandter Fassung (der Default) bleibt der bisherige Satz unveraendert.
+    expect(sollIstText('held', 1, true)).toBe('Die Box behält den letzten Gerätestand');
+    expect(sollIstText('held', 1)).toBe('Die Box behält den letzten Gerätestand');
+    // Ohne gemeldeten Grund UND ohne je angewandte Fassung steht keine zweite, erfundene Zeile mehr -
+    // `sollIstText` traegt den einen Satz bereits.
+    expect(haltGrund('held', null, false)).toBeNull();
+    expect(haltGrund('held', '   ', false)).toBeNull();
+    // Meldet die Box selbst einen Grund, bleibt er WOERTLICH stehen - das ist ihre eigene Aussage,
+    // keine erfundene Geschichte, auch ohne je angewandte Fassung.
+    expect(haltGrund('held', 'Firmware-Update laeuft.', false)).toBe('Firmware-Update laeuft.');
   });
 
   it('nennt bei einer Ablehnung BEIDES: dass der alte Stand läuft UND warum', () => {

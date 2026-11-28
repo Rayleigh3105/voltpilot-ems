@@ -1692,3 +1692,44 @@ describe('AufbauSection · Ladesäule entfernen (vp-ladesaeule-entfernen)', () =
     expect(screen.queryByRole('menuitem', { name: /Ladesäule entfernen/ })).toBeNull();
   });
 });
+
+/**
+ * Captain-Befund (vp-aufbau-hinweise, Nachtrag zu PR #2050): eine frisch verbundene Box ohne je
+ * angewandte Fassung meldet `held` genau wie eine Anlage, deren Anbindung einmal bestand und jetzt
+ * fehlt - die beiden Zeilen darüber behaupteten dann eine Geschichte, die es nie gab, und
+ * widersprachen der Telemetrie-Zeile darüber („Wartet auf die ersten Daten"). Ein Zustand, eine
+ * Aussage: `everApplied=false` trägt EINEN Hinweis statt zweier sich widersprechender.
+ */
+describe('AufbauSection · die drei Hinweise oben (Captain-Befund, vp-aufbau-hinweise)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const hinweisZeilen = () =>
+    within(document.querySelector('.vp-auf-hinweise') as HTMLElement).getAllByRole('listitem').map((li) => li.textContent);
+
+  it('behauptet ohne je angewandte Fassung keine erfundene Geschichte - EIN Hinweis statt zweier', async () => {
+    stub();
+    portalVerwaltet({
+      appliedAt: null,
+      components: [{ id: 'batt', role: 'inverter', entityType: 'battery-hybrid', templateRef: 'builtin:deye:sun-30k', definitionVersion: 1, syncStatus: 'held' }],
+    });
+    rendere();
+    await screen.findByText('Deye SUN-30K');
+    const zeilen = hinweisZeilen();
+    expect(zeilen.some((t) => t?.includes('neu eingerichtet'))).toBe(true);
+    expect(zeilen.some((t) => t?.includes('letzten Gerätestand') || t?.includes('zuletzt angewandten'))).toBe(false);
+  });
+
+  it('mit je angewandter Fassung bleibt der bisherige Hinweis unverändert (zwei Zeilen)', async () => {
+    stub();
+    portalVerwaltet({
+      appliedAt: '2026-01-01T00:00:00Z',
+      components: [{ id: 'batt', role: 'inverter', entityType: 'battery-hybrid', templateRef: 'builtin:deye:sun-30k', definitionVersion: 1, syncStatus: 'held' }],
+    });
+    rendere();
+    await screen.findByText('Deye SUN-30K');
+    const zeilen = hinweisZeilen();
+    expect(zeilen.some((t) => t?.includes('letzten Gerätestand'))).toBe(true);
+    expect(zeilen.some((t) => t?.includes('keine Anbindung mehr hinterlegt'))).toBe(true);
+    expect(zeilen.some((t) => t?.includes('neu eingerichtet'))).toBe(false);
+  });
+});
