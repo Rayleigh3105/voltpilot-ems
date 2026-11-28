@@ -123,6 +123,13 @@ type GuardLimits struct {
 	MinOffSeconds   *float64 `json:"min_off_seconds,omitempty"`
 	MaxStartsPerDay *float64 `json:"max_starts_per_day,omitempty"`
 	RampKwPerMin    *float64 `json:"ramp_kw_per_min,omitempty"`
+	// ManualSkipsMinTimes: a person's own tap (source local-ui with override)
+	// is not held by min_on_seconds/min_off_seconds - it switches at once in
+	// both directions; the automation still is (vp-schalten-3s, Captain-
+	// Entscheid C). The CLOUD declares it per device type (heating rod, plain
+	// relay load), never the box from a type name; absent = the times hold
+	// every wish, as before.
+	ManualSkipsMinTimes *bool `json:"manual_skips_min_times,omitempty"`
 	// MinChangeIntervalSeconds is the change guard of a device that regulates
 	// itself (K2): two changes of its setpoint_c, or of its mode, are at least
 	// this far apart. Absent = axis inactive.
@@ -547,6 +554,12 @@ func (e Entity) CycleLimits() guards.CycleLimits {
 		l.RampKwPerMin = *v
 	}
 	return l
+}
+
+// ManualSkipsMinTimes reports the cloud's declaration that a manual tap on
+// this entity is not held by Mindestlauf/Mindestpause.
+func (e Entity) ManualSkipsMinTimes() bool {
+	return e.Guards.Limits.ManualSkipsMinTimes != nil && *e.Guards.Limits.ManualSkipsMinTimes
 }
 
 // ClampCommands applies the per-entity restrict-only guard chain to a set of

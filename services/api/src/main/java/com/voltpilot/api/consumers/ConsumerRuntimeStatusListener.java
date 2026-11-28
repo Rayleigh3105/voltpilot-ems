@@ -283,8 +283,11 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
         if (regler == null) {
             regler = HeizstabStufe.reglerAusLogik(herzschlag, entityId);
         }
+        // vp-schalten-3s: das Ende einer Haltung (Mindestlauf/-pause), nur zusammen mit einem Haltegrund.
+        Instant bis = reason != null && SchaltSpurAbgleich.HALTEGRUENDE.contains(reason)
+                ? zeitpunkt(node.get("reason_until")) : null;
         return new ConsumerRuntimeStatusRepository.Row(entityId, state, reason, actualKw,
-                confirmed, runtime, starts, HeizstabStufe.stufe(node), null, regler);
+                confirmed, runtime, starts, HeizstabStufe.stufe(node), null, regler, bis);
     }
 
     private static Integer boundedInt(JsonNode node, String field, int max) {
@@ -312,6 +315,18 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
         }
         double d = v.asDouble();
         return (Double.isNaN(d) || Double.isInfinite(d)) ? null : d;
+    }
+
+    /** An RFC-3339 time of the heartbeat, or null when missing/unparseable. */
+    private static Instant zeitpunkt(JsonNode v) {
+        if (v == null || !v.isTextual()) {
+            return null;
+        }
+        try {
+            return Instant.parse(v.asText());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** The heartbeat's ts, or now() when missing/unparseable. */

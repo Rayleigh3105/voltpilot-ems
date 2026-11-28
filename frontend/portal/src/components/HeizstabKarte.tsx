@@ -220,7 +220,7 @@ export function HeizstabKarte({
     const an = gewuenschteStufe !== null ? gewuenschteStufe > 0 : bestaetigt === null ? null : bestaetigt > 0;
     const warte = gewuenschteStufe !== null && bestaetigt !== null && (gewuenschteStufe > 0) !== (bestaetigt > 0);
     // vp-schalten-3s: hält eine Schutzregel der Box den Wunsch, sagt die Zeile das - statt „schaltet …“.
-    const gehalten = warte ? gehaltenAnsicht((gewuenschteStufe ?? 0) > 0, status?.reasonCode) : null;
+    const gehalten = warte ? gehaltenAnsicht((gewuenschteStufe ?? 0) > 0, status?.reasonCode, status?.reasonUntil) : null;
     const gesamt = zeilen.reduce((a, z) => a + (z.kw ?? 0), 0);
     steuerung = (
       <>
@@ -253,7 +253,7 @@ export function HeizstabKarte({
         <div className="vp-hz-titel"><span>Phasen</span>{jePhase && <em>{jePhase}</em>}</div>
         <ul className="vp-hz-phasen-liste" aria-label="Phasen">
           {zeilen.map((z) => {
-            const v = phasenAnsicht(z, stufe, status?.reasonCode);
+            const v = phasenAnsicht(z, stufe, status?.reasonCode, status?.reasonUntil);
             const an = v.stellung === 'an' || v.stellung === 'warte-an';
             return (
               <li key={z.kanal} data-testid={`heizstab-phase-${z.label}`}>

@@ -1370,7 +1370,7 @@ public class EntityRegistryService {
             }
             EntityRegistryRepository.ConsumerCycleLimits cl = cycle.get(row.id());
             if (cl != null) {
-                mergeCycleLimits(d, cl);
+                mergeCycleLimits(d, cl, row.entityType());
             }
             if (claimed.containsKey(row.id())) {
                 d.put("owner_claimed", true);
@@ -1551,7 +1551,7 @@ public class EntityRegistryService {
     static final String IO_MODULE_COMMUNICATION = "ebyte_modbus_tcp";
 
     private static void mergeCycleLimits(ObjectNode descriptor,
-            EntityRegistryRepository.ConsumerCycleLimits cl) {
+            EntityRegistryRepository.ConsumerCycleLimits cl, String entityType) {
         JsonNode g = descriptor.get("guards");
         ObjectNode guards = g instanceof ObjectNode on ? on : descriptor.putObject("guards");
         JsonNode l = guards.get("limits");
@@ -1564,6 +1564,13 @@ public class EntityRegistryService {
         }
         if (cl.maxStartsPerDay() != null) {
             limits.put("max_starts_per_day", cl.maxStartsPerDay());
+        }
+        // vp-schalten-3s, Captain-Entscheid C: an einer einfachen Last überspringt ein Handeingriff die
+        // Mindestzeiten (HandeingriffSchutzzeiten, die EINE Einordnung). Nur wo das Profil sie setzt - sonst
+        // bleibt der Push byte-gleich.
+        if ((cl.minOnSeconds() != null || cl.minOffSeconds() != null)
+                && com.voltpilot.api.consumers.HandeingriffSchutzzeiten.sofort(entityType)) {
+            limits.put("manual_skips_min_times", true);
         }
     }
 

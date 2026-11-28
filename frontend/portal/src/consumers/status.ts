@@ -11,10 +11,25 @@
  *  - `confirmed` absent/null claims NOTHING about execution (tri-state).
  */
 
+import { HALTEGRUENDE } from './schaltspur';
+
+/** HH:MM in Europe/Berlin; null für einen unlesbaren Zeitpunkt (nie eine erfundene Uhrzeit). */
+export function uhrzeit(iso: string): string | null {
+  const t = new Date(iso);
+  return Number.isFinite(t.getTime())
+    ? t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })
+    : null;
+}
+
 export interface ConsumerRuntimeStatus {
   entityId: string;
   state: string;
   reasonCode?: string | null;
+  /**
+   * Wann eine Mindestlaufzeit/Mindestpause der Box von selbst endet (vp-schalten-3s); nur zusammen mit einem
+   * Haltegrund, sonst fehlt das Feld.
+   */
+  reasonUntil?: string | null;
   actualKw?: number | null;
   confirmed?: boolean | null;
   runtimeSecondsToday?: number | null;
@@ -108,7 +123,10 @@ export function consumerStatusLine(
   if (!text) {
     return { text: STATUS_UNKNOWN_TEXT, reason: '', unconfirmed: false, tone: 'off' };
   }
-  const reason = entry.reasonCode ? (CONSUMER_REASON_TEXT[entry.reasonCode] ?? '') : '';
+  const grund = entry.reasonCode ? (CONSUMER_REASON_TEXT[entry.reasonCode] ?? '') : '';
+  // vp-schalten-3s: hält eine Schutzregel der Box, steht dabei, ab wann sie nicht mehr hält.
+  const bis = grund && entry.reasonUntil && HALTEGRUENDE.has(entry.reasonCode ?? '') ? uhrzeit(entry.reasonUntil) : null;
+  const reason = bis ? `${grund} bis ${bis}` : grund;
   const unconfirmed = entry.confirmed === false;
   let tone: ConsumerStatusLine['tone'] = 'off';
   if (entry.state === 'running_forced' || entry.state === 'running_optimized'

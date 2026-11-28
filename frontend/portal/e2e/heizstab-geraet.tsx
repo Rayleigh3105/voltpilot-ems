@@ -31,7 +31,8 @@ if (new URLSearchParams(window.location.search).get('admin') === '1') {
  * - `abweichung`: bestätigt 2 Phasen, ein Ausgang steht seit 11:00 gegen den Befehl (HZ-4 B);
  * - `hand`: von Hand L1 und L3 gewählt bis 13:47, bestätigt ist erst L1;
  * - `gehalten` (vp-schalten-3s, Captain-Befund 27.11.2026): L1 lief von Hand, „Aus“ ist gesendet, die
- *   Mindestlaufzeit der Box hält L1 noch an (`guard_min_on`);
+ *   Mindestlaufzeit der Box hält L1 noch drei Minuten an (`guard_min_on`, `reasonUntil`) - so meldet eine Box, die den
+ *   Stab nicht als einfache Last kennt;
  * - `still`: noch keine Rückmeldung der Box;
  * - `alt`: eine Box ohne `heizstab_phasen` - sie schaltet nur Stufen;
  * - `zusammen`: ein Stab „nur alle zusammen“ (ein Schalter);
@@ -201,6 +202,8 @@ const status = fall === 'still'
     // geschlossenen Vokabular `running_manual`, nie ein erfundenes Wort.
     state: fall === 'hand' || fall === 'gehalten' ? 'running_manual' : 'running_optimized',
     reasonCode: fall === 'gehalten' ? 'guard_min_on' : null,
+    // Ein empfindliches Gerät: die Box meldet, wann die Mindestlaufzeit endet (vp-schalten-3s).
+    reasonUntil: fall === 'gehalten' ? new Date(Date.now() + 3 * 60_000).toISOString() : null,
     actualKw: null,
     confirmed: stufe ? true : null,
     reportedAt: JETZT,

@@ -10,7 +10,7 @@
  */
 
 import { HALTEGRUENDE } from './consumers/schaltspur';
-import { CONSUMER_REASON_TEXT } from './consumers/status';
+import { CONSUMER_REASON_TEXT, uhrzeit } from './consumers/status';
 
 /** Anschluss der Heizelemente (connection.anschluss). */
 export type Anschluss = 'stern_mit_n' | 'ohne_n' | 'dreieck' | 'unbekannt';
@@ -368,22 +368,26 @@ export function phasenZeilen(
  * der Mindestlaufzeit, „wartet“ unter der Mindestpause - mit dem Grund der Box. Null, wenn keine Schutzregel hält.
  * Ehrlich und sofort statt „gesendet, noch nicht bestätigt“: die Box HAT geantwortet, sie hält den Stand.
  */
-export function gehaltenAnsicht(wunschAn: boolean, grund: string | null | undefined): { wort: string; unter: string } | null {
+export function gehaltenAnsicht(wunschAn: boolean, grund: string | null | undefined,
+  bis?: string | null): { wort: string; unter: string } | null {
   if (!grund || !HALTEGRUENDE.has(grund)) return null;
   const text = CONSUMER_REASON_TEXT[grund] ?? 'Eine Schutzregel der Box hält';
+  // Die Box meldet, wann die Mindestzeit endet (vp-schalten-3s): dann steht die Uhrzeit da, sonst „danach“.
+  const wann = (bis && uhrzeit(bis)) ? `um ${uhrzeit(bis)}` : 'danach';
   return wunschAn
-    ? { wort: 'wartet …', unter: `${text} - schaltet danach ein` }
-    : { wort: 'bleibt an …', unter: `${text} - schaltet danach aus` };
+    ? { wort: 'wartet …', unter: `${text} - schaltet ${wann} ein` }
+    : { wort: 'bleibt an …', unter: `${text} - schaltet ${wann} aus` };
 }
 
 /** Wie eine Phasen-Zeile aussieht: das Wort, der Zusatz darunter und die Stellung des Schalters. */
-export function phasenAnsicht(z: PhasenZeile, s: StufeMeldung | null | undefined, grund?: string | null): {
+export function phasenAnsicht(z: PhasenZeile, s: StufeMeldung | null | undefined, grund?: string | null,
+  bis?: string | null): {
   wort: string;
   unter: string | null;
   stellung: 'an' | 'aus' | 'warte-an' | 'warte-aus' | 'unbekannt';
 } {
   if (z.wunsch !== null && z.wunsch !== z.an) {
-    const gehalten = z.an !== null ? gehaltenAnsicht(z.wunsch, grund) : null;
+    const gehalten = z.an !== null ? gehaltenAnsicht(z.wunsch, grund, bis) : null;
     if (gehalten) return { ...gehalten, stellung: z.wunsch ? 'warte-an' : 'warte-aus' };
     return z.wunsch
       ? { wort: 'schaltet ein …', unter: 'gesendet, noch nicht bestätigt', stellung: 'warte-an' }

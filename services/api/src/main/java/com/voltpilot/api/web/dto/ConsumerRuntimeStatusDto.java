@@ -17,7 +17,21 @@ import java.util.UUID;
 public record ConsumerRuntimeStatusDto(UUID entityId, String state, String reasonCode,
         Double actualKw, Boolean confirmed, Integer runtimeSecondsToday, Integer startsToday,
         Instant reportedAt, com.fasterxml.jackson.databind.JsonNode stufe,
-        com.fasterxml.jackson.databind.JsonNode heizstab, java.math.BigDecimal stufeEnergieKwhHeute) {
+        com.fasterxml.jackson.databind.JsonNode heizstab, java.math.BigDecimal stufeEnergieKwhHeute,
+        @com.fasterxml.jackson.annotation.JsonInclude(
+                com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Instant reasonUntil) {
+
+    /**
+     * Without the end of a hold: {@code reasonUntil} is set only while a Mindestlauf/Mindestpause of the box holds
+     * the consumer (vp-schalten-3s) - absent otherwise, so every other answer stays byte-identical.
+     */
+    public ConsumerRuntimeStatusDto(UUID entityId, String state, String reasonCode,
+            Double actualKw, Boolean confirmed, Integer runtimeSecondsToday, Integer startsToday,
+            Instant reportedAt, com.fasterxml.jackson.databind.JsonNode stufe,
+            com.fasterxml.jackson.databind.JsonNode heizstab, java.math.BigDecimal stufeEnergieKwhHeute) {
+        this(entityId, state, reasonCode, actualKw, confirmed, runtimeSecondsToday, startsToday, reportedAt, stufe,
+                heizstab, stufeEnergieKwhHeute, null);
+    }
 
     /**
      * Every consumer without stages - the shape before Heizstab V1. For a heating rod over an

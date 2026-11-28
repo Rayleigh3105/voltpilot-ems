@@ -31,7 +31,16 @@ public class ConsumerRuntimeStatusRepository {
      */
     public record Row(UUID entityId, String state, String reasonCode, Double actualKw,
             Boolean confirmed, Integer runtimeSecondsToday, Integer startsToday,
-            HeizstabStufe.Stufe stufe, java.math.BigDecimal stufeEnergieKwhHeute, String reglerJson) {
+            HeizstabStufe.Stufe stufe, java.math.BigDecimal stufeEnergieKwhHeute, String reglerJson,
+            Instant reasonUntil) {
+
+        /** Without the end of a hold (vp-schalten-3s) - the shape before {@code reason_until}. */
+        public Row(UUID entityId, String state, String reasonCode, Double actualKw,
+                Boolean confirmed, Integer runtimeSecondsToday, Integer startsToday,
+                HeizstabStufe.Stufe stufe, java.math.BigDecimal stufeEnergieKwhHeute, String reglerJson) {
+            this(entityId, state, reasonCode, actualKw, confirmed, runtimeSecondsToday, startsToday, stufe,
+                    stufeEnergieKwhHeute, reglerJson, null);
+        }
 
         /** Every consumer without stages - the shape before Heizstab V1. */
         public Row(UUID entityId, String state, String reasonCode, Double actualKw,
@@ -42,7 +51,7 @@ public class ConsumerRuntimeStatusRepository {
 
         Row mitEnergie(java.math.BigDecimal kwh) {
             return new Row(entityId, state, reasonCode, actualKw, confirmed, runtimeSecondsToday,
-                    startsToday, stufe, kwh, reglerJson);
+                    startsToday, stufe, kwh, reglerJson, reasonUntil);
         }
     }
 
@@ -108,9 +117,9 @@ public class ConsumerRuntimeStatusRepository {
                     "INSERT INTO consumer_runtime_status (entity_id, tenant_id, site_id, device_id, "
                             + "state, reason_code, actual_kw, confirmed, runtime_seconds_today, "
                             + "starts_today, reported_at, updated_at, stufe_json, "
-                            + "stufe_energie_kwh_heute, heizstab_json) "
+                            + "stufe_energie_kwh_heute, heizstab_json, reason_until) "
                             + "VALUES (?, NULLIF(current_setting('app.tenant_id', true), '')::uuid, "
-                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, now(), ?::jsonb, ?, ?::jsonb) "
+                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, now(), ?::jsonb, ?, ?::jsonb, ?) "
                             + "ON CONFLICT (entity_id) DO UPDATE SET "
                             + "site_id = EXCLUDED.site_id, device_id = EXCLUDED.device_id, "
                             + "state = EXCLUDED.state, reason_code = EXCLUDED.reason_code, "
@@ -120,11 +129,12 @@ public class ConsumerRuntimeStatusRepository {
                             + "reported_at = EXCLUDED.reported_at, updated_at = now(), "
                             + "stufe_json = EXCLUDED.stufe_json, "
                             + "stufe_energie_kwh_heute = EXCLUDED.stufe_energie_kwh_heute, "
-                            + "heizstab_json = EXCLUDED.heizstab_json",
+                            + "heizstab_json = EXCLUDED.heizstab_json, reason_until = EXCLUDED.reason_until",
                     r.entityId(), siteId, deviceId, r.state(), r.reasonCode(), r.actualKw(),
                     r.confirmed(), r.runtimeSecondsToday(), r.startsToday(),
                     Timestamp.from(reportedAt), r.stufe() == null ? null : r.stufe().alsJson(),
-                    r.stufeEnergieKwhHeute(), r.reglerJson());
+                    r.stufeEnergieKwhHeute(), r.reglerJson(),
+                    r.reasonUntil() == null ? null : Timestamp.from(r.reasonUntil()));
         }
         return previous;
     }
@@ -159,7 +169,8 @@ public class ConsumerRuntimeStatusRepository {
 
     /** Heizstab V1: the stage, the controller verdict and the assumed energy of the day. */
     private static final String STUFE_SPALTEN =
-            "stufe_json::text AS stufe_json, heizstab_json::text AS heizstab_json, stufe_energie_kwh_heute";
+            "stufe_json::text AS stufe_json, heizstab_json::text AS heizstab_json, stufe_energie_kwh_heute, "
+                    + "reason_until";
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
             new com.fasterxml.jackson.databind.ObjectMapper();
@@ -187,7 +198,8 @@ public class ConsumerRuntimeStatusRepository {
                     (Integer) rs.getObject("starts_today"),
                     rs.getTimestamp("reported_at").toInstant(),
                     json(rs.getString("stufe_json")), json(rs.getString("heizstab_json")),
-                    rs.getBigDecimal("stufe_energie_kwh_heute"));
+                    rs.getBigDecimal("stufe_energie_kwh_heute"),
+                    rs.getTimestamp("reason_until") == null ? null : rs.getTimestamp("reason_until").toInstant());
         } catch (java.sql.SQLException e) {
             throw new IllegalStateException(e);
         }
