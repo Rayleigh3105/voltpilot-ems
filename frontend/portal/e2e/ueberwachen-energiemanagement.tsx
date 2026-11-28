@@ -53,6 +53,11 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       headers: { 'Content-Type': 'text/csv;charset=UTF-8', 'Content-Disposition': 'attachment; filename=meldungen-verlauf.csv' },
     });
   }
+  // Kunden-Alarmierung P4: der Zustellstand je Meldung und die Ausfälle - hier kein eigener Fall, nur still leer.
+  if (url.pathname === '/api/v1/meldungen/zustellung') return Response.json({ zustellungen: [] });
+  if (url.pathname === '/api/v1/zustellwege/ausfaelle') return Response.json([]);
+  if (url.pathname === '/api/v1/zustellwege/push') return Response.json([]);
+  if (url.pathname === '/api/v1/zustellwege/email') return new Response(null, { status: 204 });
   return echtesFetch(input, init);
 };
 

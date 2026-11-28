@@ -38,6 +38,9 @@ for (const breite of [375, 1440] as const) {
       await expect(karte.locator('dt').first()).toHaveText('Von Ihrer Box gemeldet');
       if (fall.angezeigt) {
         await expect(karte.locator('dd').nth(1)).toHaveText(fall.angezeigt);
+        // Die Einblendung des Dialogs (scale/translateY) erst zu Ende laufen lassen - mitten in der
+        // Animation verschiebt der Transform die gemessenen Koordinaten (Befund: flockiger Lauf).
+        await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
         // Begriff ÜBER dem Wert, nie daneben geklebt.
         const dt = await karte.locator('dt').nth(1).boundingBox();
         const dd = await karte.locator('dd').nth(1).boundingBox();

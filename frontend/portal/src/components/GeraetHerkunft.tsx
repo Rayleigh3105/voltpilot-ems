@@ -98,7 +98,9 @@ export function GeraetHerkunft({
       komponenten.map((k) =>
         api
           .komponenteMesskanaele(siteId, k.entityId)
-          .then((l): KanalListe => ({ entityId: k.entityId, label: k.label, kanaele: l.messkanaele }))
+          // Eine fehlende oder unerwartet geformte Antwort (eine Komponente ohne Messkanäle, ein Abruf, der nicht
+          // zusammenpasst) bleibt eine leere Liste - nie ein abgestürzter Kasten über der ganzen Geräteseite.
+          .then((l): KanalListe => ({ entityId: k.entityId, label: k.label, kanaele: Array.isArray(l?.messkanaele) ? l.messkanaele : [] }))
           .catch(() => null),
       ),
     ).then((listen) => aktiv && setKanaele(listen.filter((l): l is KanalListe => l !== null)));

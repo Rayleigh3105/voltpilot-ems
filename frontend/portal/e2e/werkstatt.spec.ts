@@ -137,7 +137,9 @@ for (const breite of [1440, 390, 375]) {
     await expect(page.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'laeuft');
     await expect(page.getByTestId('wsb-schritte').locator('[data-phase]')).toHaveCount(6);
     await expect(page.getByTestId('wsb-restzeit')).toContainText(/Noch ca\. \d+ Minuten/);
-    await expect(page.getByTestId('wsb-jetzt')).toContainText('Schritt 11 von 17');
+    // Direktvermarktung Stufe 5 (#2022) fügte den Schritt „direktvermarktung" in die Phase „Einrichten" ein -
+    // „einloesen" rückt dadurch von 11 auf 12, die Gesamtzahl von 17 auf 18.
+    await expect(page.getByTestId('wsb-jetzt')).toContainText('Schritt 12 von 18');
     await expect(page.getByTestId('wsb-schritte').locator('[data-schritt="openwrt"]')).toContainText('Prüfsumme auf der Box = Freigabe');
     if (breite > 760) {
       await expect(page.getByTestId('wsb-software')).toContainText('vorher: GL-Firmware 4.3.17');

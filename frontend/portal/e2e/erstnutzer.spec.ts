@@ -5,12 +5,14 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Der Erstnutzer-Fluss nach Konzept a1 (Paket 0-3), bei 390 und 1440 px, gegen eine per `page.route`
  * verdrahtete Cloud: Registrierung mit der einen Frage (D2) → „Wo steht Ihre Anlage?“ (die Adresse
- * einmal, Vorschläge über `GET /api/v1/orte/suche`) → Box mit Kennung (B4) → „Das hat Ihre Box gefunden“
- * (bestätigen, F17) → Cockpit, wie es ist, mit der einmaligen Karte „Ihre Anlage ist live.“ (D7).
+ * einmal, Vorschläge über `GET /api/v1/orte/suche`) → Box mit Kennung (B4) → „So geht es weiter“ (die
+ * Solar-/Speicher-Zahlen von Hand, F17) → Cockpit, wie es ist, mit der einmaligen Karte „Ihre Anlage ist
+ * live.“ (D7).
  *
- * B1: 30 s nach „Ihre Anlage ist verbunden“ stand „Noch keine Anlage“ - die Geräte-Abfrage fand die
- * verbundene Box und hängte den Assistenten aus. Hier läuft die Uhr der Seite 35 s weiter, während die
- * Abfrage die Box schon kennt: der Assistent bleibt, bis der Kunde ihn beendet.
+ * Seit „Box verbinden“ Runde 1 (#1811, E5) sucht eine neue Box nicht mehr von selbst im Assistenten - das
+ * Suchen und Übernehmen gemeldeter Geräte lebt seither im Cockpit. Was die Box im Hintergrund meldet,
+ * ändert Schritt 3 darum nicht mehr; die Uhr der Seite läuft hier trotzdem 35 s weiter, um genau das zu
+ * zeigen (der Assistent bleibt unverändert stehen, bis der Kunde ihn beendet).
  * F9: ein Neuladen mitten in Schritt 3 führt an denselben Schritt zurück, mit denselben Eingaben.
  *
  * Mit `ERSTNUTZER_BILDER=<Ordner>` legt der Lauf je Schritt ein Bild ab.
@@ -164,6 +166,11 @@ async function verdrahte(page: Page, cloud: Cloud) {
   await page.route(`**/api/v1/sites/${ANLAGE.id}/telemetry**`, (r) =>
     json(r, cloud.telemetrie ? [{ ts: new Date().toISOString(), deviceId: 'box', metric: 'pv_power_kw', value: 3.2 }] : []),
   );
+  // Box verbinden Runde 1 (#1811): Schritt 3 bucht die von Hand eingetragenen kWp selbst, nicht mehr über `adopt`.
+  await page.route(`**/api/v1/sites/${ANLAGE.id}/pv`, (r) => {
+    cloud.posts.push({ pfad: 'pv', body: r.request().postDataJSON(), kennung: null });
+    return json(r, []);
+  });
   await page.route(`**/api/v1/sites/${ANLAGE.id}/entities`, (r) =>
     json(r, { registry: null, entities: [], localSetup: cloud.gemeldet, staleOnDevice: [] }),
   );
@@ -293,26 +300,26 @@ for (const breite of BREITEN) {
     expect(cloud.posts.at(-1)).toMatchObject({ pfad: 'claim', body: { externalRef: 'edge-k7m2xq3' } });
     expect(cloud.posts.at(-1)?.kennung).toMatch(/:box:edge-k7m2xq3$/);
     await ohneQuerlauf(page, breite, 'erst-6-box-sucht');
+    // Box verbinden Runde 1 (#1811, E5): eine neue Box sucht nicht von selbst, und das Suchen/Übernehmen
+    // lebt seit hier im Cockpit, nicht mehr im Assistenten - was die Box im Hintergrund meldet, lässt
+    // diesen Schritt unverändert (kein Warten, kein „Das hat Ihre Box gefunden“ mehr).
     cloud.gemeldet = [FRONIUS];
-    // B1: die Geräte-Abfrage (alle 30 s) kennt die Box schon - 35 s später steht der Assistent noch.
     await page.clock.runFor(35_000);
-    await expect(page.getByRole('heading', { name: 'Das hat Ihre Box gefunden' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'So geht es weiter' })).toBeVisible();
     await expect(page.getByText('Noch keine Anlage')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Willkommen bei VoltPilot' })).toBeVisible();
-    await expect(page.getByText('Fronius Symo 10.0')).toBeVisible();
     await page.getByLabel('Leistung der Solarmodule (kWp)').fill('9,8');
-    await ohneQuerlauf(page, breite, 'erst-7-gefunden');
+    await ohneQuerlauf(page, breite, 'erst-7-eingabe');
 
     // F9: Neuladen mitten im Schritt - zurück am selben Schritt, mit derselben Zahl.
     await page.reload();
     await expect(page.getByText('Ihre Eingaben sind wiederhergestellt.')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole('heading', { name: 'Das hat Ihre Box gefunden' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'So geht es weiter' })).toBeVisible();
     await expect(page.getByLabel('Leistung der Solarmodule (kWp)')).toHaveValue('9,8');
     await ohneQuerlauf(page, breite, 'erst-8-wiederhergestellt');
-    await page.getByRole('button', { name: 'Stimmt so', exact: true }).click();
-    // Annahme: die Übernahme bucht die kWp EINMAL, am gemeldeten Erzeuger.
-    await expect.poll(() => cloud.posts.at(-1)?.pfad).toBe('adopt');
-    expect(cloud.posts.at(-1)?.body).toMatchObject({ sourceId: 'pv-1', entityType: 'producer', capacityKwp: 9.8 });
+    await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+    // Die kWp werden von Hand gebucht (`PUT .../pv`), kein gemeldeter Erzeuger mehr beteiligt.
+    await expect.poll(() => cloud.posts.at(-1)?.pfad).toBe('pv');
+    expect(cloud.posts.at(-1)?.body).toMatchObject({ capacityKwp: 9.8 });
 
     // 4 · Ende im Cockpit, wie es ist - kein Vollbild-Assistent mehr; mit den ersten Werten die Karte darüber.
     await expect(page.getByRole('heading', { name: 'Willkommen bei VoltPilot' })).toHaveCount(0);
