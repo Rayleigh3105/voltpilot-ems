@@ -434,10 +434,15 @@ export function AppShell({
             aktiv: eintragAktiv(kachel),
             oeffnen: () => ebenen?.onOpen(kachel.ziel),
           }));
-  /** Hält die Seitenleiste/Telefon-Leiste den Platz des zweiten Bereichs frei, bis die Oberfläche der Anlage da ist? */
+  /**
+   * Hält die Seitenleiste/Telefon-Leiste den Platz des zweiten Bereichs frei, bis die Oberfläche der Anlage da ist?
+   * `prognose` (ebenenNav.ts, Stand ohne Oberfläche) FÜLLT diesen Platz schon als Übergangs-Eintrag derselben Höhe -
+   * ein zusätzlicher Platzhalter daneben liess „Verlauf" beim Eintreffen der echten Oberfläche um eine Zeile nach
+   * OBEN rücken (Befund vom 04.11.2026), nicht nach unten.
+   */
   const platzFuerBereich =
     !!anlage?.bereicheLaden &&
-    !anlage.sidebar.bereiche.some((b) => b.key === 'fahrplan' || b.key === 'ladevorgaenge');
+    !anlage.sidebar.bereiche.some((b) => b.key === 'fahrplan' || b.key === 'ladevorgaenge' || b.key === 'prognose');
   const barName = anlage
     ? `Bereiche der Anlage ${anlage.siteName ?? ''}`.trim()
     : aufPlattformRaum

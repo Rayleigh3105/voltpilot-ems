@@ -174,7 +174,7 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     await page.goto('/e2e/meine-anlage.html?fall=ahrenberg');
 
     const karte = page.locator('#technik-anlage');
-    await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    await karte.getByRole('button', { name: /^Standort .*bearbeiten$/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Standort' });
     const adresse = dialog.getByLabel('Adresse');
     await adresse.fill('Hauptplatz 1 wien');
@@ -216,7 +216,7 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     // Seite nötig - derselbe `useAnlageStandort`-Hook liest live neu. Ab zwei Standorten (der
     // bisherige, jetzt nur noch mit Halle 1, UND der neue) trägt die Zeile zusätzlich den
     // Standort-Namen voran (§6.2, E3) - "Hauptplatz 1, Wien" reicht als Beleg.
-    const zeile = karte.getByRole('button', { name: /^Standort bearbeiten:.*Hauptplatz 1, Wien/ });
+    const zeile = karte.getByRole('button', { name: /^Standort.*Hauptplatz 1, Wien bearbeiten$/ });
     await expect(zeile).toBeVisible();
     await expect(karte.getByRole('button', { name: /Gewerbering 7/ })).toHaveCount(0);
     await foto(page, 'umzug-4-standort-zeile-neue-adresse');
@@ -253,7 +253,7 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     await page.goto('/e2e/meine-anlage.html?fall=ahrenberg');
 
     const karte = page.locator('#technik-anlage');
-    await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    await karte.getByRole('button', { name: /^Standort .*bearbeiten$/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Standort' });
     await dialog.getByLabel('Adresse').fill('Hauptplatz 1 wien');
     await page.getByRole('option', { name: /Hauptplatz 1, Wien/ }).click();
@@ -270,7 +270,7 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     await page.goto('/e2e/meine-anlage.html?fall=ahrenberg');
 
     const karte = page.locator('#technik-anlage');
-    await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    await karte.getByRole('button', { name: /^Standort .*bearbeiten$/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Standort' });
     await dialog.getByLabel('Adresse').fill('Hauptplatz 1 wien');
     await page.getByRole('option', { name: /Hauptplatz 1, Wien/ }).click();
@@ -311,7 +311,7 @@ test.describe('Umzug (vp-standort-konzept §7, E1 = B)', () => {
     }
 
     const karte = page.locator('#technik-anlage');
-    await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    await karte.getByRole('button', { name: /^Standort .*bearbeiten$/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Standort' });
     await dialog.getByLabel('Adresse').fill('Hauptplatz 1 wien');
     await page.getByRole('option', { name: /Hauptplatz 1, Wien/ }).click();

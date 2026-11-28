@@ -72,7 +72,8 @@ test('plant, health, tenant and account controls stay independently reachable', 
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     await page.getByRole('option', { name: 'Werkstatt am Bach', exact: true }).click();
     await expect(title).toHaveText('Werkstatt am Bach');
-    await page.getByRole('button', { name: /Zustand der Anlage:/ }).click();
+    // WCAG 2.5.3: der Name beginnt mit dem sichtbaren Zustandswort, „Zustand der Anlage" folgt ohne Doppelpunkt.
+    await page.getByRole('button', { name: /Zustand der Anlage/ }).click();
     await expect(page.getByRole('dialog', { name: 'Zustand der Anlage' })).toBeVisible();
     await page.keyboard.press('Escape');
     // Scheibe S1 (E3 = A): die Suche ersetzt den Mandanten-Umschalter.
