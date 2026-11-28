@@ -110,7 +110,7 @@ for (const breite of [375, 1440] as const) {
       const fehler = await oeffne(page, breite, 'gehalten');
       const l1 = page.getByTestId('heizstab-karte').getByTestId('heizstab-phase-L1');
       await expect(l1).toContainText('bleibt an …');
-      await expect(l1).toContainText('Mindestlaufzeit des Geräts hält - schaltet danach aus');
+      await expect(l1).toContainText('Mindestlaufzeit des Geräts hält - schaltet um 11:55 aus');
       await expect(l1).not.toContainText('noch nicht bestätigt');
       await ohneUeberlauf(page);
       await bild(page, 'k-gehalten', breite);

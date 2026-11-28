@@ -286,9 +286,29 @@ func (s *Server) Start(ctx context.Context) error {
 	if !s.opts.Enabled {
 		return nil
 	}
+	// Port 0 (Tests, Entwicklung): ein freier Port wird gesucht, freigegeben und
+	// erst von der Bibliothek wieder gebunden - dazwischen kann ihn ein anderer
+	// Prozess nehmen (unter Last im Volllauf gesehen, 28.11.2026: "Port belegt?").
+	// Dann mit einem frischen Port erneut, höchstens dreimal. Ein fest
+	// eingestellter Port bleibt bei genau einem Versuch und seinem ehrlichen Fehler.
+	versuche := 1
+	if s.opts.Port == 0 {
+		versuche = 3
+	}
+	var err error
+	for i := 0; i < versuche; i++ {
+		if err = s.startOnce(ctx); err == nil || ctx.Err() != nil {
+			break
+		}
+	}
+	return err
+}
+
+// startOnce is one attempt of Start on the configured port, or a fresh free one.
+func (s *Server) startOnce(ctx context.Context) error {
 	port := s.opts.Port
 	if port == 0 {
-		p, err := freePort()
+		p, err := waehleFreienPort()
 		if err != nil {
 			return fmt.Errorf("kein freier Port für den Ladepunkt-Server: %w", err)
 		}
@@ -611,6 +631,10 @@ func (s *Server) persistLocked() error {
 // when Port is 0 (tests): the library binds ":port" itself and exposes the
 // resolved address only through an unsynchronised field, so we choose the port
 // up front instead of reading it back.
+// waehleFreienPort is the port choice of Start in port-0 mode; a test swaps it
+// to provoke the race between choosing and binding.
+var waehleFreienPort = freePort
+
 func freePort() (int, error) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

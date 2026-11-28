@@ -390,6 +390,9 @@ class ConsumerApiTest {
                     .contains("\"min_on_seconds\":120")
                     .contains("\"min_off_seconds\":180")
                     .contains("\"max_starts_per_day\":8");
+            // vp-schalten-3s, Captain-Entscheid C: ein Heizstab ist eine einfache Last - die Cloud erklärt, dass
+            // ein Handeingriff die Mindestzeiten überspringt (HandeingriffSchutzzeiten).
+            assertThat(limitsIm(push, id).path("manual_skips_min_times").asBoolean(false)).isTrue();
 
             // Honest empty state before any heartbeat: empty list, 204 single.
             ResponseEntity<List<Map<String, Object>>> empty = rest.exchange(
@@ -414,6 +417,7 @@ class ConsumerApiTest {
                     + "\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + device + "\","
                     + "\"ts\":\"2026-08-10T12:00:00Z\",\"consumers\":{"
                     + "\"" + id + "\":{\"state\":\"waiting\",\"reason_code\":\"guard_min_off\","
+                    + "\"reason_until\":\"2026-08-10T12:03:00Z\","
                     + "\"requirement_progress\":{\"runtime_seconds_today\":600,\"starts_today\":2}},"
                     + "\"99999999-0000-0000-0000-000000000009\":{\"state\":\"waiting\"}}}";
             listener.handle(topic, hb.getBytes(StandardCharsets.UTF_8));
@@ -426,18 +430,22 @@ class ConsumerApiTest {
             assertThat(st.get("entityId")).isEqualTo(id);
             assertThat(st.get("state")).isEqualTo("waiting");
             assertThat(st.get("reasonCode")).isEqualTo("guard_min_off");
+            // vp-schalten-3s: wann die Mindestpause endet - das Portal sagt damit, ab wann geschaltet wird.
+            assertThat(st.get("reasonUntil")).isEqualTo("2026-08-10T12:03:00Z");
             assertThat(st.get("confirmed")).isNull(); // tri-state: no evidence
             assertThat(st.get("runtimeSecondsToday")).isEqualTo(600);
             assertThat(st.get("startsToday")).isEqualTo(2);
 
             // Wholesale replace: the next heartbeat's truth wins outright.
-            String hb2 = hb.replace("\"state\":\"waiting\",\"reason_code\":\"guard_min_off\",",
+            String hb2 = hb.replace("\"state\":\"waiting\",\"reason_code\":\"guard_min_off\","
+                    + "\"reason_until\":\"2026-08-10T12:03:00Z\",",
                     "\"state\":\"running_optimized\",\"actual_kw\":2.9,\"confirmed\":true,");
             listener.handle(topic, hb2.getBytes(StandardCharsets.UTF_8));
             Map<String, Object> st2 = getMap(
                     "/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id + "/status", tok);
             assertThat(st2.get("state")).isEqualTo("running_optimized");
             assertThat(st2.get("reasonCode")).isNull();
+            assertThat(st2).doesNotContainKey("reasonUntil");
             assertThat(st2.get("actualKw")).isEqualTo(2.9);
             assertThat(st2.get("confirmed")).isEqualTo(Boolean.TRUE);
 
@@ -445,6 +453,43 @@ class ConsumerApiTest {
             assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/consumer-status"),
                     HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))),
                     String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            delete(tok, id);
+        }
+    }
+
+    /** guards.limits einer Entität aus einem Registry-Push. */
+    private static com.fasterxml.jackson.databind.JsonNode limitsIm(String push, String entityId) {
+        try {
+            for (com.fasterxml.jackson.databind.JsonNode e : new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(push).path("entities")) {
+                if (entityId.equals(e.path("entity_id").asText())) {
+                    return e.path("guards").path("limits");
+                }
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        throw new AssertionError("Entität " + entityId + " fehlt im Push");
+    }
+
+    /**
+     * vp-schalten-3s, Captain-Entscheid C - die andere Seite: an einem Gerät mit Motor oder Verdichter (Pumpe,
+     * Wärmepumpe) halten die Mindestzeiten auch einen Handeingriff; der Push trägt keine Erklärung.
+     */
+    @Test
+    void anEinerPumpeHaltenDieMindestzeitenAuchVonHand() {
+        String tok = token("demo", "demo");
+        Map<String, Object> c = create(tok, Map.of(
+                "type", "pump", "name", "Zirkulationspumpe", "ratedPowerKw", 0.4, "controlKind", "on_off",
+                "minOnSeconds", 300, "minOffSeconds", 300));
+        String id = (String) c.get("id");
+        try {
+            String push = new String(RecordingPublisherConfig.PUSHES
+                    .get(RecordingPublisherConfig.PUSHES.size() - 1), StandardCharsets.UTF_8);
+            com.fasterxml.jackson.databind.JsonNode limits = limitsIm(push, id);
+            assertThat(limits.path("min_on_seconds").asInt()).isEqualTo(300);
+            assertThat(limits.has("manual_skips_min_times")).isFalse();
         } finally {
             delete(tok, id);
         }

@@ -38,6 +38,17 @@ describe('consumerStatusLine', () => {
     expect(line.reason).toBe('');
   });
 
+  // vp-schalten-3s (Captain-Entscheid C): hält eine Schutzregel ein empfindliches Gerät, sagt die Zeile, bis wann.
+  it('nennt das Ende einer Mindestzeit, wenn die Box es meldet', () => {
+    expect(consumerStatusLine(entry({ state: 'waiting', reasonCode: 'guard_min_off',
+      reasonUntil: '2026-11-28T13:51:00Z' })).reason).toBe('Mindestpause des Geräts bis 14:51');
+    // Ohne Haltegrund oder mit unlesbarem Zeitpunkt wird keine Uhrzeit erfunden.
+    expect(consumerStatusLine(entry({ state: 'waiting', reasonCode: 'price_below_threshold',
+      reasonUntil: '2026-11-28T13:51:00Z' })).reason).toBe('Günstiger Strompreis');
+    expect(consumerStatusLine(entry({ state: 'waiting', reasonCode: 'guard_min_on',
+      reasonUntil: 'kaputt' })).reason).toBe('Mindestlaufzeit des Geräts hält');
+  });
+
   it('an unknown reason word maps to no reason text', () => {
     const line = consumerStatusLine(entry({ reasonCode: 'weil_halt' }));
     expect(line.reason).toBe('');

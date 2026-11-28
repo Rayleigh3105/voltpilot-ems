@@ -607,7 +607,10 @@ func (a *Arbiter) applyDecision(st *entState, now time.Time, holder *Desired, ct
 	granted, stages := a.clampFor(st, wish, now, r)
 	// The consumer cycle guard runs LAST (its holds are temporal; the value
 	// clamps above already bounded the level it may hold).
-	granted, cycleStages, hold := applyCycle(st, now, granted)
+	// A person's own tap on a load the cloud declared simple skips
+	// Mindestlauf/Mindestpause (vp-schalten-3s, Captain-Entscheid C).
+	manual := holder.manualIntervention() && st.entity.ManualSkipsMinTimes()
+	granted, cycleStages, hold := applyCycle(st, now, granted, manual)
 	stages = append(stages, cycleStages...)
 	st.lastCycle = hold
 	granted, changeReasons := applyChange(st, now, granted)
@@ -698,7 +701,7 @@ func (a *Arbiter) fallToFailsafe(st *entState, now time.Time, subject *SourceRef
 		if publish {
 			var cycleStages []guards.ClampStage
 			var hold *guards.CycleHold
-			granted, cycleStages, hold = applyCycle(st, now, granted)
+			granted, cycleStages, hold = applyCycle(st, now, granted, false)
 			st.lastCycle = hold
 			for _, s := range cycleStages {
 				reasons = append(reasons, Reason{Stage: s.Stage,
@@ -818,7 +821,10 @@ func changeFingerprint(fp string, holds []guards.ChangeHold) string {
 // the ramped level; the command SHAPE is preserved (an on_off wish stays an
 // on_off command, a setpoint wish a setpoint) so the driver semantics never
 // change under a hold.
-func applyCycle(st *entState, now time.Time, granted entities.Commands) (entities.Commands, []guards.ClampStage, *guards.CycleHold) {
+//
+// manual: the holder is a person's own tap on a load the cloud declared simple
+// (entities.ManualSkipsMinTimes) - Mindestlauf/Mindestpause do not hold it.
+func applyCycle(st *entState, now time.Time, granted entities.Commands, manual bool) (entities.Commands, []guards.ClampStage, *guards.CycleHold) {
 	if st.cycle == nil {
 		return granted, nil, nil
 	}
@@ -837,7 +843,11 @@ func applyCycle(st *entState, now time.Time, granted entities.Commands) (entitie
 	} else {
 		wishOn = wishKw > onKwThreshold
 	}
-	on, kw, hold := st.cycle.Apply(now, wishOn, wishKw)
+	apply := st.cycle.Apply
+	if manual {
+		apply = st.cycle.ApplyManual
+	}
+	on, kw, hold := apply(now, wishOn, wishKw)
 
 	out := granted
 	if granted.OnOff != nil {

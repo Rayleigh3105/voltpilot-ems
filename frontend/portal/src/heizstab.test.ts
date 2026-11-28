@@ -158,6 +158,9 @@ describe('Steuerung wie in Home Assistant (D1-A, D2-A, D3-A)', () => {
     const an = phasenZeilen(pro3, { commanded: 0, confirmed: 0, outputs_on: [] }, [1]);
     expect(phasenAnsicht(an[1], null, 'guard_min_off')).toEqual({ wort: 'wartet …',
       unter: 'Mindestpause des Geräts - schaltet danach ein', stellung: 'warte-an' });
+    // vp-schalten-3s (Captain-Entscheid C): meldet die Box das Ende, steht die Uhrzeit da.
+    expect(phasenAnsicht(aus[0], null, 'guard_min_on', '2026-11-28T13:51:00Z').unter)
+      .toBe('Mindestlaufzeit des Geräts hält - schaltet um 14:51 aus');
     // Ein Grund, der nichts hält, ändert nichts am Warten.
     expect(phasenAnsicht(aus[0], null, 'price_below_threshold').unter).toBe('gesendet, noch nicht bestätigt');
   });

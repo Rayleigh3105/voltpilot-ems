@@ -54,7 +54,7 @@ type traceRig struct {
 	rec *consumerHeartbeatRecorder
 }
 
-func newTraceRig(t *testing.T, id string, minOff *float64) traceRig {
+func newTraceRig(t *testing.T, id string, minOff *float64, mehr ...func(*entities.GuardLimits)) traceRig {
 	t.Helper()
 	dev := newPro3Stage()
 	srv := httptest.NewServer(dev.handler())
@@ -63,6 +63,9 @@ func newTraceRig(t *testing.T, id string, minOff *float64) traceRig {
 	reg := stageRodRegistry(id, host, port)
 	if minOff != nil {
 		reg.Entities[0].Guards.Limits.MinOffSeconds = minOff
+	}
+	for _, m := range mehr {
+		m(&reg.Entities[0].Guards.Limits)
 	}
 	arb := minimalArbiter(reg)
 	bus, readbacks, done := stageBus(t, id)
@@ -232,4 +235,65 @@ func TestEinHandeingriffOhneEtwasZuSchreibenAntwortetSofort(t *testing.T) {
 	if d := am.Sub(click); d > 1500*time.Millisecond {
 		t.Fatalf("die Antwort kam erst nach %v", d)
 	}
+}
+
+// vp-schalten-3s, Captain-Entscheid C (28.11.2026): die Cloud erklärt den
+// Heizstab zur einfachen Last (manual_skips_min_times) - ein Handeingriff
+// schaltet dann in BEIDE Richtungen sofort, obwohl Mindestlauf und
+// Mindestpause je 300 s gelten. Ohne die Erklärung (etwa eine Wärmepumpe)
+// hält die Mindestlaufzeit, und der Herzschlag nennt sofort ihr Ende.
+func TestEinfacheLastSchaltetVonHandSofortUndEmpfindlicheNenntDasEnde(t *testing.T) {
+	zeiten := func(l *entities.GuardLimits) {
+		v := 300.0
+		l.MinOnSeconds, l.MinOffSeconds = &v, &v
+	}
+	ja := true
+	einfach := func(l *entities.GuardLimits) { l.ManualSkipsMinTimes = &ja }
+
+	t.Run("einfache Last", func(t *testing.T) {
+		id := "rod-hand-sofort"
+		r := newTraceRig(t, id, nil, zeiten, einfach)
+		r.a.onDesiredDownlink(manualOnOffOverride(id, true))
+		waitFor(t, 2*time.Second, "an", func() bool { on, _ := r.dev.snapshot(); return on[0] && on[1] && on[2] })
+		_, vorher := r.rec.snapshot()
+		klick := time.Now()
+		r.a.onDesiredDownlink(manualOnOffOverride(id, false))
+		var am time.Time
+		waitFor(t, 3*time.Second, "der Herzschlag bestätigt aus", func() bool {
+			at, sent := r.rec.snapshot()
+			am = confirmedStageAt(at, sent, id, 0, len(vorher))
+			return !am.IsZero()
+		})
+		if on, _ := r.dev.snapshot(); on[0] || on[1] || on[2] {
+			t.Fatalf("der Stab muss aus sein: %v", on)
+		}
+		if d := am.Sub(klick); d > 1500*time.Millisecond {
+			t.Fatalf("Hand aus bis bestätigt: %v", d)
+		}
+		// Und gleich wieder an - die Mindestpause hält die Hand nicht.
+		r.a.onDesiredDownlink(manualOnOffOverride(id, true))
+		waitFor(t, 2*time.Second, "wieder an", func() bool { on, _ := r.dev.snapshot(); return on[0] })
+	})
+
+	t.Run("empfindliches Gerät", func(t *testing.T) {
+		id := "rod-hand-gehalten"
+		r := newTraceRig(t, id, nil, zeiten)
+		r.a.onDesiredDownlink(manualOnOffOverride(id, true))
+		waitFor(t, 2*time.Second, "an", func() bool { on, _ := r.dev.snapshot(); return on[0] })
+		klick := time.Now()
+		r.a.onDesiredDownlink(manualOnOffOverride(id, false))
+		waitFor(t, 2*time.Second, "der Herzschlag nennt die Mindestlaufzeit mit Ende", func() bool {
+			_, sent := r.rec.snapshot()
+			for _, s := range sent {
+				if e, ok := s[id]; ok && e.ReasonCode == "guard_min_on" && e.ReasonUntil != "" {
+					bis, err := time.Parse(time.RFC3339, e.ReasonUntil)
+					return err == nil && bis.After(klick.Add(290*time.Second)) && bis.Before(klick.Add(301*time.Second))
+				}
+			}
+			return false
+		})
+		if on, _ := r.dev.snapshot(); !on[0] {
+			t.Fatal("ohne Erklärung der Cloud hält die Mindestlaufzeit den Stab an")
+		}
+	})
 }

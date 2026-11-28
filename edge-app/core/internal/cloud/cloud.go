@@ -1126,6 +1126,10 @@ type ConsumerRuntime struct {
 	// device started the flexible task itself so the deadline holds).
 	// Empty = no notable reason.
 	ReasonCode string `json:"reason_code,omitempty"`
+	// ReasonUntil is when a Mindestlauf/Mindestpause hold ends by itself
+	// (RFC 3339), so the portal can say "schaltet um HH:MM" (vp-schalten-3s).
+	// Absent without such a hold or without a known end.
+	ReasonUntil string `json:"reason_until,omitempty"`
 	// ActualKw is the entity's own MEASURED power (fresh local telemetry);
 	// absent when the device never/staleley reports - never a fabricated 0.
 	ActualKw *float64 `json:"actual_kw,omitempty"`

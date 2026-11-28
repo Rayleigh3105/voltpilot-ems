@@ -125,6 +125,10 @@ func (a *Agent) consumersSummary() cloud.ConsumersSummary {
 			entry.State = consumerStateWaiting
 		}
 
+		if hold != nil && !hold.Until.IsZero() {
+			entry.ReasonUntil = hold.Until.UTC().Format(time.RFC3339)
+		}
+
 		// Readback evidence: confirmed is TRI-STATE (nil = no evidence, never
 		// claimed). A mismatch is named unless a cycle hold already explains
 		// the deviation.

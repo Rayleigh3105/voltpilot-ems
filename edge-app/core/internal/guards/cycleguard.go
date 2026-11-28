@@ -64,6 +64,10 @@ type CycleLimits struct {
 type CycleHold struct {
 	Code string
 	Text string
+	// Until is when the hold ends by itself (Mindestlauf/Mindestpause: the
+	// last transition plus the limit), zero when no end is known (start
+	// budget, ramp). The status surfaces say "schaltet um HH:MM" from it.
+	Until time.Time
 }
 
 // CycleState is the guard's queryable snapshot (feeds the heartbeat's
@@ -141,6 +145,21 @@ func sanitizeCycleLimits(l CycleLimits) CycleLimits {
 // allowed state, the allowed level (NaN in for NaN stays NaN out) and the
 // active hold (nil = the wish passed).
 func (g *CycleGuard) Apply(now time.Time, wishOn bool, wishKw float64) (bool, float64, *CycleHold) {
+	return g.apply(now, wishOn, wishKw, false)
+}
+
+// ApplyManual is Apply for a person's own tap on a simple load (vp-schalten-3s,
+// Captain-Entscheid C 28.11.2026): Mindestlauf and Mindestpause do not hold it -
+// it switches at once in BOTH directions. Everything else holds as before: the
+// per-day start budget, the ramp, and the transition is recorded, so the
+// automation afterwards still waits out the times from THIS switch. Whether an
+// entity is such a simple load is declared by the cloud
+// (guards.limits.manual_skips_min_times), never guessed here.
+func (g *CycleGuard) ApplyManual(now time.Time, wishOn bool, wishKw float64) (bool, float64, *CycleHold) {
+	return g.apply(now, wishOn, wishKw, true)
+}
+
+func (g *CycleGuard) apply(now time.Time, wishOn bool, wishKw float64, skipMinTimes bool) (bool, float64, *CycleHold) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.accrue(now)
@@ -171,9 +190,10 @@ func (g *CycleGuard) Apply(now time.Time, wishOn bool, wishKw float64) (bool, fl
 
 	switch {
 	case wishOn && !g.on:
-		if g.limits.MinOff > 0 && !g.lastTransition.IsZero() &&
+		if !skipMinTimes && g.limits.MinOff > 0 && !g.lastTransition.IsZero() &&
 			now.Sub(g.lastTransition) < g.limits.MinOff {
-			hold := &CycleHold{Code: CycleReasonMinOff, Text: "wartet - Mindestpause"}
+			hold := &CycleHold{Code: CycleReasonMinOff, Text: "wartet - Mindestpause",
+				Until: g.lastTransition.Add(g.limits.MinOff)}
 			g.lastHold = hold
 			return false, offKw(wishKw), hold
 		}
@@ -189,9 +209,10 @@ func (g *CycleGuard) Apply(now time.Time, wishOn bool, wishKw float64) (bool, fl
 		return g.settleOn(now, wishKw)
 
 	case !wishOn && g.on:
-		if g.limits.MinOn > 0 && now.Sub(g.lastTransition) < g.limits.MinOn {
+		if !skipMinTimes && g.limits.MinOn > 0 && now.Sub(g.lastTransition) < g.limits.MinOn {
 			// Hold the PREVIOUSLY GRANTED level - never something new.
-			hold := &CycleHold{Code: CycleReasonMinOn, Text: "läuft - Mindestlaufzeit hält"}
+			hold := &CycleHold{Code: CycleReasonMinOn, Text: "läuft - Mindestlaufzeit hält",
+				Until: g.lastTransition.Add(g.limits.MinOn)}
 			g.lastHold = hold
 			return true, g.lastKw, hold
 		}
