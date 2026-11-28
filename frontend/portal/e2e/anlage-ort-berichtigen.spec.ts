@@ -122,7 +122,7 @@ test.describe('Zeile „Standort“ und ihr Blatt (vp-standort-konzept §6.1)', 
       const aufklappen = karte.locator('button[aria-expanded="false"]');
       if (await aufklappen.count()) await aufklappen.first().click();
 
-      const zeile = karte.getByRole('button', { name: /^Standort bearbeiten: Gewerbering 7, Ahrenberg/ });
+      const zeile = karte.getByRole('button', { name: /^Standort Gewerbering 7, Ahrenberg bearbeiten$/ });
       await expect(zeile).toBeVisible();
       // E3: keine zweite Zeile "Standort auf der Karte" mehr.
       await expect(karte.getByText('Standort auf der Karte')).toHaveCount(0);
@@ -147,7 +147,7 @@ test.describe('Zeile „Standort“ und ihr Blatt (vp-standort-konzept §6.1)', 
     await page.goto('/e2e/meine-anlage.html?fall=ahrenberg');
 
     const karte = page.locator('#technik-anlage');
-    await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    await karte.getByRole('button', { name: /^Standort .*bearbeiten$/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Standort' });
     const adresse = dialog.getByLabel('Adresse');
     await adresse.fill('Lindenweg 45');
@@ -175,7 +175,7 @@ test.describe('Zeile „Standort“ und ihr Blatt (vp-standort-konzept §6.1)', 
     await page.goto('/e2e/meine-anlage.html?fall=ahrenberg');
 
     const karte = page.locator('#technik-anlage');
-    await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    await karte.getByRole('button', { name: /^Standort .*bearbeiten$/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Standort' });
     await expect(dialog.getByText('Strommarkt')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'Details' }).click();
@@ -216,6 +216,6 @@ test.describe('Entwurf ohne Adresse: "Adresse nachtragen" bleibt (Randfall, unve
 
     const karte = page.locator('#technik-anlage');
     await expect(karte.getByRole('button', { name: /^Adresse nachtragen/ })).toBeVisible();
-    await expect(karte.getByRole('button', { name: /^Standort bearbeiten/ })).toHaveCount(0);
+    await expect(karte.getByRole('button', { name: /^Standort .*bearbeiten$/ })).toHaveCount(0);
   });
 });
