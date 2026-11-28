@@ -71,9 +71,12 @@ for (const breite of BREITEN) {
       test.skip(!passend, 'je Breite nur die passende Maschine');
     });
 
-    test('Erzeugung · Netz · Verbrauch, darin nach Namen, mit Anzahl und Summe', async ({ page }) => {
+    test('Erzeugung · Netz, darin nach Namen mit Anzahl und Summe; Verbrauch hängt ungenannt am Netzanschluss', async ({ page }) => {
       const fehler = konsole(page);
       const tabelle = await oeffne(page, breite);
+      // Zählerbaum-Konzept (#1831): ein Unterzähler ohne ausdrücklich gesetztes „haengtAn" hängt seitdem an der
+      // Wurzel (effektiv: hinter dem Netzanschluss) statt flach in einer eigenen „Verbrauch"-Gruppe - UV Halle/UV
+      // Keller stehen darum eine Ebene unter „Netzanschluss", ohne eigenen Gruppenkopf und ohne Summe dort.
       expect(await lesen(tabelle)).toEqual([
         `[Erzeugung, 3 Geräte, zusammen 7,9${NBSP}kW]`,
         'Kaco 1',
@@ -81,10 +84,10 @@ for (const breite of BREITEN) {
         'Kaco 3',
         '[Netz, 1 Gerät]',
         'Netzanschluss',
-        `[Verbrauch, 2 Geräte, zusammen 8,0${NBSP}kW]`,
         'UV Halle',
         'UV Keller',
       ]);
+      await expect(tabelle.locator('[data-aufbau-gruppe="verbrauch"]')).toHaveCount(0);
       // Der Kopf zeigt die Summe sichtbar - am Telefon die einzige Summe der Seite.
       const erzeugung = tabelle.locator('[data-aufbau-gruppe="erzeugung"]');
       await expect(erzeugung).toBeVisible();
@@ -104,9 +107,12 @@ for (const breite of BREITEN) {
       expect(fehler).toEqual([]);
     });
 
-    test('nichts doppelt: Unterzähler und Heizstab in einer Gruppe zeigen keine Summe', async ({ page }) => {
+    test('nichts doppelt: Unterzähler und Heizstab hängen gleichermaßen am Netzanschluss, keine Gruppen-Summe', async ({ page }) => {
       const fehler = konsole(page);
       const tabelle = await oeffne(page, breite, '?heizstab=1');
+      // Wie oben: ohne eigenes „haengtAn" hängen auch der Heizstab und die Unterzähler am Netzanschluss - die
+      // Unterzähler zuerst, dann der Heizstab (dieselbe Reihenfolge wie zuvor in der Gruppe), nie eine Summe im
+      // Kopf, die ihren bereits im Netzanschluss steckenden Wert doppelt zählen würde.
       expect(await lesen(tabelle)).toEqual([
         `[Erzeugung, 3 Geräte, zusammen 7,9${NBSP}kW]`,
         'Kaco 1',
@@ -114,13 +120,13 @@ for (const breite of BREITEN) {
         'Kaco 3',
         '[Netz, 1 Gerät]',
         'Netzanschluss',
-        // Die Unterzähler zuerst, dann der Heizstab - und keine Summe, er kann hinter UV Keller hängen.
-        '[Verbrauch, 3 Geräte]',
         'UV Halle',
         'UV Keller',
         'Heizstab',
       ]);
-      await expect(tabelle.locator('[data-aufbau-gruppe="verbrauch"] .vp-auf-t-wert')).toHaveText('');
+      await expect(tabelle.locator('[data-aufbau-gruppe="verbrauch"]')).toHaveCount(0);
+      // Der Rest des Netzanschlusses (Vertrag §3.1) bleibt die einzige Stelle, die etwas über die Summe sagt.
+      await expect(tabelle.locator('[data-aufbau-rest]')).toBeVisible();
       await ohneQuerlauf(page, breite);
       await foto(page, tabelle, `nachher-gemischt-${breite}`);
       expect(fehler).toEqual([]);
@@ -138,7 +144,8 @@ for (const breite of BREITEN) {
       const fehler = konsole(page);
       const tabelle = await oeffne(page, breite, '?hof=1');
       const koepfe = tabelle.locator('[data-aufbau-gruppe]');
-      await expect(koepfe).toHaveCount(3);
+      // Verbrauch hängt jetzt ungenannt am Netzanschluss (siehe oben) - nur noch Erzeugung und Netz bleiben Köpfe.
+      await expect(koepfe).toHaveCount(2);
       expect(await lesen(tabelle)).toEqual([
         `[Erzeugung, 3 Geräte, zusammen 7,9${NBSP}kW]`,
         'Kaco 1',
@@ -146,7 +153,6 @@ for (const breite of BREITEN) {
         'Kaco 3',
         '[Netz, 1 Gerät]',
         'Netzanschluss',
-        `[Verbrauch, 2 Geräte, zusammen 8,0${NBSP}kW]`,
         'UV Halle',
         'UV Keller',
         // Box „Hof“: eine Gruppe, also nur nach Namen.
@@ -158,10 +164,14 @@ for (const breite of BREITEN) {
       expect(fehler).toEqual([]);
     });
 
-    test('die Suche zeigt den Treffer mit seiner Gruppe, ohne Teilsumme', async ({ page }) => {
+    test('die Suche zeigt den Treffer mit seinem tragenden Netzanschluss, ohne Teilsumme', async ({ page }) => {
       const tabelle = await oeffne(page, breite);
       await page.getByRole('searchbox').or(page.getByLabel('Liste durchsuchen')).first().fill('uv halle');
-      await expect.poll(() => lesen(tabelle)).toEqual(['[Verbrauch, 1 Gerät]', 'UV Halle']);
+      // UV Halle hängt am Netzanschluss (Zählerbaum) - eine Suche, die nur sie trifft, zeigt darum auch ihn (er
+      // trägt den Treffer), aber keinen „Verbrauch"-Kopf (den gibt es für sie nicht mehr) und kein „Rest" (eine
+      // gefilterte Kinderliste wäre eine Teilsumme, Vertrag §3.1).
+      await expect.poll(() => lesen(tabelle)).toEqual(['[Netz, 1 Gerät]', 'Netzanschluss', 'UV Halle']);
+      await expect(tabelle.locator('[data-aufbau-rest]')).toHaveCount(0);
     });
   });
 }

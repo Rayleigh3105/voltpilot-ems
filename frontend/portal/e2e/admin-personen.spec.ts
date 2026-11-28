@@ -103,12 +103,12 @@ for (const breite of [DESKTOP, PHONE]) {
     // Regel wie beim Kundenadministrator: eine Standort-Rolle braucht mindestens einen Standort.
     const speichern = edit.getByRole('button', { name: 'Änderungen speichern' });
     await expect(speichern).toBeDisabled();
-    await expect(edit.getByText('Wählen Sie mindestens einen Standort.')).toBeVisible();
+    await expect(edit.getByText('Wähl mindestens einen Standort.')).toBeVisible();
 
     await edit.getByRole('combobox', { name: 'Standorte' }).click();
     await page.getByRole('option', { name: 'Zuhause', exact: true }).click();
     await page.keyboard.press('Escape');
-    await expect(edit.getByText('Wählen Sie mindestens einen Standort.')).toHaveCount(0);
+    await expect(edit.getByText('Wähl mindestens einen Standort.')).toHaveCount(0);
     await expect(speichern).toBeEnabled();
     await speichern.click();
     await expect(edit).toHaveCount(0);

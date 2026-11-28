@@ -98,6 +98,9 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.pathname === '/api/v1/meldungen/zahl') {
     return Response.json({ ungesehen: 0, dringend: false });
   }
+  // Kunden-Alarmierung P4: Zustellstand je Meldung und Ausfälle - hier kein eigener Fall, nur still leer.
+  if (url.pathname === '/api/v1/meldungen/zustellung') return Response.json({ zustellungen: [] });
+  if (url.pathname === '/api/v1/zustellwege/ausfaelle') return Response.json([]);
   return echtesFetch(input, init);
 };
 

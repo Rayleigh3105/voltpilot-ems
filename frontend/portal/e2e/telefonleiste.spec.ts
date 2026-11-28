@@ -38,7 +38,9 @@ const FAELLE: Fall[] = [
   { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
   { name: 'lindach-heute', query: 'bild=unternehmen&ansicht=lindach', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
   { name: 'anlage-halle1', query: 'bild=unternehmen&ansicht=anlage', leiste: ['Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Cockpit' },
-  { name: 'anlage-lindach-steuerung', query: 'bild=unternehmen&ansicht=steuerung-lindach', leiste: ['Cockpit', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Steuerung' },
+  // Prognose-Konzept S2 (#1823): ohne Fahrplan/Ladevorgänge bekommt jede Anlage trotzdem einen zweiten
+  // Bereich - „Prognose“ ist nie leer, anders als die damals noch leere Lücke dieses Falls.
+  { name: 'anlage-lindach-steuerung', query: 'bild=unternehmen&ansicht=steuerung-lindach', leiste: ['Cockpit', 'Prognose', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Steuerung' },
   {
     name: 'unternehmen-kuenftig',
     query: 'bild=unternehmen&seiten=kuenftig',
