@@ -750,6 +750,17 @@ export const ABSCHLUSS_HINWEIS =
  * deshalb, was WIRKLICH läuft, statt „unterwegs" zu behaupten (der Zustand,
  * in dem eine solche Anlage vorher für immer hing).
  *
+ * `held` ist aber auch die ERSTE Antwort einer frisch verbundenen Box, BEVOR
+ * das Portal je einen Soll-Stand angewandt hat (Captain-Befund, vp-aufbau-
+ * hinweise): der Go-Kern der Box hält von Anfang an das leere Soll VOR der
+ * ersten angewandten Fassung - „behält den LETZTEN/zuletzt angewandten Stand"
+ * behauptet dann eine Geschichte, die es nie gab, und widerspricht der
+ * ehrlichen Telemetrie-Zeile darüber („Wartet auf die ersten Daten"). Der
+ * Aufrufer meldet das über `everApplied` (`components.appliedAt != null`,
+ * UEMS-Einheitsmodell Stufe 2) - ohne je angewandte Fassung bekommen beide
+ * Funktionen EINEN gemeinsamen, ehrlichen Satz statt zweier sich
+ * widersprechender Zeilen.
+ *
  * `no_gateway_device` ist der EINE Fall, in dem der Grund bekannt IST (Befund
  * L10): die Anlage hat mehrere Geräte und keins davon ist als steuerndes Gerät
  * des Speichers hinterlegt, also gibt es keinen Empfänger. Das zu verschweigen
@@ -768,9 +779,17 @@ export const KEIN_EMPFAENGER_SATZ =
   + 'weiß nicht, an welches Gerät die Einstellungen gehen. Bitte tragen Sie unter '
   + '„Technik" das steuernde Gerät des Speichers ein.';
 
+/** Der eine gemeinsame Satz für `held` OHNE je angewandte Fassung (`everApplied === false`) -
+ * ersetzt sowohl die Soll/Ist-Zeile als auch ihren Halt-Grund (kein zweiter Satz daneben). */
+export const NEU_EINGERICHTET_SATZ =
+  'Diese Anlage ist neu eingerichtet - die Box übernimmt die Steuerung, sobald sie die ersten Werte meldet.';
+
 export function sollIstText(
   syncStatus: string | null | undefined,
   definitionVersion: number,
+  /** Trägt diese Anlage je eine angewandte Fassung (`components.appliedAt != null`)? Default `true`
+   * hält bestehende Aufrufe unverändert - nur wer die neue Lage kennt, meldet `false`. */
+  everApplied = true,
 ): string {
   switch (syncStatus) {
     case 'in_sync':
@@ -778,7 +797,7 @@ export function sollIstText(
     case 'pending':
       return 'Änderung unterwegs zur Box';
     case 'held':
-      return 'Die Box behält den letzten Gerätestand';
+      return everApplied ? 'Die Box behält den letzten Gerätestand' : NEU_EINGERICHTET_SATZ;
     case 'no_gateway_device':
       return KEIN_EMPFAENGER_SATZ;
     case 'box_managed':
@@ -794,17 +813,22 @@ export function sollIstText(
  * Der Grund kommt WÖRTLICH von der Box (`heldReason`) - eine zweite
  * Formulierung derselben Lage wäre eine zweite Wahrheit. Ohne gemeldeten Grund
  * steht der Hausatz, ohne Halt gar nichts.
+ *
+ * Ohne je angewandte Fassung (`everApplied === false`) UND ohne von der Box gemeldeten Grund steht
+ * hier nichts mehr - der Hausatz behauptete sonst einen „zuletzt angewandten Stand", den es nie gab;
+ * `sollIstText` trägt für diese Lage bereits den einen ehrlichen Satz (`NEU_EINGERICHTET_SATZ`).
  */
 export function haltGrund(
   syncStatus: string | null | undefined,
   heldReason?: string | null,
+  everApplied = true,
 ): string | null {
   if (syncStatus !== 'held') return null;
   const gemeldet = heldReason?.trim();
-  return gemeldet
-    ? gemeldet
-    : 'Im Portal ist für diese Anlage keine Anbindung mehr hinterlegt; '
-        + 'die Box behält deshalb den zuletzt angewandten Stand.';
+  if (gemeldet) return gemeldet;
+  if (!everApplied) return null;
+  return 'Im Portal ist für diese Anlage keine Anbindung mehr hinterlegt; '
+    + 'die Box behält deshalb den zuletzt angewandten Stand.';
 }
 
 /**
