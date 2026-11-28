@@ -181,7 +181,7 @@ describe('Meine Anlage mit vollständigem Standort — EINE Zeile (vp-standort-k
     });
     await karte(halle2, async () => ahrenbergHeute());
     let el = document.getElementById('technik-anlage')!;
-    expect(within(el).queryByRole('button', { name: /^Standort bearbeiten/ })).toBeNull();
+    expect(within(el).queryByRole('button', { name: /^Standort .*bearbeiten$/ })).toBeNull();
     expect(within(el).getByRole('note')).toBeInTheDocument();
     cleanup();
 
@@ -193,7 +193,7 @@ describe('Meine Anlage mit vollständigem Standort — EINE Zeile (vp-standort-k
     });
     await karte(halle2, async () => ahrenbergHeute());
     el = document.getElementById('technik-anlage')!;
-    expect(within(el).getByRole('button', { name: /^Standort bearbeiten/ })).toBeInTheDocument();
+    expect(within(el).getByRole('button', { name: /^Standort .*bearbeiten$/ })).toBeInTheDocument();
     setSelbstauskunft(rechteSeed('JW').me);
   });
 });

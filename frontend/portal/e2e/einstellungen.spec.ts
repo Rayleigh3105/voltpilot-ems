@@ -6,6 +6,11 @@ import { expect, test, type Page } from '@playwright/test';
  * wie `gemeinsame-steuerung.spec.ts`). Löst `e2e/benachrichtigungen.spec.ts` ab (das Modal ist
  * entfernt).
  *
+ * Seit Kunden-Alarmierung P3 (#1861) trägt die Bühne `?ansicht=` (Vorgabe `meldungen`): die Wege, die
+ * Ruhezeit und das Kurzbild wohnen hinter der Glocke (`ansicht=meldungen`, `EinstellungenPage` dort
+ * eingebettet) - darum deckt diese Bühne sie ab, nicht `#/einstellungen` selbst. Dort (`ansicht=konto`)
+ * stehen nur noch Konto, Gerät und der Zeiger auf „Meldungen › Einstellen".
+ *
  * GEMESSEN, nicht behauptet: Querlauf des Dokuments, Konsole sauber.
  */
 
@@ -17,7 +22,8 @@ async function oeffne(page: Page, breite: number, query = 'fall=voll') {
   page.on('pageerror', (e) => fehler.push(String(e)));
   await page.setViewportSize({ width: breite, height: breite < 720 ? 844 : 900 });
   await page.goto(`/e2e/einstellungen.html?${query}`);
-  await expect(page.getByRole('heading', { name: 'Einstellungen' })).toBeVisible();
+  const istKonto = /ansicht=konto/.test(query);
+  await expect(page.getByRole('heading', { name: istKonto ? 'Einstellungen' : 'So erreichen wir Sie' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   await page.waitForLoadState('networkidle');
   return fehler;
@@ -28,14 +34,12 @@ function querlauf(page: Page) {
 }
 
 for (const breite of [390, 1440] as const) {
-  test(`zeigt die vier Gruppen und das Kurzbild ohne Querlauf bei ${breite}px`, async ({ page }) => {
+  test(`zeigt die Wege-Gruppen und das Kurzbild ohne Querlauf bei ${breite}px`, async ({ page }) => {
     const fehler = await oeffne(page, breite);
 
     await expect(page.getByText('So erreicht Sie eine Meldung jetzt')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'So erreichen wir Sie' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Ruhezeit und Zusammenfassung' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Ihr Konto' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Dieses Gerät' })).toBeVisible();
     await expect(page.getByText('iPhone von Ines')).toBeVisible();
     await expect(page.getByText('ines.kaltenbach@ahrenberg.example')).toBeVisible();
     await expect(page.getByText('Energieteam')).toBeVisible();
@@ -44,10 +48,50 @@ for (const breite of [390, 1440] as const) {
     expect(fehler).toEqual([]);
   });
 
+  test(`die E-Mail-Adresse bricht nur hinter dem „@" bei ${breite}px`, async ({ page }) => {
+    await oeffne(page, breite);
+    const wert = page.locator('.vp-einst-wert', { hasText: '@' }).first();
+    await expect(wert).toBeVisible();
+    const bruch = await wert.evaluate((el) => {
+      const r = document.createRange();
+      const tops: number[] = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let n: Node | null;
+      let voll = '';
+      while ((n = walker.nextNode())) {
+        for (let i = 0; i < n.textContent!.length; i++) {
+          r.setStart(n, i);
+          r.setEnd(n, i + 1);
+          tops.push(Math.round(r.getBoundingClientRect().top));
+          voll += n.textContent![i];
+        }
+      }
+      const umbrueche = tops.map((t, i) => (i > 0 && t !== tops[i - 1] ? i : -1)).filter((i) => i >= 0);
+      return { voll, umbrueche, at: voll.indexOf('@') };
+    });
+    expect(bruch.voll).toContain('@');
+    for (const i of bruch.umbrueche) expect(i, `Umbruch mitten im Wort bei ${i}: ${bruch.voll}`).toBe(bruch.at + 1);
+  });
+
+  test(`ansicht=konto: zeigt Konto und Gerät statt der Wege, ohne Querlauf bei ${breite}px`, async ({ page }) => {
+    const fehler = await oeffne(page, breite, 'ansicht=konto&fall=voll');
+
+    await expect(page.getByRole('heading', { name: 'Ihr Konto' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dieses Gerät' })).toBeVisible();
+    // Die Wege wohnen jetzt hinter der Glocke - ein Zeiger, keine eigene Gruppe mehr hier.
+    await expect(page.getByRole('heading', { name: 'So erreichen wir Sie' })).toHaveCount(0);
+    await expect(page.getByText('Jetzt unter Meldungen › Einstellen')).toBeVisible();
+
+    expect(await querlauf(page)).toBe(0);
+    expect(fehler).toEqual([]);
+  });
+
   test(`zeigt den leeren Zustand ehrlich (nichts eingerichtet) bei ${breite}px`, async ({ page }) => {
     const fehler = await oeffne(page, breite, 'fall=leer');
     const gruppe = page.locator('#einst-wege');
-    await expect(gruppe.getByText('E-Mail')).toBeVisible();
+    // „Probe senden“ nennt „E-Mail“ auch in seiner Unterzeile (ohne Rolle „button“ mit diesem Namen) - die Zeile
+    // selbst über ihre Rolle finden, nicht über den zweideutigen Text.
+    await expect(gruppe.getByRole('button', { name: /^E-Mail/ })).toBeVisible();
     await expect(gruppe.getByText('Push auf diesem Gerät')).toBeVisible();
     await expect(gruppe.getByText('Nicht eingerichtet')).toHaveCount(2);
     expect(await querlauf(page)).toBe(0);

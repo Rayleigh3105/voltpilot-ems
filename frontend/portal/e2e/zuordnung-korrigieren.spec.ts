@@ -68,7 +68,7 @@ for (const px of [375, 1440] as const) {
     // Seit den kurzen Einstellungen (main 41ed67c26) ist „Meine Anlage“ auch am Telefon offen — kein Aufklappen mehr.
     // Schritt 2c (§6.2/§6.5): EIN Einstieg „Gehört zu: … · Ändern" oben im Blatt „Ort
     // berichtigen" statt der beiden früheren Verweise - „Seit wann?" wählt im Dialog selbst.
-    await page.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    await page.getByRole('button', { name: /^Standort .*bearbeiten$/ }).click();
     const blatt = page.getByRole('dialog', { name: 'Standort' });
     const aendern = blatt.getByRole('button', { name: 'Ändern: Werk Lindach' });
     await expect(aendern).toBeVisible();

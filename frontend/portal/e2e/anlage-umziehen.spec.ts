@@ -197,7 +197,7 @@ test.describe('T6b · Anlage zuordnen mit Folgen-Karte (AP-02 IP-11)', () => {
 
       // Schritt 2c (§6.2/§6.5): „Gehört zu: … · Ändern" steht oben im Blatt „Ort berichtigen",
       // vor der Karte - es ersetzt „Anderem Standort zuordnen"/„Zuordnung korrigieren" von heute.
-      await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+      await karte.getByRole('button', { name: /^Standort .*bearbeiten$/ }).click();
       const blatt = page.getByRole('dialog', { name: 'Standort' });
       const knopf = blatt.getByRole('button', { name: 'Ändern: Werk Ahrenberg – Halle 2' });
       await expect(knopf).toBeVisible();
@@ -250,7 +250,7 @@ test.describe('T6b · Anlage zuordnen mit Folgen-Karte (AP-02 IP-11)', () => {
     await expect(karte).toBeVisible();
     const aufklappen = karte.locator('button[aria-expanded="false"]');
     if (await aufklappen.count()) await aufklappen.first().click();
-    await karte.getByRole('button', { name: /^Standort bearbeiten/ }).click();
+    await karte.getByRole('button', { name: /^Standort .*bearbeiten$/ }).click();
     const blatt = page.getByRole('dialog', { name: 'Standort' });
     await blatt.getByRole('button', { name: 'Ändern: Werk Ahrenberg – Halle 2' }).click();
     const dialog = page.locator('.vp-modal').last();

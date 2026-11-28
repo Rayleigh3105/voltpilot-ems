@@ -51,7 +51,10 @@ export function AnlageOrtZeile({
           ref={ausloeser}
           type="button"
           className="vp-einst-zeile vp-ort-zeile"
-          aria-label={`${UEMS_STANDORT} bearbeiten: ${text}`}
+          // WCAG 4.1.2 (label-content-name-mismatch): der sichtbare Text („Standort" + Adresse,
+          // ohne Leerzeichen zwischen den zwei Elementen) muss als zusammenhängender Lauf im Namen
+          // stecken - „bearbeiten" darf ihn darum nicht mehr zerschneiden, sondern steht am Ende.
+          aria-label={`${UEMS_STANDORT} ${text} bearbeiten`}
           aria-haspopup="dialog"
           onClick={() => setOffen(true)}
         >
@@ -65,7 +68,7 @@ export function AnlageOrtZeile({
             />
           </span>
           <span className="vp-einst-lab">
-            <b>{UEMS_STANDORT}</b>
+            <b>{UEMS_STANDORT}</b>{' '}
             <span className="vp-einst-wert">{text}</span>
           </span>
           <span className="vp-einst-ende">

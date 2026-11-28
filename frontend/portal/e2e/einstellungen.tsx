@@ -22,6 +22,10 @@ import '../src/index.css';
 
 const p = new URLSearchParams(location.search);
 const fall = p.get('fall') ?? 'voll';
+// Kunden-Alarmierung P3 (KA-6 A): „So erreichen wir Sie“/Ruhezeit wohnen seit #1861 hinter der Glocke
+// (`ansicht="meldungen"`, hier Vorgabe - fast alle Fälle dieser Bühne drehen sich um die Wege);
+// `ansicht=konto` zeigt die Vorgabe-Ansicht hinter `#/einstellungen` (Konto, Gerät, Zeiger auf Meldungen).
+const ansicht = p.get('ansicht') === 'konto' ? 'konto' : 'meldungen';
 // `anmeldeAdresse=`: die Adresse der Anmeldung im Token (Kunden-Alarmierung B3, Vorbelegung des E-Mail-Wegs).
 const anmeldeAdresse = p.get('anmeldeAdresse');
 if (anmeldeAdresse) {
@@ -38,7 +42,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <div className="crumbs">Ahrenberg · Einstellungen</div>
     </header>
     <main className="vp-main">
-      <EinstellungenPage />
+      <EinstellungenPage ansicht={ansicht} />
     </main>
   </div>,
 );
