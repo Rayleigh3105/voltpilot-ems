@@ -698,8 +698,10 @@ describe('AufbauSection · ein Gerät mit eigener Seite springt direkt dorthin (
     expect(eintraege.some((t) => t?.includes('Zuordnung ändern · Speicher'))).toBe(false);
     expect(eintraege.some((t) => t?.includes('Komponente löschen · Speicher'))).toBe(false);
     expect(eintraege.some((t) => t?.includes('Steuern freigeben'))).toBe(false);
-    // Der geschützte Speicher (battery-hybrid) hat trotzdem einen Weg - keinen toten Eintrag.
-    expect(eintraege.some((t) => t?.includes('Batterie am Standort abmelden … · Speicher'))).toBe(true);
+    // Der geschützte Speicher (battery-hybrid) hat trotzdem einen Weg - keinen toten Eintrag. Captain-Befund
+    // (PR #2050): wer "den Wechselrichter löschen" will, sucht "Batterie abmelden" nicht - der Eintrag heißt
+    // "Gerät entfernen …" und steht zuunterst im Menü, die Rückfrage dahinter erklärt das Abmelden.
+    expect(eintraege.at(-1)).toContain('Gerät entfernen … · Speicher');
   });
 
   it('führt „Regel mit dieser Komponente erstellen" aus dem Zeilenmenü in den Baukasten', async () => {
@@ -782,7 +784,7 @@ describe('AufbauSection · der Kurzblick (E2) - für Geräte ohne eigene Seite',
    * geschützte Grundausstattung trägt weder „Zuordnung ändern" noch „Komponente löschen" (E2) - vorher
    * endete der Kurzblick hier tot. Jetzt bietet er denselben Weg wie die Geräteseite (E1).
    */
-  it('bietet dem geschützten battery-hybrid ohne Seite „Batterie am Standort abmelden" statt eines toten Endes', async () => {
+  it('bietet dem geschützten battery-hybrid ohne Seite "Gerät entfernen" statt eines toten Endes', async () => {
     stub();
     vi.mocked(api.siteEntities).mockResolvedValue({
       ...entities,
@@ -793,7 +795,9 @@ describe('AufbauSection · der Kurzblick (E2) - für Geräte ohne eigene Seite',
 
     const dialog = await kurzblick(zeileMit('Wechselrichter'));
     expect(within(dialog).queryByRole('link', { name: /Geräteseite/ })).toBeNull();
-    fireEvent.click(within(dialog).getByRole('button', { name: /Batterie am Standort abmelden/ }));
+    // Captain-Befund (PR #2050): wer "den Wechselrichter löschen" will, sucht nicht "Batterie abmelden" -
+    // der Knopf heißt "Gerät entfernen …", die Rückfrage dahinter erklärt dann das Abmelden am Standort.
+    fireEvent.click(within(dialog).getByRole('button', { name: /Gerät entfernen/ }));
 
     const bestaetigen = await screen.findByRole('dialog', { name: 'Batterie am Standort abmelden?' });
     const confirm = within(bestaetigen).getByRole('button', { name: /Batterie endgültig abmelden/ });

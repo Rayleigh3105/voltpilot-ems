@@ -278,20 +278,18 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
         </div>
         <div className="vp-auf-neu">
           {/* Geräte suchen ist die Haupthandlung beim Einrichten (Captain-Befund): „Gerät hinzufügen“
-              (von Hand) rückt zur zweiten Wahl, sobald eine Box suchen kann. */}
+              (von Hand) rückt zur zweiten Wahl, sobald eine Box suchen kann. Der Name bleibt am
+              Telefon ganz - „Suchen" allein stand dort zu nah am Suchfeld „Name, Modell, Kennung"
+              und wurde damit verwechselt (Captain-Befund, PR #2050). */}
           {p.onGeraeteSuchenHaupt && (
             <Recht aktion="geraet.einrichten">
               <button
                 type="button"
                 className="vp-btn vp-btn--primary vp-btn--sm vp-auf-neu-suchen"
-                aria-label={UEMS_GERAETE_SUCHEN}
                 onClick={p.onGeraeteSuchenHaupt}
               >
                 <Icon name="target" size={16} />
-                <span className="vp-auf-neu-lang">{UEMS_GERAETE_SUCHEN}</span>
-                <span className="vp-auf-neu-kurz" aria-hidden="true">
-                  Suchen
-                </span>
+                {UEMS_GERAETE_SUCHEN}
               </button>
             </Recht>
           )}

@@ -819,17 +819,20 @@ export function AufbauSection({
           onClick: () => setRemove(c),
         });
       }
-      // Der geschützte battery-hybrid trägt weder canRepin noch canDelete (E2) - sein einziger Weg ist
-      // „Batterie am Standort abmelden“ (E1), derselbe wie auf der Geräteseite (`GeraetGefahrenzone`).
-      if (c.entityType === 'battery-hybrid') {
-        items.push({
-          label: `Batterie am Standort abmelden …${suffix}`,
-          icon: 'trash',
-          recht: 'komponente.loeschen',
-          danger: true,
-          onClick: () => setBatterieAbmelden({ component: c, name: g.titel }),
-        });
-      }
+    }
+    // Der geschützte battery-hybrid trägt weder canRepin noch canDelete (E2) - sein einziger Weg ist
+    // „Batterie am Standort abmelden“ (E1, `GeraetGefahrenzone`, wie auf der Geräteseite). Der Captain
+    // sucht aber "den Wechselrichter löschen" - der Menüpunkt heißt deshalb "Gerät entfernen …" und
+    // steht zuunterst (rot); die Rückfrage selbst sagt, dass das die Batterie am Standort abmeldet.
+    const batterie = g.karte.komponenten.find((c) => !c.orphaned && c.entityType === 'battery-hybrid');
+    if (batterie) {
+      items.push({
+        label: `Gerät entfernen …${mehrfach ? ` · ${batterie.label}` : ''}`,
+        icon: 'trash',
+        recht: 'komponente.loeschen',
+        danger: true,
+        onClick: () => setBatterieAbmelden({ component: batterie, name: g.titel }),
+      });
     }
     // Eine Ladesäule hat keine löschbare Messkomponente (sie kommt per OCPP) - ihr eigener Gefahr-Eintrag
     // nimmt stattdessen die Kennung zurück (`vp-ladesaeule-entfernen`), dasselbe Recht wie der Server-Endpunkt.
@@ -1739,10 +1742,12 @@ function KomponenteZeile({
               </button></Recht>
             )}
             {/* battery-hybrid: nie ein toter Knopf für die geschützte Grundausstattung - der eine Weg,
-                der sie wirklich entfernt (E1), derselbe wie auf der Geräteseite. */}
+                der sie wirklich entfernt (E1), derselbe wie auf der Geräteseite. "Gerät entfernen" wie im
+                Zeilenmenü (Captain sucht "den Wechselrichter löschen") - die Rückfrage selbst erklärt das
+                Abmelden der Batterie am Standort. */}
             {!c.orphaned && actions.battery && (
               <Recht aktion="komponente.loeschen"><button type="button" className="vp-auf-aktion is-gefahr" onClick={() => onAbmeldenBatterie(c)}>
-                <Icon name="trash" size={13} /> Batterie am Standort abmelden …
+                <Icon name="trash" size={13} /> Gerät entfernen …
               </button></Recht>
             )}
           </span>

@@ -274,6 +274,28 @@
   .vp-auf-neu-kurz {
     display: inline;
   }
+  /* „Geräte suchen" trägt seinen vollen Namen (Captain-Befund, PR #2050): ein bloßes „Suchen" stand zu
+     nah am Suchfeld „Name, Modell, Kennung" darüber und wurde damit verwechselt. Dafür bekommt die
+     Gruppe am Telefon eine eigene volle Zeile unterhalb der Zählzeile - statt gequetscht daneben -,
+     „Geräte suchen" obenauf, „Gerät hinzufügen" darunter. Ohne Suchen (keine Box kann suchen) bleibt
+     „Gerät hinzufügen" unverändert kompakt neben der Zählzeile. */
+  .vp-auf-leiste > .vp-auf-neu:has(.vp-auf-neu-suchen) {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+  .vp-auf-neu:has(.vp-auf-neu-suchen) {
+    flex-wrap: wrap;
+  }
+  .vp-auf-neu-suchen {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .vp-auf-neu:has(.vp-auf-neu-suchen) .vp-auf-neu-hinzufuegen {
+    flex: 1 1 100%;
+  }
+  .vp-auf-neu:has(.vp-auf-neu-suchen) .vp-auf-neu-haupt {
+    flex: 1 1 auto;
+  }
 }
 
 /* Zahlen + Kurzfilter, aktive Filter als Chips */
@@ -1120,17 +1142,16 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     background: repeating-linear-gradient(90deg, var(--vp-auf-schiene) 0 2px, transparent 2px 4px);
     pointer-events: none;
   }
-  /* Der Name behält am Telefon mindestens knapp die Hälfte der Zeile: ein langes Zustandswort („Noch keine
-     Rückmeldung", „Wartet auf die ersten Daten") nahm der Namensspalte sonst alles - der Gerätename stand mit
-     ein, zwei Buchstaben da oder gar nicht (Live-Fall „Zuhause", 02.11.2026). Das Wort bricht stattdessen um.
-     B2-Nachtrag (UI/UX-Wartung u1): 46 % reichten nicht - die rechte `auto`-Spalte wächst beim Layout VOR der
-     `1fr`-Namensspalte auf ihren eigenen Bedarf (Wert ODER Zustand, je nachdem, was länger ist), auch wenn der
-     Zustand dieser Zeile kurz ist. Der Name bekommt deshalb klar mehr als die Hälfte als Mindestmaß. */
+  /* Der Name behält am Telefon mindestens knapp die Hälfte der Zeile. Captain-Befund (vp-aufbau-geraete,
+     PR #2050): der Zustand stand neben dem Namen in einer schmalen `auto`-Spalte, die ihn bei einem
+     langen Zustandswort mitten im Wort brach („Verbu nden", „Liefert Daten" zerrissen) - ohne
+     Trennstelle, nur abgewürgt. Er bekommt deshalb eine EIGENE volle Zeile unter dem Namen (wie das
+     Modell/Weg darunter) statt einer gequetschten Spalte neben dem Wert. */
   .vp-auf-t-zeile {
     grid-template-columns: minmax(60%, 1fr) auto;
     grid-template-areas:
       'name wert'
-      'name zustand';
+      'zustand zustand';
     column-gap: var(--vp-space-2);
     padding: 0 10px 0 8px;
   }
@@ -1148,20 +1169,22 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   }
   .vp-auf-t-zeile > .vp-auf-t-zustand {
     grid-area: zustand;
-    justify-self: end;
+    justify-self: start;
     align-self: start;
     display: flex;
     gap: 6px;
+    padding-top: 2px;
     padding-bottom: 8px;
   }
   .vp-auf-t-zeile > .vp-auf-t-zustand .w {
-    /* Die Rechner-Klemme auf zwei Zeilen gilt hier nicht: die Spalte ist
-       ohnehin schmal, ein langer Zustandssatz darf so viele Zeilen brauchen
-       wie er will, statt ab der zweiten mit „…" zu enden. */
+    /* Die volle Zeilenbreite reicht fast immer für ein Wort - bricht sie trotzdem um, an der
+       Silbenfuge statt irgendwo (wie der Titel oben, `hyphens: auto`). */
     display: block;
     -webkit-line-clamp: unset;
     white-space: normal;
-    text-align: right;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+    text-align: left;
   }
   .vp-auf-t-zeile > .vp-auf-t-zustand small,
   .vp-auf-t-zeile > .vp-auf-t-art,
@@ -1177,7 +1200,7 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     grid-template-columns: minmax(60%, 1fr) auto auto;
     grid-template-areas:
       'name wert mehr'
-      'name zustand mehr';
+      'zustand zustand mehr';
   }
   .vp-auf-t-zeile > .vp-auf-t-pfeil:has(.vp-rowmenu) {
     grid-area: mehr;
