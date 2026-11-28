@@ -155,7 +155,7 @@ public final class KundeDatenBestand {
                 "site_profile_state", "site_forecast_automatik",
                 "site_forecast_model_choice", "site_charge_point_allowlist", "site_charge_point_priority",
                 "site_charge_point_rank", "site_charging_config", "site_supply_price", "anlage_preisfassung",
-                "site_vehicle_tag",
+                "site_vehicle_tag", "anlage_umzug_merkzettel",
                 "quelle_einstellung", "quelle_kadenz", "erzeuger_vorgabe", "anlage_netz_vermarktung",
                 "component_activation_outbox", "move_provisioning_operation", "ladepark_netzgrenze_zugestellt")) {
             m.put(t, einstellung);

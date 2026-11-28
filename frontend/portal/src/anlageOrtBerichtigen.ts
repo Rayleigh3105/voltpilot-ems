@@ -1,7 +1,17 @@
-import type { AnlageOrtAnfrage, StandortAdresse, StandortAmStichtag, StandorteAmStichtag, StandortLage } from './api';
+import type {
+  AnlageOrtAnfrage,
+  AnlageOrtUmzugAnfrage,
+  AnlageUmzug,
+  StandortAdresse,
+  StandortAmStichtag,
+  StandorteAmStichtag,
+  StandortLage,
+} from './api';
 import { adresseText, ZEITZONE_DES_LANDES, type Adresse } from './anlageOrt';
 import { zoneForCountry } from './anlageFlow';
+import { tagPlus } from './anlageUmziehen';
 import { adresseKurz } from './standorte';
+import { datumText, type Tag } from './uemsOrtsbaum';
 
 /**
  * „Standort berichtigen" (vp-standort-konzept §6.1/§6.6, B1/B3/B6): die reine Hälfte der neuen
@@ -73,6 +83,58 @@ export function ortAnfrage(form: OrtForm): AnlageOrtAnfrage {
   const adresse: StandortAdresse = { strasse: form.adresse.strasse, plz: form.adresse.plz, ort: form.adresse.ort, land: form.adresse.land };
   const lage: StandortLage = { breitengrad: form.punkt.breitengrad, laengengrad: form.punkt.laengengrad };
   return { adresse, lage };
+}
+
+/**
+ * „Umzug" (vp-standort-konzept §7, E1 = B): eine neu gewählte Adresse mehr als 2 km vom
+ * ursprünglichen Punkt fragt „Ist Ihre Anlage umgezogen?" statt sie wortlos als Berichtigung zu
+ * übernehmen (B1 ist weiter die Berichtigung — „Nein, die Adresse war falsch").
+ */
+export function istUmzugsfrage(ursprung: OrtPunkt, neuerPunkt: OrtPunkt): boolean {
+  return distanzMeter(ursprung, neuerPunkt) > WEIT_WEG_METER;
+}
+
+/** „{adresse} ist {n} km entfernt." — gerundet, reicht für diese Frage. */
+export function entfernungKmGerundet(a: OrtPunkt, b: OrtPunkt): number {
+  return Math.round(distanzMeter(a, b) / 1000);
+}
+
+export interface UmzugForm {
+  adresse: Adresse;
+  punkt: OrtPunkt;
+  /** Lesart 1 (§7): heute oder ein Tag davor, nie in der Zukunft — der Picker setzt die Grenze. */
+  gueltigAb: Tag;
+}
+
+/** Der Rumpf von `POST …/ort/umzug`. */
+export function umzugAnfrage(form: UmzugForm): AnlageOrtUmzugAnfrage {
+  const adresse: StandortAdresse = { strasse: form.adresse.strasse, plz: form.adresse.plz, ort: form.adresse.ort, land: form.adresse.land };
+  const lage: StandortLage = { breitengrad: form.punkt.breitengrad, laengengrad: form.punkt.laengengrad };
+  return { adresse, lage, gueltigAb: form.gueltigAb };
+}
+
+/**
+ * „Gespeichert. Ab {Tag} steht die Anlage in {Adresse}." — Kundenwort statt der Zuordnungs-Form
+ * „{Anlage} gehört ab {Tag} zu {Standort}.": der still angelegte neue Standort heißt wie die
+ * Anlage, ein wörtliches „X gehört zu X" wäre doppelt und sinnlos (Captain-Korrektur).
+ */
+export function umzugErgebnisSatz(adresse: Adresse, gueltigAb: Tag): string {
+  return `Ab ${datumText(gueltigAb)} steht die Anlage in ${adresseText(adresse)}.`;
+}
+
+/**
+ * Die Umzugs-Folgen in Kundenworten (§7, Bericht 6.4) — EIGENE Sätze statt der
+ * Zuordnungs-Sätze von „Gehört zu" (`folgenKarte`/`kurzeFolgen`), die von einem ZIEL-Standort mit
+ * eigenem Namen ausgehen (hier gibt es keinen - der neue Standort heißt wie die Anlage). „Die Box
+ * bekommt den neuen Ort" nur, wenn es wirklich eine gibt (Regel: nie eine Box erfinden).
+ */
+export function umzugsFolgenSaetze(umzug: AnlageUmzug): string[] {
+  const saetze = [
+    `Der Verlauf läuft weiter. Bis ${datumText(tagPlus(umzug.gueltigAb, -1))} zählt er zum bisherigen Standort.`,
+    'Die nächste Prognose rechnet am neuen Ort; sie lernt mit Messwerten ab dem Umzugstag.',
+  ];
+  if (umzug.boxen > 0) saetze.push('Die Box bleibt an der Anlage und bekommt den neuen Ort.');
+  return saetze;
 }
 
 /**

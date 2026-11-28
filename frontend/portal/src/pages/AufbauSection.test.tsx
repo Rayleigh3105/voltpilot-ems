@@ -698,6 +698,10 @@ describe('AufbauSection · ein Gerät mit eigener Seite springt direkt dorthin (
     expect(eintraege.some((t) => t?.includes('Zuordnung ändern · Speicher'))).toBe(false);
     expect(eintraege.some((t) => t?.includes('Komponente löschen · Speicher'))).toBe(false);
     expect(eintraege.some((t) => t?.includes('Steuern freigeben'))).toBe(false);
+    // Der geschützte Speicher (battery-hybrid) hat trotzdem einen Weg - keinen toten Eintrag. Captain-Befund
+    // (PR #2050): wer "den Wechselrichter löschen" will, sucht "Batterie abmelden" nicht - der Eintrag heißt
+    // "Gerät entfernen …" und steht zuunterst im Menü, die Rückfrage dahinter erklärt das Abmelden.
+    expect(eintraege.at(-1)).toContain('Gerät entfernen … · Speicher');
   });
 
   it('führt „Regel mit dieser Komponente erstellen" aus dem Zeilenmenü in den Baukasten', async () => {
@@ -772,6 +776,38 @@ describe('AufbauSection · der Kurzblick (E2) - für Geräte ohne eigene Seite',
 
   // Das Umbenennen je Komponente und der markierte Speicher-Abschnitt („§5.3") sind seit diesem Wechsel Sache
   // der Geräteseite selbst (sie bietet beides inline, Inhalt der Geräteseite ist nicht Gegenstand dieser Fläche).
+
+  /**
+   * Captain-Befund (vp-aufbau-geraete): eine frisch verbundene Box hat noch keinen Wechselrichter
+   * gemeldet - `batt` (battery-hybrid) wird zum Ersatzgerät „dev:gw" OHNE eigene Seite (genau der
+   * gemeldete Zustand: „Wartet auf die ersten Daten", Zeile ohne „…"-Menü, nur der Kurzblick). Die
+   * geschützte Grundausstattung trägt weder „Zuordnung ändern" noch „Komponente löschen" (E2) - vorher
+   * endete der Kurzblick hier tot. Jetzt bietet er denselben Weg wie die Geräteseite (E1).
+   */
+  it('bietet dem geschützten battery-hybrid ohne Seite "Gerät entfernen" statt eines toten Endes', async () => {
+    stub();
+    vi.mocked(api.siteEntities).mockResolvedValue({
+      ...entities,
+      localSetup: entities.localSetup.filter((l) => l.kind !== 'inverter'),
+    });
+    const abgemeldet = vi.spyOn(api, 'unregisterBattery').mockResolvedValue([] as never);
+    rendere();
+
+    const dialog = await kurzblick(zeileMit('Wechselrichter'));
+    expect(within(dialog).queryByRole('link', { name: /Geräteseite/ })).toBeNull();
+    // Captain-Befund (PR #2050): wer "den Wechselrichter löschen" will, sucht nicht "Batterie abmelden" -
+    // der Knopf heißt "Gerät entfernen …", die Rückfrage dahinter erklärt dann das Abmelden am Standort.
+    fireEvent.click(within(dialog).getByRole('button', { name: /Gerät entfernen/ }));
+
+    const bestaetigen = await screen.findByRole('dialog', { name: 'Batterie am Standort abmelden?' });
+    const confirm = within(bestaetigen).getByRole('button', { name: /Batterie endgültig abmelden/ });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(bestaetigen).getByRole('textbox'), { target: { value: 'Wechselrichter' } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(abgemeldet).toHaveBeenCalledWith(site.id));
+  });
 });
 
 /**
@@ -1502,6 +1538,38 @@ describe('AufbauSection · Gerätesuche (Konzept „Geräte suchen“)', () => {
     expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.any(String));
   });
 
+  /**
+   * Captain-Befund (vp-aufbau-geraete): der Kunde fand „Geräte suchen“ beim Einrichten nicht und
+   * verzweifelte. „Geräte suchen“ ist jetzt die Haupthandlung der Werkzeugleiste - ein Klick, kein
+   * Umweg über den Katalog; „Gerät hinzufügen“ bleibt daneben als zweite Wahl.
+   */
+  it('„Geräte suchen“ steht als Haupthandlung in der Werkzeugleiste - ein Klick, kein Katalog-Umweg', async () => {
+    stub();
+    portalVerwaltet();
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.laeuft));
+    rendere();
+
+    const haupt = await screen.findByRole('button', { name: 'Geräte suchen' });
+    expect(haupt.className).toContain('vp-btn--primary');
+    const hinzufuegen = screen.getByRole('button', { name: 'Gerät hinzufügen' });
+    expect(hinzufuegen.className).toContain('vp-btn--outline');
+
+    fireEvent.click(haupt);
+    expect(await screen.findByRole('dialog', { name: 'Geräte suchen' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.any(String));
+  });
+
+  it('steht an der Box-Zeile selbst, auch wenn die Box schon Geräte trägt', async () => {
+    stub();
+    portalVerwaltet();
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.laeuft));
+    rendere();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Geräte suchen an VoltPilot-Box' }));
+    expect(await screen.findByRole('dialog', { name: 'Geräte suchen' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.any(String));
+  });
+
   it('der Katalog „Gerät hinzufügen“ beginnt mit „Im Heimnetz suchen“', async () => {
     stub();
     portalVerwaltet();
@@ -1622,5 +1690,46 @@ describe('AufbauSection · Ladesäule entfernen (vp-ladesaeule-entfernen)', () =
     fireEvent.click(within(zeileHalle).getByRole('button', { name: /Weitere Aktionen/ }));
     // Das Recht fehlt - die Rechte-Weiche am `RowMenu` (wie am Netzanschluss) lässt den Eintrag selbst dann weg.
     expect(screen.queryByRole('menuitem', { name: /Ladesäule entfernen/ })).toBeNull();
+  });
+});
+
+/**
+ * Captain-Befund (vp-aufbau-hinweise, Nachtrag zu PR #2050): eine frisch verbundene Box ohne je
+ * angewandte Fassung meldet `held` genau wie eine Anlage, deren Anbindung einmal bestand und jetzt
+ * fehlt - die beiden Zeilen darüber behaupteten dann eine Geschichte, die es nie gab, und
+ * widersprachen der Telemetrie-Zeile darüber („Wartet auf die ersten Daten"). Ein Zustand, eine
+ * Aussage: `everApplied=false` trägt EINEN Hinweis statt zweier sich widersprechender.
+ */
+describe('AufbauSection · die drei Hinweise oben (Captain-Befund, vp-aufbau-hinweise)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const hinweisZeilen = () =>
+    within(document.querySelector('.vp-auf-hinweise') as HTMLElement).getAllByRole('listitem').map((li) => li.textContent);
+
+  it('behauptet ohne je angewandte Fassung keine erfundene Geschichte - EIN Hinweis statt zweier', async () => {
+    stub();
+    portalVerwaltet({
+      appliedAt: null,
+      components: [{ id: 'batt', role: 'inverter', entityType: 'battery-hybrid', templateRef: 'builtin:deye:sun-30k', definitionVersion: 1, syncStatus: 'held' }],
+    });
+    rendere();
+    await screen.findByText('Deye SUN-30K');
+    const zeilen = hinweisZeilen();
+    expect(zeilen.some((t) => t?.includes('neu eingerichtet'))).toBe(true);
+    expect(zeilen.some((t) => t?.includes('letzten Gerätestand') || t?.includes('zuletzt angewandten'))).toBe(false);
+  });
+
+  it('mit je angewandter Fassung bleibt der bisherige Hinweis unverändert (zwei Zeilen)', async () => {
+    stub();
+    portalVerwaltet({
+      appliedAt: '2026-01-01T00:00:00Z',
+      components: [{ id: 'batt', role: 'inverter', entityType: 'battery-hybrid', templateRef: 'builtin:deye:sun-30k', definitionVersion: 1, syncStatus: 'held' }],
+    });
+    rendere();
+    await screen.findByText('Deye SUN-30K');
+    const zeilen = hinweisZeilen();
+    expect(zeilen.some((t) => t?.includes('letzten Gerätestand'))).toBe(true);
+    expect(zeilen.some((t) => t?.includes('keine Anbindung mehr hinterlegt'))).toBe(true);
+    expect(zeilen.some((t) => t?.includes('neu eingerichtet'))).toBe(false);
   });
 });

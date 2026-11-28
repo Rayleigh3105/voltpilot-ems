@@ -2,15 +2,20 @@ package com.voltpilot.api.uems;
 
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.repo.UmzugMerkzettelRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.StandortLesemodell.Lage;
 import com.voltpilot.api.uems.StandortLesemodell.StandortAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodell.StandortBezug;
 import com.voltpilot.api.uems.StandortLesemodell.ZugeordneteAnlage;
 import com.voltpilot.api.web.dto.AnlageOrtDto;
+import com.voltpilot.api.web.dto.AnlageUmzugDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.StandortDto;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +45,15 @@ import org.springframework.transaction.annotation.Transactional;
  * eingetragen ({@link OrtWetterNachholungRepository}) — der Wetter-Collector (services/forecast)
  * verwirft dann das gespeicherte Wetter der Anlage und holt 28 Tage am neuen Punkt nach, damit
  * die Prognose nicht am alten Ort weiterlernt.
+ *
+ * <h2>Umzug (§7, E1 = B): dasselbe Wetter, aber am Tag getrennt</h2>
+ *
+ * {@link #umziehen} trägt denselben Nachholungs-Auftrag MIT einem {@code ab_tag} ein: der
+ * Collector verwirft dann NICHT alles, sondern behält das Wetter vor dem Umzugstag (am alten
+ * Punkt richtig gelernt) und ersetzt nur ab dann durch das neue am neuen Punkt. Außerdem setzt
+ * {@code umziehen} {@code site.umzug_seit} — der Prognose-Sammler beginnt sein Lernfenster bei
+ * max(heute − 28 Tage, Umzugstag) statt immer bei heute − 28 Tage (Bericht 6.4/E1 Punkt 4); eine
+ * Berichtigung („Adresse war falsch") setzt das NICHT, sie darf wie bisher alles ersetzen.
  */
 @Service
 public class AnlageOrtService {
@@ -52,15 +66,26 @@ public class AnlageOrtService {
     private final StandortService standorte;
     private final FlowActivationService deployments;
     private final OrtWetterNachholungRepository wetterNachholung;
+    private final AnlageUmzugService umzuege;
+    private final UmzugMerkzettelRepository merkzettel;
+    private volatile Clock uhr = Clock.systemUTC();
 
     public AnlageOrtService(SiteRepository sites, StandortLesemodellService lesemodell,
             StandortService standorte, FlowActivationService deployments,
-            OrtWetterNachholungRepository wetterNachholung) {
+            OrtWetterNachholungRepository wetterNachholung, AnlageUmzugService umzuege,
+            UmzugMerkzettelRepository merkzettel) {
         this.sites = sites;
         this.lesemodell = lesemodell;
         this.standorte = standorte;
         this.deployments = deployments;
         this.wetterNachholung = wetterNachholung;
+        this.umzuege = umzuege;
+        this.merkzettel = merkzettel;
+    }
+
+    /** Nur für Tests: die Uhr, an der „heute" (keine Zukunft, E1 = B Lesart 1) hängt. */
+    void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
     }
 
     @Transactional
@@ -100,6 +125,79 @@ public class AnlageOrtService {
 
         SiteDto neuesSite = sites.findById(siteId);
         return new AnlageOrtDto.Ergebnis(neuesSite, nachStandort, boxZugestellt, wetterAngestossen);
+    }
+
+    /**
+     * „Umzug" (E1 = B, §7): anders als {@link #berichtigen} entsteht ein NEUER Standort statt den
+     * bisherigen in-place zu ändern — nur DIESE Anlage gehört ihm, ihre Geschwister am bisherigen
+     * Standort bleiben unberührt (kein {@code geschwisterMitziehen}). Der neue Standort heißt wie
+     * die Anlage und entsteht still über {@link StandortService#anlegen} — derselbe Dienst, den
+     * {@code StandortController} hinter {@code standort.verwalten} aufruft, hier als interner
+     * Schritt des bereits mit {@code anlage.ort_berichtigen} geprüften Aufrufs (keine zweite,
+     * eigene Rechteprüfung: ein Unterstützer ab „Einrichten" hat {@code standort.verwalten} sonst
+     * nicht). Die Zuordnung selbst läuft über den vorhandenen Weg {@link AnlageUmzugService}
+     * (Vorgang VERSCHIEBEN), der bisherige Standort wird NICHT automatisch archiviert — das
+     * Portal bietet es danach an, wie bei „Zuordnung korrigieren" (derselbe Lese-Weg, keine
+     * eigene Mechanik hier).
+     */
+    @Transactional
+    public AnlageOrtDto.UmzugErgebnis umziehen(UUID siteId, AnlageOrtDto.UmzugAnfrage a, ProtokollAkteur wer) {
+        UUID tenant = TenantContext.get();
+        SiteDto site = sites.findById(siteId);
+        if (site == null) {
+            throw OrtAbgelehnt.nichtGefunden("Diese Anlage gibt es nicht.");
+        }
+        StandortBezug bezug = lesemodell.bezugDerAnlage(siteId);
+        if (bezug == null) {
+            throw OrtAbgelehnt.nichtGefunden("Diese Anlage hat noch keinen Standort.");
+        }
+        StandortAmStichtag alterStandort = lesemodell.standort(bezug.id(), null)
+                .orElseThrow(() -> new IllegalStateException("Standort verschwunden: " + bezug.id()));
+        Lage neueLage = a.lage();
+        if (neueLage == null) {
+            throw OrtAbgelehnt.anfrage("lage", "Bitte setzen Sie den Punkt auf der Karte.");
+        }
+        // Lesart 1 (§7): der Umzugstag ist heute oder ein Tag davor, nie in der Zukunft — der
+        // Punkt der Anlage hat keine Gültigkeit und wechselt sofort beim Speichern.
+        LocalDate heute = uhr.instant().atZone(ZoneId.of(alterStandort.zeitzone())).toLocalDate();
+        LocalDate gueltigAb = a.gueltigAb() == null ? heute : a.gueltigAb();
+        if (gueltigAb.isAfter(heute)) {
+            throw OrtAbgelehnt.anfrage("gueltigAb", "Der Umzugstag darf nicht in der Zukunft liegen.");
+        }
+
+        // Ein neuer Standort entsteht still mit der neuen Adresse — er heißt wie die Anlage
+        // (beim Privatkunden bleibt „Gehört zu" ohnehin unsichtbar, sobald der alte Standort
+        // leer archiviert ist: ein einziger vorhandener Standort zeigt es nie, §6.2). Ein noch
+        // nicht archivierter Standort eines FRÜHEREN Umzugs derselben Anlage trägt denselben Namen
+        // schon — ein Zähler hängt dann an, statt mit "name_belegt" abzulehnen.
+        String standortName = standorte.freierStandortName(site.name());
+        StandortDto.Stammdaten stammdaten = new StandortDto.Stammdaten(standortName, null, a.adresse(), null, null,
+                null, neueLage);
+        StandortAmStichtag neuerStandort = standorte.anlegen(stammdaten, wer);
+
+        AnlageUmzugDto.Anfrage umzugAnfrage = new AnlageUmzugDto.Anfrage(neuerStandort.id(), gueltigAb, null, false);
+        AnlageUmzugDto.Umzug umzug = umzuege.umziehen(siteId, umzugAnfrage, wer);
+
+        String neueGebotszone = OrtFelder.gebotszoneFuerLand(a.adresse().land());
+        sites.lageUndGebotszoneSetzen(siteId, neueLage.breitengrad(), neueLage.laengengrad(), neueGebotszone);
+        // Bericht 6.4/E1 Punkt 4: das Lernfenster der Prognose beginnt bei max(heute - 28 Tage,
+        // Umzugstag) — unabhängig davon, ob sich der Punkt um mehr als 2 km verschoben hat (auch
+        // ein naher Umzug ist ein Umzug, keine Berichtigung).
+        sites.umzugSeitSetzen(siteId, gueltigAb);
+        // Bericht 6.6 Punkt 7: der Merkzettel "Neues Haus? Bitte prüfen" ersetzt eine noch
+        // offene frühere Erinnerung vollständig (ein neuerer Umzug zählt).
+        merkzettel.neuAnlegen(tenant, siteId);
+        boolean boxZugestellt = deployments.republishForSite(siteId);
+        boolean wetterAngestossen = weitWeg(site.latitude(), site.longitude(), neueLage);
+        if (wetterAngestossen) {
+            // §7: anders als bei "Ort berichtigen" bleibt das Wetter VOR dem Umzugstag (am alten
+            // Punkt gelernt) stehen - der Nachholer ersetzt nur ab `gueltigAb`.
+            wetterNachholung.anfordern(tenant, siteId, gueltigAb);
+        }
+
+        SiteDto neuesSite = sites.findById(siteId);
+        StandortAmStichtag neuerStandortFrisch = lesemodell.standort(neuerStandort.id(), null).orElse(neuerStandort);
+        return new AnlageOrtDto.UmzugErgebnis(neuesSite, neuerStandortFrisch, umzug, boxZugestellt, wetterAngestossen);
     }
 
     /** §6.6: die anderen Anlagen des Standorts — Regel oben in der Klassen-Doku. */

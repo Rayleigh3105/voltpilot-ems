@@ -30,19 +30,21 @@ async function verdrahte(page: Page) {
   await page.route('**/api/v1/sites/*/assets', (r) => r.fulfill(json([])));
   await page.route('**/api/v1/unternehmen', (r) => r.fulfill(json(ahrenbergUnternehmen())));
   await page.route('**/api/v1/standorte**', (r) => r.fulfill(json(standorte())));
+  // Nahe bei Werk Ahrenberg (48.25/11.43, < 2 km) - eine BERICHTIGUNG, kein Umzug (§7, E1 = B)
+  // fragt hier noch nicht "Ist Ihre Anlage umgezogen?".
   await page.route('**/api/v1/orte/suche**', (r) =>
     r.fulfill(
       json({
         treffer: [
           {
-            text: 'Lindenweg 45, 91710 Treuchtlingen',
+            text: 'Lindenweg 45, 91234 Ahrenberg',
             strasse: 'Lindenweg',
             hausnummer: '45',
-            plz: '91710',
-            ort: 'Treuchtlingen',
+            plz: '91234',
+            ort: 'Ahrenberg',
             land: 'DE',
-            breitengrad: 48.9517,
-            laengengrad: 10.9254,
+            breitengrad: 48.2512,
+            laengengrad: 11.4315,
             genau: 'haus',
           },
         ],
@@ -159,8 +161,8 @@ test.describe('Zeile „Standort“ und ihr Blatt (vp-standort-konzept §6.1)', 
     await expect(dialog.getByText('Vorher: Gewerbering 7, Ahrenberg')).toBeVisible();
     expect(gesendet).toHaveLength(1);
     expect(gesendet[0]).toMatchObject({
-      adresse: { strasse: 'Lindenweg 45', plz: '91710', ort: 'Treuchtlingen', land: 'DE' },
-      lage: { breitengrad: 48.9517, laengengrad: 10.9254 },
+      adresse: { strasse: 'Lindenweg 45', plz: '91234', ort: 'Ahrenberg', land: 'DE' },
+      lage: { breitengrad: 48.2512, laengengrad: 11.4315 },
     });
 
     await dialog.getByRole('button', { name: 'Fertig' }).click();

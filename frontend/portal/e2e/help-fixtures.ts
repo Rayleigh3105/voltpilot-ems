@@ -213,6 +213,9 @@ export function installHelpFixtures() {
   const error = params.get('state') === 'error';
   const single = params.get('state') === 'single';
   const admin = params.get('state') === 'admin';
+  // Captain-Befund (vp-aufbau-hinweise): eine frisch verbundene Box, bevor das Portal je einen Stand
+  // angewandt hat - `held` ohne `appliedAt` statt der sonst eingespielten `in_sync`-Fassung.
+  const haltNeu = params.get('halt') === 'neu';
   // Plattform-Sicht MIT Anlagen (technische Ebene des Aufbaus: Rollen & Zuordnung, „Komponente anlegen“).
   const technik = params.get('technik') === '1';
   // Ein Privatkunde, dessen Standort so heißt wie seine Adresse, mit langen Gerätenamen (Layout-Wächter).
@@ -314,8 +317,11 @@ export function installHelpFixtures() {
     // Der Verbindungstest der Einrichten-Seite: die Box liest echte Werte (fiktiv).
     testComponentConnection: result({ results: [{ id: 'verbindung', ok: true, reading: { pvKw: 3.1, socPct: 58, gridKw: 1.2 } }] }),
     matchComponent: result(null),
-    siteComponents: result({ componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
-      communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
+    siteComponents: result(haltNeu
+      ? { componentAuthority: 'portal', sollRevision: '1', appliedRevision: null, appliedAt: null, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
+          communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'held' }] }
+      : { componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
+          communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
     siteSources: result([]), edgeVersions: result(sichtbareListe([])), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
     controlStatus: result(erzFall ? null : abweichung
       ? { deviceId: 'help-box', commandedKw: -0.3, confirmedKw: -0.3, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'deficit_cover', executionPlannedKw: 0, executionTargetKw: 0.8 }

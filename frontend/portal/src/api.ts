@@ -5827,6 +5827,48 @@ export interface AnlageOrtErgebnis {
 }
 
 /**
+ * Rumpf von `POST /api/v1/sites/{id}/ort/umzug` (§7, E1 = B): wie {@link AnlageOrtAnfrage}, dazu
+ * der Umzugstag — fehlend = heute, nie in der Zukunft.
+ */
+export interface AnlageOrtUmzugAnfrage {
+  adresse: StandortAdresse;
+  lage: StandortLage;
+  gueltigAb?: string | null;
+}
+
+/**
+ * @property neuerStandort der still angelegte Standort — heißt wie die Anlage
+ * @property umzug dieselbe Form wie `PUT .../standort` (`AnlageUmzug`) — `bisher` nennt den
+ *   bisherigen Standort; `boxen`/`gueltigAb` speisen EIGENE Umzugs-Sätze (`umzugErgebnisSatz`/
+ *   `umzugsFolgenSaetze`), NICHT die Zuordnungs-Sätze von „Gehört zu" (der neue Standort heißt
+ *   wie die Anlage, ein „X gehört zu X" wäre doppelt). Das Portal liest den bisherigen Standort
+ *   danach selbst (wie bei „Zuordnung korrigieren") und bietet das Archivieren an, wenn er jetzt leer ist.
+ */
+export interface AnlageOrtUmzugErgebnis {
+  site: Site;
+  neuerStandort: StandortAmStichtag;
+  umzug: AnlageUmzug;
+  boxZugestellt: boolean;
+  wetterNachholungAngestossen: boolean;
+}
+
+/**
+ * Der Merkzettel „Neues Haus? Bitte prüfen" nach einem Umzug (§7, E1 = B, Bericht 6.6 Punkt 7) —
+ * je Anlage gespeichert, auf jedem Gerät sichtbar. `stromtarifErledigt`/`einspeiseverguetungErledigt`
+ * werden GEMEINSAM wahr, sobald seit `seit` irgendeine neue Preisfassung geschrieben wurde — eine
+ * feinere Unterscheidung führt der Server bewusst nicht. `solaranlageErledigt` kennt keine
+ * automatische Erkennung, nur einen Tipp (`api.umzugMerkzettelErledigen`).
+ */
+export interface UmzugMerkzettel {
+  seit: string;
+  solaranlageErledigt: boolean;
+  stromtarifErledigt: boolean;
+  einspeiseverguetungErledigt: boolean;
+}
+
+export type UmzugMerkzettelTeil = 'solaranlage' | 'stromtarif' | 'einspeiseverguetung';
+
+/**
  * Ein Standort zum Stichtag. Zeitgültig sind `bestand`, `anlagen`, die Zahlen
  * und die Fläche; Name, Adresse, Zeitzone, Zustand und `esFehlt` stehen wie
  * heute. Ohne Bestand am Stichtag: `anlagen` leer, Zahlen und Fläche `null`.

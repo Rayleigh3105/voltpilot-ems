@@ -1,0 +1,30 @@
+.vp-umz-merkzettel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border, #dfe6f2);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-bg-light);
+}
+.vp-umz-merkzettel-chips {
+  display: flex;
+  gap: var(--vp-space-2);
+  flex-wrap: wrap;
+}
+.vp-umz-merkzettel-chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-border, #dfe6f2);
+  background: none;
+  font: inherit;
+  font-size: var(--vp-text-sm);
+  cursor: pointer;
+}
+.vp-umz-merkzettel-chip:hover:not(:disabled) {
+  background: var(--vp-bg-hover, rgba(0, 0, 0, 0.04));
+}
+.vp-umz-merkzettel-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

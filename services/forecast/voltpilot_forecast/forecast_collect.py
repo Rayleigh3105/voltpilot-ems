@@ -36,7 +36,7 @@ import argparse
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from voltpilot_forecast import model_choice, registry
 from voltpilot_forecast.anlage import anlage_slot_kw, fuehrende_box
@@ -89,6 +89,20 @@ DEFAULT_HISTORY_DAYS = 28
 #: load forecasting does not care). Berlin, the platform's v1 reference point.
 DEFAULT_LOCATION = GeoLocation(latitude=52.52, longitude=13.405)
 
+def lernfenster_start(now: datetime, history_days: int, umzug_seit: date | None) -> datetime:
+    """Bericht 6.4/E1 Punkt 4 (vp-standort-konzept §7, E1 = B): das Lernfenster beginnt bei
+    max(now - history_days, Umzugstag) statt immer bei now - history_days.
+
+    A move further back than ``history_days`` has no effect by itself (the max falls back to
+    the normal value) - no separate cleanup of `site.umzug_seit` is needed. ``None`` (never
+    moved) is the pure, unmodified flat window - every site before this feature.
+    """
+    flaches_fenster = now - timedelta(days=history_days)
+    if umzug_seit is None:
+        return flaches_fenster
+    return max(flaches_fenster, datetime.combine(umzug_seit, time.min, tzinfo=timezone.utc))
+
+
 #: A site's PV nameplate is not modelled yet; estimate it from the observed
 #: generation peak (5 % headroom) - self-calibrating and always consistent
 #: with reality. Sites without any PV telemetry get no PV plant (zero series).
@@ -128,6 +142,10 @@ class SiteRow:
     #: `collect_site` back to the single `plant` above, byte-identically
     #: (see :func:`load_pv_flaechen`).
     plants: tuple[PlantSpec, ...] = ()
+    #: Umzug (vp-standort-konzept §7, E1 = B): der jüngste Umzugstag, falls die Anlage je
+    #: umgezogen ist - `collect_site` beginnt sein Lernfenster erst ab hier, nicht immer bei
+    #: `history_days` zurück (Bericht 6.4/E1 Punkt 4). `None` = nie umgezogen, normales Fenster.
+    umzug_seit: date | None = None
 
 
 @dataclass
@@ -169,7 +187,7 @@ def load_sites(conn) -> list[SiteRow]:
         cur.execute(
             """
             SELECT s.tenant_id, s.id, s.latitude, s.longitude,
-                   a.pv_capacity_kwp, a.azimuth_deg, a.tilt_deg
+                   a.pv_capacity_kwp, a.azimuth_deg, a.tilt_deg, s.umzug_seit
             FROM site s
             JOIN tenant t ON t.id = s.tenant_id
             LEFT JOIN LATERAL (
@@ -190,7 +208,7 @@ def load_sites(conn) -> list[SiteRow]:
     # entry falls `collect_site` back to the single `plant` below).
     flaechen = load_pv_flaechen(conn)
     sites = []
-    for tenant_id, site_id, lat, lon, kwp, azimuth, tilt in rows:
+    for tenant_id, site_id, lat, lon, kwp, azimuth, tilt, umzug_seit in rows:
         location = (
             GeoLocation(latitude=float(lat), longitude=float(lon))
             if lat is not None and lon is not None
@@ -212,6 +230,7 @@ def load_sites(conn) -> list[SiteRow]:
                 location,
                 plant,
                 tuple(flaechen.get(str(site_id), [])),
+                umzug_seit,
             )
         )
     return sites
@@ -500,7 +519,7 @@ def collect_site(
     from voltpilot_forecast import ml  # noqa: PLC0415 - safe: pure-Python module
 
     summary = SiteSummary(site.site_id)
-    since = now - timedelta(days=cfg.history_days)
+    since = lernfenster_start(now, cfg.history_days, site.umzug_seit)
     load_history = _telemetry_history(conn, site.site_id, "load_kw", since)
     pv_history = _telemetry_history(conn, site.site_id, "pv_power_kw", since)
     weather_points = _weather_history(conn, site.site_id, since)

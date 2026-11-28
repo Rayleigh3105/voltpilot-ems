@@ -56,6 +56,8 @@ import { freigabeZustand } from '../schaltFreigabe';
 import { REGEL_BRUECKE_LABEL, bietetRegelBruecke, regelBrueckeHash } from '../selbstbauBruecke';
 import { UmbenennenDialog } from '../components/UmbenennenDialog';
 import { KomponenteLoeschenDialog, ZuordnungAendernDialog } from '../components/ZuordnungAendern';
+import { GeraetGefahrenzone } from '../components/GeraetGefahrenzone';
+import { batterieAbmeldenFolgen } from '../geraetLoeschen';
 import { UmhaengenDialog } from '../components/UmhaengenDialog';
 import { LadesaeuleEntfernenDialog } from '../components/LadesaeuleEntfernenDialog';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
@@ -242,6 +244,10 @@ export function AufbauSection({
   // Aus „Geräte suchen“ geöffnet: die Quelle an der Adresse des Fundes ist vorgewählt (nie still gespeichert).
   const [repinVorschlag, setRepinVorschlag] = useState<string | null>(null);
   const [remove, setRemove] = useState<PlantComponent | null>(null);
+  // Der geschützte battery-hybrid hat keinen „Komponente löschen“-Weg (E2) - nur „Batterie am
+  // Standort abmelden“ (E1, wie auf der Geräteseite). `name` ist der Gerätetitel, nicht das
+  // technische Komponenten-Label - er steht in der Rückfrage und ist das Wort zum Bestätigen.
+  const [batterieAbmelden, setBatterieAbmelden] = useState<{ component: PlantComponent; name: string } | null>(null);
   const [ladesaeuleEntfernen, setLadesaeuleEntfernen] = useState<{ kennung: string; name: string } | null>(null);
   const [umhaengen, setUmhaengen] = useState<PlantComponent | null>(null);
   const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
@@ -539,14 +545,19 @@ export function AufbauSection({
    * einer box-verwalteten würde ein gespeichertes Soll nie wirken.
    */
   const portalManaged = components?.componentAuthority === 'portal';
+  // Captain-Befund (vp-aufbau-hinweise): `held` ist auch die ERSTE Antwort einer frisch
+  // verbundenen Box, bevor das Portal je einen Stand angewandt hat - „behält den letzten/
+  // zuletzt angewandten Stand" behauptete dann eine Geschichte, die es nie gab, und
+  // widersprach der Telemetrie-Zeile darüber („Wartet auf die ersten Daten").
+  const everApplied = components?.appliedAt != null;
   const stand = components?.components[0]
     ? {
-        text: sollIstText(components.components[0].syncStatus, components.components[0].definitionVersion ?? 1),
+        text: sollIstText(components.components[0].syncStatus, components.components[0].definitionVersion ?? 1, everApplied),
         ton: sollIstTon(components.components[0].syncStatus),
       }
     : null;
   const ablehnung = ablehnungText(components?.refusedRevision, components?.refusedReason);
-  const halt = haltGrund(components?.components[0]?.syncStatus, components?.heldReason);
+  const halt = haltGrund(components?.components[0]?.syncStatus, components?.heldReason, everApplied);
   const verwaltung = components ? verwaltungsHinweis(components.componentAuthority, components.adoptedAt) : null;
   const zeilenHinweisById = useMemo(() => {
     const out = new Map<string, { badge: string; satz: string }>();
@@ -814,6 +825,20 @@ export function AufbauSection({
         });
       }
     }
+    // Der geschützte battery-hybrid trägt weder canRepin noch canDelete (E2) - sein einziger Weg ist
+    // „Batterie am Standort abmelden“ (E1, `GeraetGefahrenzone`, wie auf der Geräteseite). Der Captain
+    // sucht aber "den Wechselrichter löschen" - der Menüpunkt heißt deshalb "Gerät entfernen …" und
+    // steht zuunterst (rot); die Rückfrage selbst sagt, dass das die Batterie am Standort abmeldet.
+    const batterie = g.karte.komponenten.find((c) => !c.orphaned && c.entityType === 'battery-hybrid');
+    if (batterie) {
+      items.push({
+        label: `Gerät entfernen …${mehrfach ? ` · ${batterie.label}` : ''}`,
+        icon: 'trash',
+        recht: 'komponente.loeschen',
+        danger: true,
+        onClick: () => setBatterieAbmelden({ component: batterie, name: g.titel }),
+      });
+    }
     // Eine Ladesäule hat keine löschbare Messkomponente (sie kommt per OCPP) - ihr eigener Gefahr-Eintrag
     // nimmt stattdessen die Kennung zurück (`vp-ladesaeule-entfernen`), dasselbe Recht wie der Server-Endpunkt.
     const kennung = g.kennung;
@@ -950,6 +975,10 @@ export function AufbauSection({
             const d = eigeneBoxen.find((x) => x.id === b.id);
             if (d) oeffneSuche(d);
           }}
+          onGeraeteSuchenHaupt={(() => {
+            const b = fuehrendeBoxOf(devices, site.id);
+            return b ? () => oeffneSuche(b) : null;
+          })()}
           geraetGesperrt={
             components && !portalManaged
               ? components.componentAuthority === 'box'
@@ -994,7 +1023,10 @@ export function AufbauSection({
             siteId={site.id}
             geraet={kurzblickInhalt.geraet}
             box={kurzblickInhalt.box}
-            actionsFor={(c) => componentActions(c, data?.entities.find((e) => e.id === c.entityId))}
+            actionsFor={(c) => ({
+              ...componentActions(c, data?.entities.find((e) => e.id === c.entityId)),
+              battery: c.entityType === 'battery-hybrid',
+            })}
             renameHrefFor={(c) =>
               c.renameable
                 ? boxRef && kurzblickInhalt.geraet.karte.href
@@ -1009,6 +1041,7 @@ export function AufbauSection({
             onFreigabe={(c) => ausKurzblick(() => setFreigabe(c))}
             onRepin={(c) => ausKurzblick(() => setRepin(c))}
             onRemove={(c) => ausKurzblick(() => setRemove(c))}
+            onAbmeldenBatterie={(c) => ausKurzblick(() => setBatterieAbmelden({ component: c, name: kurzblickInhalt.geraet.titel }))}
             onUebernehmen={(q) => ausKurzblick(() => setAssign(q))}
             technik={
               showTechnical
@@ -1320,6 +1353,22 @@ export function AufbauSection({
         />
       )}
 
+      <GeraetGefahrenzone
+        siteId={site.id}
+        zustand={
+          batterieAbmelden
+            ? { kind: 'batterie', component: batterieAbmelden.component, folgen: batterieAbmeldenFolgen() }
+            : null
+        }
+        name={batterieAbmelden?.name ?? ''}
+        offen={batterieAbmelden != null}
+        onSchliessen={() => setBatterieAbmelden(null)}
+        onDone={() => {
+          setBatterieAbmelden(null);
+          reload();
+        }}
+      />
+
       {ladesaeuleEntfernen && (() => {
         const kennung = ladesaeuleEntfernen.kennung;
         return (
@@ -1445,13 +1494,14 @@ function Kurzblick({
   onFreigabe,
   onRepin,
   onRemove,
+  onAbmeldenBatterie,
   onUebernehmen,
   technik,
 }: {
   siteId: string;
   geraet: AufbauGeraet;
   box: AufbauBox | null;
-  actionsFor: (c: PlantComponent) => { canRepin: boolean; canDelete: boolean };
+  actionsFor: (c: PlantComponent) => { canRepin: boolean; canDelete: boolean; battery: boolean };
   renameHrefFor: (c: PlantComponent) => string | null;
   sofortFor: (c: PlantComponent) => Consumer | null;
   ohneMesswertFor: (c: PlantComponent) => { badge: string; satz: string } | null;
@@ -1459,6 +1509,7 @@ function Kurzblick({
   onFreigabe: (c: PlantComponent) => void;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
+  onAbmeldenBatterie: (c: PlantComponent) => void;
   onUebernehmen: (q: AdoptableSource) => void;
   technik: TechnikSicht | null;
 }) {
@@ -1508,6 +1559,7 @@ function Kurzblick({
               onFreigabe={onFreigabe}
               onRepin={onRepin}
               onRemove={onRemove}
+              onAbmeldenBatterie={onAbmeldenBatterie}
               technik={technik}
             />
           ))}
@@ -1553,13 +1605,14 @@ function KomponenteZeile({
   onFreigabe,
   onRepin,
   onRemove,
+  onAbmeldenBatterie,
   technik,
 }: {
   siteId: string;
   component: PlantComponent;
   zeigeName: boolean;
   geraetHref: string | null;
-  actions: { canRepin: boolean; canDelete: boolean };
+  actions: { canRepin: boolean; canDelete: boolean; battery: boolean };
   renameHref: string | null;
   sofort: Consumer | null;
   ohneMesswert: { badge: string; satz: string } | null;
@@ -1567,6 +1620,7 @@ function KomponenteZeile({
   onFreigabe: (c: PlantComponent) => void;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
+  onAbmeldenBatterie: (c: PlantComponent) => void;
   technik: TechnikSicht | null;
 }) {
   const entity = technik && c.entityId ? technik.entityFor(c.entityId) : null;
@@ -1583,7 +1637,7 @@ function KomponenteZeile({
     regelBruecke ||
     c.entityId != null ||
     (c.role === 'storage' && geraetHref != null) ||
-    (!c.orphaned && (actions.canRepin || actions.canDelete)) ||
+    (!c.orphaned && (actions.canRepin || actions.canDelete || actions.battery)) ||
     entity != null ||
     c.channels.length > 0;
   return (
@@ -1690,6 +1744,15 @@ function KomponenteZeile({
             {!c.orphaned && actions.canDelete && (
               <Recht aktion="komponente.loeschen"><button type="button" className="vp-auf-aktion is-gefahr" onClick={() => onRemove(c)}>
                 <Icon name="trash" size={13} /> Komponente löschen
+              </button></Recht>
+            )}
+            {/* battery-hybrid: nie ein toter Knopf für die geschützte Grundausstattung - der eine Weg,
+                der sie wirklich entfernt (E1), derselbe wie auf der Geräteseite. "Gerät entfernen" wie im
+                Zeilenmenü (Captain sucht "den Wechselrichter löschen") - die Rückfrage selbst erklärt das
+                Abmelden der Batterie am Standort. */}
+            {!c.orphaned && actions.battery && (
+              <Recht aktion="komponente.loeschen"><button type="button" className="vp-auf-aktion is-gefahr" onClick={() => onAbmeldenBatterie(c)}>
+                <Icon name="trash" size={13} /> Gerät entfernen …
               </button></Recht>
             )}
           </span>
