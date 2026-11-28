@@ -240,16 +240,24 @@
 .vp-auf-neu {
   display: inline-flex;
   align-items: stretch;
+  gap: var(--vp-space-2);
 }
-.vp-auf-neu .vp-auf-neu-haupt {
+.vp-auf-neu-suchen {
+  white-space: nowrap;
+}
+.vp-auf-neu-hinzufuegen {
+  display: inline-flex;
+  align-items: stretch;
+}
+.vp-auf-neu-hinzufuegen .vp-auf-neu-haupt {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
   white-space: nowrap;
 }
-.vp-auf-neu .vp-rowmenu {
+.vp-auf-neu-hinzufuegen .vp-rowmenu {
   display: inline-flex;
 }
-.vp-auf-neu .vp-auf-neu-mehr {
+.vp-auf-neu-hinzufuegen .vp-auf-neu-mehr {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
   border-left: 1px solid color-mix(in srgb, var(--vp-surface) 30%, transparent);

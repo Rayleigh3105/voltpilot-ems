@@ -698,6 +698,8 @@ describe('AufbauSection · ein Gerät mit eigener Seite springt direkt dorthin (
     expect(eintraege.some((t) => t?.includes('Zuordnung ändern · Speicher'))).toBe(false);
     expect(eintraege.some((t) => t?.includes('Komponente löschen · Speicher'))).toBe(false);
     expect(eintraege.some((t) => t?.includes('Steuern freigeben'))).toBe(false);
+    // Der geschützte Speicher (battery-hybrid) hat trotzdem einen Weg - keinen toten Eintrag.
+    expect(eintraege.some((t) => t?.includes('Batterie am Standort abmelden … · Speicher'))).toBe(true);
   });
 
   it('führt „Regel mit dieser Komponente erstellen" aus dem Zeilenmenü in den Baukasten', async () => {
@@ -772,6 +774,36 @@ describe('AufbauSection · der Kurzblick (E2) - für Geräte ohne eigene Seite',
 
   // Das Umbenennen je Komponente und der markierte Speicher-Abschnitt („§5.3") sind seit diesem Wechsel Sache
   // der Geräteseite selbst (sie bietet beides inline, Inhalt der Geräteseite ist nicht Gegenstand dieser Fläche).
+
+  /**
+   * Captain-Befund (vp-aufbau-geraete): eine frisch verbundene Box hat noch keinen Wechselrichter
+   * gemeldet - `batt` (battery-hybrid) wird zum Ersatzgerät „dev:gw" OHNE eigene Seite (genau der
+   * gemeldete Zustand: „Wartet auf die ersten Daten", Zeile ohne „…"-Menü, nur der Kurzblick). Die
+   * geschützte Grundausstattung trägt weder „Zuordnung ändern" noch „Komponente löschen" (E2) - vorher
+   * endete der Kurzblick hier tot. Jetzt bietet er denselben Weg wie die Geräteseite (E1).
+   */
+  it('bietet dem geschützten battery-hybrid ohne Seite „Batterie am Standort abmelden" statt eines toten Endes', async () => {
+    stub();
+    vi.mocked(api.siteEntities).mockResolvedValue({
+      ...entities,
+      localSetup: entities.localSetup.filter((l) => l.kind !== 'inverter'),
+    });
+    const abgemeldet = vi.spyOn(api, 'unregisterBattery').mockResolvedValue([] as never);
+    rendere();
+
+    const dialog = await kurzblick(zeileMit('Wechselrichter'));
+    expect(within(dialog).queryByRole('link', { name: /Geräteseite/ })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: /Batterie am Standort abmelden/ }));
+
+    const bestaetigen = await screen.findByRole('dialog', { name: 'Batterie am Standort abmelden?' });
+    const confirm = within(bestaetigen).getByRole('button', { name: /Batterie endgültig abmelden/ });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(bestaetigen).getByRole('textbox'), { target: { value: 'Wechselrichter' } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(abgemeldet).toHaveBeenCalledWith(site.id));
+  });
 });
 
 /**
@@ -1499,6 +1531,38 @@ describe('AufbauSection · Gerätesuche (Konzept „Geräte suchen“)', () => {
     rendere();
     fireEvent.click(await screen.findByRole('button', { name: 'Geräte suchen an VoltPilot-Box' }));
     expect(await screen.findByRole('heading', { name: 'Suche im Heimnetz …' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.any(String));
+  });
+
+  /**
+   * Captain-Befund (vp-aufbau-geraete): der Kunde fand „Geräte suchen“ beim Einrichten nicht und
+   * verzweifelte. „Geräte suchen“ ist jetzt die Haupthandlung der Werkzeugleiste - ein Klick, kein
+   * Umweg über den Katalog; „Gerät hinzufügen“ bleibt daneben als zweite Wahl.
+   */
+  it('„Geräte suchen“ steht als Haupthandlung in der Werkzeugleiste - ein Klick, kein Katalog-Umweg', async () => {
+    stub();
+    portalVerwaltet();
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.laeuft));
+    rendere();
+
+    const haupt = await screen.findByRole('button', { name: 'Geräte suchen' });
+    expect(haupt.className).toContain('vp-btn--primary');
+    const hinzufuegen = screen.getByRole('button', { name: 'Gerät hinzufügen' });
+    expect(hinzufuegen.className).toContain('vp-btn--outline');
+
+    fireEvent.click(haupt);
+    expect(await screen.findByRole('dialog', { name: 'Geräte suchen' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.any(String));
+  });
+
+  it('steht an der Box-Zeile selbst, auch wenn die Box schon Geräte trägt', async () => {
+    stub();
+    portalVerwaltet();
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.laeuft));
+    rendere();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Geräte suchen an VoltPilot-Box' }));
+    expect(await screen.findByRole('dialog', { name: 'Geräte suchen' })).toBeInTheDocument();
     expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.any(String));
   });
 
